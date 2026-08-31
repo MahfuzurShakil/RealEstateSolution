@@ -163,6 +163,12 @@ export interface LandJvDetails extends BaseEntity {
   agreement_date: ISODate;
   power_of_attorney: boolean;
   poa_reference?: string | null;
+  /**
+   * Addendum (see JV_SHARE_BASES below): what the share percentages are a
+   * percentage OF — number of flats, or total saleable sqft. Module 2 checks
+   * the actual unit allocation against the share in this basis.
+   */
+  jv_share_basis?: JvShareBasis;
 }
 
 /**
@@ -195,4 +201,142 @@ export const LAND_DOCUMENT_TYPES = [
   'jv_agreement',
   'power_of_attorney',
   'other',
+] as const;
+
+/**
+ * Addendum to Scope v3.md Section 2.6 (decided with the user, 2026-09-01):
+ * a JV share percentage is meaningless until you say "percent of what". In
+ * Bangladesh both bases are used, so the basis is captured per land when the
+ * JV terms are entered, and Module 2 checks unit allocation against it.
+ */
+export const JV_SHARE_BASES = ['flat_count', 'total_sqft'] as const;
+export type JvShareBasis = (typeof JV_SHARE_BASES)[number];
+
+/* ------------------------------------------------------------------ *
+ * Module 2 — Project Creation
+ * ------------------------------------------------------------------ */
+
+export const PROJECT_STATUSES = [
+  'planning',
+  'design',
+  'approval',
+  'under_construction',
+  'nearly_complete',
+  'handover_ongoing',
+  'closed',
+] as const;
+export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
+
+export const PROJECT_TYPES = ['residential', 'commercial', 'mixed'] as const;
+export type ProjectType = (typeof PROJECT_TYPES)[number];
+
+export interface Project extends BaseEntity {
+  code: string;                       // PRJ-2026-001
+  name: string;
+  project_type: ProjectType;
+  /** summed from the linked lands by default, editable */
+  total_land_area?: number | null;
+  total_land_area_unit?: LandSizeUnit;
+  /** Public Portal P2 — marketing address, not the cadastral one */
+  location_summary?: string | null;
+  expected_start_date: ISODate;
+  expected_completion_date: ISODate;
+  actual_start_date?: ISODate | null;
+  status: ProjectStatus;
+  project_manager?: UUID | null;
+  architect?: string | null;
+  surroundings?: string | null;
+  /** multi-select from lookup_values (category='amenity') */
+  amenities: string[];
+  cover_image_url?: string | null;
+  /** Public Portal P1 */
+  is_public: boolean;
+  is_featured: boolean;
+}
+
+export interface LandProjectMapping extends BaseEntity {
+  land_id: UUID;
+  project_id: UUID;
+}
+
+export const TOWER_STATUSES = ['planning', 'under_construction', 'complete'] as const;
+export type TowerStatus = (typeof TOWER_STATUSES)[number];
+
+export interface Tower extends BaseEntity {
+  project_id: UUID;
+  name: string;
+  floor_count: number;
+  status: TowerStatus;
+  /** e.g. "B+G+8" */
+  building_type?: string | null;
+  unit_per_floor?: number | null;
+  lift_count?: number | null;
+  electricity_backup?: boolean | null;
+  front_road_width_ft?: number | null;
+}
+
+export const UNIT_STATUSES = [
+  'available',
+  'hold',
+  'reserved',
+  'booked',
+  'sold',
+  'handed_over',
+] as const;
+export type UnitStatus = (typeof UNIT_STATUSES)[number];
+
+export const ALLOCATION_TYPES = ['developer_share', 'landowner_share'] as const;
+export type AllocationType = (typeof ALLOCATION_TYPES)[number];
+
+export const FOR_SALE_BY = ['company', 'owner_direct'] as const;
+export type ForSaleBy = (typeof FOR_SALE_BY)[number];
+
+export interface Unit extends BaseEntity {
+  code: string;                       // A-501
+  tower_id: UUID;
+  floor: number;
+  unit_type: string;                  // lookup_values (category='unit_type')
+  bedroom_count?: number | null;
+  bathroom_count?: number | null;
+  balcony_count?: number | null;
+  size_sqft: number;
+  facing?: string | null;             // lookup_values (category='facing')
+  base_price: number;
+  parking_allocated: number;
+  status: UnitStatus;
+  allocation_type: AllocationType;
+  /** required when allocation_type = 'landowner_share' */
+  allocated_to_owner_id?: UUID | null;
+  for_sale_by: ForSaleBy;
+}
+
+/** Document types for entity_type = 'project' (Section 3.7) */
+export const PROJECT_DOCUMENT_TYPES = [
+  'architectural_plan',
+  'structural_drawing',
+  'rajuk_approval',
+  'environmental_clearance',
+  'fire_safety_certificate',
+  'layout_floor_plan',
+  'brochure',
+  'gallery_image',
+  'other',
+] as const;
+
+/** Seed options for the Module 2 dropdowns that live in lookup_values. */
+export const UNIT_TYPE_OPTIONS = ['1 Bed', '2 Bed', '3 Bed', '4 Bed', 'Duplex', 'Penthouse', 'Shop', 'Office Space'] as const;
+export const FACING_OPTIONS = ['South', 'North', 'East', 'West', 'South-East', 'South-West', 'North-East', 'North-West'] as const;
+export const AMENITY_OPTIONS = [
+  'Lift',
+  'Generator',
+  'Parking',
+  'Security',
+  'CCTV',
+  'Community Space',
+  'Rooftop Garden',
+  'Gymnasium',
+  'Prayer Room',
+  'Children Play Area',
+  'Substation',
+  'Fire Fighting System',
 ] as const;

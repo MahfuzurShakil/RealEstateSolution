@@ -2,11 +2,19 @@
 
 import { companySettingsRepository, landRepository, lookupRepository } from '../repositories';
 import { demoDataWasCleared, seedDemoData } from './demo-seed';
-import { LAND_DOCUMENT_TYPES, LAND_SIZE_UNITS } from './types';
+import {
+  AMENITY_OPTIONS,
+  FACING_OPTIONS,
+  LAND_DOCUMENT_TYPES,
+  LAND_SIZE_UNITS,
+  PROJECT_DOCUMENT_TYPES,
+  UNIT_TYPE_OPTIONS,
+} from './types';
 
 /**
  * First-run master data. Only option-lists live here — workflow statuses stay
- * ENUMs in code (Section 1.2). Safe to call repeatedly: it no-ops if rows exist.
+ * ENUMs in code (Section 1.2). Safe to call repeatedly: each category is topped
+ * up with only the options it is missing.
  */
 let seedPromise: Promise<void> | null = null;
 
@@ -18,24 +26,14 @@ export function seedIfEmpty(): Promise<void> {
 }
 
 async function runSeed(): Promise<void> {
-  if ((await lookupRepository.count()) === 0) {
-    await lookupRepository.bulkCreate([
-      ...LAND_DOCUMENT_TYPES.map((value, i) => ({
-        category: 'document_type',
-        scope: 'land',
-        value,
-        is_active: true,
-        sort_order: i + 1,
-      })),
-      ...LAND_SIZE_UNITS.map((value, i) => ({
-        category: 'land_size_unit',
-        scope: null,
-        value,
-        is_active: true,
-        sort_order: i + 1,
-      })),
-    ]);
-  }
+  // Master data is topped up per category, not seeded once: an install from
+  // Module 1 already has rows, and Module 2's option-lists still need adding.
+  await ensureOptions('document_type', 'land', [...LAND_DOCUMENT_TYPES]);
+  await ensureOptions('document_type', 'project', [...PROJECT_DOCUMENT_TYPES]);
+  await ensureOptions('land_size_unit', null, [...LAND_SIZE_UNITS]);
+  await ensureOptions('unit_type', null, [...UNIT_TYPE_OPTIONS]);
+  await ensureOptions('facing', null, [...FACING_OPTIONS]);
+  await ensureOptions('amenity', null, [...AMENITY_OPTIONS]);
 
   // Demo dataset: only on a truly fresh database, and never again once the
   // user has deliberately cleared it from the dashboard.
@@ -58,4 +56,26 @@ async function runSeed(): Promise<void> {
       notes: null,
     });
   }
+}
+
+/** Adds the options of one category that are not in the table yet. */
+async function ensureOptions(
+  category: string,
+  scope: string | null,
+  values: string[],
+): Promise<void> {
+  const existing = await lookupRepository.options(category, scope);
+  const known = new Set(existing.map((r) => r.value));
+  const missing = values.filter((v) => !known.has(v));
+  if (missing.length === 0) return;
+
+  await lookupRepository.bulkCreate(
+    missing.map((value, i) => ({
+      category,
+      scope,
+      value,
+      is_active: true,
+      sort_order: existing.length + i + 1,
+    })),
+  );
 }

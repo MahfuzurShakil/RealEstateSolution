@@ -2,6 +2,10 @@
 
 import {
   documentRepository,
+  landProjectMappingRepository,
+  projectRepository,
+  towerRepository,
+  unitRepository,
   landJvRepository,
   landOwnerMappingRepository,
   landRepository,
@@ -10,6 +14,7 @@ import {
 } from '../repositories';
 import { getDb } from './database';
 import { DEMO_LANDS, DEMO_OWNERS } from './demo-data';
+import { DEMO_PROJECTS } from './demo-projects';
 
 /**
  * Loads the Bangladesh demo dataset (Module 1) so a fresh install opens with
@@ -82,6 +87,7 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
   }
 
   const db = getDb();
+  const landIds = new Map<string, string>();
 
   for (const demo of DEMO_LANDS) {
     const land = await landRepository.create(
@@ -134,6 +140,7 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
           agreement_date: demo.jv.agreement_date,
           power_of_attorney: demo.jv.power_of_attorney,
           poa_reference: demo.jv.poa_reference ?? null,
+          jv_share_basis: demo.jv.jv_share_basis ?? 'flat_count',
         },
         createdBy,
       );
@@ -189,9 +196,128 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
     }
 
     await db.lands.update(land.id, { created_at: demo.created_at, updated_at: demo.created_at });
+    landIds.set(demo.name, land.id);
   }
 
+  await seedDemoProjects(landIds, ownerIds, createdBy);
+
   setClearedFlag(false);
+}
+
+/**
+ * Module 2 demo data. Units go through the same bulk generator the UI uses, so
+ * what the demo shows is exactly what the feature produces — including the
+ * deliberately mismatched JV allocation on the Agrabad project.
+ */
+async function seedDemoProjects(
+  landIds: Map<string, string>,
+  ownerIds: Map<string, string>,
+  createdBy: string | null,
+): Promise<void> {
+  const db = getDb();
+
+  for (const demo of DEMO_PROJECTS) {
+    const project = await projectRepository.create(
+      {
+        code: '',
+        name: demo.name,
+        project_type: demo.project_type,
+        total_land_area: demo.total_land_area ?? null,
+        total_land_area_unit: 'katha',
+        location_summary: demo.location_summary,
+        expected_start_date: demo.expected_start_date,
+        expected_completion_date: demo.expected_completion_date,
+        actual_start_date: demo.actual_start_date ?? null,
+        status: demo.status,
+        project_manager: null,
+        architect: demo.architect ?? null,
+        surroundings: demo.surroundings ?? null,
+        amenities: demo.amenities,
+        cover_image_url: demo.cover_image_url ?? null,
+        is_public: demo.is_public,
+        is_featured: demo.is_featured,
+      },
+      createdBy,
+    );
+
+    // also flips those lands to `linked_to_project`
+    await landProjectMappingRepository.setLandsForProject(
+      project.id,
+      demo.land_names.map((name) => landIds.get(name)).filter((id): id is string => Boolean(id)),
+    );
+
+    const unitIdByCode = new Map<string, string>();
+
+    for (const demoTower of demo.towers) {
+      const tower = await towerRepository.create(
+        {
+          project_id: project.id,
+          name: demoTower.name,
+          floor_count: demoTower.floor_count,
+          status: demoTower.status,
+          building_type: demoTower.building_type ?? null,
+          unit_per_floor: demoTower.unit_per_floor ?? null,
+          lift_count: demoTower.lift_count ?? null,
+          electricity_backup: demoTower.electricity_backup ?? null,
+          front_road_width_ft: demoTower.front_road_width_ft ?? null,
+        },
+        createdBy,
+      );
+
+      for (const pattern of demoTower.patterns) {
+        const { created } = await unitRepository.bulkGenerate(
+          tower.id,
+          {
+            prefix: pattern.prefix,
+            separator: pattern.separator,
+            floor_from: pattern.floor_from,
+            floor_to: pattern.floor_to,
+            excluded_floors: pattern.excluded_floors ?? [],
+            rows: pattern.rows.map((row) => ({
+              suffix: row.suffix,
+              unit_type: row.unit_type,
+              bedroom_count: String(row.bedroom_count),
+              bathroom_count: String(row.bathroom_count),
+              balcony_count: String(row.balcony_count),
+              size_sqft: String(row.size_sqft),
+              facing: row.facing,
+              price_mode: 'per_sqft' as const,
+              price_value: String(row.rate_per_sqft),
+              parking_allocated: String(row.parking_allocated),
+            })),
+          },
+          createdBy,
+        );
+        for (const unit of created) unitIdByCode.set(unit.code, unit.id);
+      }
+    }
+
+    if (demo.landowner_allocation) {
+      const ownerId = ownerIds.get(demo.landowner_allocation.owner_key);
+      const ids = demo.landowner_allocation.unit_codes
+        .map((code) => unitIdByCode.get(code))
+        .filter((id): id is string => Boolean(id));
+      if (ownerId && ids.length > 0) {
+        await unitRepository.bulkAllocate(ids, {
+          allocation_type: 'landowner_share',
+          allocated_to_owner_id: ownerId,
+          for_sale_by: 'owner_direct',
+        });
+      }
+    }
+
+    for (const [status, codes] of Object.entries(demo.unit_status_overrides ?? {})) {
+      const ids = (codes ?? [])
+        .map((code) => unitIdByCode.get(code))
+        .filter((id): id is string => Boolean(id));
+      if (ids.length > 0) await unitRepository.bulkSetStatus(ids, status as never);
+    }
+
+    await db.projects.update(project.id, {
+      created_at: demo.created_at,
+      updated_at: demo.created_at,
+    });
+  }
 }
 
 /** Wipes every Module 1 record (master data and company settings stay). */
@@ -204,6 +330,10 @@ export async function clearDemoData(): Promise<void> {
     db.land_jv_details.clear(),
     db.land_status_history.clear(),
     db.documents.clear(),
+    db.projects.clear(),
+    db.land_project_mapping.clear(),
+    db.towers.clear(),
+    db.units.clear(),
   ]);
   setClearedFlag(true);
 }

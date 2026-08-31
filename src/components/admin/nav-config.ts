@@ -43,8 +43,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Projects',
     icon: Building2,
     items: [
-      { label: 'All Projects', href: '/admin/projects', disabled: true },
-      { label: 'Towers & Units', href: '/admin/units', disabled: true },
+      { label: 'All Projects', href: '/admin/projects' },
     ],
   },
   {

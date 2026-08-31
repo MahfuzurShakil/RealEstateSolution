@@ -1,4 +1,4 @@
-import type { AcquisitionType, LandSizeUnit, LandStatus } from './types';
+import type { AcquisitionType, JvShareBasis, LandSizeUnit, LandStatus } from './types';
 
 /**
  * Bangladesh-context demo dataset for Module 1, so a fresh install never opens
@@ -57,6 +57,7 @@ export interface DemoLand {
     agreement_date: string;
     power_of_attorney: boolean;
     poa_reference?: string;
+    jv_share_basis?: JvShareBasis;
   };
   /** pipeline trail; the last entry matches `status` */
   history: DemoStatusEvent[];
@@ -169,6 +170,7 @@ export const DEMO_LANDS: DemoLand[] = [
       agreement_date: '2026-04-18',
       power_of_attorney: true,
       poa_reference: 'POA-2026-014',
+      jv_share_basis: 'flat_count',
     },
     history: [
       {
@@ -516,5 +518,118 @@ export const DEMO_LANDS: DemoLand[] = [
       { key: 'nasima', share: 50 },
     ],
     history: [],
+  },
+  {
+    name: 'Chattogram Agrabad commercial plot',
+    location_division: 'Chattogram',
+    location_district: 'Chattogram',
+    location_area: 'Agrabad C/A',
+    road: 'Sheikh Mujib Road',
+    mouza: 'Agrabad',
+    dag_number: '2210',
+    khatian_number: '512',
+    land_size: 14,
+    land_size_unit: 'katha',
+    asking_price: 96000000,
+    negotiated_price: 91000000,
+    gps_lat: 22.3268,
+    gps_lng: 91.8093,
+    nearby_facilities: 'Agrabad commercial hub, Customs House 700m, port access 3km',
+    acquisition_type: 'joint_venture',
+    status: 'jv_signed',
+    remarks: 'Owner family wanted the share counted in square feet, not flat numbers.',
+    created_at: '2026-02-02T10:05:00.000Z',
+    owners: [{ key: 'jashim', share: 100, primary: true }],
+    jv: {
+      developer_share_pct: 60,
+      landowner_share_pct: 40,
+      agreement_date: '2026-05-12',
+      power_of_attorney: true,
+      poa_reference: 'POA-2026-021',
+      jv_share_basis: 'total_sqft',
+    },
+    history: [
+      {
+        to_status: 'site_visit_done',
+        event_date: '2026-02-11',
+        performed_by: 'Kamal Hossain (Land Team)',
+        remarks: 'Level plot, boundary intact, direct access from the main road.',
+      },
+      {
+        to_status: 'legal_verification',
+        event_date: '2026-03-04',
+        performed_by: 'Adv. Nusrat Jahan',
+        reference_no: 'LV-2026-011',
+        remarks: 'Commercial land use confirmed with CDA.',
+      },
+      {
+        to_status: 'negotiation',
+        event_date: '2026-03-26',
+        amount: 91000000,
+        performed_by: 'Rifat Ahmed',
+      },
+      {
+        to_status: 'decision',
+        event_date: '2026-04-28',
+        amount: 91000000,
+        remarks: 'Board preferred a JV over an outright purchase at this price.',
+      },
+      {
+        to_status: 'jv_signed',
+        event_date: '2026-05-12',
+        reference_no: 'JV-2026-007',
+        remarks: 'Signed at the Agrabad office; two witnesses from the owner family.',
+      },
+    ],
+  },
+  {
+    name: 'Dhanmondi Road 27 plot',
+    location_division: 'Dhaka',
+    location_district: 'Dhaka',
+    location_area: 'Dhanmondi',
+    road: 'Road 27 (old)',
+    mouza: 'Dhanmondi',
+    dag_number: '119',
+    khatian_number: '44/1',
+    land_size: 8,
+    land_size_unit: 'katha',
+    asking_price: 86000000,
+    negotiated_price: 82000000,
+    final_agreed_amount: 82000000,
+    gps_lat: 23.7561,
+    gps_lng: 90.3746,
+    nearby_facilities: 'Dhanmondi Lake 400m, Square Hospital 1.2km, Sultana Kamal complex 600m',
+    acquisition_type: 'direct_purchase',
+    status: 'acquired',
+    remarks: 'Bought outright — the family was settling an inheritance.',
+    created_at: '2026-01-06T08:45:00.000Z',
+    owners: [{ key: 'delwar', share: 100, primary: true }],
+    history: [
+      {
+        to_status: 'site_visit_done',
+        event_date: '2026-01-15',
+        performed_by: 'Kamal Hossain (Land Team)',
+      },
+      {
+        to_status: 'legal_verification',
+        event_date: '2026-01-30',
+        performed_by: 'Adv. Nusrat Jahan',
+        reference_no: 'LV-2026-002',
+      },
+      {
+        to_status: 'negotiation',
+        event_date: '2026-02-14',
+        amount: 84000000,
+        performed_by: 'Rifat Ahmed',
+      },
+      { to_status: 'decision', event_date: '2026-02-27', amount: 82000000 },
+      {
+        to_status: 'acquired',
+        event_date: '2026-03-10',
+        amount: 82000000,
+        reference_no: '1187/2026',
+        remarks: 'Registered at the Dhanmondi sub-registry office.',
+      },
+    ],
   },
 ];

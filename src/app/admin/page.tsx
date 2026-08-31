@@ -1,7 +1,7 @@
 'use client';
 
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Building2, FileText, Map, Users } from 'lucide-react';
+import { Building2, FileText, Layers, Map, Users } from 'lucide-react';
 import { DemoDataCard } from '@/components/admin/DemoDataCard';
 import { Card } from '@/components/ui/Card';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -9,7 +9,9 @@ import {
   documentRepository,
   landRepository,
   landownerRepository,
-  lookupRepository,
+  projectRepository,
+  towerRepository,
+  unitRepository,
 } from '@/lib/repositories';
 import { useMockSession } from '@/lib/auth/mock-session';
 
@@ -26,7 +28,9 @@ export default function AdminDashboardPage() {
       lands: await landRepository.count(),
       landowners: await landownerRepository.count(),
       documents: await documentRepository.count(),
-      lookups: await lookupRepository.count(),
+      projects: await projectRepository.count(),
+      towers: await towerRepository.count(),
+      units: await unitRepository.count(),
     }),
     [],
   );
@@ -40,16 +44,22 @@ export default function AdminDashboardPage() {
       tint: 'bg-orange-100 text-orange-600',
     },
     {
-      label: 'Documents',
-      value: counts?.documents,
-      icon: FileText,
+      label: 'Projects',
+      value: counts?.projects,
+      icon: Building2,
       tint: 'bg-blue-100 text-blue-600',
     },
     {
-      label: 'Master data options',
-      value: counts?.lookups,
-      icon: Building2,
+      label: 'Units',
+      value: counts?.units,
+      icon: Layers,
       tint: 'bg-emerald-100 text-emerald-600',
+    },
+    {
+      label: 'Documents',
+      value: counts?.documents,
+      icon: FileText,
+      tint: 'bg-violet-100 text-violet-600',
     },
   ];
 
@@ -57,10 +67,10 @@ export default function AdminDashboardPage() {
     <>
       <PageHeader
         title={`Hello, ${userName}`}
-        subtitle="Project setup complete — modules will be added one at a time."
+        subtitle="Modules 1 and 2 are live — the rest follow the roadmap, one at a time."
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {tiles.map(({ label, value, icon: Icon, tint }) => (
           <Card key={label}>
             <div className={`mb-4 grid size-11 place-items-center rounded-xl ${tint}`}>
@@ -79,10 +89,11 @@ export default function AdminDashboardPage() {
         <h2 className="text-base font-semibold text-ink">What is wired up</h2>
         <ul className="mt-3 space-y-2 text-sm text-ink-muted">
           <li>• Shared IndexedDB (Dexie) — one database for both portals</li>
-          <li>• Tables: documents, lookup_values, company_settings, lands, landowners, land_owner_mapping, land_jv_details</li>
+          <li>• Tables: documents, lookup_values, company_settings, lands, landowners, land_owner_mapping, land_jv_details, projects, land_project_mapping, towers, units</li>
           <li>• Repository layer — UI never calls Dexie directly</li>
           <li>• Admin shell: sidebar groups for all eight modules, topbar with role simulation</li>
           <li>• Module 1 — Land Management, preloaded with sample records</li>
+          <li>• Module 2 — Project Creation: towers, bulk unit generation, JV allocation check</li>
         </ul>
       </Card>
       </div>

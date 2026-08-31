@@ -15,6 +15,7 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { ACQUISITION_TYPE_LABEL, LAND_SIZE_UNIT_LABEL } from '@/lib/domain/land';
+import { JV_SHARE_BASIS_LABEL } from '@/lib/domain/project';
 import { landRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate } from '@/lib/utils/format';
@@ -221,6 +222,10 @@ export default function LandDetailPage() {
                 <>
                   <Row label="Developer share" value={`${land.jv.developer_share_pct}%`} />
                   <Row label="Landowner share" value={`${land.jv.landowner_share_pct}%`} />
+                  <Row
+                    label="Share basis"
+                    value={JV_SHARE_BASIS_LABEL[land.jv.jv_share_basis ?? 'flat_count']}
+                  />
                   <Row label="Agreement date" value={formatDate(land.jv.agreement_date)} />
                   <Row
                     label="Power of attorney"

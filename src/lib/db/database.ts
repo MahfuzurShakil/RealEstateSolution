@@ -7,9 +7,13 @@ import type {
   Land,
   LandJvDetails,
   LandOwnerMapping,
+  LandProjectMapping,
   LandStatusEvent,
   Landowner,
   LookupValue,
+  Project,
+  Tower,
+  Unit,
 } from './types';
 
 /**
@@ -34,6 +38,12 @@ export class AppDatabase extends Dexie {
   land_jv_details!: EntityTable<LandJvDetails, 'id'>;
   land_status_history!: EntityTable<LandStatusEvent, 'id'>;
 
+  // Module 2 — Project Creation
+  projects!: EntityTable<Project, 'id'>;
+  land_project_mapping!: EntityTable<LandProjectMapping, 'id'>;
+  towers!: EntityTable<Tower, 'id'>;
+  units!: EntityTable<Unit, 'id'>;
+
   constructor() {
     super('realestate_platform');
 
@@ -54,6 +64,16 @@ export class AppDatabase extends Dexie {
     // file name/size) need no version bump; only new stores and indexes do.
     this.version(2).stores({
       land_status_history: 'id, land_id, to_status, event_date, created_at',
+    });
+
+    // v3 — Module 2 (Project Creation). `jv_share_basis` is a new *field* on
+    // land_jv_details, not an index, so that table needs no schema change.
+    this.version(3).stores({
+      projects: 'id, &code, name, status, project_type, is_public, is_featured, created_at',
+      land_project_mapping: 'id, land_id, project_id, [land_id+project_id]',
+      towers: 'id, project_id, name, status',
+      units:
+        'id, &code, tower_id, floor, status, unit_type, allocation_type, allocated_to_owner_id, for_sale_by, [tower_id+floor]',
     });
   }
 }

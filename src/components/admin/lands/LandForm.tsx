@@ -10,12 +10,15 @@ import { MapPicker } from '@/components/ui/map/MapPicker';
 import { LandownerQuickAddModal } from './LandownerQuickAddModal';
 import {
   ACQUISITION_TYPES,
+  JV_SHARE_BASES,
   LAND_SIZE_UNITS,
   type AcquisitionType,
+  type JvShareBasis,
   type Land,
   type LandSizeUnit,
   type Landowner,
 } from '@/lib/db/types';
+import { JV_SHARE_BASIS_LABEL } from '@/lib/domain/project';
 import { ACQUISITION_TYPE_LABEL, LAND_SIZE_UNIT_LABEL } from '@/lib/domain/land';
 import {
   landJvRepository,
@@ -56,6 +59,7 @@ interface FormState {
   agreement_date: string;
   power_of_attorney: boolean;
   poa_reference: string;
+  jv_share_basis: JvShareBasis;
 }
 
 const EMPTY: FormState = {
@@ -82,6 +86,7 @@ const EMPTY: FormState = {
   agreement_date: '',
   power_of_attorney: false,
   poa_reference: '',
+  jv_share_basis: 'flat_count',
 };
 
 const str = (v: unknown) => (v === null || v === undefined ? '' : String(v));
@@ -113,6 +118,7 @@ function toFormState(land: LandWithRelations): FormState {
     agreement_date: str(land.jv?.agreement_date),
     power_of_attorney: land.jv?.power_of_attorney ?? false,
     poa_reference: str(land.jv?.poa_reference),
+    jv_share_basis: land.jv?.jv_share_basis ?? 'flat_count',
   };
 }
 
@@ -264,6 +270,7 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
           agreement_date: form.agreement_date,
           power_of_attorney: form.power_of_attorney,
           poa_reference: form.poa_reference.trim() || null,
+          jv_share_basis: form.jv_share_basis,
         });
       } else {
         const jv = await landJvRepository.getForLand(saved.id);
@@ -544,13 +551,32 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
                 onChange={(e) => set('power_of_attorney', e.target.checked)}
               />
             </div>
-            <Field label="POA Reference" className="xl:col-span-2">
+            <Field label="POA Reference">
               <TextInput
                 value={form.poa_reference}
                 placeholder="e.g. POA-2026-014"
                 onChange={(e) => set('poa_reference', e.target.value)}
                 disabled={!form.power_of_attorney}
               />
+            </Field>
+            {/* The share % above is a percentage OF something — without this
+                the flat-by-flat split in Module 2 cannot be checked. */}
+            <Field
+              label="Share Basis"
+              required
+              className="xl:col-span-2"
+              hint="What the shares are counted in. The project page checks the unit allocation against this."
+            >
+              <SelectInput
+                value={form.jv_share_basis}
+                onChange={(e) => set('jv_share_basis', e.target.value as JvShareBasis)}
+              >
+                {JV_SHARE_BASES.map((b) => (
+                  <option key={b} value={b}>
+                    {JV_SHARE_BASIS_LABEL[b]}
+                  </option>
+                ))}
+              </SelectInput>
             </Field>
           </div>
         </Card>
