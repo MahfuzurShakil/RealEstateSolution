@@ -53,7 +53,17 @@ acquisition types, 10 landowners, JV terms, pipeline history and a couple of
 sample attachments. The admin dashboard has a **Demo data** card to reload or
 clear it; clearing is remembered, so it does not come back on reload.
 
-## Deployment (Netlify)
+## Deployment
+
+### Vercel (recommended — Next.js needs no configuration there)
+
+In Vercel: **Add New → Project → Import** `MahfuzurShakil/RealEstateSolution`.
+The framework is detected as Next.js; leave the build command, output directory
+and install command on their defaults and deploy. No environment variables are
+needed — the app has no server-side secrets. Every push to `main` redeploys, and
+pull requests get their own preview URL.
+
+### Netlify
 
 The repo carries a `netlify.toml`; Netlify installs the Next.js runtime plugin
 itself. In Netlify: **Add new site → Import an existing project → GitHub →
