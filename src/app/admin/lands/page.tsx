@@ -85,7 +85,7 @@ export default function LandsListPage() {
       />
 
       <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
-        <aside className="space-y-5">
+        <aside className="min-w-0 space-y-5">
           <Card>
             <h2 className="mb-4 text-sm font-semibold text-ink">Filters</h2>
             <div className="space-y-4">
@@ -149,7 +149,7 @@ export default function LandsListPage() {
           </Card>
         </aside>
 
-        <section>
+        <section className="min-w-0">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-ink-muted">
               {loading ? 'Loading…' : `Showing ${rows.length} land${rows.length === 1 ? '' : 's'}`}
@@ -177,7 +177,7 @@ export default function LandsListPage() {
               <SelectInput
                 value={sort}
                 onChange={(e) => setSort(e.target.value as SortKey)}
-                className="w-auto"
+                className="w-auto max-w-[10rem]"
               >
                 <option value="newest">Newest first</option>
                 <option value="oldest">Oldest first</option>

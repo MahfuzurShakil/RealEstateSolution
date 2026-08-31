@@ -253,7 +253,7 @@ export default function LandDetailPage() {
           )}
         </div>
 
-        <aside className="space-y-5 lg:order-2">
+        <aside className="min-w-0 space-y-5 lg:order-2">
           <LandStatusCard land={land} />
 
           <LocationCard

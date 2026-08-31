@@ -1,20 +1,35 @@
 'use client';
 
-import { Bell, CalendarDays, MessageSquare, Moon, PanelLeft, Search } from 'lucide-react';
+import { Bell, CalendarDays, Menu, MessageSquare, Moon, PanelLeft, Search } from 'lucide-react';
 import { ROLES, useMockSession, type Role } from '@/lib/auth/mock-session';
 import { humanize } from '@/lib/utils/format';
 
 /** Design Reference A.2 — logo/collapse, pill search, icon cluster, user chip. */
-export function AdminTopbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
+export function AdminTopbar({
+  onToggleSidebar,
+  onOpenMenu,
+}: {
+  onToggleSidebar: () => void;
+  onOpenMenu: () => void;
+}) {
   const { role, setRole, userName } = useMockSession();
 
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center gap-4 border-b border-hairline bg-white px-4 lg:px-6">
+      {/* below lg the sidebar is a drawer, so the same spot opens it instead */}
+      <button
+        type="button"
+        onClick={onOpenMenu}
+        aria-label="Open menu"
+        className="grid size-9 shrink-0 place-items-center rounded-lg text-ink-muted hover:bg-admin-50 hover:text-admin-700 lg:hidden"
+      >
+        <Menu className="size-5" />
+      </button>
       <button
         type="button"
         onClick={onToggleSidebar}
         aria-label="Toggle sidebar"
-        className="grid size-9 place-items-center rounded-lg text-ink-muted hover:bg-admin-50 hover:text-admin-700"
+        className="hidden size-9 shrink-0 place-items-center rounded-lg text-ink-muted hover:bg-admin-50 hover:text-admin-700 lg:grid"
       >
         <PanelLeft className="size-5" />
       </button>
