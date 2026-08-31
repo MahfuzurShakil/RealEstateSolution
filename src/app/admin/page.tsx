@@ -2,6 +2,7 @@
 
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Building2, FileText, Map, Users } from 'lucide-react';
+import { DemoDataCard } from '@/components/admin/DemoDataCard';
 import { Card } from '@/components/ui/Card';
 import { PageHeader } from '@/components/ui/PageHeader';
 import {
@@ -71,15 +72,20 @@ export default function AdminDashboardPage() {
         ))}
       </div>
 
-      <Card className="mt-6">
+      <div className="mt-6 grid gap-5 lg:grid-cols-2">
+        <DemoDataCard />
+
+      <Card>
         <h2 className="text-base font-semibold text-ink">What is wired up</h2>
         <ul className="mt-3 space-y-2 text-sm text-ink-muted">
           <li>• Shared IndexedDB (Dexie) — one database for both portals</li>
           <li>• Tables: documents, lookup_values, company_settings, lands, landowners, land_owner_mapping, land_jv_details</li>
           <li>• Repository layer — UI never calls Dexie directly</li>
           <li>• Admin shell: sidebar groups for all eight modules, topbar with role simulation</li>
+          <li>• Module 1 — Land Management, preloaded with sample records</li>
         </ul>
       </Card>
+      </div>
     </>
   );
 }

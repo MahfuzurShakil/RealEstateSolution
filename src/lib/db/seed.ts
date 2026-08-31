@@ -1,6 +1,7 @@
 'use client';
 
-import { companySettingsRepository, lookupRepository } from '../repositories';
+import { companySettingsRepository, landRepository, lookupRepository } from '../repositories';
+import { demoDataWasCleared, seedDemoData } from './demo-seed';
 import { LAND_DOCUMENT_TYPES, LAND_SIZE_UNITS } from './types';
 
 /**
@@ -36,15 +37,21 @@ async function runSeed(): Promise<void> {
     ]);
   }
 
+  // Demo dataset: only on a truly fresh database, and never again once the
+  // user has deliberately cleared it from the dashboard.
+  if ((await landRepository.count()) === 0 && !demoDataWasCleared()) {
+    await seedDemoData();
+  }
+
   if ((await companySettingsRepository.count()) === 0) {
     await companySettingsRepository.create({
-      company_name: 'Your Developer Ltd.',
+      company_name: 'Nokshi Properties Ltd.',
       default_currency: 'BDT',
-      address: null,
-      phone: null,
-      whatsapp_number: null,
-      email: null,
-      website: null,
+      address: 'House 27, Road 11, Banani, Dhaka 1213',
+      phone: '+880 2 9876543',
+      whatsapp_number: '+8801711000000',
+      email: 'info@nokshiproperties.com.bd',
+      website: 'https://nokshiproperties.com.bd',
       logo_url: null,
       trade_license_no: null,
       tax_id: null,

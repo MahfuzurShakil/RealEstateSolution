@@ -45,6 +45,14 @@ Module 1 (Land): `lands`, `landowners`, `land_owner_mapping`, `land_jv_details`,
 
 Later modules append a new Dexie version block; existing versions are never edited.
 
+## Demo data
+
+A fresh database seeds itself with a Bangladesh-context sample set for Module 1
+(`src/lib/db/demo-data.ts`): 9 lands covering every pipeline status and both
+acquisition types, 10 landowners, JV terms, pipeline history and a couple of
+sample attachments. The admin dashboard has a **Demo data** card to reload or
+clear it; clearing is remembered, so it does not come back on reload.
+
 ## Deployment (Netlify)
 
 The repo carries a `netlify.toml`; Netlify installs the Next.js runtime plugin
