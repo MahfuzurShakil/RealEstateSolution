@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+/*
+ * Two visual systems, one app:
+ *  - Admin  (/admin/*)  — UrbanHub-based teal palette (Design Reference A.1)
+ *  - Public (all other) — its own identity, defined when the Public Portal is built
+ */
+@theme {
+  /* Admin — teal primary */
+  --color-admin-50: #eefaf9;
+  --color-admin-100: #d3f1f0;
+  --color-admin-200: #ace3e4;
+  --color-admin-300: #74cdd2;
+  --color-admin-400: #3aacb5;
+  --color-admin-500: #0d919c;
+  --color-admin-600: #0a7784;
+  --color-admin-700: #0c606c;
+  --color-admin-800: #0e4e59;
+  --color-admin-900: #10424b;
+
+  /* Secondary accents used for KPI icon variety (A.1) */
+  --color-accent-coral: #f47458;
+  --color-accent-amber: #f5a623;
+  --color-accent-green: #22b07d;
+  --color-accent-blue: #3d7ff5;
+
+  /* Surfaces + text */
+  --color-canvas: #ebf3f4;   /* UrbanHub page background, cards stay white */
+  --color-ink: #14202e;      /* headline navy-charcoal, not pure black */
+  --color-ink-muted: #64748b;
+  --color-hairline: #e6ecea;
+}
+
+:root {
+  --background: #ffffff;
+  --foreground: var(--color-ink);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Leaflet: the stylesheet is imported by the map component itself; these keep
+   the map inside our card radius and above nothing else in the app. */
+.leaflet-container {
+  border-radius: 0.75rem;
+  font: inherit;
+  z-index: 0;
+}

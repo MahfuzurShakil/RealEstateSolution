@@ -1,0 +1,12 @@
+# Netlify build settings.
+# The Next.js runtime plugin is installed by Netlify automatically; it handles
+# the App Router (including the dynamic /admin/lands/[id] routes).
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

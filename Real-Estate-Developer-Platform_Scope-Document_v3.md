@@ -1,0 +1,978 @@
+# Real Estate Developer Management Platform — Build Plan
+## v3.0 — Living Document (module-wise confirmed scope, for direct implementation)
+
+> **এই ডকুমেন্টের নিয়ম:** এখানে শুধু সেই module-গুলো থাকবে যেগুলো discussion করে **freeze/confirm** করা হয়েছে। প্রতিটা module-এ entity schema, field-level detail, relationship, এবং status pipeline থাকবে — যাতে সরাসরি এই ডকুমেন্ট পড়ে Claude Code দিয়ে coding শুরু করা যায়। নতুন module confirm হলে এই ডকুমেন্টে যোগ হবে (v3.1, v3.2... বা section append)।
+
+---
+
+## 0. Tech Stack & Conventions
+
+### Phase A — Prototype/Demo (এখন এইটা করা হচ্ছে)
+- **Storage:** Browser IndexedDB (via **Dexie.js** wrapper — raw IndexedDB API ব্যবহার না করে)
+- **Frontend:** TypeScript + Next.js/React
+- **Auth:** নাই — role simulate করার জন্য simple "Switch Role" dropdown (mock, real security না)
+- **Architecture rule:** Data access একটা আলাদা **Service/Repository layer**-এ থাকবে (UI component থেকে সরাসরি Dexie call না করে) — যাতে Phase B-তে migrate করার সময় শুধু এই layer বদলালেই হয়, UI/business-logic আবার লিখতে না হয়
+- **সীমাবদ্ধতা (client-কে জানানো জরুরি):** data browser-local, device/browser বদলালে বা cache clear হলে হারিয়ে যাবে; multi-user real-time sync নাই — এটা demo purpose, production না
+
+### Phase B — Production (Demo approve হলে)
+- **Database:** PostgreSQL
+- **Backend/Frontend:** TypeScript (Node.js + Next.js/React), REST/tRPC API
+- **Auth:** প্রকৃত Role-based access control (RBAC), JWT/session
+- এই document-এর schema (table/field names) দুই Phase-এই অভিন্ন থাকবে — Phase A-তে IndexedDB object store হিসেবে, Phase B-তে Postgres table হিসেবে। তাই design কাজ নষ্ট হচ্ছে না, শুধু storage backend বদলাবে।
+
+### Conventions (উভয় Phase-এ প্রযোজ্য)
+- **ID convention:** প্রতিটা human-facing entity-র internal UUID `id` + display-friendly `code` (e.g. `LND-2026-001`) — sequential per year
+- **Every table has:** `created_at`, `updated_at`, `created_by`
+- **Money fields:** decimal, BDT, no float
+- **Percentages:** `decimal(5,2)`
+- **File uploads:** generic `documents` table (Section 1) — Phase A-তে file নিজেই store না করে শুধু filename/placeholder রাখা যেতে পারে (browser storage-এ বড় ফাইল রাখা ঠিক না); Phase B-তে actual file storage (S3-compatible)
+- **Enum vs Master Data (গুরুত্বপূর্ণ distinction):**
+  - **Workflow status** (Lead status, Booking status, PO status ইত্যাদি) — এগুলো ENUM-ই থাকবে, code-এ business logic এর সাথে বাঁধা (status বদলালে side-effect ঘটে)
+  - **Option/Dropdown list** (Document Type, Cost Category, Amenities, Unit Facing) — এগুলো `lookup_values` (Section 1) থেকে আসবে, Admin future-এ code-change ছাড়াই নতুন option যোগ করতে পারবে
+
+---
+
+## 1. Shared/Generic Components (used by every module)
+
+### 1.1 `documents` table (generic — reused across all modules, not a separate top-level module)
+
+```
+documents
+ - id                 UUID, PK
+ - entity_type        ENUM: 'land' | 'project' | 'unit' | 'customer' | 'contractor' | 'supplier' | 'booking' | 'expense' | ... (extendable)
+ - entity_id           UUID, references the specific record
+ - document_type       VARCHAR — sourced from `lookup_values` (category='document_type', scoped by entity_type)
+ - file_url            VARCHAR
+ - is_public            BOOLEAN, default false   -- addendum (Public Portal P2/P3): true হলে Public Portal-এ visible/downloadable (brochure, floor plan, site progress photo); internal doc (RAJUK approval, khatian) default false-ই থাকবে
+ - uploaded_by         UUID → users.id
+ - uploaded_at         TIMESTAMP
+ - notes               TEXT (optional)
+```
+
+Frontend behavior: প্রতিটা entity-র detail page-এ একটা "Documents" tab থাকবে। Upload করার সময় Document Type dropdown-এর options context অনুযায়ী filter হবে (Land page-এ Land-এর options, Project page-এ Project-এর options) — এই options `lookup_values` থেকে আসবে, Admin future-এ Settings থেকে নতুন type যোগ করতে পারবেন।
+
+### 1.2 `lookup_values` table (Master Data — Admin-configurable dropdown/option-lists)
+
+```
+lookup_values
+ - id             UUID, PK
+ - category       VARCHAR   -- 'document_type', 'cost_category', 'amenity', 'unit_type', 'facing', 'land_size_unit'...
+ - scope          VARCHAR, nullable   -- category='document_type' হলে কোন entity_type-এর জন্য (land/project/customer/booking/expense...)
+ - value          VARCHAR
+ - is_active      BOOLEAN, default true
+ - sort_order     INTEGER
+```
+
+> **কোনটা এখানে যায়, কোনটা যায় না** — Workflow status (Lead status, Booking status, PO status ইত্যাদি) এখানে না, ওগুলো ENUM-ই থাকে (code-এ business logic বাঁধা)। শুধু "option pick করা" টাইপ dropdown (Document Type, Cost Category, Amenities, Facing) এখানে আসে। Settings module থেকে Admin এই list manage করবেন — নতুন option যোগ/inactive করা যাবে, কোনো code-change ছাড়াই।
+
+### 1.3 `company_settings` table (single row — company profile)
+
+```
+company_settings
+ - id                 UUID, PK   -- একটাই row থাকবে
+ - company_name       VARCHAR
+ - logo_url           VARCHAR, nullable
+ - address            TEXT, nullable
+ - phone              VARCHAR, nullable
+ - whatsapp_number     VARCHAR, nullable   -- addendum (Public Portal P4): click-to-chat button-এর জন্য
+ - email              VARCHAR, nullable
+ - website            VARCHAR, nullable
+ - trade_license_no   VARCHAR, nullable
+ - tax_id             VARCHAR, nullable   -- BIN/TIN
+ - default_currency   VARCHAR, default 'BDT'
+ - notes              TEXT, nullable
+```
+
+---
+
+## 2. MODULE 1: Land Management ✅ FROZEN
+
+### 2.1 Purpose
+Land opportunity থেকে শুরু করে acquisition/JV পর্যন্ত পুরো pipeline track করা, এবং পরে Project-এর সাথে link করা।
+
+### 2.2 Status Pipeline
+```
+new
+  → site_visit_done
+  → legal_verification
+  → negotiation
+  → decision
+      ├─ acquired          (direct purchase)
+      ├─ jv_signed
+      └─ rejected
+  → linked_to_project      (once mapped to a Project)
+```
+
+### 2.3 `lands` table
+
+```
+lands
+ - id                    UUID, PK
+ - code                  VARCHAR, e.g. "LND-2026-001", auto
+ - name                  VARCHAR — internal reference name
+ - location_division     VARCHAR
+ - location_district     VARCHAR
+ - location_area         VARCHAR
+ - road                  VARCHAR
+ - mouza                 VARCHAR
+ - dag_number             VARCHAR
+ - khatian_number         VARCHAR
+ - land_size              DECIMAL         (value)
+ - land_size_unit         ENUM: katha | bigha | decimal
+ - asking_price           DECIMAL
+ - negotiated_price       DECIMAL, nullable
+ - final_agreed_amount    DECIMAL, nullable   -- reference amount for future Finance module (payment/installment tracked there)
+ - gps_lat                DECIMAL, nullable
+ - gps_lng                DECIMAL, nullable
+ - nearby_facilities      TEXT
+ - acquisition_type       ENUM: direct_purchase | joint_venture
+ - status                 ENUM (per pipeline above)
+ - assigned_to            UUID → users.id
+ - remarks                TEXT
+```
+
+### 2.4 `landowners` table (master list — reusable, an owner can be linked to multiple lands)
+
+```
+landowners
+ - id            UUID, PK
+ - name          VARCHAR
+ - phone         VARCHAR
+ - nid           VARCHAR
+ - address       TEXT
+ - notes         TEXT
+```
+
+### 2.5 `land_owner_mapping` table (many-to-many: land ↔ landowner)
+
+```
+land_owner_mapping
+ - id                    UUID, PK
+ - land_id               UUID → lands.id
+ - owner_id              UUID → landowners.id
+ - ownership_share_pct   DECIMAL(5,2)      -- if multiple owners, their share of the land
+ - is_primary_contact    BOOLEAN
+```
+
+> Owner info সবসময় capture হবে (acquisition_type যাই হোক না কেন)। `acquisition_type = joint_venture` হলে নিচের JV-specific fields UI-তে দেখানো হবে।
+
+### 2.6 JV-specific fields (conditional — শুধু `acquisition_type = joint_venture` হলে ব্যবহৃত)
+
+```
+land_jv_details
+ - id                     UUID, PK
+ - land_id                UUID → lands.id
+ - developer_share_pct    DECIMAL(5,2)
+ - landowner_share_pct    DECIMAL(5,2)
+ - agreement_date         DATE
+ - power_of_attorney      BOOLEAN
+ - poa_reference          VARCHAR, nullable
+```
+
+### 2.7 Document types for `entity_type = 'land'`
+`khatian_copy`, `dolil_deed`, `mutation_certificate`, `tax_receipt`, `location_map`, `site_photo`, `jv_agreement`, `power_of_attorney`, `other`
+
+### 2.8 Open / deferred (not blocking Module 1 build)
+- Land-এর জন্য payment/installment logic এখনো নাই — Finance module-এ পরে detail হবে, `final_agreed_amount` field তার জন্য preparation হিসেবে রাখা হয়েছে
+- Land-related extra cost (registration fee, mutation cost ইত্যাদি) — Finance module discussion-এর সময় যোগ হবে
+
+---
+
+## 3. MODULE 2: Project Creation ✅ FROZEN
+
+### 3.1 Purpose
+Acquired/JV-signed land(s)-এর against-এ Project তৈরি করা, Tower ও Unit-level detail সহ।
+
+### 3.2 Status Pipeline
+```
+planning
+  → design
+  → approval
+  → under_construction
+  → nearly_complete
+  → handover_ongoing
+  → closed
+```
+
+### 3.3 `projects` table
+
+```
+projects
+ - id                    UUID, PK
+ - code                  VARCHAR, e.g. "PRJ-2026-001", auto
+ - name                  VARCHAR
+ - project_type          ENUM: residential | commercial | mixed
+ - total_land_area       DECIMAL, nullable   -- can be pulled/summed from linked lands, editable
+ - location_summary       VARCHAR, nullable   -- addendum (Public Portal P2): marketing-friendly address (e.g. "Bashundhara R/A, Dhaka"), separate from linked land's cadastral location (mouza/dag/khatian stays internal)
+ - expected_start_date   DATE
+ - expected_completion_date DATE
+ - actual_start_date     DATE, nullable
+ - status                ENUM (per pipeline above)
+ - project_manager       UUID → users.id, nullable
+ - architect              VARCHAR, nullable   -- simple reference field until Contractor module exists
+ - surroundings           TEXT       -- school/hospital/market/main road distance, for public site
+ - amenities               TEXT[] / multi-select  -- Lift, Generator, Parking, Security, Community Space...
+ - cover_image_url         VARCHAR, nullable
+ - is_public                BOOLEAN, default false   -- addendum (Public Portal P1): website-এ দেখানো হবে কিনা
+ - is_featured               BOOLEAN, default false   -- addendum (Public Portal P1): Home page-এ highlight করা হবে কিনা
+```
+
+### 3.4 `land_project_mapping` table (many-to-many: land ↔ project)
+
+```
+land_project_mapping
+ - id            UUID, PK
+ - land_id       UUID → lands.id
+ - project_id    UUID → projects.id
+```
+
+> সাধারণ case (1 land = 1 project) স্বাভাবিকভাবেই কাজ করবে (একটা mapping row)। একাধিক land মিলে এক project, বা একটা land থেকে একাধিক project — দুটোই এই structure support করে।
+
+### 3.5 `towers` table
+
+```
+towers
+ - id             UUID, PK
+ - project_id     UUID → projects.id
+ - name           VARCHAR   -- "Tower A", "Block 1", or "Main Building" for single-building projects
+ - floor_count    INTEGER
+ - status         ENUM: planning | under_construction | complete
+ - building_type          VARCHAR, nullable   -- addendum: e.g. "B+G+8" (Basement+Ground+8 floors)
+ - unit_per_floor           INTEGER, nullable
+ - lift_count                 INTEGER, nullable
+ - electricity_backup           BOOLEAN, nullable
+ - front_road_width_ft            DECIMAL, nullable
+```
+
+### 3.6 `units` table
+
+```
+units
+ - id                  UUID, PK
+ - code                VARCHAR, e.g. "A-501"  (Tower-Floor-Number pattern)
+ - tower_id             UUID → towers.id
+ - floor                INTEGER
+ - unit_type            VARCHAR   -- e.g. "3 Bed", "2 Bed"
+ - bedroom_count         INTEGER, nullable   -- addendum (Public Portal review): real reference site দেখায় "Bedrooms: 3, Bathrooms: 3, Balcony: 2" আলাদা fact হিসেবে, শুধু unit_type text না
+ - bathroom_count         INTEGER, nullable
+ - balcony_count            INTEGER, nullable
+ - size_sqft             DECIMAL
+ - facing                 VARCHAR, nullable
+ - base_price             DECIMAL
+ - parking_allocated      INTEGER, default 0
+ - status                 ENUM: available | hold | reserved | booked | sold | handed_over
+ - allocation_type        ENUM: developer_share | landowner_share
+ - allocated_to_owner_id  UUID → landowners.id, nullable   -- required if allocation_type = landowner_share
+ - for_sale_by             ENUM: company | owner_direct
+```
+
+### 3.7 Document types for `entity_type = 'project'`
+`architectural_plan`, `structural_drawing`, `rajuk_approval`, `environmental_clearance`, `fire_safety_certificate`, `layout_floor_plan`, `brochure`, `gallery_image`, `other`
+
+### 3.8 Open / deferred
+- এখনো decide হয়নি: Tower/Unit level-এ কি detailed BOQ/budget লাগবে — Phase 2/3-তে
+- Public website-এ tower-wise progress % দেখানো — Site Progress module discuss হলে এই দুইটা connect হবে
+
+---
+
+## 4. MODULE 3: Sales / Lead / CRM ✅ FROZEN
+
+### 4.1 Purpose
+Public website/WhatsApp/Facebook/Walk-in থেকে আসা inquiry capture, Sales Executive assign, follow-up track, booking-এ convert বা lost পর্যন্ত track করা।
+
+### 4.2 Status Pipeline
+```
+new
+  → contacted
+  → site_visit_scheduled
+  → site_visit_done
+  → negotiation
+  → booked          (→ Module 4: Booking & Customer টেকওভার করবে এখান থেকে)
+
+  [যেকোনো stage থেকে] → lost
+  lost → (revive করলে) ফিরে আগের active status-এ, lead history অক্ষত থাকবে
+```
+
+### 4.3 `leads` table
+
+```
+leads
+ - id                    UUID, PK
+ - code                  VARCHAR, e.g. "LEAD-2026-001", auto
+ - name                  VARCHAR
+ - phone                 VARCHAR, UNIQUE      -- duplicate check এর ভিত্তি (dedup key)
+ - email                 VARCHAR, nullable
+ - source                ENUM: website_form | whatsapp | facebook_ad | walk_in | referral | phone_call | other
+ - inquiry_message       TEXT, nullable
+ - interested_project_id UUID → projects.id, nullable
+ - interested_unit_id    UUID → units.id, nullable
+ - budget_range          VARCHAR, nullable
+ - assigned_to           UUID → users.id       -- Sales Executive, manually assigned (Sales Manager sets this)
+ - status                ENUM (per pipeline above)
+ - lost_reason           TEXT, nullable        -- status = lost হলে fill হবে
+ - created_at            TIMESTAMP
+```
+
+### 4.4 `lead_activities` table (follow-up log)
+
+```
+lead_activities
+ - id                   UUID, PK
+ - lead_id              UUID → leads.id
+ - activity_type        ENUM: call | whatsapp | email | site_visit | meeting | status_change | other
+ - notes                TEXT
+ - activity_date        TIMESTAMP
+ - next_follow_up_date  DATE, nullable
+ - created_by           UUID → users.id
+```
+
+> Dashboard: "আজকে কার কার follow-up date, কোন lead-এ overdue follow-up আছে" — sales team-এর daily task list এখান থেকেই আসবে।
+
+### 4.5 Duplicate Handling
+`phone` field-এ UNIQUE constraint। নতুন inquiry আসলে (website form/manual entry) প্রথমে phone দিয়ে lookup হবে:
+- **Match পেলে** → নতুন lead তৈরি হবে না, existing lead-এই একটা `lead_activities` entry যোগ হবে (`activity_type = other/website_form`, notes-এ নতুন inquiry-র message)
+- **Match না পেলে** → নতুন lead তৈরি হবে
+
+### 4.6 Lost → Revive
+`lost` status থেকে lead-কে আবার active status-এ (`contacted`/`negotiation` — যেখান থেকে যুক্তিসঙ্গত) manually ফিরিয়ে আনা যাবে। যেহেতু record delete হয় না, আগের সব `lead_activities` history অক্ষত থাকে — revive করার সময় আগের communication দেখেই context বোঝা যাবে। কোনো আলাদা "revived" flag/table লাগবে না; status change নিজেই একটা `lead_activities` entry (`activity_type = status_change`) হিসেবে log হবে।
+
+### 4.7 Assignment
+Manual — Sales Manager role থেকে `assigned_to` field সরাসরি set/update করবেন। Auto round-robin এখন নাই (team ছোট থাকলে দরকার নাই, বড় হলে Phase 2-তে যোগ করা যাবে)।
+
+### 4.8 Document types for `entity_type = 'lead'`
+`nid_copy`, `other`
+
+### 4.9 Public Website Connection
+Website inquiry form submit → phone দিয়ে dedup check → নতুন lead অথবা existing-এ activity যোগ (`source = website_form`, নতুন হলে `status = new`)।
+
+---
+
+## 5. MODULE 4: Booking & Customer ✅ FROZEN
+
+### 5.1 Purpose
+Lead যখন `booked` status-এ পৌঁছায়, তখন সেই lead থেকে Customer record তৈরি, একটা Unit-এর সাথে Booking তৈরি, Unit reserve, pricing/discount/booking amount capture। পুরো installment schedule generate হবে না এখানে — সেটা Module 7 (Finance)।
+
+### 5.2 Status Pipeline (Booking)
+
+```
+hold                  -- verbal/mutual confirm হয়েছে, unit reserve হয়ে গেছে, কিন্তু টাকা এখনো receive হয়নি
+  → pending_approval   -- (conditional — শুধু discount rule অনুযায়ী threshold ছাড়ালে) higher role approval দরকার
+  → confirmed           -- booking amount received AND (discount approval দরকার না, বা approved হয়েছে)
+  → cancelled            -- hold বা pending_approval থেকে
+```
+
+**Gating logic (booking → confirmed):**
+- `booking_amount_received = true` **AND**
+- `discount_approval_status IN ('not_required', 'approved')`
+
+দুটো শর্তই মিললে তবেই status auto `confirmed`-এ যাবে। কোনো একটা বাকি থাকলে `hold`/`pending_approval`-এই থাকবে।
+
+### 5.3 `customers` table
+
+```
+customers
+ - id             UUID, PK
+ - code           VARCHAR, e.g. "CUST-2026-001", auto
+ - name           VARCHAR
+ - phone          VARCHAR, UNIQUE
+ - email          VARCHAR, nullable
+ - nid            VARCHAR, nullable
+ - address        TEXT, nullable
+ - profession     VARCHAR, nullable
+ - lead_id        UUID → leads.id, nullable    -- ট্রেসেবিলিটির জন্য, কোন lead থেকে convert
+ - created_at     TIMESTAMP
+```
+
+> Customer তৈরির সময় phone/name/email lead থেকে auto-copy হবে, নতুন করে টাইপ লাগবে না।
+
+### 5.4 `discount_approval_rules` table (role-based discount limit — simple config)
+
+```
+discount_approval_rules
+ - id                 UUID, PK
+ - role                ENUM (users.role অনুযায়ী — sales_executive, sales_manager, head_of_sales...)
+ - max_discount_pct    DECIMAL(5,2)      -- এই role approval ছাড়া সর্বোচ্চ কত % discount দিতে পারবে
+```
+
+> Booking তৈরির সময় system check করবে: `discount_pct` (discount_amount ÷ base_price × 100) বনাম `booked_by` user-এর role-এর `max_discount_pct`। বেশি হলে `pending_approval` trigger হবে।
+
+### 5.5 `bookings` table
+
+```
+bookings
+ - id                        UUID, PK
+ - code                      VARCHAR, e.g. "BOOK-2026-001", auto
+ - customer_id               UUID → customers.id
+ - unit_id                   UUID → units.id
+ - lead_id                   UUID → leads.id, nullable
+ - booking_date              DATE
+ - base_price                DECIMAL     -- unit.base_price থেকে snapshot
+ - floor_premium             DECIMAL, default 0
+ - facing_premium            DECIMAL, default 0
+ - parking_charge            DECIMAL, default 0
+ - other_charges             DECIMAL, default 0
+ - discount_amount           DECIMAL, default 0
+ - final_price               DECIMAL     -- base + premiums + charges − discount (calculated)
+ - booking_amount            DECIMAL     -- advance/booking money (expected)
+ - booking_amount_received   BOOLEAN, default false
+ - discount_approval_status  ENUM: not_required | pending | approved | rejected
+ - discount_approved_by      UUID → users.id, nullable
+ - status                    ENUM (per pipeline above)
+ - cancellation_reason       TEXT, nullable
+ - booked_by                 UUID → users.id   -- Sales Executive
+ - created_at                TIMESTAMP
+```
+
+### 5.6 Behavior / Side-effects
+
+- Booking `hold` তৈরি হলে → `units.status = 'reserved'`
+- Booking `confirmed` হলে → `units.status = 'booked'`, `leads.status = 'booked'`
+- Booking `cancelled` হলে → `units.status` ফিরে `'available'`-এ
+- `discount_approval_status = 'rejected'` হলে → booking `hold`-এ ফিরে যায় (note সহ), sales person discount adjust করে আবার submit করতে পারবে
+- `final_price = base_price + floor_premium + facing_premium + parking_charge + other_charges − discount_amount`
+
+### 5.7 Document types for `entity_type = 'customer'`
+`nid_copy`, `photo`, `other`
+
+### 5.8 Document types for `entity_type = 'booking'`
+`booking_form`, `payment_receipt`, `other`
+
+---
+
+## 6. MODULE 5: Site Progress Update ✅ FROZEN
+
+### 6.1 Purpose
+Site engineer নিয়মিত construction progress আপডেট দেবে (WBS-based, granular), ছবি/GPS সহ — Public Website-এ reflect হবে। Material লাগলে এখান থেকেই request raise হয়ে Procurement-এ যাবে।
+
+### 6.2 `tower_work_items` table (WBS per tower)
+
+```
+tower_work_items
+ - id                     UUID, PK
+ - tower_id               UUID → towers.id
+ - name                   VARCHAR   -- "Foundation", "Ground Floor", "1st Floor"..."Roof", "Electrical", "Plumbing", "Finishing", "External Works"
+ - sequence_no            INTEGER
+ - weight_pct             DECIMAL(5,2)   -- overall tower %-এ অবদান (সবগুলো মিলিয়ে 100)
+ - planned_start_date     DATE, nullable
+ - planned_end_date       DATE, nullable
+ - actual_progress_pct    DECIMAL(5,2), default 0
+ - status                 ENUM: not_started | in_progress | completed
+```
+
+> Tower তৈরি হওয়ার সময় default template (Foundation → Roof → Electrical → Plumbing → Finishing → External Works, সমান weight) auto-generate হবে, Project Manager চাইলে edit করবেন।
+
+### 6.3 `site_progress_updates` table (দৈনিক লগ)
+
+```
+site_progress_updates
+ - id                UUID, PK
+ - work_item_id       UUID → tower_work_items.id
+ - update_date        DATE
+ - progress_pct        DECIMAL(5,2)
+ - remarks              TEXT, nullable
+ - gps_lat / gps_lng    DECIMAL, nullable
+ - updated_by            UUID → users.id
+ - created_at
+```
+
+**Behavior:** নতুন entry → `tower_work_items.actual_progress_pct` update → `towers.current_progress_pct` recalculate (`Σ work_item.actual_progress_pct × weight_pct ÷ 100`, cached field) → Project overall % = তার Towers-এর average।
+
+**Planned % (display-only, no storage):** Dashboard `planned_start_date`/`planned_end_date` থেকে linear interpolation করে "আজকের হিসেবে planned % কত হওয়া উচিত" বের করবে। Actual vs Planned পার্থক্যই "Delay %"। আলাদা কোনো table/field লাগবে না।
+
+### 6.4 Document types for `entity_type = 'site_progress_update'`
+`progress_photo`, `progress_video`, `other`
+
+### 6.5 `material_requests` table (Site → Procurement bridge)
+
+```
+material_requests
+ - id             UUID, PK
+ - code           VARCHAR, e.g. "MREQ-2026-001"
+ - project_id      UUID → projects.id
+ - tower_id         UUID → towers.id, nullable
+ - work_item_id      UUID → tower_work_items.id, nullable
+ - requested_by       UUID → users.id   -- site engineer
+ - request_date        DATE
+ - status               ENUM: pending | approved | rejected | ordered | fulfilled
+ - notes                 TEXT, nullable
+```
+
+**Lifecycle:** `pending` (Site Manager submit) → `approved`/`rejected` (Procurement decides) → `ordered` (Procurement purchase শুরু করেছে) → `fulfilled` (stock এসে গেছে, request close)। Purchase/vendor/voucher-এর বিস্তারিত পরের module (Procurement)-এ define হবে — এই module শুধু request পর্যন্ত দায়িত্ব নেয়, status-টা Procurement module থেকে আপডেট হবে।
+
+### 6.6 `material_request_items` table
+
+```
+material_request_items
+ - id                    UUID, PK
+ - request_id            UUID → material_requests.id
+ - item_name             VARCHAR   -- এখন free text; Procurement module-এ standard catalog-এর সাথে reconcile হবে
+ - unit                   VARCHAR   -- bag/ton/piece
+ - quantity_requested      DECIMAL
+ - quantity_approved       DECIMAL, nullable
+```
+
+### 6.7 Public Website Connection
+Project detail page-এ Tower-wise `current_progress_pct` + latest `progress_photo` দেখানো হবে।
+
+---
+
+## 7. MODULE 6: Procurement & Supplier Voucher ✅ FROZEN
+
+### 7.1 Purpose
+`material_requests` (Module 5, `approved` status) থেকে actual purchase, supplier থেকে material receive, stock আপডেট, site-এ material issue, এবং supplier payment/voucher track — সব project-wise।
+
+### 7.2 Workflow
+```
+Material Request (approved)
+        ↓
+Purchase Order (supplier + price fix — simple, RFQ/quotation-comparison এখন নাই)
+        ↓
+Goods Receipt (material received, stock-এ যোগ, weighted avg cost update)
+        ↓
+Stock Issue (site-এ পাঠানো হলে stock থেকে বিয়োগ, cost snapshot নেওয়া হয়)
+        ↓
+Supplier Voucher (payment — সরাসরি, approval ছাড়াই)
+        ↓
+material_requests.status = 'fulfilled'
+```
+
+### 7.3 `suppliers` table
+
+```
+suppliers
+ - id             UUID, PK
+ - code           VARCHAR, e.g. "SUP-2026-001"
+ - name           VARCHAR
+ - type           ENUM: material_supplier | contractor | other   -- future Contractor module-এও reuse হবে
+ - contact_person VARCHAR, nullable
+ - phone          VARCHAR
+ - address        TEXT, nullable
+ - notes          TEXT, nullable
+```
+
+### 7.4 `purchase_orders` table
+
+```
+purchase_orders
+ - id             UUID, PK
+ - code           VARCHAR, e.g. "PO-2026-001"
+ - request_id     UUID → material_requests.id, nullable   -- nullable, general/central stock purchase সরাসরি হতে পারে
+ - project_id     UUID → projects.id, NULLABLE            -- null = general/central purchase, কোনো নির্দিষ্ট project-এর জন্য না, advance/bulk stocking
+ - supplier_id    UUID → suppliers.id
+ - order_date     DATE
+ - status         ENUM: draft | ordered | partially_received | received | cancelled
+ - created_by     UUID → users.id
+ - notes          TEXT, nullable
+```
+
+### 7.5 `purchase_order_items` table
+
+```
+purchase_order_items
+ - id                    UUID, PK
+ - po_id                 UUID → purchase_orders.id
+ - item_name             VARCHAR
+ - unit                   VARCHAR
+ - quantity_ordered        DECIMAL
+ - unit_price               DECIMAL
+ - quantity_received        DECIMAL, default 0
+```
+
+### 7.6 `goods_receipts` + `goods_receipt_items` (GRN)
+
+```
+goods_receipts
+ - id             UUID, PK
+ - code           VARCHAR, e.g. "GRN-2026-001"
+ - po_id          UUID → purchase_orders.id
+ - receipt_date   DATE
+ - received_by    UUID → users.id
+ - notes          TEXT, nullable
+
+goods_receipt_items
+ - id                UUID, PK
+ - grn_id             UUID → goods_receipts.id
+ - po_item_id         UUID → purchase_order_items.id
+ - quantity_received   DECIMAL
+ - quality_check       ENUM: passed | failed | pending
+```
+
+**Behavior:** GRN save → `purchase_order_items.quantity_received` update → সব item পুরো receive হলে PO `received`, আংশিক হলে `partially_received` → `material_requests.status = 'fulfilled'` (PO পুরো received হলে) → **শুধু `quality_check = 'passed'` item-এর quantity** `stock`-এ যোগ হয় + `average_unit_price` recalculate (weighted average: `(old_qty × old_avg + received_qty × unit_price) ÷ (old_qty + received_qty)`)। `failed` quality-check-এর item stock-এ যোগ হয় না — শুধু GRN record-এ থেকে যায়, যাতে ভুল material stock-এ ঢুকে না যায়।
+
+> **PO cancellation rule:** কোনো item-এর quantity একবার receive (GRN) হয়ে গেলে সেটা stock-এ ঢুকে যায় ও অপরিবর্তনীয় থাকে; PO `cancelled` করলে শুধু **এখনো না-আসা বাকি quantity** বাতিল হয় — যা আগেই receive হয়েছে সেটা বহাল থাকে। Defective material পরে ফেরত দেওয়ার (supplier return/debit note) workflow এখন out of scope, Phase 2-তে যোগ হবে।
+
+### 7.7 `stock` table (project-wise inventory, বা central/company stock)
+
+```
+stock
+ - id                    UUID, PK
+ - project_id            UUID → projects.id, NULLABLE   -- null = central/company stock (কোনো project-এর জন্য এখনো assign হয়নি)
+ - item_name             VARCHAR
+ - unit                   VARCHAR
+ - quantity_available     DECIMAL
+ - average_unit_price      DECIMAL   -- weighted avg purchase cost, GRN-এ update হয়
+```
+
+> `(project_id, item_name, unit)` মিলিয়ে একটা row — central stock-এর জন্য `project_id = null` দিয়ে একটাই row থাকবে item-প্রতি।
+
+### 7.8 `stock_issues` table (site-এ material পাঠানো — consumption tracking)
+
+```
+stock_issues
+ - id                    UUID, PK
+ - code                  VARCHAR, e.g. "ISSUE-2026-001"
+ - project_id            UUID → projects.id
+ - work_item_id          UUID → tower_work_items.id, nullable   -- কোন কাজে ব্যবহার হলো (optional detail)
+ - item_name             VARCHAR
+ - unit                   VARCHAR
+ - quantity_issued         DECIMAL
+ - unit_cost_snapshot      DECIMAL   -- issue-এর সময় stock.average_unit_price থেকে snapshot
+ - total_cost               DECIMAL   -- quantity_issued × unit_cost_snapshot
+ - issue_date                DATE
+ - issued_by                  UUID → users.id
+ - notes                       TEXT, nullable
+```
+
+**Behavior:** Stock Issue save → `stock.quantity_available` বিয়োগ হয় (available-এর বেশি issue করা যাবে না, validation)। এই `total_cost`-ই আসল material-consumption-cost, যেটা Finance module-এ project-wise cost report-এ দেখানো যাবে।
+
+### 7.8a `stock_transfers` table (central stock → project stock, অথবা project-to-project)
+
+```
+stock_transfers
+ - id                    UUID, PK
+ - code                  VARCHAR, e.g. "TRF-2026-001"
+ - item_name             VARCHAR
+ - unit                   VARCHAR
+ - quantity                DECIMAL
+ - from_project_id          UUID → projects.id, NULLABLE   -- null = central stock থেকে
+ - to_project_id             UUID → projects.id             -- যে project-এর দরকার, required
+ - unit_cost_snapshot         DECIMAL   -- source stock-এর average_unit_price থেকে নেওয়া
+ - transfer_date               DATE
+ - transferred_by               UUID → users.id
+ - notes                          TEXT, nullable
+```
+
+**Behavior:** Transfer save → source stock row (`project_id = from_project_id`, central হলে `null`) থেকে `quantity_available` বিয়োগ → destination stock row (`project_id = to_project_id`) না থাকলে তৈরি, থাকলে quantity যোগ + `average_unit_price` নতুন করে weighted-average recalculate।
+
+**পুরো advance-stocking scenario এভাবে কাজ করবে:**
+```
+PO তৈরি (project_id = null)  →  GRN  →  Central Stock-এ যোগ (project_id = null)
+                                                  ↓
+                    কোনো project-এর দরকার হলে → Stock Transfer (from: null/central → to: সেই project)
+                                                  ↓
+                            এরপর সেই project-এর নিজের stock থেকে normal Stock Issue (site consumption)
+```
+
+Material Request approve হওয়ার সময় Procurement team এখন দুইটা রাস্তা বেছে নিতে পারবে: (a) নতুন PO দিয়ে সরাসরি সেই project-এর জন্য কেনা, অথবা (b) central stock-এ আগে থেকেই থাকলে সরাসরি Stock Transfer করে দেওয়া — নতুন purchase লাগবে না।
+
+### 7.9 `supplier_vouchers` table (payment to supplier — সরাসরি, approval ছাড়া)
+
+```
+supplier_vouchers
+ - id             UUID, PK
+ - code           VARCHAR, e.g. "VCH-2026-001"
+ - po_id          UUID → purchase_orders.id
+ - supplier_id    UUID → suppliers.id
+ - project_id     UUID → projects.id, NULLABLE   -- po.project_id থেকে auto (central stock PO হলে null-ও হতে পারে)
+ - amount         DECIMAL
+ - payment_date   DATE
+ - payment_method ENUM: cash | bank | mfs | cheque | online
+ - reference_no   VARCHAR, nullable
+ - paid_by        UUID → users.id
+ - notes          TEXT, nullable
+```
+
+> এখন procurement-specific রাখা হয়েছে। Finance module-এ এটাকে Land payment/Contractor payment-এর সাথে মিলিয়ে unified Cost/Expense Dashboard-এ aggregate করা হবে — এখনই merge করছি না, Finance module confirm হওয়ার পর।
+
+### 7.10 Document types
+`entity_type = 'purchase_order'`: `quotation`, `invoice`, `other`
+`entity_type = 'supplier_voucher'`: `payment_receipt`, `cheque_copy`, `other`
+
+### 7.11 Project-wide Cost Traceability (confirmed design)
+মূল chain-টা `project_id` বহন করে: `material_requests.project_id` → `purchase_orders.project_id` (nullable, central হলে null) → `stock.project_id` → `stock_issues.project_id` → `supplier_vouchers.project_id`। Central stock route ব্যবহার হলে `stock_transfers` সেই gap পূরণ করে (central → project), তারপর একই chain অনুসরণ করে। তাই কোনো অতিরিক্ত mapping ছাড়াই cost শেষ পর্যন্ত সঠিক project-এই রোলআপ হবে — এমনকি advance-এ কেনা জিনিসও।
+
+---
+
+## 8. MODULE 7: Finance — Customer Collection + Cost/Expense Ledger ✅ FROZEN
+
+### 8.1 Purpose
+দুইটা connected sub-part — **Income** (customer installment collection) এবং **Cost/Expense** (Land payment, Land extra cost, Contractor payment, ad-hoc/irregular project cost — Procurement voucher-এর সাথে মিলিয়ে unified rollup)।
+
+---
+
+### 8.2 Part A: Customer Collection (Income)
+
+#### Status Pipeline (per installment)
+```
+pending → partially_paid → paid
+   (due_date পার হয়ে গেলে, amount বাকি থাকলে) → overdue
+```
+
+#### `installment_plan_templates` table (per-project template — booking confirm হলে এখান থেকে actual installment generate হয়)
+
+```
+installment_plan_templates
+ - id             UUID, PK
+ - project_id     UUID → projects.id
+ - sequence_no    INTEGER
+ - label          VARCHAR    -- "Booking Amount", "Monthly Installment", "Construction Milestone", "Handover"
+ - percentage     DECIMAL(5,2)
+ - schedule_type  ENUM: on_booking | monthly | on_handover | manual
+ - month_count    INTEGER, nullable   -- schedule_type='monthly' হলে কয় মাসে ভাগ হবে
+```
+
+**System default template** (Project তৈরি হওয়ার সময় auto-seed হয়ে যাবে, Project Manager/Accounts চাইলে project-ভিত্তিতে edit করতে পারবেন — booking শুরু হওয়ার আগে):
+
+| Sequence | Label | % | Schedule |
+|---|---|---|---|
+| 1 | Booking Amount | 10% | on_booking |
+| 2 | Monthly Installment | 60% | monthly (default 24 মাসে ভাগ, project-এর expected duration অনুযায়ী edit করা যাবে) |
+| 3 | Construction Milestone | 20% | manual (Accounts নির্দিষ্ট progress % ছুঁলে due_date বসাবেন) |
+| 4 | Handover | 10% | on_handover |
+
+#### `payment_schedules` table
+
+```
+payment_schedules
+ - id            UUID, PK
+ - entity_type   ENUM: booking
+ - entity_id     UUID → bookings.id
+ - total_amount  DECIMAL   -- snapshot: bookings.final_price
+ - created_at    TIMESTAMP
+```
+
+#### `payment_installments` table
+
+```
+payment_installments
+ - id                UUID, PK
+ - schedule_id       UUID → payment_schedules.id
+ - installment_no    INTEGER
+ - label              VARCHAR
+ - due_date            DATE, nullable
+ - amount_due          DECIMAL
+ - amount_paid         DECIMAL, default 0
+ - status               ENUM: pending | partially_paid | paid | overdue
+```
+
+**Generation logic:** Booking `confirmed` হলে → `payment_schedule` তৈরি (`total_amount = final_price`) → project-এর `installment_plan_templates` থেকে প্রতিটা row copy করে `payment_installments` তৈরি (`amount_due = percentage% × final_price`, `due_date` স্কিমা অনুযায়ী calculate — `on_booking` = booking_date, `monthly` = booking_date থেকে সমান interval-এ ভাগ, `manual`/`on_handover` = null, পরে Accounts/PM বসাবেন)। **Generated installment গুলো booking-ভিত্তিতে individually edit করা যাবে** (কোনো customer-এর সাথে আলাদা arrangement হলে)।
+
+#### `payments` table (actual receive log)
+
+```
+payments
+ - id              UUID, PK
+ - installment_id   UUID → payment_installments.id
+ - amount            DECIMAL
+ - payment_date       DATE
+ - payment_method     ENUM: cash | bank | mfs | cheque | card | online
+ - reference_no       VARCHAR, nullable
+ - received_by        UUID → users.id
+ - notes               TEXT, nullable
+```
+
+**Behavior:** "Booking Amount" installment পুরো paid হলে → `bookings.booking_amount_received = true` (Module 4-এর hold→confirmed gate satisfy)। Partial payment সমর্থিত (একটা installment-এ একাধিক `payments` entry)। Overdue: `due_date < today AND amount_paid < amount_due` → status `overdue` (read-time/daily job)।
+
+#### Document types for `entity_type = 'payment'`
+`payment_receipt`, `cheque_copy`, `other`
+
+#### `refunds` table (Booking cancel হলে already-paid amount ফেরত — gap fix)
+
+```
+refunds
+ - id             UUID, PK
+ - code           VARCHAR, e.g. "REF-2026-001"
+ - booking_id     UUID → bookings.id
+ - amount         DECIMAL
+ - deduction      DECIMAL, default 0   -- cancellation charge কাটা হলে
+ - net_refund     DECIMAL              -- amount − deduction
+ - refund_date    DATE
+ - payment_method ENUM: cash | bank | mfs | cheque | online
+ - reference_no   VARCHAR, nullable
+ - processed_by   UUID → users.id
+ - notes          TEXT, nullable
+```
+
+> Booking `cancelled` হলে, ততদিন পর্যন্ত যত টাকা `payments`-এ জমা হয়েছিল, সেটার against-এ একটা `refunds` entry তৈরি করা যাবে (পুরো বা আংশিক — cancellation charge কেটে)। এটা ছাড়া booking cancellation lifecycle অসম্পূর্ণ থেকে যাচ্ছিল — ঠিক করা হলো।
+
+#### Document types for `entity_type = 'refund'`
+`refund_voucher`, `other`
+
+---
+
+### 8.3 Part B: Cost/Expense Ledger (unified, flexible — irregular cost-ও cover করে)
+
+#### `expenses` table (generic — Land payment, Land extra cost, Contractor payment, marketing/admin, এবং যেকোনো ad-hoc/irregular project cost)
+
+```
+expenses
+ - id             UUID, PK
+ - code           VARCHAR, e.g. "EXP-2026-001"
+ - project_id     UUID → projects.id, nullable   -- company-level খরচ হলে null
+ - land_id        UUID → lands.id, nullable      -- land-related হলে reference
+ - cost_category   ENUM: land_payment | land_extra_cost | contractor_payment | marketing | admin | other
+ - cost_reason      VARCHAR      -- ছোট, স্পষ্ট label — বিশেষত category='other' হলে জরুরি, e.g. "Emergency generator repair", "Legal consultancy fee"
+ - amount             DECIMAL
+ - expense_date         DATE
+ - paid_to               VARCHAR   -- landowner/contractor/vendor/individual নাম
+ - payment_method         ENUM: cash | bank | mfs | cheque | online
+ - reference_no             VARCHAR, nullable
+ - paid_by                    UUID → users.id
+ - notes                        TEXT, nullable
+```
+
+> এটাই আপনার তৃতীয় প্রশ্নের উত্তর — যেকোনো irregular/বড় খরচ যেটা এখনো কোনো নির্দিষ্ট lifecycle module (Land/Procurement/Contractor)-এর আওতায় আসেনি, সেটা সরাসরি এখানে **project-এর against এ** যোগ করা যাবে: `cost_reason` (কেন হলো), `project_id` (কোন project), `amount`, এবং Document tab দিয়ে receipt/voucher attach — কোনো নতুন module লাগবে না, এই generic ledger-ই যথেষ্ট। `cost_category = 'other'` হলে `cost_reason` দিয়েই context স্পষ্ট থাকবে।
+
+#### Document types for `entity_type = 'expense'`
+`receipt`, `voucher`, `invoice`, `other`
+
+#### Unified Cost Rollup per Project (Dashboard query, নতুন table না)
+
+```
+Total Project Cost =
+    SUM(expenses.amount WHERE project_id = X)
+  + SUM(supplier_vouchers.amount WHERE project_id = X)     [Module 6]
+```
+
+#### Unified Revenue/Collection per Project (Dashboard query) — শুধু Company-owned sale, owner-direct sale বাদ
+
+```
+Total Sales Value    = SUM(bookings.final_price WHERE unit.tower.project_id = X, status != cancelled, unit.for_sale_by = 'company')
+Total Collected       = SUM(payments.amount WHERE installment.schedule.booking.unit.tower.project_id = X, unit.for_sale_by = 'company')
+Total Refunded          = SUM(refunds.net_refund WHERE booking.unit.tower.project_id = X)
+Total Due                 = Total Sales Value − Total Collected
+```
+
+> **Gap fix:** আগে এই query-তে `unit.for_sale_by = 'company'` filter ছিল না — Module 2-তে landowner নিজে বিক্রি করা flat-এর (`for_sale_by = 'owner_direct'`) জন্যও যদি booking তৈরি হয় (inventory track করার জন্য), সেটা company-র নিজস্ব revenue না। Filter যোগ করে এটা ঠিক করা হলো, নাহলে Dashboard-এ ভুল বেশি revenue দেখাতো।
+
+#### Management Dashboard (top-level, Owner role)
+```
+Project: PRJ-2026-001
+  Total Sales Value     : ৳XX Cr   (company-owned sale only)
+  Total Collected        : ৳XX Cr
+  Total Refunded           : ৳XX Cr
+  Total Due                : ৳XX Cr
+  Total Cost So Far         : ৳XX Cr  (Land + Procurement + Contractor + Marketing + Admin + Other)
+  Estimated Profit            : Total Sales − Total Cost
+  Overdue Installments          : count + list
+```
+
+### 8.4 Notification (deferred)
+Overdue reminder এখন শুধু dashboard-এ list আকারে দেখানো হবে — automated SMS/push notification এখনই দরকার নেই, Phase 2 (Notification module)-এ যোগ হবে।
+
+---
+
+## 9. MODULE 8: User & Role Management (+ Master Data, Settings) ✅ FROZEN
+
+### 9.1 Purpose
+সব module-এ ছড়িয়ে থাকা role reference একত্র করে চূড়ান্ত role list ও module-wise permission matrix। সাথে Master Data (admin-configurable dropdown lists) ও Company Settings — যেগুলো platform-wide shared component (Section 1.2, 1.3-এ schema আছে)।
+
+### 9.2 Design Philosophy
+Dynamic/custom role-builder বানানো হয়নি (over-engineering) — role একটা fixed ENUM, কোন role কী করতে পারবে সেটা application code-এ role-check দিয়ে হয়। ভবিষ্যতে সত্যিই দরকার হলে (অনেক role-variation লাগলে) আলাদা permissions table Phase 2-তে যোগ করা যাবে।
+
+### 9.3 Finalized `users.role` ENUM
+
+```
+super_admin | management | land_team | project_manager | sales_executive | sales_manager | head_of_sales | site_manager | procurement | accounts
+```
+
+### 9.4 `users` table
+
+```
+users
+ - id             UUID, PK
+ - name           VARCHAR
+ - phone          VARCHAR, UNIQUE
+ - email          VARCHAR, UNIQUE
+ - password_hash  VARCHAR   -- Phase A (IndexedDB, no real auth)-তে placeholder/mock; Phase B-তে actual hash
+ - role           ENUM (উপরে তালিকাভুক্ত)
+ - status         ENUM: active | inactive
+ - last_login_at  TIMESTAMP, nullable
+ - created_at     TIMESTAMP
+```
+
+### 9.5 `user_project_assignments` table (project-level scoping)
+
+```
+user_project_assignments
+ - id            UUID, PK
+ - user_id       UUID → users.id
+ - project_id    UUID → projects.id
+```
+
+> `super_admin`, `management`, `land_team` — সব project access (mapping না থাকলেও)। বাকি role (`project_manager`, `site_manager`, `sales_executive`, `procurement`, `accounts`) — mapping না থাকলে কোনো project-ই দেখবে না, শুধু assigned project(s)-এর data access পাবে।
+
+### 9.6 Permission Matrix (module-wise, high-level)
+
+| Module | super_admin | management | land_team | project_manager | sales_executive | sales_manager | site_manager | procurement | accounts |
+|---|---|---|---|---|---|---|---|---|---|
+| Land | Full | View | Full | View | — | — | — | — | — |
+| Project/Tower/Unit | Full | View | View | Full (assigned) | View | View | View (assigned) | View | View |
+| Lead/CRM | Full | View | — | — | Own only | Full | — | — | — |
+| Booking/Customer | Full | View | — | View | Own only | Full + Discount Approval | — | — | View |
+| Site Progress | Full | View | — | Full (assigned) | — | — | Full (assigned) | — | — |
+| Material Request | Full | View | — | Approve (assigned) | — | — | Create (assigned) | Approve/Fulfill | — |
+| Procurement (PO/GRN/Stock) | Full | View | — | View (assigned) | — | — | — | Full | View |
+| Supplier Voucher | Full | View | — | — | — | — | — | Full | Full |
+| Finance — Collection | Full | View | — | View (assigned) | — | — | — | — | Full |
+| Finance — Expense Ledger | Full | View | — | — | — | — | — | — | Full |
+| Dashboard (Revenue/Cost) | Full | Full | — | View (assigned) | — | View (own) | — | — | View |
+| Master Data / Settings | Full | — | — | — | — | — | — | — | — |
+| User Management | Full | — | — | — | — | — | — | — | — |
+
+> "Own only" = নিজের তৈরি/assign করা record-ই দেখবে। "Assigned" = `user_project_assignments`-এ থাকা project(s)।
+
+### 9.7 Master Data / Settings (shared component, schema Section 1.2 ও 1.3-এ)
+Admin (`super_admin`) role থেকে Settings screen-এ:
+- **Company Info** — `company_settings` single row edit
+- **Master Data** — `lookup_values` (Document Type per entity, Cost Category, Amenities, Unit Type, Facing) — নতুন option যোগ/inactive করা যাবে, code-change ছাড়াই
+
+---
+
+## 10. Roadmap — এখনো Discuss হয়নি (এই ক্রমে আলোচনা হবে)
+
+- Public Website (project listing, progress showcase, inquiry form) ← next
+- Handover, Snag/Defect, After-sales (later phase)
+
+> প্রতিটা module confirm হওয়ার পর এই section থেকে সরিয়ে উপরে নিজের section-এ schema সহ যোগ হবে।
+
+---
+
+## 11. Decision Log (context, যাতে ভবিষ্যতে "কেন এভাবে করা হয়েছিল" মনে থাকে)
+
+- Document management আলাদা module না — generic reusable `documents` table, entity-based
+- Landowner info শুধু JV-তে না, সব land-এর জন্যই capture হয় (many-to-many, multiple owner support)
+- Land ↔ Project many-to-many (multiple land → 1 project, বা 1 land → multiple project দুটোই সম্ভব)
+- Tower আলাদা entity (শুধু text field না) — multi-tower project-এ আলাদা progress track করার জন্য
+- Land-এ payment detail নাই, শুধু `final_agreed_amount` reference — actual payment/installment Finance module-এ হবে
+- Lead assignment manual রাখা হয়েছে (auto round-robin না) — team ছোট, প্রয়োজনে Phase 2-তে যোগ হবে
+- Lost lead delete হয় না — revive করা যায়, history (lead_activities) অক্ষত থাকে
+- Duplicate lead phone number দিয়ে ঠেকানো হয় — নতুন inquiry existing lead-এ activity হিসেবে যোগ হয়, নতুন record না
+- Booking-এ payment receive হওয়ার আগে "hold" status রাখা হয়েছে (unit reserve হয়ে যায়, কিন্তু confirmed না) — client-এর "verbal confirm কিন্তু টাকা আসেনি" বাস্তবতা reflect করার জন্য
+- Discount approval conditional — শুধু role-এর limit ছাড়ালে approval লাগবে (`discount_approval_rules` table), সবসময় approval না — যাতে ছোট discount-এর জন্য extra step না লাগে
+- Finance module (income + cost) ইচ্ছাকৃতভাবে postpone করা হয়েছে Procurement-এর পরে — কারণ cost/expense ledger মূলত Procurement থেকেই feed হবে, আগে freeze করলে rework লাগতো
+- Site Progress WBS-based (granular, Option A) — প্রতিটা tower-এর work item (Foundation/Electrical/Plumbing...) আলাদা track হয়, tower-এর overall % এগুলোর weighted average
+- Planned % storage করা হয়নি — `planned_start_date`/`planned_end_date` থেকে dashboard-এ display-time-এ linear interpolation করে বের করা হবে, আলাদা table/field লাগেনি
+- Material Request lifecycle: pending → approved/rejected → ordered → fulfilled — actual purchase/vendor detail Procurement module দায়িত্বে, এই module শুধু request পর্যন্ত
+- Procurement-এ RFQ/quotation-comparison এখনই রাখা হয়নি (simple, সরাসরি PO) — প্রয়োজনে Phase 2-তে যোগ হবে
+- Stock Issue (site-এ material পাঠানো) আলাদাভাবে track হয় — শুধু "কত এলো" না, "কত ব্যবহার হলো"ও প্রতিটা project-wise থাকবে, cost snapshot নেওয়া হয় issue-এর সময়ে
+- Supplier Voucher approval ছাড়া সরাসরি তৈরি হয় — Booking discount-এর মতো threshold-based approval নাই এখানে
+- Cost traceability: material_requests → purchase_orders → stock → stock_issues → supplier_vouchers — সবগুলোতেই `project_id` থাকায় extra mapping ছাড়াই cost project-wise automatically রোলআপ হয়
+- Central/company stock সাপোর্ট যোগ হয়েছে (addendum) — `stock.project_id` ও `purchase_orders.project_id` nullable করা হয়েছে (null = advance/bulk কেনা, কোনো project-এ এখনো assign হয়নি); `stock_transfers` table দিয়ে পরে যেকোনো project-এ issue করা যায়
+- GRN-এ শুধু `quality_check = 'passed'` item stock-এ যোগ হয় — failed item ভুলে stock-এ ঢুকে যাওয়া রোধ করার জন্য (data correctness fix)
+- Supplier return/debit note (defective material ফেরত) — এখন out of scope, Phase 2-তে যোগ হবে
+- Installment plan এখন per-project template (`installment_plan_templates`) — system default (10/60/20/10) সেট আছে, Project তৈরির সময় auto-seed হয়, booking-এর আগে project-level edit করা যায়, generate হওয়ার পর booking-ভিত্তিতেও individually edit করা যায়
+- Land payment, Land extra cost, Contractor payment, marketing/admin cost — সব একই generic `expenses` table-এ (আলাদা `land_costs` table বাদ দেওয়া হলো) — `cost_reason` field দিয়ে irregular/ad-hoc cost-ও কোনো নতুন module ছাড়াই project-এর against এ log করা যায়
+- Automated overdue reminder (SMS/push) এখনই রাখা হয়নি — Phase 2 (Notification module)
+- Role management dynamic role-builder না, fixed ENUM + code-level permission check — simple রাখার সিদ্ধান্ত, দরকার হলে Phase 2-তে permissions table
+- Project-level data scoping (`user_project_assignments`) — Site Manager/Sales/Accounts শুধু নিজের assigned project দেখবে, super_admin/management/land_team সব দেখবে
+- Master Data pattern চালু হলো (`lookup_values`) — শুধু option/dropdown list-এর জন্য (Document Type, Cost Category, Amenities...), workflow status ENUM-ই থাকছে যেহেতু সেগুলো code-logic-এর সাথে বাঁধা
+- **Tech stack pivot (গুরুত্বপূর্ণ):** Phase A = Prototype/Demo শুধু IndexedDB (Dexie.js) দিয়ে, backend/API/Postgres এখনই না — Repository/Service layer আলাদা রাখা হচ্ছে যাতে Phase B (Postgres+Node backend)-এ migrate করা সহজ হয়, বড় rewrite না লাগে। Schema (table/field names) দুই Phase-এই একই থাকবে।
+- **Full document review (gap-check pass) — ৩টা fix করা হলো:** (1) `supplier_vouchers.project_id` nullable করা হলো (central stock PO-র payment হলে project থাকার কথা না), (2) `refunds` table যোগ হলো — booking cancel হলে already-paid amount ফেরত দেওয়ার record রাখার জন্য, (3) Dashboard Revenue query-তে `unit.for_sale_by = 'company'` filter যোগ হলো — landowner-এর নিজের বিক্রি করা flat ভুলে company revenue-তে যোগ হয়ে যাচ্ছিল
+- Sales Commission tracking ও Audit Log — industry-standard feature হলেও client-এর explicit চাহিদায় নাই, তাই এখন scope-এ রাখা হয়নি, Phase 2-তে বিবেচনা করা যাবে
+- **Public Portal cross-module addendum:** `projects` table-এ `is_public` ও `is_featured` যোগ হলো — Public Portal (আলাদা document, `Real-Estate-Developer-Platform_Public-Portal_v1.md`) Home page-এর "Featured Projects" ও কোন project publicly visible সেটার জন্য দরকার
+- **Public Portal same-app decision:** Admin ও Public Portal একই Next.js app-এ আলাদা route হিসেবে (`/admin/*` বনাম বাকি), যাতে Phase A-তে একই IndexedDB share করে সত্যিকারের connection demo করা যায় (IndexedDB origin-locked বলে আলাদা app হলে data share হতো না)
+- **Public Portal P2 addendum:** `projects.location_summary` (marketing address, land-এর cadastral location থেকে আলাদা) ও `documents.is_public` (কোন document website-এ visible/downloadable) যোগ হলো — Public Portal-এর Project Listing/Detail page-এর জন্য দরকার
+- **Public Portal P4 addendum:** `company_settings.whatsapp_number` যোগ হলো — click-to-chat button-এর জন্য
+- **Chrome দিয়ে dpremiumhomes.com verified review-এর পর addendum:** `units`-এ `bedroom_count`/`bathroom_count`/`balcony_count` (আলাদা numeric field, শুধু `unit_type` text না) এবং `towers`-এ `building_type`/`unit_per_floor`/`lift_count`/`electricity_backup`/`front_road_width_ft` — real reference site-এর "Specification" ও "Available Units" section-এ এই breakdown আলাদাভাবে দেখানো হয়, তাই স্পষ্ট field হিসেবে যোগ করা হলো
+- **Final numbering fix:** "MODULE 5" নামে module না থাকা এবং Booking module-এর ভিতরে ভুল "Module 5 (Finance)" reference — দুটোই পুরনো ভুল ছিল, সব module-এর নাম ও cross-reference মিলিয়ে ঠিক করা হলো (Land=1, Project=2, Sales/CRM=3, Booking=4, Site Progress=5, Procurement=6, Finance=7, Users=8)
