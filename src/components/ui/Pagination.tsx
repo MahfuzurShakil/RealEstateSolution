@@ -108,7 +108,12 @@ export function Pagination({
         Showing {from}–{to} of {total} {label}
       </p>
 
-      <div className="flex items-center gap-2">
+      {/*
+        wraps as well as the outer row: on a 375px screen "Per page [6]" plus
+        five numbered buttons is ~20px wider than the viewport, and an
+        unwrapped inner row pushed the whole page sideways
+      */}
+      <div className="flex flex-wrap items-center justify-end gap-2">
         {/* keep the label beside its dropdown; the row as a whole wraps if space runs out */}
         <label className="flex items-center gap-2 whitespace-nowrap text-xs text-ink-muted">
           Per page

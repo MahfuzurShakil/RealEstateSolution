@@ -45,6 +45,25 @@ function documentLabel(doc: DocumentRecord): string {
 }
 
 /**
+ * What to upload, per entity.
+ *
+ * This panel is shared by every module, so a single line about khatian copies
+ * and deeds followed a site progress update and a booking around, telling
+ * people to upload land paperwork against a photo of a slab. The Document Type
+ * dropdown is already scoped by entity; the hint should be too.
+ */
+const EMPTY_HINT: Partial<Record<EntityType, string>> & { default: string } = {
+  land: 'Upload khatian copies, deeds, mutation certificates or site photos for this land.',
+  project: 'Upload approved drawings, the RAJUK memo, clearances or the brochure for this project.',
+  lead: 'Upload the NID copy or anything else this enquiry sent in.',
+  customer: 'Upload the NID copy, photo or any identity paperwork for this customer.',
+  booking: 'Upload the signed booking form or the money receipt for this booking.',
+  payment: 'Upload the money receipt or a copy of the cheque.',
+  site_progress_update: 'Upload photos or a video of the work reported in this update.',
+  default: 'Upload the paperwork that belongs to this record.',
+};
+
+/**
  * Generic "Documents" tab (Section 1.1) — reused by every entity's detail page.
  * Document Type options come from `lookup_values` scoped to this entity_type.
  *
@@ -88,7 +107,7 @@ export function DocumentsPanel({
         <EmptyState
           icon={FileText}
           title="No documents yet"
-          description="Upload khatian copies, deeds, mutation certificates or site photos for this record."
+          description={EMPTY_HINT[entityType] ?? EMPTY_HINT.default}
           action={
             <Button onClick={() => setUploadOpen(true)}>
               <Upload className="size-4" /> Upload document

@@ -160,9 +160,16 @@ class CustomerRepository extends BaseRepository<Customer> {
     return rows.sort((a, b) => b.created_at.localeCompare(a.created_at));
   }
 
-  async getWithRelations(id: string): Promise<CustomerWithRelations | undefined> {
+  /*
+   * `null`, not `undefined`, when the record is gone. `useLiveQuery` reports
+   * its own pending state as `undefined`, so a repository returning
+   * `undefined` for "no such row" leaves the detail page unable to tell a
+   * deleted record from a query still in flight — it sat on "Loading…"
+   * forever instead of saying the record no longer exists.
+   */
+  async getWithRelations(id: string): Promise<CustomerWithRelations | null> {
     const customer = await this.getById(id);
-    if (!customer) return undefined;
+    if (!customer) return null;
 
     const bookings = await bookingRepository.listForCustomer(id);
     const active = bookings.filter((b) => b.status !== 'cancelled');
@@ -581,9 +588,16 @@ class BookingRepository extends BaseRepository<Booking> {
     return rows.sort((a, b) => b.created_at.localeCompare(a.created_at));
   }
 
-  async getWithRelations(id: string): Promise<BookingWithRelations | undefined> {
+  /*
+   * `null`, not `undefined`, when the record is gone. `useLiveQuery` reports
+   * its own pending state as `undefined`, so a repository returning
+   * `undefined` for "no such row" leaves the detail page unable to tell a
+   * deleted record from a query still in flight — it sat on "Loading…"
+   * forever instead of saying the record no longer exists.
+   */
+  async getWithRelations(id: string): Promise<BookingWithRelations | null> {
     const booking = await this.getById(id);
-    if (!booking) return undefined;
+    if (!booking) return null;
 
     const unit = await db.units.get(booking.unit_id);
     const tower = unit ? await db.towers.get(unit.tower_id) : undefined;

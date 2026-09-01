@@ -205,9 +205,16 @@ class LeadRepository extends BaseRepository<Lead> {
       .sort((a, b) => a.date.localeCompare(b.date));
   }
 
-  async getWithRelations(id: string): Promise<LeadWithRelations | undefined> {
+  /*
+   * `null`, not `undefined`, when the record is gone. `useLiveQuery` reports
+   * its own pending state as `undefined`, so a repository returning
+   * `undefined` for "no such row" leaves the detail page unable to tell a
+   * deleted record from a query still in flight — it sat on "Loading…"
+   * forever instead of saying the record no longer exists.
+   */
+  async getWithRelations(id: string): Promise<LeadWithRelations | null> {
     const lead = await this.getById(id);
-    if (!lead) return undefined;
+    if (!lead) return null;
 
     const activities = await leadActivityRepository.listForLead(id);
     const latest = activities.at(-1);
