@@ -39,7 +39,7 @@ export function DemoDataCard() {
         <p className="text-sm text-ink-muted">
           {landCount === 0
             ? 'All records have been cleared. Reload the sample dataset to explore the modules with realistic records.'
-            : 'This install is preloaded with sample Bangladeshi land and project records — every pipeline status, both acquisition types, and towers with generated units.'}
+            : 'This install is preloaded with sample Bangladeshi land, project and lead records — every pipeline status, both acquisition types, towers with generated units, and follow-ups that are overdue, due today and upcoming.'}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => setAction('reset')}>
@@ -58,7 +58,7 @@ export function DemoDataCard() {
         icon={Database}
         tone={action === 'clear' ? 'danger' : 'warning'}
         title={action === 'clear' ? 'Clear all records' : 'Reload sample data'}
-        subtitle="Land Management & Project Creation"
+        subtitle="Modules 1–3 — Land, Projects and Leads"
         message={
           action === 'clear'
             ? 'Every land, landowner, JV term, pipeline entry and uploaded document will be deleted from this browser. Master data and company settings stay.'

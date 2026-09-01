@@ -23,3 +23,12 @@ export {
   type UnitFilters,
   type BulkGenerateResult,
 } from './project.repository';
+export {
+  leadRepository,
+  leadActivityRepository,
+  userRepository,
+  normalizePhone,
+  type LeadFilters,
+  type LeadWithRelations,
+  type DedupResult,
+} from './lead.repository';

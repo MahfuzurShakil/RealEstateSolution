@@ -10,10 +10,13 @@ import type {
   LandProjectMapping,
   LandStatusEvent,
   Landowner,
+  Lead,
+  LeadActivity,
   LookupValue,
   Project,
   Tower,
   Unit,
+  User,
 } from './types';
 
 /**
@@ -43,6 +46,13 @@ export class AppDatabase extends Dexie {
   land_project_mapping!: EntityTable<LandProjectMapping, 'id'>;
   towers!: EntityTable<Tower, 'id'>;
   units!: EntityTable<Unit, 'id'>;
+
+  // Users (Section 9.4) — Module 8 owns the UI, Module 3 needs the rows
+  users!: EntityTable<User, 'id'>;
+
+  // Module 3 — Sales / Lead / CRM
+  leads!: EntityTable<Lead, 'id'>;
+  lead_activities!: EntityTable<LeadActivity, 'id'>;
 
   constructor() {
     super('realestate_platform');
@@ -74,6 +84,15 @@ export class AppDatabase extends Dexie {
       towers: 'id, project_id, name, status',
       units:
         'id, &code, tower_id, floor, status, unit_type, allocation_type, allocated_to_owner_id, for_sale_by, [tower_id+floor]',
+    });
+
+    // v4 — Module 3 (Sales / Lead / CRM) + the users table it assigns to.
+    // `leads.phone` is unique on purpose: it is the dedup key (Section 4.5).
+    this.version(4).stores({
+      users: 'id, &phone, &email, name, role, status',
+      leads:
+        'id, &code, &phone, name, status, source, assigned_to, interested_project_id, interested_unit_id, created_at',
+      lead_activities: 'id, lead_id, activity_type, activity_date, next_follow_up_date',
     });
   }
 }

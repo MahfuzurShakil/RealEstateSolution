@@ -3,9 +3,12 @@
 import {
   documentRepository,
   landProjectMappingRepository,
+  leadActivityRepository,
+  leadRepository,
   projectRepository,
   towerRepository,
   unitRepository,
+  userRepository,
   landJvRepository,
   landOwnerMappingRepository,
   landRepository,
@@ -14,6 +17,7 @@ import {
 } from '../repositories';
 import { getDb } from './database';
 import { DEMO_LANDS, DEMO_OWNERS } from './demo-data';
+import { DEMO_LEADS, DEMO_USERS } from './demo-leads';
 import { DEMO_PROJECTS } from './demo-projects';
 
 /**
@@ -199,7 +203,8 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
     landIds.set(demo.name, land.id);
   }
 
-  await seedDemoProjects(landIds, ownerIds, createdBy);
+  const { projectIds, unitIds } = await seedDemoProjects(landIds, ownerIds, createdBy);
+  await seedDemoLeads(projectIds, unitIds, createdBy);
 
   setClearedFlag(false);
 }
@@ -213,8 +218,11 @@ async function seedDemoProjects(
   landIds: Map<string, string>,
   ownerIds: Map<string, string>,
   createdBy: string | null,
-): Promise<void> {
+): Promise<{ projectIds: Map<string, string>; unitIds: Map<string, string> }> {
   const db = getDb();
+  const projectIds = new Map<string, string>();
+  /** keyed "Project Name::UNIT-CODE" so two projects can reuse a code */
+  const allUnitIds = new Map<string, string>();
 
   for (const demo of DEMO_PROJECTS) {
     const project = await projectRepository.create(
@@ -317,7 +325,129 @@ async function seedDemoProjects(
       created_at: demo.created_at,
       updated_at: demo.created_at,
     });
+
+    // a couple of attachments so the Documents tab is not empty either
+    for (const type of ['architectural_plan', 'brochure'] as const) {
+      const png = await makeSamplePng(`${demo.name} — ${type.replace(/_/g, ' ')}`);
+      if (!png) continue;
+      const fileName = `${type}-${project.code.toLowerCase()}.png`;
+      await documentRepository.create(
+        {
+          entity_type: 'project',
+          entity_id: project.id,
+          document_type: type,
+          custom_type_name: null,
+          file_url: fileName,
+          file_data: png,
+          file_name: fileName,
+          file_size: png.size,
+          mime_type: 'image/png',
+          // the brochure is what the public portal is allowed to show
+          is_public: type === 'brochure' && demo.is_public,
+          uploaded_by: createdBy,
+          uploaded_at: demo.created_at,
+          notes:
+            type === 'brochure'
+              ? 'Marketing brochure handed to buyers at the sales office'
+              : 'Approved architectural drawing set',
+        },
+        createdBy,
+      );
+    }
+
+    projectIds.set(demo.name, project.id);
+    for (const [code, unitId] of unitIdByCode) allUnitIds.set(`${demo.name}::${code}`, unitId);
   }
+
+  return { projectIds, unitIds: allUnitIds };
+}
+
+/**
+ * Module 3 demo data — staff first, then the leads assigned to them.
+ *
+ * Follow-up dates are stored as offsets from the day the demo is loaded, so the
+ * overdue / due-today / upcoming states stay true whenever it is opened.
+ */
+async function seedDemoLeads(
+  projectIds: Map<string, string>,
+  unitIds: Map<string, string>,
+  createdBy: string | null,
+): Promise<void> {
+  const db = getDb();
+
+  const userIds = new Map<string, string>();
+  for (const user of DEMO_USERS) {
+    const saved = await userRepository.create(
+      {
+        name: user.name,
+        phone: user.phone,
+        email: user.email,
+        // Phase A has no real auth (Section 0) — this is a placeholder
+        password_hash: 'demo-no-auth',
+        role: user.role,
+        status: user.status,
+        last_login_at: null,
+      },
+      createdBy,
+    );
+    userIds.set(user.key, saved.id);
+  }
+
+  for (const demo of DEMO_LEADS) {
+    const projectId = demo.project_name ? (projectIds.get(demo.project_name) ?? null) : null;
+    const unitId =
+      demo.project_name && demo.unit_code
+        ? (unitIds.get(`${demo.project_name}::${demo.unit_code}`) ?? null)
+        : null;
+
+    const lead = await leadRepository.create(
+      {
+        code: '',
+        name: demo.name,
+        phone: demo.phone,
+        email: demo.email ?? null,
+        source: demo.source,
+        inquiry_message: demo.inquiry_message ?? null,
+        interested_project_id: projectId,
+        interested_unit_id: unitId,
+        budget_range: demo.budget_range ?? null,
+        assigned_to: demo.assigned_key ? (userIds.get(demo.assigned_key) ?? null) : null,
+        status: demo.status,
+        lost_reason: demo.lost_reason ?? null,
+      },
+      createdBy,
+    );
+
+    for (const activity of demo.activities) {
+      const saved = await leadActivityRepository.create(
+        {
+          lead_id: lead.id,
+          activity_type: activity.activity_type,
+          notes: activity.notes,
+          activity_date: daysFromToday(-activity.days_ago),
+          next_follow_up_date:
+            activity.follow_up_in_days === undefined
+              ? null
+              : daysFromToday(activity.follow_up_in_days).slice(0, 10),
+        },
+        createdBy,
+      );
+      await db.lead_activities.update(saved.id, {
+        created_at: daysFromToday(-activity.days_ago),
+      });
+    }
+
+    const createdAt = daysFromToday(-demo.created_days_ago);
+    await db.leads.update(lead.id, { created_at: createdAt, updated_at: createdAt });
+  }
+}
+
+/** ISO timestamp `offset` days from now (negative = in the past). */
+function daysFromToday(offset: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  d.setHours(11, 0, 0, 0);
+  return d.toISOString();
 }
 
 /** Wipes every Module 1 record (master data and company settings stay). */
@@ -334,6 +464,9 @@ export async function clearDemoData(): Promise<void> {
     db.land_project_mapping.clear(),
     db.towers.clear(),
     db.units.clear(),
+    db.users.clear(),
+    db.leads.clear(),
+    db.lead_activities.clear(),
   ]);
   setClearedFlag(true);
 }

@@ -30,3 +30,13 @@ export function todayLocal(): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
+
+/**
+ * BD mobile numbers are stored digits-only (the dedup key) but read as
+ * "01711 223344", so display goes through here.
+ */
+export function formatPhone(phone?: string | null): string {
+  if (!phone) return '—';
+  const digits = phone.replace(/\D/g, '');
+  return digits.length === 11 ? `${digits.slice(0, 5)} ${digits.slice(5)}` : phone;
+}

@@ -135,11 +135,56 @@ export const DEMO_PROJECTS: DemoProject[] = [
           },
         ],
       },
+      {
+        name: 'Tower B',
+        floor_count: 9,
+        status: 'planning',
+        building_type: 'B+G+8',
+        unit_per_floor: 2,
+        lift_count: 2,
+        electricity_backup: true,
+        front_road_width_ft: 25,
+        patterns: [
+          {
+            prefix: 'B',
+            separator: '-',
+            floor_from: 2,
+            floor_to: 8,
+            rows: [
+              {
+                suffix: 'A',
+                unit_type: '2 Bed',
+                bedroom_count: 2,
+                bathroom_count: 2,
+                balcony_count: 1,
+                size_sqft: 1120,
+                facing: 'North-East',
+                rate_per_sqft: 10200,
+                parking_allocated: 1,
+              },
+              {
+                suffix: 'B',
+                unit_type: '3 Bed',
+                bedroom_count: 3,
+                bathroom_count: 2,
+                balcony_count: 2,
+                size_sqft: 1380,
+                facing: 'West',
+                rate_per_sqft: 10600,
+                parking_allocated: 1,
+              },
+            ],
+          },
+        ],
+      },
     ],
-    // 55/45 on flat count over 18 flats → the owner should hold ~8
+    // 55/45 on flat count over 32 flats → the owner should hold ~14
     landowner_allocation: {
       owner_key: 'rafiqul',
-      unit_codes: ['A-3A', 'A-4B', 'A-5A', 'A-6B', 'A-7A', 'A-8B', 'A-9A', 'A-10B'],
+      unit_codes: [
+        'A-3A', 'A-4B', 'A-5A', 'A-6B', 'A-7A', 'A-8B', 'A-9A', 'A-10B',
+        'B-2B', 'B-3A', 'B-4B', 'B-5A', 'B-6B', 'B-7A',
+      ],
     },
     unit_status_overrides: {
       sold: ['A-2A', 'A-2B', 'A-3B'],

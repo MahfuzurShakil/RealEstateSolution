@@ -1,7 +1,19 @@
 'use client';
 
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Building2, FileText, Layers, Map, Users } from 'lucide-react';
+import Link from 'next/link';
+import {
+  Building2,
+  CalendarClock,
+  FileText,
+  Layers,
+  Map,
+  UserRound,
+  Users,
+} from 'lucide-react';
+import { Badge } from '@/components/ui/Badge';
+import { FOLLOW_UP_META, LEAD_STATUS_META, followUpState } from '@/lib/domain/lead';
+import { formatDate, formatPhone, todayLocal } from '@/lib/utils/format';
 import { DemoDataCard } from '@/components/admin/DemoDataCard';
 import { Card } from '@/components/ui/Card';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -9,6 +21,7 @@ import {
   documentRepository,
   landRepository,
   landownerRepository,
+  leadRepository,
   projectRepository,
   towerRepository,
   unitRepository,
@@ -23,6 +36,11 @@ import { useMockSession } from '@/lib/auth/mock-session';
 export default function AdminDashboardPage() {
   const { userName } = useMockSession();
 
+  const today = todayLocal();
+
+  /** The sales team's daily task list (Section 4.4). */
+  const followUps = useLiveQuery(() => leadRepository.followUpQueue(today), [today]);
+
   const counts = useLiveQuery(
     async () => ({
       lands: await landRepository.count(),
@@ -31,6 +49,7 @@ export default function AdminDashboardPage() {
       projects: await projectRepository.count(),
       towers: await towerRepository.count(),
       units: await unitRepository.count(),
+      leads: await leadRepository.count(),
     }),
     [],
   );
@@ -56,10 +75,16 @@ export default function AdminDashboardPage() {
       tint: 'bg-emerald-100 text-emerald-600',
     },
     {
+      label: 'Leads',
+      value: counts?.leads,
+      icon: UserRound,
+      tint: 'bg-violet-100 text-violet-600',
+    },
+    {
       label: 'Documents',
       value: counts?.documents,
       icon: FileText,
-      tint: 'bg-violet-100 text-violet-600',
+      tint: 'bg-rose-100 text-rose-600',
     },
   ];
 
@@ -67,10 +92,10 @@ export default function AdminDashboardPage() {
     <>
       <PageHeader
         title={`Hello, ${userName}`}
-        subtitle="Modules 1 and 2 are live — the rest follow the roadmap, one at a time."
+        subtitle="Modules 1–3 are live — the rest follow the roadmap, one at a time."
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
         {tiles.map(({ label, value, icon: Icon, tint }) => (
           <Card key={label}>
             <div className={`mb-4 grid size-11 place-items-center rounded-xl ${tint}`}>
@@ -82,6 +107,52 @@ export default function AdminDashboardPage() {
         ))}
       </div>
 
+      <Card className="mt-6">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-base font-semibold text-ink">Follow-ups due</h2>
+          <Link href="/admin/leads" className="text-sm text-admin-700 hover:underline">
+            All leads
+          </Link>
+        </div>
+        {followUps === undefined ? (
+          <p className="text-sm text-ink-muted">Loading…</p>
+        ) : followUps.length === 0 ? (
+          <p className="text-sm text-ink-muted">
+            Nothing overdue or due today — the sales team is caught up.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {followUps.map(({ lead, date }) => {
+              const state = followUpState(date, today);
+              return (
+                <li key={lead.id}>
+                  <Link
+                    href={`/admin/leads/${lead.id}`}
+                    className="flex flex-wrap items-center gap-3 rounded-xl border border-hairline p-3 transition-colors hover:bg-admin-50/60"
+                  >
+                    <span className="grid size-9 shrink-0 place-items-center rounded-full bg-admin-50 text-admin-600">
+                      <CalendarClock className="size-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-ink">{lead.name}</p>
+                      <p className="text-xs text-ink-muted">
+                        {lead.code} · {formatPhone(lead.phone)} · {formatDate(date)}
+                      </p>
+                    </div>
+                    <Badge tone={LEAD_STATUS_META[lead.status].tone}>
+                      {LEAD_STATUS_META[lead.status].label}
+                    </Badge>
+                    {state !== 'none' && (
+                      <Badge tone={FOLLOW_UP_META[state].tone}>{FOLLOW_UP_META[state].label}</Badge>
+                    )}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Card>
+
       <div className="mt-6 grid gap-5 lg:grid-cols-2">
         <DemoDataCard />
 
@@ -89,11 +160,12 @@ export default function AdminDashboardPage() {
         <h2 className="text-base font-semibold text-ink">What is wired up</h2>
         <ul className="mt-3 space-y-2 text-sm text-ink-muted">
           <li>• Shared IndexedDB (Dexie) — one database for both portals</li>
-          <li>• Tables: documents, lookup_values, company_settings, lands, landowners, land_owner_mapping, land_jv_details, projects, land_project_mapping, towers, units</li>
+          <li>• Tables: documents, lookup_values, company_settings, lands, landowners, land_owner_mapping, land_jv_details, projects, land_project_mapping, towers, units, users, leads, lead_activities</li>
           <li>• Repository layer — UI never calls Dexie directly</li>
           <li>• Admin shell: sidebar groups for all eight modules, topbar with role simulation</li>
           <li>• Module 1 — Land Management, preloaded with sample records</li>
           <li>• Module 2 — Project Creation: towers, bulk unit generation, JV allocation check</li>
+          <li>• Module 3 — Sales / Lead / CRM: phone dedup, follow-up log, lost &amp; revive</li>
         </ul>
       </Card>
       </div>

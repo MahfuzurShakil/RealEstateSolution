@@ -1,0 +1,389 @@
+'use client';
+
+import Link from 'next/link';
+import { useMemo, useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import {
+  Building2,
+  CalendarClock,
+  Phone,
+  Plus,
+  Search,
+  UserRound,
+  Wallet,
+} from 'lucide-react';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Field, SelectInput, TextInput } from '@/components/ui/Field';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { LEAD_SOURCES, LEAD_STATUSES, type LeadSource, type LeadStatus } from '@/lib/db/types';
+import {
+  FOLLOW_UP_META,
+  LEAD_SOURCE_LABEL,
+  LEAD_STATUS_META,
+  followUpState,
+} from '@/lib/domain/lead';
+import {
+  leadRepository,
+  projectRepository,
+  userRepository,
+} from '@/lib/repositories';
+import { cn } from '@/lib/utils/cn';
+import { formatDate, formatPhone, todayLocal } from '@/lib/utils/format';
+
+type SortKey = 'newest' | 'oldest' | 'follow_up' | 'name';
+
+/** Lead list — Design Reference A.7, with the daily follow-up queue on top. */
+export default function LeadsListPage() {
+  const today = todayLocal();
+
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<LeadStatus | 'all'>('all');
+  const [source, setSource] = useState<LeadSource | 'all'>('all');
+  const [assignedTo, setAssignedTo] = useState<string>('all');
+  const [projectId, setProjectId] = useState('');
+  const [followUp, setFollowUp] = useState<'all' | 'overdue' | 'today'>('all');
+  const [sort, setSort] = useState<SortKey>('newest');
+
+  const leads = useLiveQuery(
+    () =>
+      leadRepository.list(
+        {
+          search,
+          status,
+          source,
+          assigned_to: assignedTo,
+          interested_project_id: projectId || undefined,
+          follow_up: followUp,
+        },
+        today,
+      ),
+    [search, status, source, assignedTo, projectId, followUp, today],
+  );
+
+  const allLeads = useLiveQuery(() => leadRepository.getAll(), []);
+  const dueMap = useLiveQuery(() => leadRepository.followUpDueMap(), []);
+  const salesTeam = useLiveQuery(() => userRepository.salesTeam(), []);
+  const projects = useLiveQuery(() => projectRepository.list(), []);
+
+  const teamById = useMemo(
+    () => new Map((salesTeam ?? []).map((u) => [u.id, u])),
+    [salesTeam],
+  );
+  const projectById = useMemo(
+    () => new Map((projects ?? []).map((p) => [p.id, p])),
+    [projects],
+  );
+
+  /** Overdue and due-today counts, for the queue banner. */
+  const queue = useMemo(() => {
+    let overdue = 0;
+    let dueToday = 0;
+    for (const date of (dueMap ?? new Map()).values()) {
+      if (date < today) overdue += 1;
+      else if (date === today) dueToday += 1;
+    }
+    return { overdue, dueToday };
+  }, [dueMap, today]);
+
+  const rows = useMemo(() => {
+    const list = [...(leads ?? [])];
+    switch (sort) {
+      case 'oldest':
+        return list.sort((a, b) => a.created_at.localeCompare(b.created_at));
+      case 'name':
+        return list.sort((a, b) => a.name.localeCompare(b.name));
+      case 'follow_up':
+        return list.sort((a, b) => {
+          const da = dueMap?.get(a.id) ?? '9999-12-31';
+          const dbb = dueMap?.get(b.id) ?? '9999-12-31';
+          return da.localeCompare(dbb);
+        });
+      default:
+        return list.sort((a, b) => b.created_at.localeCompare(a.created_at));
+    }
+  }, [leads, sort, dueMap]);
+
+  const loading = leads === undefined;
+  const hasAny = (allLeads?.length ?? 0) > 0;
+  const filtersActive =
+    Boolean(search) ||
+    status !== 'all' ||
+    source !== 'all' ||
+    assignedTo !== 'all' ||
+    Boolean(projectId) ||
+    followUp !== 'all';
+
+  function resetFilters() {
+    setSearch('');
+    setStatus('all');
+    setSource('all');
+    setAssignedTo('all');
+    setProjectId('');
+    setFollowUp('all');
+  }
+
+  return (
+    <>
+      <PageHeader
+        title="Leads"
+        subtitle="Inquiries from the website, WhatsApp, Facebook and walk-ins, through to booking or lost."
+        action={
+          <Link href="/admin/leads/new">
+            <Button>
+              <Plus className="size-4" /> Add Lead
+            </Button>
+          </Link>
+        }
+      />
+
+      {(queue.overdue > 0 || queue.dueToday > 0) && (
+        <div className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl border border-hairline bg-white p-4 shadow-sm">
+          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-admin-50 text-admin-600">
+            <CalendarClock className="size-5" />
+          </span>
+          <p className="mr-auto text-sm text-ink">
+            <span className="font-semibold">Today&apos;s follow-ups:</span>{' '}
+            {queue.overdue > 0 && (
+              <span className="text-red-600">{queue.overdue} overdue</span>
+            )}
+            {queue.overdue > 0 && queue.dueToday > 0 && ' · '}
+            {queue.dueToday > 0 && (
+              <span className="text-amber-600">{queue.dueToday} due today</span>
+            )}
+          </p>
+          {queue.overdue > 0 && (
+            <Button
+              size="sm"
+              variant={followUp === 'overdue' ? 'primary' : 'outline'}
+              onClick={() => setFollowUp(followUp === 'overdue' ? 'all' : 'overdue')}
+            >
+              Show overdue
+            </Button>
+          )}
+          {queue.dueToday > 0 && (
+            <Button
+              size="sm"
+              variant={followUp === 'today' ? 'primary' : 'outline'}
+              onClick={() => setFollowUp(followUp === 'today' ? 'all' : 'today')}
+            >
+              Show today
+            </Button>
+          )}
+        </div>
+      )}
+
+      <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
+        <aside className="min-w-0 space-y-5">
+          <Card>
+            <h2 className="mb-4 text-sm font-semibold text-ink">Filters</h2>
+            <div className="space-y-4">
+              <Field label="Search">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                  <TextInput
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Name, phone, code…"
+                    className="pr-9"
+                  />
+                </div>
+              </Field>
+
+              <Field label="Status">
+                <SelectInput
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value as LeadStatus | 'all')}
+                >
+                  <option value="all">All statuses</option>
+                  {LEAD_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {LEAD_STATUS_META[s].label}
+                    </option>
+                  ))}
+                </SelectInput>
+              </Field>
+
+              <Field label="Source">
+                <SelectInput
+                  value={source}
+                  onChange={(e) => setSource(e.target.value as LeadSource | 'all')}
+                >
+                  <option value="all">All sources</option>
+                  {LEAD_SOURCES.map((s) => (
+                    <option key={s} value={s}>
+                      {LEAD_SOURCE_LABEL[s]}
+                    </option>
+                  ))}
+                </SelectInput>
+              </Field>
+
+              <Field label="Assigned To">
+                <SelectInput value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}>
+                  <option value="all">Everyone</option>
+                  <option value="unassigned">Unassigned</option>
+                  {(salesTeam ?? []).map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </SelectInput>
+              </Field>
+
+              <Field label="Interested Project">
+                <SelectInput value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+                  <option value="">All projects</option>
+                  {(projects ?? []).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </SelectInput>
+              </Field>
+
+              <Field label="Follow-up">
+                <SelectInput
+                  value={followUp}
+                  onChange={(e) => setFollowUp(e.target.value as 'all' | 'overdue' | 'today')}
+                >
+                  <option value="all">Any</option>
+                  <option value="overdue">Overdue only</option>
+                  <option value="today">Due today</option>
+                </SelectInput>
+              </Field>
+
+              {filtersActive && (
+                <Button variant="outline" size="sm" className="w-full" onClick={resetFilters}>
+                  Clear filters
+                </Button>
+              )}
+            </div>
+          </Card>
+        </aside>
+
+        <section className="min-w-0">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-ink-muted">
+              {loading ? 'Loading…' : `Showing ${rows.length} lead${rows.length === 1 ? '' : 's'}`}
+            </p>
+            <SelectInput
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+              className="w-auto max-w-[13rem]"
+            >
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="follow_up">Follow-up soonest</option>
+              <option value="name">Name A–Z</option>
+            </SelectInput>
+          </div>
+
+          {loading ? (
+            <div className="space-y-3">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="h-28 animate-pulse rounded-2xl border border-hairline bg-white"
+                />
+              ))}
+            </div>
+          ) : rows.length === 0 ? (
+            <EmptyState
+              icon={UserRound}
+              title={hasAny ? 'No lead matches these filters' : 'No lead yet'}
+              description={
+                hasAny
+                  ? 'Try clearing a filter or searching for a different name or number.'
+                  : 'Add the first inquiry — website, WhatsApp or walk-in — to start tracking it.'
+              }
+              action={
+                hasAny ? (
+                  <Button variant="outline" onClick={resetFilters}>
+                    Clear filters
+                  </Button>
+                ) : (
+                  <Link href="/admin/leads/new">
+                    <Button>
+                      <Plus className="size-4" /> Add Lead
+                    </Button>
+                  </Link>
+                )
+              }
+            />
+          ) : (
+            <div className="space-y-3">
+              {rows.map((lead) => {
+                const meta = LEAD_STATUS_META[lead.status];
+                const due = dueMap?.get(lead.id) ?? null;
+                const state = followUpState(due, today);
+                const assignee = lead.assigned_to ? teamById.get(lead.assigned_to) : undefined;
+                const project = lead.interested_project_id
+                  ? projectById.get(lead.interested_project_id)
+                  : undefined;
+
+                return (
+                  <Link key={lead.id} href={`/admin/leads/${lead.id}`} className="block">
+                    <Card
+                      className={cn(
+                        'transition-shadow hover:shadow-md',
+                        state === 'overdue' && 'border-l-4 border-l-red-400',
+                        state === 'today' && 'border-l-4 border-l-amber-400',
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-ink-muted">{lead.code}</p>
+                          <h3 className="truncate text-base font-semibold text-ink">{lead.name}</h3>
+                        </div>
+                        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                          {state !== 'none' && (
+                            <Badge tone={FOLLOW_UP_META[state].tone}>
+                              <CalendarClock className="size-3.5" />
+                              {FOLLOW_UP_META[state].label}
+                            </Badge>
+                          )}
+                          <Badge tone={meta.tone}>{meta.label}</Badge>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Badge>
+                          <Phone className="size-3.5" />
+                          {formatPhone(lead.phone)}
+                        </Badge>
+                        <Badge>{LEAD_SOURCE_LABEL[lead.source]}</Badge>
+                        {lead.budget_range && (
+                          <Badge>
+                            <Wallet className="size-3.5" />
+                            {lead.budget_range}
+                          </Badge>
+                        )}
+                        {project && (
+                          <Badge tone="teal">
+                            <Building2 className="size-3.5" />
+                            {project.name}
+                          </Badge>
+                        )}
+                        <Badge tone={assignee ? 'blue' : 'amber'}>
+                          <UserRound className="size-3.5" />
+                          {assignee?.name ?? 'Unassigned'}
+                        </Badge>
+                      </div>
+
+                      <p className="mt-3 text-xs text-ink-muted">
+                        Added {formatDate(lead.created_at)}
+                        {due && ` · Follow-up ${formatDate(due)}`}
+                      </p>
+                    </Card>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </div>
+    </>
+  );
+}

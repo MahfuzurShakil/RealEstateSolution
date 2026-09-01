@@ -340,3 +340,116 @@ export const AMENITY_OPTIONS = [
   'Substation',
   'Fire Fighting System',
 ] as const;
+
+/* ------------------------------------------------------------------ *
+ * Users (Section 9.4)
+ *
+ * Module 8 owns the management UI for these; the table lands here because
+ * Module 3 cannot assign a lead to a Sales Executive without it. The shape is
+ * exactly Section 9.4, so Module 8 only has to add screens on top.
+ * ------------------------------------------------------------------ */
+
+export const USER_ROLES = [
+  'super_admin',
+  'management',
+  'land_team',
+  'project_manager',
+  'sales_executive',
+  'sales_manager',
+  'head_of_sales',
+  'site_manager',
+  'procurement',
+  'accounts',
+] as const;
+export type UserRole = (typeof USER_ROLES)[number];
+
+export const USER_STATUSES = ['active', 'inactive'] as const;
+export type UserStatus = (typeof USER_STATUSES)[number];
+
+export interface User extends BaseEntity {
+  name: string;
+  phone: string;
+  email: string;
+  /** Phase A placeholder — no real auth (Section 0) */
+  password_hash: string;
+  role: UserRole;
+  status: UserStatus;
+  last_login_at?: ISODateTime | null;
+}
+
+/* ------------------------------------------------------------------ *
+ * Module 3 — Sales / Lead / CRM
+ * ------------------------------------------------------------------ */
+
+export const LEAD_STATUSES = [
+  'new',
+  'contacted',
+  'site_visit_scheduled',
+  'site_visit_done',
+  'negotiation',
+  'booked',
+  'lost',
+] as const;
+export type LeadStatus = (typeof LEAD_STATUSES)[number];
+
+export const LEAD_SOURCES = [
+  'website_form',
+  'whatsapp',
+  'facebook_ad',
+  'walk_in',
+  'referral',
+  'phone_call',
+  'other',
+] as const;
+export type LeadSource = (typeof LEAD_SOURCES)[number];
+
+export interface Lead extends BaseEntity {
+  code: string;                       // LEAD-2026-001
+  name: string;
+  /** UNIQUE — this is the dedup key (Section 4.5) */
+  phone: string;
+  email?: string | null;
+  source: LeadSource;
+  inquiry_message?: string | null;
+  interested_project_id?: UUID | null;
+  interested_unit_id?: UUID | null;
+  budget_range?: string | null;
+  /** Sales Executive, set by hand (Section 4.7 — no auto round-robin) */
+  assigned_to?: UUID | null;
+  status: LeadStatus;
+  /** filled when status = lost */
+  lost_reason?: string | null;
+}
+
+export const LEAD_ACTIVITY_TYPES = [
+  'call',
+  'whatsapp',
+  'email',
+  'site_visit',
+  'meeting',
+  'status_change',
+  'other',
+] as const;
+export type LeadActivityType = (typeof LEAD_ACTIVITY_TYPES)[number];
+
+export interface LeadActivity extends BaseEntity {
+  lead_id: UUID;
+  activity_type: LeadActivityType;
+  notes: string;
+  activity_date: ISODateTime;
+  /** drives the sales team's daily task list (Section 4.4) */
+  next_follow_up_date?: ISODate | null;
+}
+
+/** Document types for entity_type = 'lead' (Section 4.8) */
+export const LEAD_DOCUMENT_TYPES = ['nid_copy', 'other'] as const;
+
+/** Budget bands offered on the lead form — BDT, matching how buyers speak. */
+export const BUDGET_RANGE_OPTIONS = [
+  'Under 50 Lakh',
+  '50 Lakh – 1 Crore',
+  '1 – 1.5 Crore',
+  '1.5 – 2 Crore',
+  '2 – 3 Crore',
+  'Above 3 Crore',
+] as const;

@@ -7,6 +7,7 @@ import {
   FACING_OPTIONS,
   LAND_DOCUMENT_TYPES,
   LAND_SIZE_UNITS,
+  LEAD_DOCUMENT_TYPES,
   PROJECT_DOCUMENT_TYPES,
   UNIT_TYPE_OPTIONS,
 } from './types';
@@ -30,6 +31,7 @@ async function runSeed(): Promise<void> {
   // Module 1 already has rows, and Module 2's option-lists still need adding.
   await ensureOptions('document_type', 'land', [...LAND_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'project', [...PROJECT_DOCUMENT_TYPES]);
+  await ensureOptions('document_type', 'lead', [...LEAD_DOCUMENT_TYPES]);
   await ensureOptions('land_size_unit', null, [...LAND_SIZE_UNITS]);
   await ensureOptions('unit_type', null, [...UNIT_TYPE_OPTIONS]);
   await ensureOptions('facing', null, [...FACING_OPTIONS]);
