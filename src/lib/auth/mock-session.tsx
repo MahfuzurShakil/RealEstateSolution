@@ -1,6 +1,8 @@
 'use client';
 
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { userRepository } from '@/lib/repositories';
 
 /**
  * Phase A has no real auth (Section 0). Role is simulated with a dropdown so
@@ -31,9 +33,26 @@ const SessionContext = createContext<MockSession | null>(null);
 
 export function MockSessionProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<Role>('super_admin');
-  const value = useMemo(
-    () => ({ role, setRole, userName: 'Demo User', userId: 'mock-user' }),
+
+  /*
+   * Resolve the simulated role to a real `users` row where one exists, so
+   * anything that records who did something ("Approved by", `created_by`)
+   * points at an actual person instead of a placeholder id. Falls back to the
+   * placeholder on a database with no staff seeded.
+   */
+  const actingUser = useLiveQuery(
+    async () => (await userRepository.listByRole([role]))[0],
     [role],
+  );
+
+  const value = useMemo(
+    () => ({
+      role,
+      setRole,
+      userName: actingUser?.name ?? 'Demo User',
+      userId: actingUser?.id ?? 'mock-user',
+    }),
+    [role, actingUser],
   );
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

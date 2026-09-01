@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   Building2,
   CalendarClock,
+  FileSignature,
   Pencil,
   Phone,
   Trash2,
@@ -31,7 +32,7 @@ import {
   followUpState,
 } from '@/lib/domain/lead';
 import { UNIT_STATUS_META } from '@/lib/domain/project';
-import { leadRepository, userRepository } from '@/lib/repositories';
+import { customerRepository, leadRepository, userRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate, formatPhone, todayLocal } from '@/lib/utils/format';
 
@@ -56,6 +57,11 @@ export default function LeadDetailPage() {
   const [salesTeam, setSalesTeam] = useState<User[]>([]);
 
   const lead = useLiveQuery(() => leadRepository.getWithRelations(id), [id]);
+  /** the customer this lead became, if it has been converted (Section 5.3) */
+  const customer = useLiveQuery(
+    () => (lead ? customerRepository.findByPhone(lead.phone) : Promise.resolve(undefined)),
+    [lead?.phone],
+  );
 
   useEffect(() => {
     userRepository.salesTeam().then(setSalesTeam);
@@ -266,6 +272,48 @@ export default function LeadDetailPage() {
               </p>
             )}
           </Card>
+
+          {(lead.status === 'booked' || customer) && (
+            <Card>
+              <CardHeader title="Customer" />
+              {customer ? (
+                <>
+                  <Link
+                    href={`/admin/customers/${customer.id}`}
+                    className="flex items-center gap-3 rounded-xl border border-hairline p-3 transition-colors hover:bg-admin-50/60"
+                  >
+                    <span className="grid size-10 shrink-0 place-items-center rounded-full bg-admin-50 text-admin-600">
+                      <UserRound className="size-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-ink">{customer.name}</p>
+                      <p className="text-xs text-ink-muted">{customer.code}</p>
+                    </div>
+                  </Link>
+                  <Link
+                    href={`/admin/bookings/new?customer=${customer.id}`}
+                    className="mt-3 block"
+                  >
+                    <Button variant="outline" size="sm" className="w-full">
+                      <FileSignature className="size-4" /> Book a unit
+                    </Button>
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-ink-muted">
+                    This lead is booked but has no customer record yet. Converting copies the
+                    name, phone and email across.
+                  </p>
+                  <Link href={`/admin/customers/new?lead=${lead.id}`} className="mt-3 block">
+                    <Button size="sm" className="w-full">
+                      <UserRound className="size-4" /> Convert to customer
+                    </Button>
+                  </Link>
+                </>
+              )}
+            </Card>
+          )}
 
           <Card>
             <CardHeader title="Next Follow-up" />

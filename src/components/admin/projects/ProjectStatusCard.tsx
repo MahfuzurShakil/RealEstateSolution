@@ -6,49 +6,102 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { Field, TextInput } from '@/components/ui/Field';
+import { Field, TextArea, TextInput } from '@/components/ui/Field';
+import { useMockSession } from '@/lib/auth/mock-session';
 import type { Project, ProjectStatus } from '@/lib/db/types';
 import {
   PROJECT_PIPELINE_STEPS,
   PROJECT_STATUS_META,
+  PROJECT_STEP_CONFIG,
   allowedNextProjectStatuses,
-  statusStartsConstruction,
+  type ProjectStepField,
 } from '@/lib/domain/project';
 import { projectRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { todayLocal } from '@/lib/utils/format';
 
 /**
- * Pipeline trail + the valid transitions (Section 3.2). Moving to
- * `under_construction` also stamps `actual_start_date` — that is the moment the
- * field is for, and asking the user twice for the same date is noise.
+ * Pipeline trail + the transitions valid from the current status (Section 3.2).
+ *
+ * Every move opens a dialog that also captures what happened — the date it
+ * actually happened, who did it, the approval or work-order reference — and
+ * that becomes the Timeline tab. A stray click cannot advance a project, and
+ * six months later somebody can still see when RAJUK approved it.
  */
 export function ProjectStatusCard({ project }: { project: Project }) {
+  const { userId } = useMockSession();
   const [target, setTarget] = useState<ProjectStatus | null>(null);
-  const [date, setDate] = useState('');
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   const currentIndex = PROJECT_PIPELINE_STEPS.indexOf(project.status);
   const nextStatuses = allowedNextProjectStatuses(project.status);
-  const startsConstruction = target ? statusStartsConstruction(target) : false;
+  const config = target ? PROJECT_STEP_CONFIG[target] : null;
 
   function open(status: ProjectStatus) {
     setTarget(status);
-    setDate(project.actual_start_date ?? todayLocal());
+    setValues({
+      event_date:
+        status === 'under_construction' ? (project.actual_start_date ?? todayLocal()) : todayLocal(),
+    });
+    setError('');
   }
 
   async function confirm() {
-    if (!target) return;
+    if (!target || !config) return;
+    const missing = config.fields.find((f) => f.required && !values[f.key]?.trim());
+    if (missing) {
+      setError(`${missing.label.replace(' (required)', '')} is required`);
+      return;
+    }
+
     setBusy(true);
     try {
-      await projectRepository.update(project.id, {
-        status: target,
-        ...(startsConstruction ? { actual_start_date: date } : {}),
-      });
+      await projectRepository.setStatus(
+        project.id,
+        target,
+        {
+          event_date: values.event_date,
+          performed_by: values.performed_by?.trim() || null,
+          reference_no: values.reference_no?.trim() || null,
+          remarks: values.remarks?.trim() || null,
+        },
+        userId,
+      );
       setTarget(null);
     } finally {
       setBusy(false);
     }
+  }
+
+  function renderField(field: ProjectStepField) {
+    const value = values[field.key] ?? '';
+    const onChange = (v: string) => setValues((prev) => ({ ...prev, [field.key]: v }));
+
+    return (
+      <Field
+        key={field.key}
+        label={field.label}
+        required={field.required}
+        className="mt-3 first:mt-0"
+      >
+        {field.type === 'textarea' ? (
+          <TextArea
+            value={value}
+            placeholder={field.placeholder}
+            onChange={(e) => onChange(e.target.value)}
+          />
+        ) : (
+          <TextInput
+            type={field.type}
+            value={value}
+            placeholder={field.placeholder}
+            onChange={(e) => onChange(e.target.value)}
+          />
+        )}
+      </Field>
+    );
   }
 
   return (
@@ -56,9 +109,11 @@ export function ProjectStatusCard({ project }: { project: Project }) {
       <Card>
         <CardHeader
           title="Project Status"
-          action={<Badge tone={PROJECT_STATUS_META[project.status].tone}>
-            {PROJECT_STATUS_META[project.status].label}
-          </Badge>}
+          action={
+            <Badge tone={PROJECT_STATUS_META[project.status].tone}>
+              {PROJECT_STATUS_META[project.status].label}
+            </Badge>
+          }
         />
 
         <ol className="mb-4 space-y-2">
@@ -114,28 +169,19 @@ export function ProjectStatusCard({ project }: { project: Project }) {
       </Card>
 
       <ConfirmDialog
-        open={target !== null}
-        title={target ? `Move to ${PROJECT_STATUS_META[target].label}` : ''}
-        subtitle={project.code}
-        tone="default"
+        open={target !== null && config !== null}
+        title={config?.title ?? ''}
+        subtitle={`${project.code} · ${project.name}`}
+        tone={config?.tone ?? 'default'}
         icon={GitBranch}
-        confirmLabel="Update status"
-        message={
-          startsConstruction
-            ? 'Construction is starting — the date below is saved as the actual start date.'
-            : `The project moves from ${PROJECT_STATUS_META[project.status].label} to ${
-                target ? PROJECT_STATUS_META[target].label : ''
-              }.`
-        }
+        confirmLabel={config?.confirmLabel ?? 'Confirm'}
+        message={config?.question}
         busy={busy}
         onCancel={() => setTarget(null)}
         onConfirm={confirm}
       >
-        {startsConstruction && (
-          <Field label="Actual start date" required>
-            <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </Field>
-        )}
+        {config?.fields.map(renderField)}
+        {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
       </ConfirmDialog>
     </>
   );

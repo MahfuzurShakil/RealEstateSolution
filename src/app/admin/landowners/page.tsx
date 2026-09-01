@@ -3,17 +3,19 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
+import { Pencil, Plus, Search, Trash2, User, Users } from 'lucide-react';
 import { LandownerQuickAddModal } from '@/components/admin/lands/LandownerQuickAddModal';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { TextInput } from '@/components/ui/Field';
 import { PageHeader } from '@/components/ui/PageHeader';
 import type { Landowner } from '@/lib/db/types';
 import { landownerRepository } from '@/lib/repositories';
+import { formatPhone } from '@/lib/utils/format';
 import { db } from '@/lib/db/database';
 
 /** Landowner master list (Section 2.4) — reusable across lands. */
@@ -48,7 +50,99 @@ export default function LandownersPage() {
     setDeleteTarget(owner);
   }
 
-  const rows = (owners ?? []).slice().sort((a, b) => a.name.localeCompare(b.name));
+  const rows = owners ?? [];
+
+  /*
+   * The owner list only grows, so it is a paginated, sortable table rather than
+   * every row on one page (Design Reference A.7 / the UrbanHub datatable).
+   */
+  const columns: Column<Landowner>[] = [
+    {
+      key: 'name',
+      header: 'Name',
+      sortValue: (owner) => owner.name,
+      cell: (owner) => (
+        <div className="flex items-center gap-2.5">
+          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-admin-50 text-admin-600">
+            <User className="size-4" />
+          </span>
+          <span className="font-medium text-ink">{owner.name}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'phone',
+      header: 'Phone',
+      sortValue: (owner) => owner.phone ?? '',
+      cell: (owner) =>
+        owner.phone ? (
+          <a
+            href={`tel:${owner.phone}`}
+            className="text-admin-700 hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {formatPhone(owner.phone)}
+          </a>
+        ) : (
+          <span className="text-ink-muted">—</span>
+        ),
+    },
+    {
+      key: 'nid',
+      header: 'NID',
+      sortValue: (owner) => owner.nid ?? '',
+      cell: (owner) => <span className="text-ink-muted">{owner.nid || '—'}</span>,
+    },
+    {
+      key: 'address',
+      header: 'Address',
+      className: 'max-w-xs',
+      cell: (owner) => (
+        <span className="block truncate text-ink-muted">{owner.address || '—'}</span>
+      ),
+    },
+    {
+      key: 'lands',
+      header: 'Lands',
+      align: 'right',
+      sortValue: (owner) => usage?.[owner.id] ?? 0,
+      cell: (owner) => (
+        <Badge tone={usage?.[owner.id] ? 'teal' : 'neutral'}>{usage?.[owner.id] ?? 0}</Badge>
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      cell: (owner) => (
+        <div className="flex justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={`Edit ${owner.name}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditing(owner);
+              setModalOpen(true);
+            }}
+          >
+            <Pencil className="size-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={`Delete ${owner.name}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              requestDelete(owner);
+            }}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <>
@@ -81,83 +175,39 @@ export default function LandownersPage() {
 
       {owners === undefined ? (
         <p className="text-sm text-ink-muted">Loading…</p>
-      ) : rows.length === 0 ? (
-        <EmptyState
-          icon={Users}
-          title={search ? 'No landowner matches that search' : 'No landowner recorded yet'}
-          description={
-            search
-              ? 'Try a different name, phone number or NID.'
-              : 'Owners added here can be linked to any land.'
-          }
-          action={
-            !search ? (
-              <Button
-                onClick={() => {
-                  setEditing(null);
-                  setModalOpen(true);
-                }}
-              >
-                <Plus className="size-4" /> Add Landowner
-              </Button>
-            ) : undefined
+      ) : (
+        <DataTable
+          rows={rows}
+          columns={columns}
+          initialSort={{ key: 'name' }}
+          onRowClick={(owner) => {
+            setEditing(owner);
+            setModalOpen(true);
+          }}
+          emptyState={
+            <EmptyState
+              icon={Users}
+              title={search ? 'No landowner matches that search' : 'No landowner recorded yet'}
+              description={
+                search
+                  ? 'Try a different name, phone number or NID.'
+                  : 'Owners added here can be linked to any land.'
+              }
+              action={
+                !search ? (
+                  <Button
+                    onClick={() => {
+                      setEditing(null);
+                      setModalOpen(true);
+                    }}
+                  >
+                    <Plus className="size-4" /> Add Landowner
+                  </Button>
+                ) : undefined
+              }
+            />
           }
         />
-      ) : (
-        <Card className="overflow-x-auto p-0">
-          <table className="w-full min-w-[720px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-hairline text-xs uppercase tracking-wide text-ink-muted">
-                <th className="px-5 py-3 font-medium">Name</th>
-                <th className="px-5 py-3 font-medium">Phone</th>
-                <th className="px-5 py-3 font-medium">NID</th>
-                <th className="px-5 py-3 font-medium">Address</th>
-                <th className="px-5 py-3 font-medium">Lands</th>
-                <th className="px-5 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((owner) => (
-                <tr key={owner.id} className="border-b border-hairline last:border-0">
-                  <td className="px-5 py-3 font-medium text-ink">{owner.name}</td>
-                  <td className="px-5 py-3 text-ink-muted">{owner.phone || '—'}</td>
-                  <td className="px-5 py-3 text-ink-muted">{owner.nid || '—'}</td>
-                  <td className="max-w-xs truncate px-5 py-3 text-ink-muted">
-                    {owner.address || '—'}
-                  </td>
-                  <td className="px-5 py-3">
-                    <Badge tone={usage?.[owner.id] ? 'teal' : 'neutral'}>
-                      {usage?.[owner.id] ?? 0}
-                    </Badge>
-                  </td>
-                  <td className="px-5 py-3">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label="Edit landowner"
-                        onClick={() => {
-                          setEditing(owner);
-                          setModalOpen(true);
-                        }}
-                      >
-                        <Pencil className="size-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label="Delete landowner"
-                        onClick={() => requestDelete(owner)}
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
       )}
 
       <p className="mt-4 text-sm text-ink-muted">

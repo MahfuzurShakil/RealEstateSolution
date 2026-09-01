@@ -51,8 +51,8 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: UserRound,
     items: [
       { label: 'Leads', href: '/admin/leads' },
-      { label: 'Bookings', href: '/admin/bookings', disabled: true },
-      { label: 'Customers', href: '/admin/customers', disabled: true },
+      { label: 'Bookings', href: '/admin/bookings' },
+      { label: 'Customers', href: '/admin/customers' },
     ],
   },
   {

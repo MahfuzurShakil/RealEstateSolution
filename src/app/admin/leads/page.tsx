@@ -18,6 +18,9 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Field, SelectInput, TextInput } from '@/components/ui/Field';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { Pagination, usePagination } from '@/components/ui/Pagination';
+import { ResultCard } from '@/components/ui/ResultCard';
+import { ResultsLayout, ViewToggle, type ViewMode } from '@/components/ui/ViewToggle';
 import { LEAD_SOURCES, LEAD_STATUSES, type LeadSource, type LeadStatus } from '@/lib/db/types';
 import {
   FOLLOW_UP_META,
@@ -46,6 +49,7 @@ export default function LeadsListPage() {
   const [projectId, setProjectId] = useState('');
   const [followUp, setFollowUp] = useState<'all' | 'overdue' | 'today'>('all');
   const [sort, setSort] = useState<SortKey>('newest');
+  const [view, setView] = useState<ViewMode>('list');
 
   const leads = useLiveQuery(
     () =>
@@ -105,6 +109,8 @@ export default function LeadsListPage() {
         return list.sort((a, b) => b.created_at.localeCompare(a.created_at));
     }
   }, [leads, sort, dueMap]);
+
+  const paged = usePagination(rows);
 
   const loading = leads === undefined;
   const hasAny = (allLeads?.length ?? 0) > 0;
@@ -268,16 +274,19 @@ export default function LeadsListPage() {
             <p className="text-sm text-ink-muted">
               {loading ? 'Loading…' : `Showing ${rows.length} lead${rows.length === 1 ? '' : 's'}`}
             </p>
-            <SelectInput
-              value={sort}
-              onChange={(e) => setSort(e.target.value as SortKey)}
-              className="w-auto max-w-[13rem]"
-            >
-              <option value="newest">Newest first</option>
-              <option value="oldest">Oldest first</option>
-              <option value="follow_up">Follow-up soonest</option>
-              <option value="name">Name A–Z</option>
-            </SelectInput>
+            <div className="flex items-center gap-2">
+              <ViewToggle value={view} onChange={setView} />
+              <SelectInput
+                value={sort}
+                onChange={(e) => setSort(e.target.value as SortKey)}
+                className="w-auto max-w-[13rem]"
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="follow_up">Follow-up soonest</option>
+                <option value="name">Name A–Z</option>
+              </SelectInput>
+            </div>
           </div>
 
           {loading ? (
@@ -313,8 +322,9 @@ export default function LeadsListPage() {
               }
             />
           ) : (
-            <div className="space-y-3">
-              {rows.map((lead) => {
+            <>
+              <ResultsLayout view={view}>
+                {paged.pageRows.map((lead) => {
                 const meta = LEAD_STATUS_META[lead.status];
                 const due = dueMap?.get(lead.id) ?? null;
                 const state = followUpState(due, today);
@@ -323,21 +333,19 @@ export default function LeadsListPage() {
                   ? projectById.get(lead.interested_project_id)
                   : undefined;
 
-                return (
-                  <Link key={lead.id} href={`/admin/leads/${lead.id}`} className="block">
-                    <Card
-                      className={cn(
-                        'transition-shadow hover:shadow-md',
+                  return (
+                    <ResultCard
+                      key={lead.id}
+                      href={`/admin/leads/${lead.id}`}
+                      view={view}
+                      code={lead.code}
+                      title={lead.name}
+                      accent={cn(
                         state === 'overdue' && 'border-l-4 border-l-red-400',
                         state === 'today' && 'border-l-4 border-l-amber-400',
                       )}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-xs font-medium text-ink-muted">{lead.code}</p>
-                          <h3 className="truncate text-base font-semibold text-ink">{lead.name}</h3>
-                        </div>
-                        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                      status={
+                        <>
                           {state !== 'none' && (
                             <Badge tone={FOLLOW_UP_META[state].tone}>
                               <CalendarClock className="size-3.5" />
@@ -345,42 +353,56 @@ export default function LeadsListPage() {
                             </Badge>
                           )}
                           <Badge tone={meta.tone}>{meta.label}</Badge>
-                        </div>
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Badge>
-                          <Phone className="size-3.5" />
-                          {formatPhone(lead.phone)}
-                        </Badge>
-                        <Badge>{LEAD_SOURCE_LABEL[lead.source]}</Badge>
-                        {lead.budget_range && (
+                        </>
+                      }
+                      footer={
+                        <>
+                          Added {formatDate(lead.created_at)}
+                          {due && ` · Follow-up ${formatDate(due)}`}
+                        </>
+                      }
+                      facts={
+                        <>
                           <Badge>
-                            <Wallet className="size-3.5" />
-                            {lead.budget_range}
+                            <Phone className="size-3.5" />
+                            {formatPhone(lead.phone)}
                           </Badge>
-                        )}
-                        {project && (
-                          <Badge tone="teal">
-                            <Building2 className="size-3.5" />
-                            {project.name}
+                          <Badge>{LEAD_SOURCE_LABEL[lead.source]}</Badge>
+                          {lead.budget_range && (
+                            <Badge>
+                              <Wallet className="size-3.5" />
+                              {lead.budget_range}
+                            </Badge>
+                          )}
+                          {project && (
+                            <Badge tone="teal">
+                              <Building2 className="size-3.5" />
+                              {project.name}
+                            </Badge>
+                          )}
+                          <Badge tone={assignee ? 'blue' : 'amber'}>
+                            <UserRound className="size-3.5" />
+                            {assignee?.name ?? 'Unassigned'}
                           </Badge>
-                        )}
-                        <Badge tone={assignee ? 'blue' : 'amber'}>
-                          <UserRound className="size-3.5" />
-                          {assignee?.name ?? 'Unassigned'}
-                        </Badge>
-                      </div>
+                        </>
+                      }
+                    />
+                  );
+                })}
+              </ResultsLayout>
 
-                      <p className="mt-3 text-xs text-ink-muted">
-                        Added {formatDate(lead.created_at)}
-                        {due && ` · Follow-up ${formatDate(due)}`}
-                      </p>
-                    </Card>
-                  </Link>
-                );
-              })}
-            </div>
+              <Pagination
+                page={paged.page}
+                pageCount={paged.pageCount}
+                pageSize={paged.pageSize}
+                total={paged.total}
+                from={paged.from}
+                to={paged.to}
+                onPageChange={paged.setPage}
+                onPageSizeChange={paged.setPageSize}
+                label="leads"
+              />
+            </>
           )}
         </section>
       </div>

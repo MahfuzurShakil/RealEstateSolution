@@ -16,6 +16,7 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SelectInput, TextInput } from '@/components/ui/Field';
+import { ViewToggle, type ViewMode } from '@/components/ui/ViewToggle';
 import {
   ALLOCATION_TYPES,
   UNIT_STATUSES,
@@ -39,6 +40,7 @@ import {
 import { cn } from '@/lib/utils/cn';
 import { formatBdt } from '@/lib/utils/format';
 import { TowerFormModal } from './TowerFormModal';
+import { UnitMatrix } from './UnitMatrix';
 import { UnitBulkAllocateModal } from './UnitBulkAllocateModal';
 import { UnitBulkGenerateModal } from './UnitBulkGenerateModal';
 import { UnitEditModal } from './UnitEditModal';
@@ -57,6 +59,8 @@ export function TowersUnitsPanel({ projectId }: { projectId: string }) {
   const [status, setStatus] = useState<UnitStatus | 'all'>('all');
   const [allocation, setAllocation] = useState<AllocationType | 'all'>('all');
   const [search, setSearch] = useState('');
+  // the matrix is the default: a floor map reads far faster than 78 table rows
+  const [view, setView] = useState<ViewMode>('grid');
 
   const towers = useLiveQuery(() => towerRepository.listForProject(projectId), [projectId]);
   const owners = useLiveQuery(() => landownerRepository.getAll(), []);
@@ -183,9 +187,12 @@ export function TowersUnitsPanel({ projectId }: { projectId: string }) {
           <CardHeader
             title={`Units — ${activeTower.name} (${rows.length})`}
             action={
-              <Button size="sm" variant="outline" onClick={() => setGenerateFor(activeTower)}>
-                <Layers className="size-4" /> Generate units
-              </Button>
+              <div className="flex items-center gap-2">
+                <ViewToggle value={view} onChange={setView} />
+                <Button size="sm" variant="outline" onClick={() => setGenerateFor(activeTower)}>
+                  <Layers className="size-4" /> Generate units
+                </Button>
+              </div>
             }
           />
 
@@ -222,7 +229,7 @@ export function TowersUnitsPanel({ projectId }: { projectId: string }) {
             </SelectInput>
           </div>
 
-          {selection.length > 0 && (
+          {view === 'list' && selection.length > 0 && (
             <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-admin-200 bg-admin-50 p-3">
               <p className="mr-auto text-sm font-medium text-admin-800">
                 {selection.length} unit{selection.length === 1 ? '' : 's'} selected
@@ -250,6 +257,8 @@ export function TowersUnitsPanel({ projectId }: { projectId: string }) {
                 </Button>
               }
             />
+          ) : view === 'grid' ? (
+            <UnitMatrix units={rows} onSelect={setEditUnit} />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[900px] text-sm">

@@ -9,6 +9,7 @@ import type {
   Landowner,
   Project,
   ProjectStatus,
+  ProjectStatusEvent,
   ProjectType,
   Tower,
   Unit,
@@ -26,6 +27,7 @@ import {
 import { nextCode } from '../utils/id';
 import { BaseRepository, type NewRecord } from './base.repository';
 import { documentRepository } from './document.repository';
+import { installmentPlanTemplateRepository } from './payment.repository';
 
 export interface ProjectFilters {
   search?: string;
@@ -74,7 +76,10 @@ class ProjectRepository extends BaseRepository<Project> {
 
   async create(input: NewRecord<Project>, createdBy: string | null = null): Promise<Project> {
     const code = input.code?.trim() ? input.code : await this.generateCode();
-    return super.create({ ...input, code }, createdBy);
+    const project = await super.create({ ...input, code }, createdBy);
+    // every project starts on the system default payment plan (Section 8.2)
+    await installmentPlanTemplateRepository.seedForProject(project.id, createdBy);
+    return project;
   }
 
   async list(filters: ProjectFilters = {}): Promise<Project[]> {
@@ -114,6 +119,37 @@ class ProjectRepository extends BaseRepository<Project> {
     );
 
     return { ...project, lands, towers, unit_counts, unit_total: units.length };
+  }
+
+  /**
+   * Moves the project AND logs the confirmation details together, so a status
+   * can never change without leaving a trail (addendum, same as Module 1).
+   * Moving to `under_construction` also stamps `actual_start_date` — that is
+   * what the field is for, and asking twice for one date is noise.
+   */
+  async setStatus(
+    id: string,
+    status: ProjectStatus,
+    event: Omit<NewRecord<ProjectStatusEvent>, 'project_id' | 'from_status' | 'to_status'>,
+    createdBy: string | null = null,
+  ): Promise<Project | undefined> {
+    const current = await this.getById(id);
+    if (!current) return undefined;
+
+    await projectStatusEventRepository.create(
+      {
+        ...event,
+        project_id: id,
+        from_status: current.status,
+        to_status: status,
+      },
+      createdBy,
+    );
+
+    return this.update(id, {
+      status,
+      ...(status === 'under_construction' ? { actual_start_date: event.event_date } : {}),
+    });
   }
 
   async countByStatus(): Promise<Record<string, number>> {
@@ -177,6 +213,9 @@ class ProjectRepository extends BaseRepository<Project> {
 
   /** Removes the project with its land links, towers, units and documents. */
   async removeCascade(id: string): Promise<void> {
+    const history = await db.project_status_history.where('project_id').equals(id).toArray();
+    await db.project_status_history.bulkDelete(history.map((h) => h.id));
+
     const towers = await towerRepository.listForProject(id);
     for (const tower of towers) await towerRepository.removeCascade(tower.id);
 
@@ -184,6 +223,7 @@ class ProjectRepository extends BaseRepository<Project> {
     // JV-signed status, which raw deletion of the mappings would not
     await landProjectMappingRepository.setLandsForProject(id, []);
 
+    await installmentPlanTemplateRepository.removeForProject(id);
     await documentRepository.removeForEntity('project', id);
     await this.remove(id);
   }
@@ -406,6 +446,20 @@ function sortUnits(rows: Unit[]): Unit[] {
   );
 }
 
+/** Pipeline log for a project (Section 3.2 steps + the details captured). */
+class ProjectStatusEventRepository extends BaseRepository<ProjectStatusEvent> {
+  constructor() {
+    super(() => db.project_status_history);
+  }
+
+  /** Oldest first — this is a timeline. */
+  async listForProject(projectId: string): Promise<ProjectStatusEvent[]> {
+    const rows = await db.project_status_history.where('project_id').equals(projectId).toArray();
+    return rows.sort((a, b) => a.created_at.localeCompare(b.created_at));
+  }
+}
+
+export const projectStatusEventRepository = new ProjectStatusEventRepository();
 export const projectRepository = new ProjectRepository();
 export const landProjectMappingRepository = new LandProjectMappingRepository();
 export const towerRepository = new TowerRepository();

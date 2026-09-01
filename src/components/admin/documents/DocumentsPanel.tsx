@@ -70,12 +70,16 @@ export function DocumentsPanel({
 
   return (
     <>
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-ink-muted">
           {documents?.length ?? 0} document{documents?.length === 1 ? '' : 's'} · PDF, PNG, JPG or
           WEBP up to 5 MB
         </p>
-        <Button size="sm" onClick={() => setUploadOpen(true)}>
+        <Button
+          size="sm"
+          className="w-full sm:w-auto"
+          onClick={() => setUploadOpen(true)}
+        >
           <Upload className="size-4" /> Upload document
         </Button>
       </div>
@@ -96,7 +100,7 @@ export function DocumentsPanel({
           {documents?.map((doc) => (
             <li
               key={doc.id}
-              className="flex items-center gap-3 rounded-xl border border-hairline bg-white p-3"
+              className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-hairline bg-white p-3"
             >
               <span
                 className={cn(
@@ -116,18 +120,27 @@ export function DocumentsPanel({
                   {doc.notes ? ` · ${doc.notes}` : ''}
                 </p>
               </div>
-              {doc.is_public && <Badge tone="green">Public</Badge>}
-              <Button variant="ghost" size="sm" aria-label="View document" onClick={() => setViewing(doc)}>
-                <Eye className="size-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-label="Delete document"
-                onClick={() => setDeleteId(doc.id)}
-              >
-                <Trash2 className="size-4" />
-              </Button>
+              {/* full width on a phone, so it wraps under the name instead of
+                  squeezing it down to a few characters */}
+              <div className="flex w-full items-center justify-end gap-1 sm:w-auto">
+                {doc.is_public && <Badge tone="green">Public</Badge>}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="View document"
+                  onClick={() => setViewing(doc)}
+                >
+                  <Eye className="size-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Delete document"
+                  onClick={() => setDeleteId(doc.id)}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
             </li>
           ))}
         </ul>

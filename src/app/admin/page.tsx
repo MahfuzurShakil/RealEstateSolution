@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {
   Building2,
   CalendarClock,
+  FileSignature,
   FileText,
   Layers,
   Map,
@@ -12,12 +13,15 @@ import {
   Users,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
+import { BOOKING_STATUS_META, discountPct } from '@/lib/domain/booking';
 import { FOLLOW_UP_META, LEAD_STATUS_META, followUpState } from '@/lib/domain/lead';
-import { formatDate, formatPhone, todayLocal } from '@/lib/utils/format';
+import { formatBdt, formatDate, formatPhone, todayLocal } from '@/lib/utils/format';
 import { DemoDataCard } from '@/components/admin/DemoDataCard';
 import { Card } from '@/components/ui/Card';
 import { PageHeader } from '@/components/ui/PageHeader';
 import {
+  bookingRepository,
+  customerRepository,
   documentRepository,
   landRepository,
   landownerRepository,
@@ -40,6 +44,16 @@ export default function AdminDashboardPage() {
 
   /** The sales team's daily task list (Section 4.4). */
   const followUps = useLiveQuery(() => leadRepository.followUpQueue(today), [today]);
+  /** Bookings a manager has to sign off (Section 5.4). */
+  const pendingApprovals = useLiveQuery(
+    () => bookingRepository.list({ awaiting_approval: true }),
+    [],
+  );
+  const customerNameById = useLiveQuery(
+    async () =>
+      Object.fromEntries((await customerRepository.getAll()).map((c) => [c.id, c.name])),
+    [],
+  );
 
   const counts = useLiveQuery(
     async () => ({
@@ -50,6 +64,7 @@ export default function AdminDashboardPage() {
       towers: await towerRepository.count(),
       units: await unitRepository.count(),
       leads: await leadRepository.count(),
+      bookings: await bookingRepository.count(),
     }),
     [],
   );
@@ -81,10 +96,16 @@ export default function AdminDashboardPage() {
       tint: 'bg-violet-100 text-violet-600',
     },
     {
+      label: 'Bookings',
+      value: counts?.bookings,
+      icon: FileSignature,
+      tint: 'bg-rose-100 text-rose-600',
+    },
+    {
       label: 'Documents',
       value: counts?.documents,
       icon: FileText,
-      tint: 'bg-rose-100 text-rose-600',
+      tint: 'bg-slate-100 text-slate-600',
     },
   ];
 
@@ -92,10 +113,10 @@ export default function AdminDashboardPage() {
     <>
       <PageHeader
         title={`Hello, ${userName}`}
-        subtitle="Modules 1–3 are live — the rest follow the roadmap, one at a time."
+        subtitle="Modules 1–4 are live — the rest follow the roadmap, one at a time."
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         {tiles.map(({ label, value, icon: Icon, tint }) => (
           <Card key={label}>
             <div className={`mb-4 grid size-11 place-items-center rounded-xl ${tint}`}>
@@ -153,6 +174,43 @@ export default function AdminDashboardPage() {
         )}
       </Card>
 
+      {pendingApprovals && pendingApprovals.length > 0 && (
+        <Card className="mt-6">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-ink">Discount approvals waiting</h2>
+            <Link href="/admin/bookings" className="text-sm text-admin-700 hover:underline">
+              All bookings
+            </Link>
+          </div>
+          <ul className="space-y-2">
+            {pendingApprovals.map((booking) => (
+              <li key={booking.id}>
+                <Link
+                  href={`/admin/bookings/${booking.id}`}
+                  className="flex flex-wrap items-center gap-3 rounded-xl border border-hairline p-3 transition-colors hover:bg-admin-50/60"
+                >
+                  <span className="grid size-9 shrink-0 place-items-center rounded-full bg-amber-50 text-amber-600">
+                    <FileSignature className="size-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-ink">
+                      {customerNameById?.[booking.customer_id] ?? booking.code}
+                    </p>
+                    <p className="text-xs text-ink-muted">
+                      {booking.code} · {formatBdt(booking.discount_amount)} discount ·{' '}
+                      {discountPct(booking.base_price, booking.discount_amount).toFixed(1)}%
+                    </p>
+                  </div>
+                  <Badge tone={BOOKING_STATUS_META[booking.status].tone}>
+                    {BOOKING_STATUS_META[booking.status].label}
+                  </Badge>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       <div className="mt-6 grid gap-5 lg:grid-cols-2">
         <DemoDataCard />
 
@@ -160,12 +218,13 @@ export default function AdminDashboardPage() {
         <h2 className="text-base font-semibold text-ink">What is wired up</h2>
         <ul className="mt-3 space-y-2 text-sm text-ink-muted">
           <li>• Shared IndexedDB (Dexie) — one database for both portals</li>
-          <li>• Tables: documents, lookup_values, company_settings, lands, landowners, land_owner_mapping, land_jv_details, projects, land_project_mapping, towers, units, users, leads, lead_activities</li>
+          <li>• Tables: documents, lookup_values, company_settings, lands, landowners, land_owner_mapping, land_jv_details, projects, land_project_mapping, towers, units, users, leads, lead_activities, customers, bookings, discount_approval_rules</li>
           <li>• Repository layer — UI never calls Dexie directly</li>
           <li>• Admin shell: sidebar groups for all eight modules, topbar with role simulation</li>
           <li>• Module 1 — Land Management, preloaded with sample records</li>
           <li>• Module 2 — Project Creation: towers, bulk unit generation, JV allocation check</li>
           <li>• Module 3 — Sales / Lead / CRM: phone dedup, follow-up log, lost &amp; revive</li>
+          <li>• Module 4 — Booking &amp; Customer: discount approval gating, unit reservation</li>
         </ul>
       </Card>
       </div>

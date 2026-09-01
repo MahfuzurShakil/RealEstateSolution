@@ -8,6 +8,7 @@ import { ArrowLeft, Globe, Map as MapIcon, Pencil, Star, Trash2 } from 'lucide-r
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { JvAllocationCard } from '@/components/admin/projects/JvAllocationCard';
 import { ProjectStatusCard } from '@/components/admin/projects/ProjectStatusCard';
+import { ProjectTimeline } from '@/components/admin/projects/ProjectTimeline';
 import { TowersUnitsPanel } from '@/components/admin/projects/TowersUnitsPanel';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -21,7 +22,7 @@ import { cn } from '@/lib/utils/cn';
 import { formatDate } from '@/lib/utils/format';
 import { UNIT_STATUSES } from '@/lib/db/types';
 
-type Tab = 'overview' | 'towers' | 'allocation' | 'documents';
+type Tab = 'overview' | 'towers' | 'allocation' | 'timeline' | 'documents';
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -59,6 +60,7 @@ export default function ProjectDetailPage() {
     { key: 'overview', label: 'Overview' },
     { key: 'towers', label: `Towers & Units (${project.unit_total})` },
     { key: 'allocation', label: 'JV Allocation' },
+    { key: 'timeline', label: 'Timeline' },
     { key: 'documents', label: 'Documents' },
   ];
 
@@ -193,6 +195,13 @@ export default function ProjectDetailPage() {
           {tab === 'towers' && <TowersUnitsPanel projectId={project.id} />}
 
           {tab === 'allocation' && <JvAllocationCard projectId={project.id} />}
+
+          {tab === 'timeline' && (
+            <Card>
+              <CardHeader title="Pipeline history" />
+              <ProjectTimeline projectId={project.id} />
+            </Card>
+          )}
 
           {tab === 'documents' && (
             <Card>

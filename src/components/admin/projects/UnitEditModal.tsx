@@ -1,7 +1,10 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Home } from 'lucide-react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { Home, Lock } from 'lucide-react';
+import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Field, SelectInput, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
@@ -19,8 +22,15 @@ import {
   ALLOCATION_TYPE_LABEL,
   FOR_SALE_BY_LABEL,
   UNIT_STATUS_META,
+  isUnitEditable,
 } from '@/lib/domain/project';
-import { landownerRepository, lookupRepository, unitRepository } from '@/lib/repositories';
+import { BOOKING_STATUS_META } from '@/lib/domain/booking';
+import {
+  bookingRepository,
+  landownerRepository,
+  lookupRepository,
+  unitRepository,
+} from '@/lib/repositories';
 
 const str = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 const num = (v: string) => (v.trim() === '' ? null : Number(v));
@@ -28,6 +38,10 @@ const num = (v: string) => (v.trim() === '' ? null : Number(v));
 /**
  * Edit one unit — the odd floor the bulk generator could not cover.
  * Mounted only while open, so the form starts from the unit it was given.
+ *
+ * A sold or handed-over unit opens read-only: its price and allocation are
+ * already baked into a booking (and later a payment schedule), so changing
+ * them here would contradict signed paperwork.
  */
 export function UnitEditModal({
   open,
@@ -44,6 +58,10 @@ export function UnitEditModal({
   const [facings, setFacings] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const locked = !isUnitEditable(unit.status);
+  /** the booking that claimed this unit, so a locked unit can point at it */
+  const booking = useLiveQuery(() => bookingRepository.activeForUnit(unit.id), [unit.id]);
 
   useEffect(() => {
     landownerRepository.getAll().then((rows) =>
@@ -99,16 +117,44 @@ export function UnitEditModal({
       size="lg"
       onClose={onClose}
       footer={
-        <>
-          <Button variant="outline" onClick={onClose} disabled={saving}>
-            Cancel
+        locked ? (
+          <Button variant="outline" onClick={onClose}>
+            Close
           </Button>
-          <Button onClick={save} disabled={saving}>
-            {saving ? 'Saving…' : 'Save changes'}
-          </Button>
-        </>
+        ) : (
+          <>
+            <Button variant="outline" onClick={onClose} disabled={saving}>
+              Cancel
+            </Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? 'Saving…' : 'Save changes'}
+            </Button>
+          </>
+        )
       }
     >
+      {locked && (
+        <div className="mb-4 rounded-xl border border-slate-300 bg-slate-50 p-3">
+          <p className="flex items-start gap-2 text-sm font-medium text-slate-700">
+            <Lock className="mt-0.5 size-4 shrink-0" />
+            This unit is {UNIT_STATUS_META[unit.status].label.toLowerCase()} — read only
+          </p>
+          <p className="mt-1 text-xs text-slate-600">
+            Its price and allocation are part of a signed booking. Change them there, not here.
+          </p>
+          {booking && (
+            <Link href={`/admin/bookings/${booking.id}`} className="mt-3 inline-block">
+              <Button variant="outline" size="sm">
+                Open {booking.code}
+                <Badge tone={BOOKING_STATUS_META[booking.status].tone}>
+                  {BOOKING_STATUS_META[booking.status].label}
+                </Badge>
+              </Button>
+            </Link>
+          )}
+        </div>
+      )}
+      <fieldset disabled={locked} className={locked ? 'opacity-70' : undefined}>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="Unit Code" required>
           <TextInput value={form.code} onChange={(e) => set('code', e.target.value)} />
@@ -241,6 +287,7 @@ export function UnitEditModal({
           </SelectInput>
         </Field>
       </div>
+      </fieldset>
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
     </Modal>
   );

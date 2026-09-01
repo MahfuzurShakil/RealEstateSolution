@@ -1,22 +1,29 @@
 'use client';
 
 import {
+  bookingRepository,
+  customerRepository,
+  discountApprovalRuleRepository,
   documentRepository,
   landProjectMappingRepository,
   leadActivityRepository,
   leadRepository,
   projectRepository,
+  projectStatusEventRepository,
   towerRepository,
   unitRepository,
   userRepository,
   landJvRepository,
+  normalizePhone,
   landOwnerMappingRepository,
   landRepository,
   landStatusEventRepository,
   landownerRepository,
 } from '../repositories';
+import type { ProjectStatus } from './types';
 import { getDb } from './database';
 import { DEMO_LANDS, DEMO_OWNERS } from './demo-data';
+import { DEMO_BOOKINGS, DEMO_CUSTOMERS, DEMO_DISCOUNT_RULES } from './demo-bookings';
 import { DEMO_LEADS, DEMO_USERS } from './demo-leads';
 import { DEMO_PROJECTS } from './demo-projects';
 
@@ -204,7 +211,8 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
   }
 
   const { projectIds, unitIds } = await seedDemoProjects(landIds, ownerIds, createdBy);
-  await seedDemoLeads(projectIds, unitIds, createdBy);
+  const { userIds, leadIdByPhone } = await seedDemoLeads(projectIds, unitIds, createdBy);
+  await seedDemoBookings(projectIds, unitIds, userIds, leadIdByPhone, createdBy);
 
   setClearedFlag(false);
 }
@@ -355,6 +363,28 @@ async function seedDemoProjects(
       );
     }
 
+    // pipeline trail, so the Timeline tab has something in it
+    let previousStatus: ProjectStatus = 'planning';
+    for (const event of demo.history ?? []) {
+      const saved = await projectStatusEventRepository.create(
+        {
+          project_id: project.id,
+          from_status: previousStatus,
+          to_status: event.to_status,
+          event_date: event.event_date,
+          performed_by: event.performed_by ?? null,
+          reference_no: event.reference_no ?? null,
+          remarks: event.remarks ?? null,
+        },
+        createdBy,
+      );
+      // log entries carry the date of the step, not the moment of seeding
+      await db.project_status_history.update(saved.id, {
+        created_at: `${event.event_date}T09:00:00.000Z`,
+      });
+      previousStatus = event.to_status;
+    }
+
     projectIds.set(demo.name, project.id);
     for (const [code, unitId] of unitIdByCode) allUnitIds.set(`${demo.name}::${code}`, unitId);
   }
@@ -372,10 +402,12 @@ async function seedDemoLeads(
   projectIds: Map<string, string>,
   unitIds: Map<string, string>,
   createdBy: string | null,
-): Promise<void> {
+): Promise<{ userIds: Map<string, string>; leadIdByPhone: Map<string, string> }> {
   const db = getDb();
 
   const userIds = new Map<string, string>();
+  const leadIdByPhone = new Map<string, string>();
+
   for (const user of DEMO_USERS) {
     const saved = await userRepository.create(
       {
@@ -439,6 +471,113 @@ async function seedDemoLeads(
 
     const createdAt = daysFromToday(-demo.created_days_ago);
     await db.leads.update(lead.id, { created_at: createdAt, updated_at: createdAt });
+    leadIdByPhone.set(normalizePhone(demo.phone), lead.id);
+  }
+
+  return { userIds, leadIdByPhone };
+}
+
+/**
+ * Module 4 demo data. Bookings go through `createBooking` / `decideDiscount` /
+ * `cancel`, so the Section 5.6 side-effects (unit reserved, booked, released;
+ * lead moved to booked) are produced by the real code path, not faked here.
+ */
+async function seedDemoBookings(
+  projectIds: Map<string, string>,
+  unitIds: Map<string, string>,
+  userIds: Map<string, string>,
+  leadIdByPhone: Map<string, string>,
+  createdBy: string | null,
+): Promise<void> {
+  const db = getDb();
+
+  // the discount ceilings the gating rule reads (Section 5.4)
+  for (const rule of DEMO_DISCOUNT_RULES) {
+    await discountApprovalRuleRepository.upsertForRole(rule.role, rule.max_discount_pct);
+  }
+
+  const customerIds = new Map<string, string>();
+  for (const demo of DEMO_CUSTOMERS) {
+    const saved = await customerRepository.create(
+      {
+        code: '',
+        name: demo.name,
+        phone: demo.phone,
+        email: demo.email ?? null,
+        nid: demo.nid ?? null,
+        address: demo.address ?? null,
+        profession: demo.profession ?? null,
+        lead_id: demo.from_lead_phone
+          ? (leadIdByPhone.get(normalizePhone(demo.from_lead_phone)) ?? null)
+          : null,
+      },
+      createdBy,
+    );
+    customerIds.set(demo.key, saved.id);
+
+    const createdAt = daysFromToday(-demo.created_days_ago);
+    await db.customers.update(saved.id, { created_at: createdAt, updated_at: createdAt });
+  }
+
+  for (const demo of DEMO_BOOKINGS) {
+    const customerId = customerIds.get(demo.customer_key);
+    const unitId = unitIds.get(`${demo.project_name}::${demo.unit_code}`);
+    const unit = unitId ? await db.units.get(unitId) : undefined;
+    if (!customerId || !unitId || !unit) continue;
+
+    const customer = await db.customers.get(customerId);
+    const booking = await bookingRepository.createBooking(
+      {
+        customer_id: customerId,
+        unit_id: unitId,
+        lead_id: customer?.lead_id ?? null,
+        booking_date: daysFromToday(-demo.days_ago).slice(0, 10),
+        base_price: unit.base_price,
+        floor_premium: demo.floor_premium,
+        facing_premium: demo.facing_premium,
+        parking_charge: demo.parking_charge,
+        other_charges: demo.other_charges,
+        discount_amount: demo.discount_amount,
+        booking_amount: demo.booking_amount,
+        installment_tenure_months: demo.installment_tenure_months ?? null,
+        booked_by: userIds.get(demo.booked_by_key) ?? null,
+      },
+      createdBy,
+    );
+
+    // receipts drive `booking_amount_received`, so they go in through the
+    // repository and the gating rule settles the status by itself
+    for (const receipt of demo.payments ?? []) {
+      await bookingRepository.recordPayment(
+        booking.id,
+        {
+          amount: receipt.amount,
+          payment_date: daysFromToday(-receipt.days_ago).slice(0, 10),
+          payment_method: receipt.method,
+          reference_no: receipt.reference_no ?? null,
+          notes: receipt.notes ?? null,
+          received_by: userIds.get(demo.booked_by_key) ?? null,
+        },
+        createdBy,
+      );
+    }
+
+    if (demo.discount_decision) {
+      await bookingRepository.decideDiscount(
+        booking.id,
+        demo.discount_decision.decision,
+        userIds.get(demo.discount_decision.approver_key) ?? null,
+        demo.discount_decision.note,
+        createdBy,
+      );
+    }
+
+    if (demo.cancel) {
+      await bookingRepository.cancel(booking.id, demo.cancel.reason, createdBy);
+    }
+
+    const createdAt = daysFromToday(-demo.days_ago);
+    await db.bookings.update(booking.id, { created_at: createdAt, updated_at: createdAt });
   }
 }
 
@@ -463,10 +602,16 @@ export async function clearDemoData(): Promise<void> {
     db.projects.clear(),
     db.land_project_mapping.clear(),
     db.towers.clear(),
+    db.project_status_history.clear(),
     db.units.clear(),
     db.users.clear(),
     db.leads.clear(),
     db.lead_activities.clear(),
+    db.customers.clear(),
+    db.bookings.clear(),
+    db.discount_approval_rules.clear(),
+    db.payments.clear(),
+    db.installment_plan_templates.clear(),
   ]);
   setClearedFlag(true);
 }

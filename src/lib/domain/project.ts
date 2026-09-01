@@ -225,3 +225,125 @@ export function jvAllocationSummary(
 export function isUnitSellable(status: UnitStatus): boolean {
   return status === 'available' || status === 'hold';
 }
+
+/**
+ * Once a unit is sold or handed over, its price and allocation are history —
+ * a booking and (later) a payment schedule were built on those numbers, so
+ * editing them here would quietly contradict signed paperwork. Such units open
+ * read-only instead of being un-clickable: people still need to see them.
+ */
+export function isUnitEditable(status: UnitStatus): boolean {
+  return status !== 'sold' && status !== 'handed_over';
+}
+
+
+/* ------------------------------------------------------------------ *
+ * What each pipeline step asks for before it is confirmed
+ *
+ * Same idea as Module 1's land steps: a stray click must not move a project
+ * forward silently, and what gets captured here becomes the Timeline tab.
+ * ------------------------------------------------------------------ */
+
+export interface ProjectStepField {
+  key: 'event_date' | 'performed_by' | 'reference_no' | 'remarks';
+  label: string;
+  placeholder: string;
+  type: 'date' | 'text' | 'textarea';
+  required?: boolean;
+}
+
+export interface ProjectStepConfig {
+  title: string;
+  question: string;
+  confirmLabel: string;
+  tone: 'default' | 'danger' | 'success' | 'warning';
+  fields: ProjectStepField[];
+}
+
+const REMARKS = (placeholder: string, required = false): ProjectStepField => ({
+  key: 'remarks',
+  label: required ? 'Remarks (required)' : 'Remarks',
+  placeholder,
+  type: 'textarea',
+  required,
+});
+
+export const PROJECT_STEP_CONFIG: Record<ProjectStatus, ProjectStepConfig> = {
+  planning: {
+    title: 'Move back to planning',
+    question: 'Send the project back to the planning stage.',
+    confirmLabel: 'Move to planning',
+    tone: 'warning',
+    fields: [
+      { key: 'event_date', label: 'Moved on', placeholder: '', type: 'date', required: true },
+      REMARKS('Why is the project going back?', true),
+    ],
+  },
+  design: {
+    title: 'Move to design',
+    question: 'Record that architectural design work has started.',
+    confirmLabel: 'Move to design',
+    tone: 'default',
+    fields: [
+      { key: 'event_date', label: 'Design started on', placeholder: '', type: 'date', required: true },
+      { key: 'performed_by', label: 'Architect / firm', placeholder: 'e.g. Volumezero Ltd.', type: 'text' },
+      { key: 'reference_no', label: 'Drawing set reference', placeholder: 'e.g. ARCH-2026-014', type: 'text' },
+      REMARKS('Layout decisions, unit mix, revisions expected...'),
+    ],
+  },
+  approval: {
+    title: 'Submit for approval',
+    question: 'Record that the design has gone to the approval authority.',
+    confirmLabel: 'Move to approval',
+    tone: 'default',
+    fields: [
+      { key: 'event_date', label: 'Submitted on', placeholder: '', type: 'date', required: true },
+      { key: 'performed_by', label: 'Authority', placeholder: 'e.g. RAJUK, CDA, Fire Service', type: 'text' },
+      { key: 'reference_no', label: 'File / memo number', placeholder: 'e.g. RAJUK/2026/4471', type: 'text' },
+      REMARKS('Conditions raised, queries to answer, expected timeline...'),
+    ],
+  },
+  under_construction: {
+    title: 'Start construction',
+    question: 'Confirm that construction has begun. This also sets the actual start date.',
+    confirmLabel: 'Start construction',
+    tone: 'success',
+    fields: [
+      { key: 'event_date', label: 'Actual start date', placeholder: '', type: 'date', required: true },
+      { key: 'performed_by', label: 'Contractor', placeholder: 'e.g. Base Tech Engineering', type: 'text' },
+      { key: 'reference_no', label: 'Work order number', placeholder: 'e.g. WO-2026-008', type: 'text' },
+      REMARKS('Piling started, site handed to contractor...'),
+    ],
+  },
+  nearly_complete: {
+    title: 'Mark nearly complete',
+    question: 'Record that the structure is finished and finishing work is on.',
+    confirmLabel: 'Mark nearly complete',
+    tone: 'default',
+    fields: [
+      { key: 'event_date', label: 'Reached on', placeholder: '', type: 'date', required: true },
+      REMARKS('What is left - lift installation, finishing, utility connections...'),
+    ],
+  },
+  handover_ongoing: {
+    title: 'Start handover',
+    question: 'Record that units are being handed over to buyers.',
+    confirmLabel: 'Start handover',
+    tone: 'success',
+    fields: [
+      { key: 'event_date', label: 'Handover started on', placeholder: '', type: 'date', required: true },
+      { key: 'reference_no', label: 'Occupancy certificate no.', placeholder: 'e.g. OC-2026-021', type: 'text' },
+      REMARKS('First units handed over, utility connections done...'),
+    ],
+  },
+  closed: {
+    title: 'Close the project',
+    question: 'Every unit is handed over and the project is finished.',
+    confirmLabel: 'Close project',
+    tone: 'success',
+    fields: [
+      { key: 'event_date', label: 'Closed on', placeholder: '', type: 'date', required: true },
+      REMARKS('Final accounts settled, warranty period notes...', true),
+    ],
+  },
+};

@@ -3,13 +3,16 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { LayoutGrid, List, MapPin, Plus, Ruler, Search, Wallet } from 'lucide-react';
+import { MapPin, Plus, Ruler, Search, Wallet } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Field, SelectInput, TextInput } from '@/components/ui/Field';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { Pagination, usePagination } from '@/components/ui/Pagination';
+import { ResultCard } from '@/components/ui/ResultCard';
+import { ResultsLayout, ViewToggle, type ViewMode } from '@/components/ui/ViewToggle';
 import { ACQUISITION_TYPES, LAND_STATUSES, type AcquisitionType, type LandStatus } from '@/lib/db/types';
 import {
   ACQUISITION_TYPE_LABEL,
@@ -17,7 +20,6 @@ import {
   LAND_STATUS_META,
 } from '@/lib/domain/land';
 import { landRepository } from '@/lib/repositories';
-import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
 type SortKey = 'newest' | 'oldest' | 'price_high' | 'price_low' | 'size_high';
@@ -29,7 +31,7 @@ export default function LandsListPage() {
   const [acquisitionType, setAcquisitionType] = useState<AcquisitionType | 'all'>('all');
   const [district, setDistrict] = useState('');
   const [sort, setSort] = useState<SortKey>('newest');
-  const [view, setView] = useState<'list' | 'grid'>('list');
+  const [view, setView] = useState<ViewMode>('list');
 
   const lands = useLiveQuery(
     () => landRepository.list({ search, status, acquisition_type: acquisitionType, district }),
@@ -57,6 +59,8 @@ export default function LandsListPage() {
         return list.sort((a, b) => b.created_at.localeCompare(a.created_at));
     }
   }, [lands, sort]);
+
+  const paged = usePagination(rows);
 
   const loading = lands === undefined;
   const hasAnyLand = (allLands?.length ?? 0) > 0;
@@ -155,25 +159,7 @@ export default function LandsListPage() {
               {loading ? 'Loading…' : `Showing ${rows.length} land${rows.length === 1 ? '' : 's'}`}
             </p>
             <div className="flex items-center gap-2">
-              <div className="flex rounded-xl border border-hairline bg-white p-1">
-                {(['list', 'grid'] as const).map((v) => {
-                  const Icon = v === 'list' ? List : LayoutGrid;
-                  return (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => setView(v)}
-                      aria-label={`${v} view`}
-                      className={cn(
-                        'grid size-8 place-items-center rounded-lg transition-colors',
-                        view === v ? 'bg-admin-500 text-white' : 'text-ink-muted hover:bg-admin-50',
-                      )}
-                    >
-                      <Icon className="size-4" />
-                    </button>
-                  );
-                })}
-              </div>
+              <ViewToggle value={view} onChange={setView} />
               <SelectInput
                 value={sort}
                 onChange={(e) => setSort(e.target.value as SortKey)}
@@ -218,46 +204,61 @@ export default function LandsListPage() {
               }
             />
           ) : (
-            <div className={cn(view === 'grid' ? 'grid gap-4 sm:grid-cols-2 2xl:grid-cols-3' : 'space-y-3')}>
-              {rows.map((land) => {
-                const meta = LAND_STATUS_META[land.status];
-                return (
-                  <Link key={land.id} href={`/admin/lands/${land.id}`} className="block">
-                    <Card className="transition-shadow hover:shadow-md">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-xs font-medium text-ink-muted">{land.code}</p>
-                          <h3 className="truncate text-base font-semibold text-ink">{land.name}</h3>
-                        </div>
-                        <Badge tone={meta.tone}>{meta.label}</Badge>
-                      </div>
+            <>
+              <ResultsLayout view={view}>
+                {paged.pageRows.map((land) => {
+                  const meta = LAND_STATUS_META[land.status];
+                  return (
+                    <ResultCard
+                      key={land.id}
+                      href={`/admin/lands/${land.id}`}
+                      view={view}
+                      code={land.code}
+                      title={land.name}
+                      status={<Badge tone={meta.tone}>{meta.label}</Badge>}
+                      footer={`Added ${formatDate(land.created_at)}`}
+                      facts={
+                        <>
+                          <Badge>
+                            <MapPin className="size-3.5" />
+                            {[land.location_area, land.location_district]
+                              .filter(Boolean)
+                              .join(', ')}
+                          </Badge>
+                          <Badge>
+                            <Ruler className="size-3.5" />
+                            {land.land_size} {LAND_SIZE_UNIT_LABEL[land.land_size_unit]}
+                          </Badge>
+                          <Badge>
+                            <Wallet className="size-3.5" />
+                            {formatBdt(land.negotiated_price ?? land.asking_price, {
+                              compact: true,
+                            })}
+                          </Badge>
+                          <Badge
+                            tone={land.acquisition_type === 'joint_venture' ? 'teal' : 'neutral'}
+                          >
+                            {ACQUISITION_TYPE_LABEL[land.acquisition_type]}
+                          </Badge>
+                        </>
+                      }
+                    />
+                  );
+                })}
+              </ResultsLayout>
 
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Badge>
-                          <MapPin className="size-3.5" />
-                          {[land.location_area, land.location_district].filter(Boolean).join(', ')}
-                        </Badge>
-                        <Badge>
-                          <Ruler className="size-3.5" />
-                          {land.land_size} {LAND_SIZE_UNIT_LABEL[land.land_size_unit]}
-                        </Badge>
-                        <Badge>
-                          <Wallet className="size-3.5" />
-                          {formatBdt(land.negotiated_price ?? land.asking_price, { compact: true })}
-                        </Badge>
-                        <Badge tone={land.acquisition_type === 'joint_venture' ? 'teal' : 'neutral'}>
-                          {ACQUISITION_TYPE_LABEL[land.acquisition_type]}
-                        </Badge>
-                      </div>
-
-                      <p className="mt-3 text-xs text-ink-muted">
-                        Added {formatDate(land.created_at)}
-                      </p>
-                    </Card>
-                  </Link>
-                );
-              })}
-            </div>
+              <Pagination
+                page={paged.page}
+                pageCount={paged.pageCount}
+                pageSize={paged.pageSize}
+                total={paged.total}
+                from={paged.from}
+                to={paged.to}
+                onPageChange={paged.setPage}
+                onPageSizeChange={paged.setPageSize}
+                label="lands"
+              />
+            </>
           )}
         </section>
       </div>

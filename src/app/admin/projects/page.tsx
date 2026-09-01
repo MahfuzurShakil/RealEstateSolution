@@ -7,8 +7,6 @@ import {
   Building2,
   CalendarDays,
   Globe,
-  LayoutGrid,
-  List,
   MapPin,
   Plus,
   Search,
@@ -20,10 +18,12 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Checkbox, Field, SelectInput, TextInput } from '@/components/ui/Field';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { Pagination, usePagination } from '@/components/ui/Pagination';
+import { ResultCard } from '@/components/ui/ResultCard';
+import { ResultsLayout, ViewToggle, type ViewMode } from '@/components/ui/ViewToggle';
 import { PROJECT_STATUSES, PROJECT_TYPES, type ProjectStatus, type ProjectType } from '@/lib/db/types';
 import { PROJECT_STATUS_META, PROJECT_TYPE_LABEL } from '@/lib/domain/project';
 import { projectRepository, unitRepository } from '@/lib/repositories';
-import { cn } from '@/lib/utils/cn';
 import { formatDate } from '@/lib/utils/format';
 
 type SortKey = 'newest' | 'oldest' | 'completion_soon' | 'name';
@@ -35,7 +35,7 @@ export default function ProjectsListPage() {
   const [projectType, setProjectType] = useState<ProjectType | 'all'>('all');
   const [publicOnly, setPublicOnly] = useState(false);
   const [sort, setSort] = useState<SortKey>('newest');
-  const [view, setView] = useState<'list' | 'grid'>('list');
+  const [view, setView] = useState<ViewMode>('list');
 
   const projects = useLiveQuery(
     () =>
@@ -78,6 +78,8 @@ export default function ProjectsListPage() {
         return list.sort((a, b) => b.created_at.localeCompare(a.created_at));
     }
   }, [projects, sort]);
+
+  const paged = usePagination(rows);
 
   const loading = projects === undefined;
   const hasAny = (allProjects?.length ?? 0) > 0;
@@ -172,25 +174,7 @@ export default function ProjectsListPage() {
                 : `Showing ${rows.length} project${rows.length === 1 ? '' : 's'}`}
             </p>
             <div className="flex items-center gap-2">
-              <div className="flex rounded-xl border border-hairline bg-white p-1">
-                {(['list', 'grid'] as const).map((v) => {
-                  const Icon = v === 'list' ? List : LayoutGrid;
-                  return (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => setView(v)}
-                      aria-label={`${v} view`}
-                      className={cn(
-                        'grid size-8 place-items-center rounded-lg transition-colors',
-                        view === v ? 'bg-admin-500 text-white' : 'text-ink-muted hover:bg-admin-50',
-                      )}
-                    >
-                      <Icon className="size-4" />
-                    </button>
-                  );
-                })}
-              </div>
+              <ViewToggle value={view} onChange={setView} />
               <SelectInput
                 value={sort}
                 onChange={(e) => setSort(e.target.value as SortKey)}
@@ -237,64 +221,71 @@ export default function ProjectsListPage() {
               }
             />
           ) : (
-            <div
-              className={cn(
-                view === 'grid' ? 'grid gap-4 sm:grid-cols-2 2xl:grid-cols-3' : 'space-y-3',
-              )}
-            >
-              {rows.map((project) => {
-                const meta = PROJECT_STATUS_META[project.status];
-                const stats = unitStats?.get(project.id);
-                return (
-                  <Link key={project.id} href={`/admin/projects/${project.id}`} className="block">
-                    <Card className="transition-shadow hover:shadow-md">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-xs font-medium text-ink-muted">{project.code}</p>
-                          <h3 className="truncate text-base font-semibold text-ink">
-                            {project.name}
-                          </h3>
-                        </div>
-                        <Badge tone={meta.tone}>{meta.label}</Badge>
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {project.location_summary && (
+            <>
+              <ResultsLayout view={view}>
+                {paged.pageRows.map((project) => {
+                  const meta = PROJECT_STATUS_META[project.status];
+                  const stats = unitStats?.get(project.id);
+                  return (
+                    <ResultCard
+                      key={project.id}
+                      href={`/admin/projects/${project.id}`}
+                      view={view}
+                      code={project.code}
+                      title={project.name}
+                      status={
+                        <>
+                          <Badge tone={meta.tone}>{meta.label}</Badge>
+                          {project.is_featured && (
+                            <Badge tone="amber">
+                              <Star className="size-3.5" /> Featured
+                            </Badge>
+                          )}
+                        </>
+                      }
+                      footer={`Added ${formatDate(project.created_at)}`}
+                      facts={
+                        <>
+                          {project.location_summary && (
+                            <Badge>
+                              <MapPin className="size-3.5" />
+                              {project.location_summary}
+                            </Badge>
+                          )}
+                          <Badge>{PROJECT_TYPE_LABEL[project.project_type]}</Badge>
                           <Badge>
-                            <MapPin className="size-3.5" />
-                            {project.location_summary}
+                            <CalendarDays className="size-3.5" />
+                            Completion {formatDate(project.expected_completion_date)}
                           </Badge>
-                        )}
-                        <Badge>{PROJECT_TYPE_LABEL[project.project_type]}</Badge>
-                        <Badge>
-                          <CalendarDays className="size-3.5" />
-                          Completion {formatDate(project.expected_completion_date)}
-                        </Badge>
-                        {stats && stats.total > 0 && (
-                          <Badge tone="teal">
-                            {stats.total} units · {stats.available} available
-                          </Badge>
-                        )}
-                        {project.is_public && (
-                          <Badge tone="green">
-                            <Globe className="size-3.5" /> Public
-                          </Badge>
-                        )}
-                        {project.is_featured && (
-                          <Badge tone="amber">
-                            <Star className="size-3.5" /> Featured
-                          </Badge>
-                        )}
-                      </div>
+                          {stats && stats.total > 0 && (
+                            <Badge tone="teal">
+                              {stats.total} units · {stats.available} available
+                            </Badge>
+                          )}
+                          {project.is_public && (
+                            <Badge tone="green">
+                              <Globe className="size-3.5" /> Public
+                            </Badge>
+                          )}
+                        </>
+                      }
+                    />
+                  );
+                })}
+              </ResultsLayout>
 
-                      <p className="mt-3 text-xs text-ink-muted">
-                        Added {formatDate(project.created_at)}
-                      </p>
-                    </Card>
-                  </Link>
-                );
-              })}
-            </div>
+              <Pagination
+                page={paged.page}
+                pageCount={paged.pageCount}
+                pageSize={paged.pageSize}
+                total={paged.total}
+                from={paged.from}
+                to={paged.to}
+                onPageChange={paged.setPage}
+                onPageSizeChange={paged.setPageSize}
+                label="projects"
+              />
+            </>
           )}
         </section>
       </div>

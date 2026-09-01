@@ -24,6 +24,22 @@ export interface DemoUser {
 
 export const DEMO_USERS: DemoUser[] = [
   {
+    key: 'admin',
+    name: 'Mahfuzur Rahman',
+    phone: '01710 100200',
+    email: 'admin@nokshiproperties.com.bd',
+    role: 'super_admin',
+    status: 'active',
+  },
+  {
+    key: 'chairman',
+    name: 'Anwar Hossain',
+    phone: '01711 200300',
+    email: 'chairman@nokshiproperties.com.bd',
+    role: 'management',
+    status: 'active',
+  },
+  {
     key: 'shakib',
     name: 'Shakib Al Mamun',
     phone: '01712 445566',

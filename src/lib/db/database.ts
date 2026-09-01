@@ -2,7 +2,11 @@
 
 import Dexie, { type EntityTable } from 'dexie';
 import type {
+  Booking,
   CompanySettings,
+  Customer,
+  DiscountApprovalRule,
+  InstallmentPlanTemplate,
   DocumentRecord,
   Land,
   LandJvDetails,
@@ -13,7 +17,9 @@ import type {
   Lead,
   LeadActivity,
   LookupValue,
+  Payment,
   Project,
+  ProjectStatusEvent,
   Tower,
   Unit,
   User,
@@ -45,6 +51,7 @@ export class AppDatabase extends Dexie {
   projects!: EntityTable<Project, 'id'>;
   land_project_mapping!: EntityTable<LandProjectMapping, 'id'>;
   towers!: EntityTable<Tower, 'id'>;
+  project_status_history!: EntityTable<ProjectStatusEvent, 'id'>;
   units!: EntityTable<Unit, 'id'>;
 
   // Users (Section 9.4) — Module 8 owns the UI, Module 3 needs the rows
@@ -53,6 +60,15 @@ export class AppDatabase extends Dexie {
   // Module 3 — Sales / Lead / CRM
   leads!: EntityTable<Lead, 'id'>;
   lead_activities!: EntityTable<LeadActivity, 'id'>;
+
+  // Module 4 — Booking & Customer
+  customers!: EntityTable<Customer, 'id'>;
+  bookings!: EntityTable<Booking, 'id'>;
+  discount_approval_rules!: EntityTable<DiscountApprovalRule, 'id'>;
+
+  // Finance — money capture, brought forward from Module 7 (Section 8.2)
+  payments!: EntityTable<Payment, 'id'>;
+  installment_plan_templates!: EntityTable<InstallmentPlanTemplate, 'id'>;
 
   constructor() {
     super('realestate_platform');
@@ -93,6 +109,25 @@ export class AppDatabase extends Dexie {
       leads:
         'id, &code, &phone, name, status, source, assigned_to, interested_project_id, interested_unit_id, created_at',
       lead_activities: 'id, lead_id, activity_type, activity_date, next_follow_up_date',
+    });
+
+    // v5 — Module 4 (Booking & Customer).
+    this.version(5).stores({
+      customers: 'id, &code, &phone, name, lead_id, created_at',
+      bookings:
+        'id, &code, customer_id, unit_id, lead_id, status, discount_approval_status, booking_date, booked_by, created_at',
+      discount_approval_rules: 'id, &role',
+    });
+
+    // v6 — project pipeline audit trail (addendum, mirrors land_status_history)
+    this.version(6).stores({
+      project_status_history: 'id, project_id, to_status, event_date, created_at',
+    });
+
+    // v7 — money capture, brought forward from Module 7 (Section 8.2)
+    this.version(7).stores({
+      payments: 'id, booking_id, installment_id, payment_date, payment_method, received_by',
+      installment_plan_templates: 'id, project_id, sequence_no, [project_id+sequence_no]',
     });
   }
 }

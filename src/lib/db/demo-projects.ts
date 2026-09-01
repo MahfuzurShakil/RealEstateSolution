@@ -1,5 +1,13 @@
 import type { ProjectStatus, ProjectType, TowerStatus, UnitStatus } from './types';
 
+export interface DemoProjectEvent {
+  to_status: ProjectStatus;
+  event_date: string;
+  performed_by?: string;
+  reference_no?: string;
+  remarks?: string;
+}
+
 /**
  * Bangladesh-context demo dataset for Module 2, so the project screens open
  * with something realistic instead of empty lists.
@@ -70,6 +78,8 @@ export interface DemoProject {
   landowner_allocation?: { owner_key: string; unit_codes: string[] };
   /** unit codes that are not `available` any more */
   unit_status_overrides?: Partial<Record<UnitStatus, string[]>>;
+  /** pipeline trail; the last entry matches `status` */
+  history?: DemoProjectEvent[];
 }
 
 export const DEMO_PROJECTS: DemoProject[] = [
@@ -192,6 +202,29 @@ export const DEMO_PROJECTS: DemoProject[] = [
       reserved: ['A-6A'],
       hold: ['A-7B'],
     },
+    history: [
+      {
+        to_status: 'design',
+        event_date: '2026-05-18',
+        performed_by: 'Volumezero Ltd.',
+        reference_no: 'ARCH-2026-014',
+        remarks: 'দুই টাওয়ারের layout চূড়ান্ত — Tower A আগে, Tower B পরে।',
+      },
+      {
+        to_status: 'approval',
+        event_date: '2026-05-29',
+        performed_by: 'RAJUK',
+        reference_no: 'RAJUK/2026/4471',
+        remarks: 'Setback নিয়ে একটা query এসেছিল, drawing সংশোধন করে জমা দেওয়া হয়েছে।',
+      },
+      {
+        to_status: 'under_construction',
+        event_date: '2026-06-18',
+        performed_by: 'Base Tech Engineering',
+        reference_no: 'WO-2026-008',
+        remarks: 'Piling শুরু হয়েছে। সাইট ঠিকাদারকে বুঝিয়ে দেওয়া হয়েছে।',
+      },
+    ],
   },
   {
     name: 'Nokshi Uttara Heights',
@@ -255,6 +288,15 @@ export const DEMO_PROJECTS: DemoProject[] = [
       },
     ],
     unit_status_overrides: { hold: ['U-2A'] },
+    history: [
+      {
+        to_status: 'design',
+        event_date: '2026-08-04',
+        performed_by: 'Shatotto Architecture',
+        reference_no: 'ARCH-2026-031',
+        remarks: 'G+8, প্রতি তলায় দুইটা ইউনিট। Sector 13-এর height limit মাথায় রেখে।',
+      },
+    ],
   },
   {
     name: 'Nokshi Agrabad Trade Centre',
@@ -328,6 +370,22 @@ export const DEMO_PROJECTS: DemoProject[] = [
       owner_key: 'jashim',
       unit_codes: ['AG-2A', 'AG-3A', 'AG-4B'],
     },
+    history: [
+      {
+        to_status: 'design',
+        event_date: '2026-06-22',
+        performed_by: 'Vitti Sthapati Brindo',
+        reference_no: 'ARCH-2026-022',
+        remarks: 'Commercial tower, নিচে retail arcade আর উপরে office floor।',
+      },
+      {
+        to_status: 'approval',
+        event_date: '2026-07-30',
+        performed_by: 'CDA',
+        reference_no: 'CDA/2026/1180',
+        remarks: 'Fire safety clearance আলাদা করে জমা দিতে হবে — প্রক্রিয়াধীন।',
+      },
+    ],
   },
   {
     name: 'Nokshi Dhanmondi Court',
@@ -423,11 +481,47 @@ export const DEMO_PROJECTS: DemoProject[] = [
         ],
       },
     ],
+    /*
+     * D-6B, D-7A and D-2A are deliberately left alone here — Module 4's demo
+     * bookings cover those, and a unit's status should come from its booking
+     * rather than being set twice and disagreeing.
+     */
     unit_status_overrides: {
       handed_over: ['D-3A', 'D-3B', 'D-4A', 'D-4B', 'D-5A'],
-      sold: ['D-5B', 'D-6A', 'D-6B', 'D-2A'],
-      booked: ['D-7A'],
+      sold: ['D-5B', 'D-6A'],
       reserved: ['D-2B'],
     },
+    history: [
+      {
+        to_status: 'design',
+        event_date: '2024-03-20',
+        performed_by: 'Nakshabid Architects',
+        reference_no: 'ARCH-2024-009',
+        remarks: 'নিচতলায় দুইটা shop, উপরে residential — mixed use।',
+      },
+      {
+        to_status: 'approval',
+        event_date: '2024-03-28',
+        performed_by: 'RAJUK',
+        reference_no: 'RAJUK/2024/2210',
+      },
+      {
+        to_status: 'under_construction',
+        event_date: '2024-04-22',
+        performed_by: 'Concord Construction',
+        reference_no: 'WO-2024-003',
+      },
+      {
+        to_status: 'nearly_complete',
+        event_date: '2026-06-10',
+        remarks: 'Structure শেষ, lift বসানো আর finishing চলছে।',
+      },
+      {
+        to_status: 'handover_ongoing',
+        event_date: '2026-08-15',
+        reference_no: 'OC-2026-021',
+        remarks: 'Occupancy certificate পাওয়া গেছে, প্রথম পাঁচটা ফ্ল্যাট হস্তান্তর হয়েছে।',
+      },
+    ],
   },
 ];

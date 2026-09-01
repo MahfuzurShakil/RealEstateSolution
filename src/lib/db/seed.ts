@@ -4,6 +4,9 @@ import { companySettingsRepository, landRepository, lookupRepository } from '../
 import { demoDataWasCleared, seedDemoData } from './demo-seed';
 import {
   AMENITY_OPTIONS,
+  BOOKING_DOCUMENT_TYPES,
+  CUSTOMER_DOCUMENT_TYPES,
+  PAYMENT_DOCUMENT_TYPES,
   FACING_OPTIONS,
   LAND_DOCUMENT_TYPES,
   LAND_SIZE_UNITS,
@@ -32,6 +35,9 @@ async function runSeed(): Promise<void> {
   await ensureOptions('document_type', 'land', [...LAND_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'project', [...PROJECT_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'lead', [...LEAD_DOCUMENT_TYPES]);
+  await ensureOptions('document_type', 'customer', [...CUSTOMER_DOCUMENT_TYPES]);
+  await ensureOptions('document_type', 'booking', [...BOOKING_DOCUMENT_TYPES]);
+  await ensureOptions('document_type', 'payment', [...PAYMENT_DOCUMENT_TYPES]);
   await ensureOptions('land_size_unit', null, [...LAND_SIZE_UNITS]);
   await ensureOptions('unit_type', null, [...UNIT_TYPE_OPTIONS]);
   await ensureOptions('facing', null, [...FACING_OPTIONS]);
