@@ -7,14 +7,22 @@ import {
   CalendarClock,
   FileSignature,
   FileText,
+  HardHat,
   Layers,
   Map,
+  Package,
   UserRound,
   Users,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { BOOKING_STATUS_META, discountPct } from '@/lib/domain/booking';
 import { FOLLOW_UP_META, LEAD_STATUS_META, followUpState } from '@/lib/domain/lead';
+import {
+  MATERIAL_REQUEST_STATUS_META,
+  SCHEDULE_STATE_META,
+  rollupAcrossTowers,
+} from '@/lib/domain/site-progress';
+import { ProgressBar } from '@/components/admin/site-progress/ProgressBar';
 import { formatBdt, formatDate, formatPhone, todayLocal } from '@/lib/utils/format';
 import { DemoDataCard } from '@/components/admin/DemoDataCard';
 import { Card } from '@/components/ui/Card';
@@ -26,8 +34,11 @@ import {
   landRepository,
   landownerRepository,
   leadRepository,
+  materialRequestRepository,
   projectRepository,
+  siteProgressUpdateRepository,
   towerRepository,
+  towerWorkItemRepository,
   unitRepository,
 } from '@/lib/repositories';
 import { useMockSession } from '@/lib/auth/mock-session';
@@ -65,7 +76,19 @@ export default function AdminDashboardPage() {
       units: await unitRepository.count(),
       leads: await leadRepository.count(),
       bookings: await bookingRepository.count(),
+      site_updates: await siteProgressUpdateRepository.count(),
+      material_requests: await materialRequestRepository.count(),
     }),
+    [],
+  );
+
+  /** Construction progress across every tower (Section 6.3). */
+  const workItems = useLiveQuery(() => towerWorkItemRepository.getAll(), []);
+  const progress = rollupAcrossTowers(workItems ?? [], today);
+
+  /** The Procurement inbox (Section 6.5). */
+  const pendingRequests = useLiveQuery(
+    () => materialRequestRepository.list({ pending_only: true }),
     [],
   );
 
@@ -102,6 +125,18 @@ export default function AdminDashboardPage() {
       tint: 'bg-rose-100 text-rose-600',
     },
     {
+      label: 'Site Updates',
+      value: counts?.site_updates,
+      icon: HardHat,
+      tint: 'bg-amber-100 text-amber-600',
+    },
+    {
+      label: 'Material Requests',
+      value: counts?.material_requests,
+      icon: Package,
+      tint: 'bg-teal-100 text-teal-600',
+    },
+    {
       label: 'Documents',
       value: counts?.documents,
       icon: FileText,
@@ -113,10 +148,10 @@ export default function AdminDashboardPage() {
     <>
       <PageHeader
         title={`Hello, ${userName}`}
-        subtitle="Modules 1–4 are live — the rest follow the roadmap, one at a time."
+        subtitle="Modules 1–5 are live — the rest follow the roadmap, one at a time."
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
         {tiles.map(({ label, value, icon: Icon, tint }) => (
           <Card key={label}>
             <div className={`mb-4 grid size-11 place-items-center rounded-xl ${tint}`}>
@@ -127,6 +162,83 @@ export default function AdminDashboardPage() {
           </Card>
         ))}
       </div>
+
+      <Card className="mt-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-base font-semibold text-ink">Construction progress</h2>
+          <Link href="/admin/site-progress" className="text-sm text-admin-700 hover:underline">
+            Site log
+          </Link>
+        </div>
+        {workItems === undefined ? (
+          <p className="text-sm text-ink-muted">Loading…</p>
+        ) : workItems.length === 0 ? (
+          <p className="text-sm text-ink-muted">
+            No tower has a work breakdown yet — add a tower and its default WBS comes with it.
+          </p>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-baseline gap-3">
+              <span className="text-3xl font-semibold text-ink">
+                {progress.actual_pct.toFixed(1)}%
+              </span>
+              <span className="text-sm text-ink-muted">
+                {progress.planned_pct === null
+                  ? 'no planned dates set'
+                  : `planned ${progress.planned_pct.toFixed(1)}% by today`}
+              </span>
+              <Badge tone={SCHEDULE_STATE_META[progress.state].tone}>
+                {SCHEDULE_STATE_META[progress.state].label}
+              </Badge>
+            </div>
+            <div className="mt-3">
+              <ProgressBar value={progress.actual_pct} planned={progress.planned_pct} />
+            </div>
+            <p className="mt-3 text-xs text-ink-muted">
+              Weighted across every tower in every project.
+            </p>
+          </>
+        )}
+      </Card>
+
+      {pendingRequests && pendingRequests.length > 0 && (
+        <Card className="mt-6">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-ink">Material requests waiting</h2>
+            <Link href="/admin/material-requests" className="text-sm text-admin-700 hover:underline">
+              All requests
+            </Link>
+          </div>
+          <ul className="space-y-2">
+            {pendingRequests.map((request) => (
+              <li key={request.id}>
+                <Link
+                  href={`/admin/material-requests/${request.id}`}
+                  className="flex flex-wrap items-center gap-3 rounded-xl border border-hairline p-3 transition-colors hover:bg-admin-50/60"
+                >
+                  <span className="grid size-9 shrink-0 place-items-center rounded-full bg-amber-50 text-amber-600">
+                    <Package className="size-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-ink">
+                      {request.items[0]?.item_name ?? request.code}
+                      {request.items.length > 1 && ` +${request.items.length - 1} more`}
+                    </p>
+                    <p className="text-xs text-ink-muted">
+                      {request.code} · {request.project?.name ?? 'Project removed'}
+                      {request.tower ? ` · ${request.tower.name}` : ''} ·{' '}
+                      {formatDate(request.request_date)}
+                    </p>
+                  </div>
+                  <Badge tone={MATERIAL_REQUEST_STATUS_META[request.status].tone}>
+                    {MATERIAL_REQUEST_STATUS_META[request.status].label}
+                  </Badge>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <Card className="mt-6">
         <div className="mb-4 flex items-center justify-between gap-3">
@@ -218,13 +330,14 @@ export default function AdminDashboardPage() {
         <h2 className="text-base font-semibold text-ink">What is wired up</h2>
         <ul className="mt-3 space-y-2 text-sm text-ink-muted">
           <li>• Shared IndexedDB (Dexie) — one database for both portals</li>
-          <li>• Tables: documents, lookup_values, company_settings, lands, landowners, land_owner_mapping, land_jv_details, projects, land_project_mapping, towers, units, users, leads, lead_activities, customers, bookings, discount_approval_rules</li>
+          <li>• Tables: documents, lookup_values, company_settings, lands, landowners, land_owner_mapping, land_jv_details, projects, land_project_mapping, towers, units, users, leads, lead_activities, customers, bookings, discount_approval_rules, payments, installment_plan_templates, tower_work_items, site_progress_updates, material_requests, material_request_items</li>
           <li>• Repository layer — UI never calls Dexie directly</li>
           <li>• Admin shell: sidebar groups for all eight modules, topbar with role simulation</li>
           <li>• Module 1 — Land Management, preloaded with sample records</li>
           <li>• Module 2 — Project Creation: towers, bulk unit generation, JV allocation check</li>
           <li>• Module 3 — Sales / Lead / CRM: phone dedup, follow-up log, lost &amp; revive</li>
           <li>• Module 4 — Booking &amp; Customer: discount approval gating, unit reservation</li>
+          <li>• Module 5 — Site Progress: per-tower WBS, daily log with planned-vs-actual, material requests</li>
         </ul>
       </Card>
       </div>

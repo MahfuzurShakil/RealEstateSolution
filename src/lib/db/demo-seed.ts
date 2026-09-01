@@ -19,13 +19,17 @@ import {
   landRepository,
   landStatusEventRepository,
   landownerRepository,
+  materialRequestRepository,
+  siteProgressUpdateRepository,
+  towerWorkItemRepository,
 } from '../repositories';
-import type { ProjectStatus } from './types';
+import type { MaterialRequestStatus, ProjectStatus } from './types';
 import { getDb } from './database';
 import { DEMO_LANDS, DEMO_OWNERS } from './demo-data';
 import { DEMO_BOOKINGS, DEMO_CUSTOMERS, DEMO_DISCOUNT_RULES } from './demo-bookings';
 import { DEMO_LEADS, DEMO_USERS } from './demo-leads';
 import { DEMO_PROJECTS } from './demo-projects';
+import { DEMO_MATERIAL_REQUESTS, DEMO_TOWER_PROGRESS } from './demo-site-progress';
 
 /**
  * Loads the Bangladesh demo dataset (Module 1) so a fresh install opens with
@@ -213,6 +217,7 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
   const { projectIds, unitIds } = await seedDemoProjects(landIds, ownerIds, createdBy);
   const { userIds, leadIdByPhone } = await seedDemoLeads(projectIds, unitIds, createdBy);
   await seedDemoBookings(projectIds, unitIds, userIds, leadIdByPhone, createdBy);
+  await seedDemoSiteProgress(projectIds, userIds, createdBy);
 
   setClearedFlag(false);
 }
@@ -581,6 +586,186 @@ async function seedDemoBookings(
   }
 }
 
+
+/**
+ * Module 5 demo data.
+ *
+ * The tower's default WBS already exists (Module 2 creates it with the tower),
+ * so this retunes the weights and plan dates and then replays the readings
+ * through `siteProgressUpdateRepository.log` — the same call the Log Update
+ * dialog makes. Nothing here writes `actual_progress_pct` or the tower's
+ * cached percentage by hand: they fall out of the logged readings, which is
+ * the only way to be sure the Section 6.3 behaviour actually works.
+ */
+async function seedDemoSiteProgress(
+  projectIds: Map<string, string>,
+  userIds: Map<string, string>,
+  createdBy: string | null,
+): Promise<void> {
+  const db = getDb();
+
+  for (const demo of DEMO_TOWER_PROGRESS) {
+    const projectId = projectIds.get(demo.project_name);
+    if (!projectId) continue;
+
+    const towers = await db.towers.where('project_id').equals(projectId).toArray();
+    const tower = towers.find((t) => t.name === demo.tower_name);
+    if (!tower) continue;
+
+    const existing = await towerWorkItemRepository.listForTower(tower.id);
+    const byName = new Map(existing.map((i) => [i.name, i]));
+
+    for (const [index, demoItem] of demo.items.entries()) {
+      const plan = {
+        weight_pct: demoItem.weight_pct,
+        sequence_no: index + 1,
+        planned_start_date:
+          demoItem.planned_start_in_days === null
+            ? null
+            : daysFromToday(demoItem.planned_start_in_days).slice(0, 10),
+        planned_end_date:
+          demoItem.planned_end_in_days === null
+            ? null
+            : daysFromToday(demoItem.planned_end_in_days).slice(0, 10),
+      };
+
+      let item = byName.get(demoItem.name);
+      if (item) {
+        await towerWorkItemRepository.updateItem(item.id, plan);
+      } else {
+        item = await towerWorkItemRepository.create(
+          {
+            ...plan,
+            tower_id: tower.id,
+            name: demoItem.name,
+            actual_progress_pct: 0,
+            status: 'not_started',
+          },
+          createdBy,
+        );
+      }
+
+      for (const reading of demoItem.readings ?? []) {
+        const reporter = reading.by ? (userIds.get(reading.by) ?? null) : null;
+        const update = await siteProgressUpdateRepository.log(
+          {
+            work_item_id: item.id,
+            update_date: daysFromToday(-reading.days_ago).slice(0, 10),
+            progress_pct: reading.progress_pct,
+            remarks: reading.remarks ?? null,
+            gps_lat: reading.gps?.[0] ?? null,
+            gps_lng: reading.gps?.[1] ?? null,
+            updated_by: reporter,
+          },
+          createdBy,
+        );
+        // the log entry carries the date of the reading, not of seeding
+        await db.site_progress_updates.update(update.id, {
+          created_at: daysFromToday(-reading.days_ago),
+        });
+
+        if (!reading.photo) continue;
+        const png = await makeSamplePng(`${demo.tower_name} — ${demoItem.name}`);
+        if (!png) continue;
+        const slug = demoItem.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        const fileName = `progress-${slug}-${reading.days_ago}d.png`;
+        await documentRepository.create(
+          {
+            entity_type: 'site_progress_update',
+            entity_id: update.id,
+            document_type: 'progress_photo',
+            custom_type_name: null,
+            file_url: fileName,
+            file_data: png,
+            file_name: fileName,
+            file_size: png.size,
+            mime_type: 'image/png',
+            // site photos are what the public project page shows (Section 6.7)
+            is_public: true,
+            uploaded_by: reporter,
+            uploaded_at: daysFromToday(-reading.days_ago),
+            notes: reading.remarks ?? null,
+          },
+          createdBy,
+        );
+      }
+    }
+  }
+
+  for (const demo of DEMO_MATERIAL_REQUESTS) {
+    const projectId = projectIds.get(demo.project_name);
+    if (!projectId) continue;
+
+    const towers = await db.towers.where('project_id').equals(projectId).toArray();
+    const tower = demo.tower_name ? towers.find((t) => t.name === demo.tower_name) : undefined;
+    const workItems = tower ? await towerWorkItemRepository.listForTower(tower.id) : [];
+    const workItem = demo.work_item_name
+      ? workItems.find((w) => w.name === demo.work_item_name)
+      : undefined;
+
+    const request = await materialRequestRepository.createRequest(
+      {
+        project_id: projectId,
+        tower_id: tower?.id ?? null,
+        work_item_id: workItem?.id ?? null,
+        requested_by: userIds.get(demo.requested_by_key) ?? null,
+        request_date: daysFromToday(-demo.days_ago).slice(0, 10),
+        notes: demo.notes ?? null,
+        decision_note: null,
+        items: demo.items.map((i) => ({
+          item_name: i.item_name,
+          unit: i.unit,
+          quantity_requested: i.quantity_requested,
+        })),
+      },
+      createdBy,
+    );
+
+    /*
+     * Walk the lifecycle through the repository so the Section 6.5 side
+     * effects — approved quantities settled, quantities cleared on a
+     * rejection — are produced by the real code path rather than written
+     * straight into the table.
+     */
+    if (demo.status !== 'pending') {
+      const lines = await db.material_request_items.where('request_id').equals(request.id).toArray();
+      const approved: Record<string, number | null> = Object.fromEntries(
+        lines.map((line) => {
+          const match = demo.items.find((i) => i.item_name === line.item_name);
+          return [line.id, match?.quantity_approved ?? null];
+        }),
+      );
+
+      const path: MaterialRequestStatus[] =
+        demo.status === 'rejected'
+          ? ['rejected']
+          : demo.status === 'approved'
+            ? ['approved']
+            : demo.status === 'ordered'
+              ? ['approved', 'ordered']
+              : ['approved', 'ordered', 'fulfilled'];
+
+      /*
+       * Each step lands a few days after the one before it, so the request's
+       * trail reads like a real procurement cycle rather than everything
+       * happening the moment the demo was loaded.
+       */
+      for (const [step, offset] of path.map((s, i) => [s, i + 1] as const)) {
+        const decidedDaysAgo = Math.max(0, demo.days_ago - offset * 3);
+        await materialRequestRepository.setStatus(request.id, step, {
+          decision_note: step === path[path.length - 1] ? (demo.decision_note ?? null) : undefined,
+          approved_quantities: step === 'approved' ? approved : undefined,
+          decided_by: userIds.get('monir') ?? null,
+          event_date: daysFromToday(-decidedDaysAgo).slice(0, 10),
+        });
+      }
+    }
+
+    const createdAt = daysFromToday(-demo.days_ago);
+    await db.material_requests.update(request.id, { created_at: createdAt, updated_at: createdAt });
+  }
+}
+
 /** ISO timestamp `offset` days from now (negative = in the past). */
 function daysFromToday(offset: number): string {
   const d = new Date();
@@ -612,6 +797,11 @@ export async function clearDemoData(): Promise<void> {
     db.discount_approval_rules.clear(),
     db.payments.clear(),
     db.installment_plan_templates.clear(),
+    db.tower_work_items.clear(),
+    db.site_progress_updates.clear(),
+    db.material_requests.clear(),
+    db.material_request_items.clear(),
+    db.material_request_status_history.clear(),
   ]);
   setClearedFlag(true);
 }

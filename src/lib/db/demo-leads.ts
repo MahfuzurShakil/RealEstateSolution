@@ -103,6 +103,32 @@ export const DEMO_USERS: DemoUser[] = [
     role: 'sales_executive',
     status: 'inactive',
   },
+  // Site engineers — added with Module 5: the daily progress log and the
+  // material requests are theirs, and neither reads right attributed to sales
+  {
+    key: 'jahangir',
+    name: 'Jahangir Alam',
+    phone: '01720 334455',
+    email: 'jahangir@nokshiproperties.com.bd',
+    role: 'site_manager',
+    status: 'active',
+  },
+  {
+    key: 'salma',
+    name: 'Salma Khatun',
+    phone: '01721 445566',
+    email: 'salma@nokshiproperties.com.bd',
+    role: 'site_manager',
+    status: 'active',
+  },
+  {
+    key: 'monir',
+    name: 'Monir Hossain',
+    phone: '01722 556677',
+    email: 'monir@nokshiproperties.com.bd',
+    role: 'procurement',
+    status: 'active',
+  },
 ];
 
 export interface DemoLeadActivity {

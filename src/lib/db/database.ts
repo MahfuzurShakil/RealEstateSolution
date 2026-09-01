@@ -17,7 +17,12 @@ import type {
   Lead,
   LeadActivity,
   LookupValue,
+  MaterialRequest,
+  MaterialRequestItem,
+  MaterialRequestStatusEvent,
   Payment,
+  SiteProgressUpdate,
+  TowerWorkItem,
   Project,
   ProjectStatusEvent,
   Tower,
@@ -69,6 +74,13 @@ export class AppDatabase extends Dexie {
   // Finance — money capture, brought forward from Module 7 (Section 8.2)
   payments!: EntityTable<Payment, 'id'>;
   installment_plan_templates!: EntityTable<InstallmentPlanTemplate, 'id'>;
+
+  // Module 5 — Site Progress Update
+  tower_work_items!: EntityTable<TowerWorkItem, 'id'>;
+  site_progress_updates!: EntityTable<SiteProgressUpdate, 'id'>;
+  material_requests!: EntityTable<MaterialRequest, 'id'>;
+  material_request_items!: EntityTable<MaterialRequestItem, 'id'>;
+  material_request_status_history!: EntityTable<MaterialRequestStatusEvent, 'id'>;
 
   constructor() {
     super('realestate_platform');
@@ -128,6 +140,22 @@ export class AppDatabase extends Dexie {
     this.version(7).stores({
       payments: 'id, booking_id, installment_id, payment_date, payment_method, received_by',
       installment_plan_templates: 'id, project_id, sequence_no, [project_id+sequence_no]',
+    });
+
+    // v8 — Module 5 (Site Progress Update). `towers.current_progress_pct` is a
+    // new *field*, not an index, so the towers store needs no schema change.
+    this.version(8).stores({
+      tower_work_items: 'id, tower_id, sequence_no, status, [tower_id+sequence_no]',
+      site_progress_updates: 'id, work_item_id, update_date, updated_by, created_at',
+      material_requests:
+        'id, &code, project_id, tower_id, work_item_id, status, request_date, requested_by, created_at',
+      material_request_items: 'id, request_id',
+    });
+
+    // v9 — audit trail for the Section 6.5 request lifecycle (addendum, same
+    // pattern as land_status_history and project_status_history).
+    this.version(9).stores({
+      material_request_status_history: 'id, request_id, to_status, event_date, created_at',
     });
   }
 }

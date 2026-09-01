@@ -28,6 +28,7 @@ import { nextCode } from '../utils/id';
 import { BaseRepository, type NewRecord } from './base.repository';
 import { documentRepository } from './document.repository';
 import { installmentPlanTemplateRepository } from './payment.repository';
+import { materialRequestRepository, towerWorkItemRepository } from './site-progress.repository';
 
 export interface ProjectFilters {
   search?: string;
@@ -102,9 +103,16 @@ class ProjectRepository extends BaseRepository<Project> {
     return rows.sort((a, b) => b.created_at.localeCompare(a.created_at));
   }
 
-  async getWithRelations(id: string): Promise<ProjectWithRelations | undefined> {
+  /*
+   * `null`, not `undefined`, when the record is gone. `useLiveQuery` reports
+   * its own pending state as `undefined`, so a repository returning
+   * `undefined` for "no such row" leaves the detail page unable to tell a
+   * deleted record from a query still in flight — it sat on "Loading…"
+   * forever instead of saying the record no longer exists.
+   */
+  async getWithRelations(id: string): Promise<ProjectWithRelations | null> {
     const project = await this.getById(id);
-    if (!project) return undefined;
+    if (!project) return null;
 
     const lands = await landProjectMappingRepository.landsForProject(id);
     const towers = await towerRepository.listForProject(id);
@@ -223,6 +231,12 @@ class ProjectRepository extends BaseRepository<Project> {
     // JV-signed status, which raw deletion of the mappings would not
     await landProjectMappingRepository.setLandsForProject(id, []);
 
+    // material requests are raised against the project, not the tower, so the
+    // tower cascade above does not reach them
+    for (const request of await materialRequestRepository.list({ project_id: id })) {
+      await materialRequestRepository.removeCascade(request.id);
+    }
+
     await installmentPlanTemplateRepository.removeForProject(id);
     await documentRepository.removeForEntity('project', id);
     await this.remove(id);
@@ -292,10 +306,21 @@ class TowerRepository extends BaseRepository<Tower> {
     return rows.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
   }
 
-  /** Deleting a tower takes its units with it. */
+  /**
+   * A new tower opens with the default WBS of Section 6.2, so Site Progress
+   * has something to report against without anyone setting it up by hand.
+   */
+  async create(input: NewRecord<Tower>, createdBy: string | null = null): Promise<Tower> {
+    const tower = await super.create({ current_progress_pct: 0, ...input }, createdBy);
+    await towerWorkItemRepository.seedDefaultsForTower(tower.id, createdBy);
+    return tower;
+  }
+
+  /** Deleting a tower takes its units and its WBS (with the site log) with it. */
   async removeCascade(id: string): Promise<void> {
     const units = await db.units.where('tower_id').equals(id).toArray();
     await db.units.bulkDelete(units.map((u) => u.id));
+    await towerWorkItemRepository.removeForTower(id);
     await this.remove(id);
   }
 }

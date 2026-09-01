@@ -273,6 +273,13 @@ export interface Tower extends BaseEntity {
   lift_count?: number | null;
   electricity_backup?: boolean | null;
   front_road_width_ft?: number | null;
+  /**
+   * Cached construction progress (Section 6.3): Σ work_item.actual_progress_pct
+   * × weight_pct ÷ 100. Written by the Module 5 repository whenever a progress
+   * update lands, never typed in by hand. Undefined on towers created before
+   * Module 5 — read it through `towerProgressPct()`.
+   */
+  current_progress_pct?: number | null;
 }
 
 export const UNIT_STATUSES = [
@@ -622,3 +629,136 @@ export const DEFAULT_INSTALLMENT_PLAN: Array<{
 
 /** Document types for entity_type = 'payment' (Section 8.2) */
 export const PAYMENT_DOCUMENT_TYPES = ['payment_receipt', 'cheque_copy', 'other'] as const;
+
+/* ------------------------------------------------------------------ *
+ * Module 5 — Site Progress Update (Section 6)
+ * ------------------------------------------------------------------ */
+
+export const WORK_ITEM_STATUSES = ['not_started', 'in_progress', 'completed'] as const;
+export type WorkItemStatus = (typeof WORK_ITEM_STATUSES)[number];
+
+/** WBS line of one tower (Section 6.2). */
+export interface TowerWorkItem extends BaseEntity {
+  tower_id: UUID;
+  name: string;
+  sequence_no: number;
+  /** contribution to the tower's overall % — all items together make 100 */
+  weight_pct: number;
+  planned_start_date?: ISODate | null;
+  planned_end_date?: ISODate | null;
+  actual_progress_pct: number;
+  status: WorkItemStatus;
+}
+
+/**
+ * The daily site log (Section 6.3). One row per reported reading; the work
+ * item's `actual_progress_pct` and the tower's cached % are recomputed from it.
+ */
+export interface SiteProgressUpdate extends BaseEntity {
+  work_item_id: UUID;
+  update_date: ISODate;
+  progress_pct: number;
+  remarks?: string | null;
+  gps_lat?: number | null;
+  gps_lng?: number | null;
+  updated_by: UUID | null;
+}
+
+/** Document types for entity_type = 'site_progress_update' (Section 6.4) */
+export const SITE_PROGRESS_DOCUMENT_TYPES = ['progress_photo', 'progress_video', 'other'] as const;
+
+export const MATERIAL_REQUEST_STATUSES = [
+  'pending',
+  'approved',
+  'rejected',
+  'ordered',
+  'fulfilled',
+] as const;
+export type MaterialRequestStatus = (typeof MATERIAL_REQUEST_STATUSES)[number];
+
+/** Site → Procurement bridge (Section 6.5). */
+export interface MaterialRequest extends BaseEntity {
+  code: string;                       // MREQ-2026-001
+  project_id: UUID;
+  tower_id?: UUID | null;
+  work_item_id?: UUID | null;
+  /** site engineer who raised it */
+  requested_by: UUID | null;
+  request_date: ISODate;
+  status: MaterialRequestStatus;
+  notes?: string | null;
+  /**
+   * Addendum to Section 6.5: the lifecycle has a `rejected` branch but no
+   * field to say why, and `notes` is the requester's own text — overwriting it
+   * with the procurement decision would destroy what was asked for. Same
+   * pattern as `bookings.discount_decision_note` in Module 4.
+   */
+  decision_note?: string | null;
+}
+
+export interface MaterialRequestItem extends BaseEntity {
+  request_id: UUID;
+  /** free text for now; the Procurement module reconciles it with a catalog */
+  item_name: string;
+  /** lookup_values (category='material_unit') — bag / ton / piece … */
+  unit: string;
+  quantity_requested: number;
+  quantity_approved?: number | null;
+  /**
+   * Addendum to Section 6.6: the lines of a request have no natural order in
+   * the schema, and `created_at` does not settle it — several lines are saved
+   * in the same millisecond, so the list came back shuffled and the request
+   * card named a different "first item" on every read. A requisition is read
+   * and checked off in the order it was written, so the order is stored.
+   * Not indexed: it is only ever used to sort the handful of lines of one
+   * request, which are already in memory.
+   */
+  sort_order: number;
+}
+
+/**
+ * Addendum to Section 6.5: the lifecycle is defined but nothing recorded the
+ * transitions, so only a request's CURRENT status was knowable. A request
+ * approved on the 8th and ordered on the 23rd had lost the approval date
+ * entirely — and "when did Procurement actually approve this" is the first
+ * question asked when a delivery is late. Same shape as `land_status_history`
+ * and `project_status_history`, which exist for exactly this reason.
+ */
+export interface MaterialRequestStatusEvent extends BaseEntity {
+  request_id: UUID;
+  from_status: MaterialRequestStatus;
+  to_status: MaterialRequestStatus;
+  /** when the decision was taken, not when it was typed in */
+  event_date: ISODate;
+  decided_by?: UUID | null;
+  note?: string | null;
+}
+
+/** Seed options for the material unit dropdown (lookup_values). */
+export const MATERIAL_UNIT_OPTIONS = [
+  'bag',
+  'ton',
+  'piece',
+  'cft',
+  'sft',
+  'kg',
+  'litre',
+  'bundle',
+  'truck',
+  'roll',
+] as const;
+
+/**
+ * Default WBS applied to a new tower (Section 6.2 note). Equal weight, in the
+ * order the work actually happens; the Project Manager edits it afterwards.
+ */
+export const DEFAULT_TOWER_WORK_ITEMS = [
+  'Foundation',
+  'Ground Floor',
+  'Superstructure',
+  'Roof',
+  'Electrical',
+  'Plumbing',
+  'Finishing',
+  'External Works',
+] as const;

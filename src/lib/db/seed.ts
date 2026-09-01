@@ -11,7 +11,9 @@ import {
   LAND_DOCUMENT_TYPES,
   LAND_SIZE_UNITS,
   LEAD_DOCUMENT_TYPES,
+  MATERIAL_UNIT_OPTIONS,
   PROJECT_DOCUMENT_TYPES,
+  SITE_PROGRESS_DOCUMENT_TYPES,
   UNIT_TYPE_OPTIONS,
 } from './types';
 
@@ -38,10 +40,12 @@ async function runSeed(): Promise<void> {
   await ensureOptions('document_type', 'customer', [...CUSTOMER_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'booking', [...BOOKING_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'payment', [...PAYMENT_DOCUMENT_TYPES]);
+  await ensureOptions('document_type', 'site_progress_update', [...SITE_PROGRESS_DOCUMENT_TYPES]);
   await ensureOptions('land_size_unit', null, [...LAND_SIZE_UNITS]);
   await ensureOptions('unit_type', null, [...UNIT_TYPE_OPTIONS]);
   await ensureOptions('facing', null, [...FACING_OPTIONS]);
   await ensureOptions('amenity', null, [...AMENITY_OPTIONS]);
+  await ensureOptions('material_unit', null, [...MATERIAL_UNIT_OPTIONS]);
 
   // Demo dataset: only on a truly fresh database, and never again once the
   // user has deliberately cleared it from the dashboard.

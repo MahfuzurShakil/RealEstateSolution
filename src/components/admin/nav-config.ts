@@ -59,8 +59,8 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Site Progress',
     icon: HardHat,
     items: [
-      { label: 'Progress Updates', href: '/admin/site-progress', disabled: true },
-      { label: 'Material Requests', href: '/admin/material-requests', disabled: true },
+      { label: 'Progress Updates', href: '/admin/site-progress' },
+      { label: 'Material Requests', href: '/admin/material-requests' },
     ],
   },
   {

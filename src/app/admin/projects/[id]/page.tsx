@@ -10,6 +10,7 @@ import { JvAllocationCard } from '@/components/admin/projects/JvAllocationCard';
 import { ProjectStatusCard } from '@/components/admin/projects/ProjectStatusCard';
 import { ProjectTimeline } from '@/components/admin/projects/ProjectTimeline';
 import { TowersUnitsPanel } from '@/components/admin/projects/TowersUnitsPanel';
+import { ProjectProgressSummary } from '@/components/admin/site-progress/ProjectProgressSummary';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -22,7 +23,7 @@ import { cn } from '@/lib/utils/cn';
 import { formatDate } from '@/lib/utils/format';
 import { UNIT_STATUSES } from '@/lib/db/types';
 
-type Tab = 'overview' | 'towers' | 'allocation' | 'timeline' | 'documents';
+type Tab = 'overview' | 'towers' | 'progress' | 'allocation' | 'timeline' | 'documents';
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -59,6 +60,7 @@ export default function ProjectDetailPage() {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { key: 'towers', label: `Towers & Units (${project.unit_total})` },
+    { key: 'progress', label: 'Site Progress' },
     { key: 'allocation', label: 'JV Allocation' },
     { key: 'timeline', label: 'Timeline' },
     { key: 'documents', label: 'Documents' },
@@ -193,6 +195,8 @@ export default function ProjectDetailPage() {
           )}
 
           {tab === 'towers' && <TowersUnitsPanel projectId={project.id} />}
+
+          {tab === 'progress' && <ProjectProgressSummary projectId={project.id} />}
 
           {tab === 'allocation' && <JvAllocationCard projectId={project.id} />}
 
