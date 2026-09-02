@@ -27,6 +27,7 @@ import {
 import { nextCode } from '../utils/id';
 import { BaseRepository, type NewRecord } from './base.repository';
 import { documentRepository } from './document.repository';
+import { userProjectAssignmentRepository } from './user.repository';
 import { installmentPlanTemplateRepository } from './payment.repository';
 import { materialRequestRepository, towerWorkItemRepository } from './site-progress.repository';
 
@@ -238,6 +239,9 @@ class ProjectRepository extends BaseRepository<Project> {
     }
 
     await installmentPlanTemplateRepository.removeForProject(id);
+    // staff scoping points at this project; leaving the rows would give a user
+    // an assignment to something that no longer exists (Section 9.5)
+    await userProjectAssignmentRepository.removeForProject(id);
     await documentRepository.removeForEntity('project', id);
     await this.remove(id);
   }

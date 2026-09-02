@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from 'react';
 import { MockSessionProvider } from '@/lib/auth/mock-session';
 import { useDatabaseStatus } from '@/lib/db/DatabaseProvider';
+import { AccessGate } from './AccessGate';
 import { AdminSidebar } from './AdminSidebar';
 import { AdminTopbar } from './AdminTopbar';
 
@@ -31,7 +32,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
                 Could not open the local database: {error}
               </p>
             ) : (
-              children
+              // Section 9.6 — the role check sits here so every page inherits it
+              <AccessGate>{children}</AccessGate>
             )}
           </main>
         </div>

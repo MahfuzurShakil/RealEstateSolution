@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { ChevronRight, LifeBuoy, X } from 'lucide-react';
+import { useMockSession } from '@/lib/auth/mock-session';
+import { canView } from '@/lib/domain/access';
 import { cn } from '@/lib/utils/cn';
 import { HELP_ITEM, NAV_GROUPS } from './nav-config';
 
@@ -30,6 +32,20 @@ export function AdminSidebar({
   onClose: () => void;
 }) {
   const pathname = usePathname();
+  const { role } = useMockSession();
+
+  /*
+   * Section 9.6 applied to the menu: a role only sees the modules it can open.
+   * Hiding rather than disabling is deliberate — a greyed-out "Users & Roles"
+   * tells a site manager the screen exists and that they are not trusted with
+   * it, which is noise. `disabled` still means "not built yet", which is a
+   * different thing and stays visible.
+   */
+  const groups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => item.module === null || canView(role, item.module)),
+  })).filter((group) => group.items.length > 0);
+
   // Only explicit user toggles are stored; a group holding the current page is
   // open by default, so navigation needs no effect to keep the tree in sync.
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
@@ -76,7 +92,7 @@ export function AdminSidebar({
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 pb-4">
-          {NAV_GROUPS.map((group) => {
+          {groups.map((group) => {
             const Icon = group.icon;
             const groupActive = group.items.some((i) => isActiveHref(pathname, i.href));
             const isOpen = toggled[group.label] ?? groupActive;

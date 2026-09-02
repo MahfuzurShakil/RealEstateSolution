@@ -36,6 +36,28 @@ src/
 - **Module 1 — Land Management**: land list (filters, sort, grid/list), add/edit
   form with owner rows and conditional JV block, detail page with pipeline
   transitions, owners/JV/documents tabs, landowner master list.
+- **Module 2 — Project Creation**: projects and their pipeline, towers, bulk
+  unit generation and allocation, JV allocation check.
+- **Module 3 — Sales / Lead / CRM**: leads with phone-based dedup, follow-up
+  activity log, assignment, lost/revive.
+- **Module 4 — Booking & Customer**: customers, bookings with the hold →
+  confirmed pipeline, role-based discount approval, instalment plans, payments.
+- **Module 5 — Site Progress**: per-tower WBS, the daily progress log with
+  photos and GPS, planned-vs-actual roll-up, and material requests.
+- **Module 6 — Procurement & Supplier Voucher**: suppliers, purchase orders,
+  goods receipts (weighted-average costing, quality check gate), project and
+  central stock, issues to site, transfers, supplier payments, and the
+  project-wide cost chain of Section 7.11.
+- **Module 7 — Finance**: instalment schedules generated from a project's plan
+  when a booking is confirmed, receipts allocated across them oldest-first, a
+  collections queue with read-time overdue, refunds on cancelled bookings, the
+  generic cost ledger, and the per-project sales/cost/profit roll-up.
+- **Module 8 — Users, Roles & Settings**: staff accounts with project-level
+  scoping, the Section 9.6 permission matrix driving the sidebar and a route
+  guard, editable master-data option lists, and the company profile.
+
+All eight admin modules of the scope document are built. The Public Portal
+(`Real-Estate-Developer-Platform_Public-Portal_v1.md`) is the next phase.
 
 ## Tables so far
 
@@ -43,15 +65,41 @@ Shared: `documents`, `lookup_values`, `company_settings`
 Module 1 (Land): `lands`, `landowners`, `land_owner_mapping`, `land_jv_details`,
 `land_status_history` (pipeline audit trail, Dexie v2)
 
+Module 2 (Project): `projects`, `land_project_mapping`, `towers`, `units`,
+`project_status_history` (v3, v6)
+Module 3 (CRM): `users`, `leads`, `lead_activities` (v4)
+Module 4 (Booking): `customers`, `bookings`, `discount_approval_rules` (v5),
+plus `payments` and `installment_plan_templates` brought forward from Module 7 (v7)
+Module 5 (Site Progress): `tower_work_items`, `site_progress_updates`,
+`material_requests`, `material_request_items` (v8),
+`material_request_status_history` (v9)
+Module 6 (Procurement): `suppliers`, `purchase_orders`, `purchase_order_items`,
+`goods_receipts`, `goods_receipt_items`, `stock`, `stock_issues`,
+`stock_transfers`, `supplier_vouchers` (v10)
+Module 7 (Finance): `payment_schedules`, `payment_installments`, `refunds`,
+`expenses` (v11)
+Module 8 (Users & Roles): `user_project_assignments` (v12) — `users` itself
+arrived with Module 3
+
 Later modules append a new Dexie version block; existing versions are never edited.
 
 ## Demo data
 
-A fresh database seeds itself with a Bangladesh-context sample set for Module 1
-(`src/lib/db/demo-data.ts`): 9 lands covering every pipeline status and both
-acquisition types, 10 landowners, JV terms, pipeline history and a couple of
-sample attachments. The admin dashboard has a **Demo data** card to reload or
-clear it; clearing is remembered, so it does not come back on reload.
+A fresh database seeds itself with a Bangladesh-context sample set covering
+every module (`src/lib/db/demo-*.ts`, loaded by `demo-seed.ts`): lands across
+every pipeline status and both acquisition types, projects with generated units,
+leads and bookings, a construction log running ahead of and behind plan, a
+procurement chain reaching every purchase-order status and quality check, and a
+cost ledger with overdue collections and a part-settled refund, and staff
+accounts scoped to different sets of projects.
+
+Everything date-dependent is an offset from the day the demo is loaded, never a
+fixed date, and the seed goes through the repositories the UI uses — so stock
+levels, weighted average costs and request statuses are produced by the real
+code rather than written into the tables.
+
+The admin dashboard has a **Demo data** card to reload or clear it; clearing is
+remembered, so it does not come back on reload.
 
 ## Deployment
 

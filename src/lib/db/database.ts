@@ -21,6 +21,20 @@ import type {
   MaterialRequestItem,
   MaterialRequestStatusEvent,
   Payment,
+  GoodsReceipt,
+  GoodsReceiptItem,
+  PurchaseOrder,
+  PurchaseOrderItem,
+  StockIssue,
+  StockRow,
+  StockTransfer,
+  Supplier,
+  SupplierVoucher,
+  Expense,
+  PaymentInstallment,
+  PaymentSchedule,
+  Refund,
+  UserProjectAssignment,
   SiteProgressUpdate,
   TowerWorkItem,
   Project,
@@ -81,6 +95,26 @@ export class AppDatabase extends Dexie {
   material_requests!: EntityTable<MaterialRequest, 'id'>;
   material_request_items!: EntityTable<MaterialRequestItem, 'id'>;
   material_request_status_history!: EntityTable<MaterialRequestStatusEvent, 'id'>;
+
+  // Module 6 — Procurement & Supplier Voucher
+  suppliers!: EntityTable<Supplier, 'id'>;
+  purchase_orders!: EntityTable<PurchaseOrder, 'id'>;
+  purchase_order_items!: EntityTable<PurchaseOrderItem, 'id'>;
+  goods_receipts!: EntityTable<GoodsReceipt, 'id'>;
+  goods_receipt_items!: EntityTable<GoodsReceiptItem, 'id'>;
+  stock!: EntityTable<StockRow, 'id'>;
+  stock_issues!: EntityTable<StockIssue, 'id'>;
+  stock_transfers!: EntityTable<StockTransfer, 'id'>;
+  supplier_vouchers!: EntityTable<SupplierVoucher, 'id'>;
+
+  // Module 7 — Finance
+  payment_schedules!: EntityTable<PaymentSchedule, 'id'>;
+  payment_installments!: EntityTable<PaymentInstallment, 'id'>;
+  refunds!: EntityTable<Refund, 'id'>;
+  expenses!: EntityTable<Expense, 'id'>;
+
+  // Module 8 — User & Role Management
+  user_project_assignments!: EntityTable<UserProjectAssignment, 'id'>;
 
   constructor() {
     super('realestate_platform');
@@ -156,6 +190,49 @@ export class AppDatabase extends Dexie {
     // pattern as land_status_history and project_status_history).
     this.version(9).stores({
       material_request_status_history: 'id, request_id, to_status, event_date, created_at',
+    });
+
+    // v10 — Module 6 (Procurement & Supplier Voucher, Section 7).
+    //
+    // `stock` is indexed on [project_id+item_name+unit] because Section 7.7
+    // makes that triple the identity of a stock row — every GRN, issue and
+    // transfer looks a row up by it. Dexie cannot index `null`, so a central
+    // stock row (project_id = null) is found through the `item_name` index and
+    // filtered in the repository; see the note there.
+    this.version(10).stores({
+      suppliers: 'id, &code, name, type, phone',
+      purchase_orders:
+        'id, &code, request_id, project_id, supplier_id, status, order_date, created_at',
+      purchase_order_items: 'id, po_id, item_name',
+      goods_receipts: 'id, &code, po_id, receipt_date, received_by, created_at',
+      goods_receipt_items: 'id, grn_id, po_item_id, quality_check',
+      stock: 'id, project_id, item_name, unit, [project_id+item_name+unit]',
+      stock_issues: 'id, &code, project_id, work_item_id, item_name, issue_date, issued_by',
+      stock_transfers: 'id, &code, from_project_id, to_project_id, item_name, transfer_date',
+      supplier_vouchers:
+        'id, &code, po_id, supplier_id, project_id, payment_date, payment_method, paid_by',
+    });
+
+    // v11 — Module 7 (Finance, Section 8).
+    //
+    // `payment_installments.status` is indexed even though `overdue` is never
+    // stored in it (see the note on the type): the index still answers "what
+    // is unpaid", and the overdue cut is a date comparison on top of that.
+    this.version(11).stores({
+      payment_schedules: 'id, entity_id, [entity_type+entity_id]',
+      payment_installments: 'id, schedule_id, due_date, status, [schedule_id+installment_no]',
+      refunds: 'id, &code, booking_id, refund_date, processed_by',
+      expenses:
+        'id, &code, project_id, land_id, cost_category, expense_date, payment_method, paid_by',
+    });
+
+    // v12 — Module 8 (User & Role Management, Section 9).
+    //
+    // The compound index is unique: a user is either assigned to a project or
+    // not, and a duplicate row would silently double every count that reads
+    // through it.
+    this.version(12).stores({
+      user_project_assignments: 'id, user_id, project_id, &[user_id+project_id]',
     });
   }
 }

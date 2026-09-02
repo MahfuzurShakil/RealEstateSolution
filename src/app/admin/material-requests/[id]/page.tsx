@@ -4,7 +4,16 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, Building2, Check, CircleDashed, ListChecks, Pencil, Trash2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  Building2,
+  Check,
+  CircleDashed,
+  ListChecks,
+  Pencil,
+  ShoppingCart,
+  Trash2,
+} from 'lucide-react';
 import { MaterialRequestStatusCard } from '@/components/admin/material-requests/MaterialRequestStatusCard';
 import { ProgressBar } from '@/components/admin/site-progress/ProgressBar';
 import { Badge } from '@/components/ui/Badge';
@@ -21,8 +30,9 @@ import {
   approvalSummary,
   requestTotals,
 } from '@/lib/domain/site-progress';
-import { materialRequestRepository } from '@/lib/repositories';
-import { formatDate } from '@/lib/utils/format';
+import { PURCHASE_ORDER_STATUS_META } from '@/lib/domain/procurement';
+import { materialRequestRepository, purchaseOrderRepository } from '@/lib/repositories';
+import { formatBdt, formatDate } from '@/lib/utils/format';
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -40,6 +50,8 @@ export default function MaterialRequestDetailPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const request = useLiveQuery(() => materialRequestRepository.getWithRelations(id), [id]);
+  // Section 7.2 — what Procurement actually bought against this request
+  const orders = useLiveQuery(() => purchaseOrderRepository.list({ request_id: id }), [id]);
 
   if (request === undefined) return <p className="text-sm text-ink-muted">Loading…</p>;
   if (!request) {
@@ -231,6 +243,41 @@ export default function MaterialRequestDetailPage() {
 
         <aside className="min-w-0 space-y-5 lg:order-2">
           <MaterialRequestStatusCard request={request} />
+
+          {(orders ?? []).length > 0 && (
+            <Card>
+              <CardHeader title={`Purchase orders (${orders?.length ?? 0})`} />
+              <ul className="space-y-2">
+                {(orders ?? []).map((order) => (
+                  <li key={order.id}>
+                    <Link
+                      href={`/admin/purchase-orders/${order.id}`}
+                      className="block rounded-xl border border-hairline p-3 transition-colors hover:bg-admin-50/60"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="grid size-10 shrink-0 place-items-center rounded-full bg-admin-50 text-admin-600">
+                          <ShoppingCart className="size-5" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-ink">{order.code}</p>
+                          <p className="truncate text-xs text-ink-muted">
+                            {order.supplier?.name ?? 'Supplier removed'} ·{' '}
+                            {formatBdt(order.totals.value)}
+                          </p>
+                        </div>
+                      </div>
+                      <Badge
+                        tone={PURCHASE_ORDER_STATUS_META[order.status].tone}
+                        className="mt-2.5"
+                      >
+                        {PURCHASE_ORDER_STATUS_META[order.status].label}
+                      </Badge>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
 
           {request.project && (
             <Card>

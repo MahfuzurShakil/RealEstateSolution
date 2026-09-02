@@ -13,6 +13,10 @@ import {
   LEAD_DOCUMENT_TYPES,
   MATERIAL_UNIT_OPTIONS,
   PROJECT_DOCUMENT_TYPES,
+  EXPENSE_DOCUMENT_TYPES,
+  PURCHASE_ORDER_DOCUMENT_TYPES,
+  REFUND_DOCUMENT_TYPES,
+  SUPPLIER_VOUCHER_DOCUMENT_TYPES,
   SITE_PROGRESS_DOCUMENT_TYPES,
   UNIT_TYPE_OPTIONS,
 } from './types';
@@ -41,6 +45,10 @@ async function runSeed(): Promise<void> {
   await ensureOptions('document_type', 'booking', [...BOOKING_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'payment', [...PAYMENT_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'site_progress_update', [...SITE_PROGRESS_DOCUMENT_TYPES]);
+  await ensureOptions('document_type', 'purchase_order', [...PURCHASE_ORDER_DOCUMENT_TYPES]);
+  await ensureOptions('document_type', 'supplier_voucher', [...SUPPLIER_VOUCHER_DOCUMENT_TYPES]);
+  await ensureOptions('document_type', 'expense', [...EXPENSE_DOCUMENT_TYPES]);
+  await ensureOptions('document_type', 'refund', [...REFUND_DOCUMENT_TYPES]);
   await ensureOptions('land_size_unit', null, [...LAND_SIZE_UNITS]);
   await ensureOptions('unit_type', null, [...UNIT_TYPE_OPTIONS]);
   await ensureOptions('facing', null, [...FACING_OPTIONS]);

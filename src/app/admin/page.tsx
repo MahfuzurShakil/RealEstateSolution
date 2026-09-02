@@ -148,7 +148,7 @@ export default function AdminDashboardPage() {
     <>
       <PageHeader
         title={`Hello, ${userName}`}
-        subtitle="Modules 1–5 are live — the rest follow the roadmap, one at a time."
+        subtitle="All eight admin modules are live. The Public Portal is next on the roadmap."
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
@@ -330,14 +330,17 @@ export default function AdminDashboardPage() {
         <h2 className="text-base font-semibold text-ink">What is wired up</h2>
         <ul className="mt-3 space-y-2 text-sm text-ink-muted">
           <li>• Shared IndexedDB (Dexie) — one database for both portals</li>
-          <li>• Tables: documents, lookup_values, company_settings, lands, landowners, land_owner_mapping, land_jv_details, projects, land_project_mapping, towers, units, users, leads, lead_activities, customers, bookings, discount_approval_rules, payments, installment_plan_templates, tower_work_items, site_progress_updates, material_requests, material_request_items</li>
+          <li>• 40 tables across twelve Dexie versions — every module appends a new version block, none edits an old one</li>
           <li>• Repository layer — UI never calls Dexie directly</li>
-          <li>• Admin shell: sidebar groups for all eight modules, topbar with role simulation</li>
+          <li>• Admin shell: sidebar and route guard driven by the Section 9.6 permission matrix</li>
           <li>• Module 1 — Land Management, preloaded with sample records</li>
           <li>• Module 2 — Project Creation: towers, bulk unit generation, JV allocation check</li>
           <li>• Module 3 — Sales / Lead / CRM: phone dedup, follow-up log, lost &amp; revive</li>
           <li>• Module 4 — Booking &amp; Customer: discount approval gating, unit reservation</li>
           <li>• Module 5 — Site Progress: per-tower WBS, daily log with planned-vs-actual, material requests</li>
+          <li>• Module 6 — Procurement: purchase orders, GRN with a quality-check gate, weighted-average stock, transfers, supplier vouchers</li>
+          <li>• Module 7 — Finance: instalment schedules, receipts allocated oldest-first, collections, refunds, cost ledger, project P&amp;L</li>
+          <li>• Module 8 — Users &amp; Roles: project scoping, permission matrix, master data, company settings</li>
         </ul>
       </Card>
       </div>

@@ -19,6 +19,11 @@ import { nextCode, nowIso } from '../utils/id';
 import { BaseRepository, type NewRecord } from './base.repository';
 import { documentRepository } from './document.repository';
 import { leadActivityRepository, normalizePhone } from './lead.repository';
+import {
+  paymentScheduleRepository,
+  recalculateForBooking,
+  refundRepository,
+} from './finance.repository';
 import { paymentRepository } from './payment.repository';
 
 export interface BookingFilters {
@@ -536,6 +541,21 @@ class BookingRepository extends BaseRepository<Booking> {
       await db.units.update(unit.id, { status: target, updated_at: nowIso() });
     }
 
+    /*
+     * Section 8.2 — a confirmed booking gets its instalment schedule, built
+     * from the project's plan template. It is generated here rather than on
+     * the Finance screens so it exists the moment the booking is real, and
+     * `generateForBooking` is idempotent: a booking that already has one keeps
+     * it, edits and all.
+     */
+    if (booking.status === 'confirmed') {
+      await paymentScheduleRepository.generateForBooking(booking.id, createdBy);
+    }
+
+    // money already taken is spread across the schedule (or re-spread, when a
+    // receipt has just been added or removed)
+    await recalculateForBooking(booking.id, createdBy);
+
     if (booking.status === 'confirmed' && booking.lead_id) {
       const lead = await db.leads.get(booking.lead_id);
       if (lead && lead.status !== 'booked') {
@@ -662,6 +682,12 @@ class BookingRepository extends BaseRepository<Booking> {
       if (unit && unit.status !== 'sold' && unit.status !== 'handed_over') {
         await db.units.update(unit.id, { status: 'available', updated_at: nowIso() });
       }
+    }
+    // the schedule, the receipts and any refund all belong to this booking and
+    // mean nothing without it
+    await paymentScheduleRepository.removeForBooking(id);
+    for (const refund of await refundRepository.listForBooking(id)) {
+      await refundRepository.removeCascade(refund.id);
     }
     await paymentRepository.removeForBooking(id);
     await documentRepository.removeForEntity('booking', id);

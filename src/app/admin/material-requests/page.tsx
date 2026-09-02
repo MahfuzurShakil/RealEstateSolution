@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Building2,
@@ -40,10 +41,24 @@ const SORT_LABELS: Record<SortKey, string> = {
 };
 
 /** Material requests (Section 6.5) — the Site → Procurement queue. */
-export default function MaterialRequestsPage() {
+function MaterialRequestsPage() {
+  /*
+   * Procurement links straight into this list from its own screens
+   * ("2 approved requests with no order yet", a project's cost tab), so the
+   * status and project filters can arrive in the URL. They seed the state
+   * once and stay editable afterwards — a filter the user cannot then clear
+   * would be worse than no deep link at all.
+   */
+  const params = useSearchParams();
+  const initialStatus = params.get('status');
+
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<MaterialRequestStatus | 'all'>('all');
-  const [projectId, setProjectId] = useState('');
+  const [status, setStatus] = useState<MaterialRequestStatus | 'all'>(
+    MATERIAL_REQUEST_STATUSES.includes(initialStatus as MaterialRequestStatus)
+      ? (initialStatus as MaterialRequestStatus)
+      : 'all',
+  );
+  const [projectId, setProjectId] = useState(params.get('project') ?? '');
   const [requestedBy, setRequestedBy] = useState('all');
   const [pendingOnly, setPendingOnly] = useState(false);
   const [sort, setSort] = useState<SortKey>('newest');
@@ -341,5 +356,14 @@ export default function MaterialRequestsPage() {
         </section>
       </div>
     </>
+  );
+}
+
+/** Deep links carry ?status= and ?project=, so Suspense is required. */
+export default function Page() {
+  return (
+    <Suspense fallback={<p className="text-sm text-ink-muted">Loading…</p>}>
+      <MaterialRequestsPage />
+    </Suspense>
   );
 }

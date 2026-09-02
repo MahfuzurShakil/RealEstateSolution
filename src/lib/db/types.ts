@@ -33,6 +33,8 @@ export type EntityType =
   | 'payment'
   | 'refund'
   | 'site_progress_update'
+  | 'purchase_order'
+  | 'supplier_voucher'
   | 'blog_post';
 
 export interface DocumentRecord extends BaseEntity {
@@ -762,3 +764,266 @@ export const DEFAULT_TOWER_WORK_ITEMS = [
   'Finishing',
   'External Works',
 ] as const;
+
+/* ------------------------------------------------------------------ *
+ * Module 6 — Procurement & Supplier Voucher (Section 7)
+ * ------------------------------------------------------------------ */
+
+export const SUPPLIER_TYPES = ['material_supplier', 'contractor', 'other'] as const;
+export type SupplierType = (typeof SUPPLIER_TYPES)[number];
+
+/** Vendor master (Section 7.3). Reused by the future Contractor module. */
+export interface Supplier extends BaseEntity {
+  code: string;                       // SUP-2026-001
+  name: string;
+  type: SupplierType;
+  contact_person?: string | null;
+  phone: string;
+  address?: string | null;
+  notes?: string | null;
+}
+
+export const PURCHASE_ORDER_STATUSES = [
+  'draft',
+  'ordered',
+  'partially_received',
+  'received',
+  'cancelled',
+] as const;
+export type PurchaseOrderStatus = (typeof PURCHASE_ORDER_STATUSES)[number];
+
+/** Section 7.4. `project_id = null` is a central/company purchase. */
+export interface PurchaseOrder extends BaseEntity {
+  code: string;                       // PO-2026-001
+  /** the approved material request this fulfils, when there is one */
+  request_id?: UUID | null;
+  /** null = general/central purchase, not for one project (advance stocking) */
+  project_id?: UUID | null;
+  supplier_id: UUID;
+  order_date: ISODate;
+  status: PurchaseOrderStatus;
+  notes?: string | null;
+}
+
+export interface PurchaseOrderItem extends BaseEntity {
+  po_id: UUID;
+  item_name: string;
+  /** lookup_values (category='material_unit') — bag / ton / piece … */
+  unit: string;
+  quantity_ordered: number;
+  /** BDT per unit — a plain decimal number, never a float-formatted string */
+  unit_price: number;
+  quantity_received: number;
+  /**
+   * Addendum to Section 7.5, same reason as `material_request_items.sort_order`
+   * (Section 6.6 addendum): several lines of one PO are saved inside the same
+   * millisecond, so `created_at` does not settle their order and the printed
+   * order came back shuffled on every read. A purchase order is read and
+   * checked off line by line, so the order is stored. Not indexed — it only
+   * ever sorts the handful of lines of one PO, already in memory.
+   */
+  sort_order: number;
+}
+
+/** Section 7.6 — the delivery note against a purchase order. */
+export interface GoodsReceipt extends BaseEntity {
+  code: string;                       // GRN-2026-001
+  po_id: UUID;
+  receipt_date: ISODate;
+  received_by: UUID | null;
+  notes?: string | null;
+}
+
+export const QUALITY_CHECKS = ['passed', 'failed', 'pending'] as const;
+export type QualityCheck = (typeof QUALITY_CHECKS)[number];
+
+export interface GoodsReceiptItem extends BaseEntity {
+  grn_id: UUID;
+  po_item_id: UUID;
+  quantity_received: number;
+  quality_check: QualityCheck;
+}
+
+/**
+ * Section 7.7 — one row per `(project_id, item_name, unit)`; `project_id = null`
+ * is central/company stock. `average_unit_price` is a weighted average of what
+ * the material actually cost, recomputed by every GRN and inbound transfer.
+ */
+export interface StockRow extends BaseEntity {
+  project_id?: UUID | null;
+  item_name: string;
+  unit: string;
+  quantity_available: number;
+  average_unit_price: number;
+}
+
+/** Section 7.8 — material handed to the site; this is the consumption cost. */
+export interface StockIssue extends BaseEntity {
+  code: string;                       // ISSUE-2026-001
+  project_id: UUID;
+  work_item_id?: UUID | null;
+  item_name: string;
+  unit: string;
+  quantity_issued: number;
+  /** stock.average_unit_price at the moment of issue, frozen */
+  unit_cost_snapshot: number;
+  total_cost: number;
+  issue_date: ISODate;
+  issued_by: UUID | null;
+  notes?: string | null;
+}
+
+/** Section 7.8a — central → project, or project → project. */
+export interface StockTransfer extends BaseEntity {
+  code: string;                       // TRF-2026-001
+  item_name: string;
+  unit: string;
+  quantity: number;
+  /** null = from central stock */
+  from_project_id?: UUID | null;
+  to_project_id: UUID;
+  unit_cost_snapshot: number;
+  transfer_date: ISODate;
+  transferred_by: UUID | null;
+  notes?: string | null;
+}
+
+/** Section 7.9 — a supplier payment enum, deliberately narrower than
+ * `PAYMENT_METHODS`: a supplier is not paid by card. */
+export const SUPPLIER_PAYMENT_METHODS = ['cash', 'bank', 'mfs', 'cheque', 'online'] as const;
+export type SupplierPaymentMethod = (typeof SUPPLIER_PAYMENT_METHODS)[number];
+
+/** Section 7.9 — paid directly, no approval step. */
+export interface SupplierVoucher extends BaseEntity {
+  code: string;                       // VCH-2026-001
+  po_id: UUID;
+  supplier_id: UUID;
+  /** copied from the PO — null when it was a central-stock purchase */
+  project_id?: UUID | null;
+  amount: number;
+  payment_date: ISODate;
+  payment_method: SupplierPaymentMethod;
+  reference_no?: string | null;
+  paid_by: UUID | null;
+  notes?: string | null;
+}
+
+/** Document types (Section 7.10) */
+export const PURCHASE_ORDER_DOCUMENT_TYPES = ['quotation', 'invoice', 'other'] as const;
+export const SUPPLIER_VOUCHER_DOCUMENT_TYPES = ['payment_receipt', 'cheque_copy', 'other'] as const;
+
+/* ------------------------------------------------------------------ *
+ * Module 7 — Finance (Section 8)
+ * ------------------------------------------------------------------ */
+
+/**
+ * One schedule per booking (Section 8.2). `entity_type` is an ENUM of one
+ * today, kept because the scope names it: a contractor's running bill will
+ * hang off the same table when the Contractor module lands.
+ */
+export const SCHEDULE_ENTITY_TYPES = ['booking'] as const;
+export type ScheduleEntityType = (typeof SCHEDULE_ENTITY_TYPES)[number];
+
+export interface PaymentSchedule extends BaseEntity {
+  entity_type: ScheduleEntityType;
+  entity_id: UUID;
+  /** snapshot of bookings.final_price when the schedule was generated */
+  total_amount: number;
+}
+
+export const INSTALLMENT_STATUSES = ['pending', 'partially_paid', 'paid', 'overdue'] as const;
+export type InstallmentStatus = (typeof INSTALLMENT_STATUSES)[number];
+
+export interface PaymentInstallment extends BaseEntity {
+  schedule_id: UUID;
+  installment_no: number;
+  label: string;
+  /** null for `manual` / `on_handover` lines until Accounts sets one */
+  due_date?: ISODate | null;
+  amount_due: number;
+  amount_paid: number;
+  /**
+   * The money-based state only: pending / partially_paid / paid.
+   *
+   * `overdue` is deliberately never written here. It depends on today's date,
+   * so a stored value is wrong the morning after it was written, and the only
+   * way to keep it true would be to write to the table every time a screen
+   * reads it — which, under `useLiveQuery`, re-triggers the very read that
+   * caused the write. It is layered on at read time by
+   * `installmentStatus()` instead (Section 8.2 calls this "read-time").
+   */
+  status: InstallmentStatus;
+}
+
+/** Section 8.2 — money returned after a booking is cancelled. */
+export interface Refund extends BaseEntity {
+  code: string;                       // REF-2026-001
+  booking_id: UUID;
+  /** gross amount being returned out of what the buyer had paid */
+  amount: number;
+  /** cancellation charge withheld */
+  deduction: number;
+  /** amount − deduction */
+  net_refund: number;
+  refund_date: ISODate;
+  payment_method: SupplierPaymentMethod;
+  reference_no?: string | null;
+  processed_by: UUID | null;
+  notes?: string | null;
+}
+
+/** Document types for entity_type = 'refund' (Section 8.2) */
+export const REFUND_DOCUMENT_TYPES = ['refund_voucher', 'other'] as const;
+
+export const COST_CATEGORIES = [
+  'land_payment',
+  'land_extra_cost',
+  'contractor_payment',
+  'marketing',
+  'admin',
+  'other',
+] as const;
+export type CostCategory = (typeof COST_CATEGORIES)[number];
+
+/**
+ * The generic cost ledger of Section 8.3 — land payments, contractor bills,
+ * marketing, admin, and any irregular project cost that no lifecycle module
+ * owns. Procurement's `supplier_vouchers` stay separate and are added to this
+ * at roll-up time (8.3), not merged into it.
+ */
+export interface Expense extends BaseEntity {
+  code: string;                       // EXP-2026-001
+  /** null = a company-level cost, not chargeable to one project */
+  project_id?: UUID | null;
+  land_id?: UUID | null;
+  cost_category: CostCategory;
+  /** short, plain label — the whole point of the ledger when category='other' */
+  cost_reason: string;
+  amount: number;
+  expense_date: ISODate;
+  /** landowner / contractor / vendor / individual */
+  paid_to: string;
+  payment_method: SupplierPaymentMethod;
+  reference_no?: string | null;
+  paid_by: UUID | null;
+  notes?: string | null;
+}
+
+/** Document types for entity_type = 'expense' (Section 8.3) */
+export const EXPENSE_DOCUMENT_TYPES = ['receipt', 'voucher', 'invoice', 'other'] as const;
+
+/* ------------------------------------------------------------------ *
+ * Module 8 — User & Role Management (Section 9)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Project-level scoping (Section 9.5).
+ *
+ * `super_admin`, `management` and `land_team` see every project whether or not
+ * a row exists here. For every other role the absence of a row means no access
+ * at all — the mapping is an allow-list, not a filter.
+ */
+export interface UserProjectAssignment extends BaseEntity {
+  user_id: UUID;
+  project_id: UUID;
+}

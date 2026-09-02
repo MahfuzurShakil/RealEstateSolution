@@ -60,6 +60,11 @@ const EMPTY_HINT: Partial<Record<EntityType, string>> & { default: string } = {
   booking: 'Upload the signed booking form or the money receipt for this booking.',
   payment: 'Upload the money receipt or a copy of the cheque.',
   site_progress_update: 'Upload photos or a video of the work reported in this update.',
+  supplier: 'Upload the trade licence, rate schedule or agreement for this supplier.',
+  purchase_order: 'Upload the supplier quotation or the invoice against this order.',
+  supplier_voucher: 'Upload the payment receipt or a copy of the cheque.',
+  expense: 'Upload the receipt, voucher or invoice this cost was paid against.',
+  refund: 'Upload the signed refund voucher.',
   default: 'Upload the paperwork that belongs to this record.',
 };
 

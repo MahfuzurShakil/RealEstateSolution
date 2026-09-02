@@ -10,9 +10,8 @@ import type {
   Project,
   Unit,
   User,
-  UserRole,
 } from '../db/types';
-import { LEAD_STATUS_META, SALES_ROLES } from '../domain/lead';
+import { LEAD_STATUS_META } from '../domain/lead';
 import { nextCode, nowIso } from '../utils/id';
 import { BaseRepository, type NewRecord } from './base.repository';
 import { documentRepository } from './document.repository';
@@ -349,28 +348,12 @@ class LeadActivityRepository extends BaseRepository<LeadActivity> {
  * Users (Section 9.4). Module 8 will add the management screens; for now this
  * is read-mostly, so Module 3 can assign leads to real Sales Executives.
  */
-class UserRepository extends BaseRepository<User> {
-  constructor() {
-    super(() => db.users);
-  }
-
-  async listActive(): Promise<User[]> {
-    const rows = await db.users.toArray();
-    return rows
-      .filter((u) => u.status === 'active')
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }
-
-  async listByRole(roles: UserRole[]): Promise<User[]> {
-    return (await this.listActive()).filter((u) => roles.includes(u.role));
-  }
-
-  /** The people leads can be handed to (Section 4.7). */
-  async salesTeam(): Promise<User[]> {
-    return this.listByRole(SALES_ROLES);
-  }
-}
-
 export const leadRepository = new LeadRepository();
 export const leadActivityRepository = new LeadActivityRepository();
-export const userRepository = new UserRepository();
+
+/*
+ * `userRepository` used to be defined here — leads needed somebody to be
+ * assigned to, and Module 3 arrived long before Module 8. It now lives in
+ * `user.repository.ts`, which owns the table properly. Re-exported so nothing
+ * that already imports it from the lead layer has to change.
+ */

@@ -1,6 +1,10 @@
 export * from './base.repository';
 export { documentRepository } from './document.repository';
-export { lookupRepository } from './lookup.repository';
+export {
+  lookupRepository,
+  DuplicateLookupError,
+  type LookupGroupKey,
+} from './lookup.repository';
 export { companySettingsRepository } from './settings.repository';
 export {
   landRepository,
@@ -27,7 +31,6 @@ export {
 export {
   leadRepository,
   leadActivityRepository,
-  userRepository,
   normalizePhone,
   type LeadFilters,
   type LeadWithRelations,
@@ -65,3 +68,53 @@ export {
   type MaterialRequestWithRelations,
   type MaterialRequestItemInput,
 } from './site-progress.repository';
+export {
+  supplierRepository,
+  purchaseOrderRepository,
+  purchaseOrderItemRepository,
+  goodsReceiptRepository,
+  goodsReceiptItemRepository,
+  stockRepository,
+  stockIssueRepository,
+  stockTransferRepository,
+  supplierVoucherRepository,
+  procurementCostRepository,
+  InsufficientStockError,
+  type SupplierFilters,
+  type SupplierWithStats,
+  type PurchaseOrderFilters,
+  type PurchaseOrderWithRelations,
+  type PurchaseOrderItemInput,
+  type GoodsReceiptLineInput,
+  type GoodsReceiptWithRelations,
+  type StockFilters,
+  type StockRowWithRelations,
+  type StockIssueFilters,
+  type StockIssueWithRelations,
+  type StockTransferFilters,
+  type StockTransferWithRelations,
+  type SupplierVoucherFilters,
+  type SupplierVoucherWithRelations,
+} from './procurement.repository';
+export {
+  paymentScheduleRepository,
+  paymentInstallmentRepository,
+  collectionRepository,
+  refundRepository,
+  expenseRepository,
+  financeDashboardRepository,
+  recalculateForBooking,
+  type ScheduleWithInstallments,
+  type CollectionRow,
+  type CollectionFilters,
+  type RefundWithRelations,
+  type ExpenseFilters,
+  type ExpenseWithRelations,
+} from './finance.repository';
+export {
+  userRepository,
+  userProjectAssignmentRepository,
+  DuplicateUserError,
+  type UserFilters,
+  type UserWithAccess,
+} from './user.repository';

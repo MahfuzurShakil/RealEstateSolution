@@ -234,8 +234,25 @@ export function allowedNextRequestStatuses(
 }
 
 /**
- * Section 6.5 hands the post-approval steps to Procurement (Module 6). Until
- * that module exists the buttons stay, but the card says where they will move.
+ * What a person may click on the request itself.
+ *
+ * Module 6 owns everything after the approval decision: `ordered` is written
+ * when a Purchase Order is raised, `fulfilled` when that order is fully
+ * received (Section 7.2). Leaving the manual buttons in place alongside the
+ * real workflow would let a request be marked fulfilled with nothing bought
+ * and nothing delivered — the transitions are still legal (see
+ * `allowedNextRequestStatuses`, which the procurement repository checks), they
+ * are simply no longer anybody's to type in.
+ */
+export function manualNextRequestStatuses(
+  current: MaterialRequestStatus,
+): MaterialRequestStatus[] {
+  return current === 'pending' ? ['approved', 'rejected'] : [];
+}
+
+/**
+ * Section 6.5 hands the post-approval steps to Procurement (Module 6), which
+ * now drives them from the Purchase Order and the Goods Receipt.
  */
 export const REQUEST_STEP_OWNER: Record<MaterialRequestStatus, string> = {
   pending: 'Site Manager',
@@ -276,14 +293,15 @@ export const MATERIAL_REQUEST_STEP_CONFIG: Record<
   ordered: {
     title: 'Mark as ordered',
     message:
-      'Purchasing has started against this request. In Module 6 this is where the Purchase Order is raised.',
+      'Purchasing has started against this request. Raising a Purchase Order does this on its own — this step is not clicked by hand any more.',
     confirmLabel: 'Mark ordered',
     tone: 'default',
     needsNote: false,
   },
   fulfilled: {
     title: 'Mark as fulfilled',
-    message: 'The material has reached the site and the request is closed.',
+    message:
+      'The material has reached the site and the request is closed. A Goods Receipt that completes the order does this on its own.',
     confirmLabel: 'Mark fulfilled',
     tone: 'success',
     needsNote: false,

@@ -22,6 +22,17 @@ import {
   materialRequestRepository,
   siteProgressUpdateRepository,
   towerWorkItemRepository,
+  goodsReceiptRepository,
+  purchaseOrderItemRepository,
+  purchaseOrderRepository,
+  stockIssueRepository,
+  stockRepository,
+  stockTransferRepository,
+  supplierRepository,
+  supplierVoucherRepository,
+  expenseRepository,
+  refundRepository,
+  userProjectAssignmentRepository,
 } from '../repositories';
 import type { MaterialRequestStatus, ProjectStatus } from './types';
 import { getDb } from './database';
@@ -30,6 +41,13 @@ import { DEMO_BOOKINGS, DEMO_CUSTOMERS, DEMO_DISCOUNT_RULES } from './demo-booki
 import { DEMO_LEADS, DEMO_USERS } from './demo-leads';
 import { DEMO_PROJECTS } from './demo-projects';
 import { DEMO_MATERIAL_REQUESTS, DEMO_TOWER_PROGRESS } from './demo-site-progress';
+import { DEMO_EXPENSES, DEMO_REFUNDS } from './demo-finance';
+import {
+  DEMO_PURCHASE_ORDERS,
+  DEMO_STOCK_ISSUES,
+  DEMO_STOCK_TRANSFERS,
+  DEMO_SUPPLIERS,
+} from './demo-procurement';
 
 /**
  * Loads the Bangladesh demo dataset (Module 1) so a fresh install opens with
@@ -216,8 +234,17 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
 
   const { projectIds, unitIds } = await seedDemoProjects(landIds, ownerIds, createdBy);
   const { userIds, leadIdByPhone } = await seedDemoLeads(projectIds, unitIds, createdBy);
-  await seedDemoBookings(projectIds, unitIds, userIds, leadIdByPhone, createdBy);
-  await seedDemoSiteProgress(projectIds, userIds, createdBy);
+  const bookingIds = await seedDemoBookings(
+    projectIds,
+    unitIds,
+    userIds,
+    leadIdByPhone,
+    createdBy,
+  );
+  const requestIds = await seedDemoSiteProgress(projectIds, userIds, createdBy);
+  await seedDemoProcurement(projectIds, userIds, requestIds, createdBy);
+  await seedDemoFinance(projectIds, landIds, userIds, bookingIds, createdBy);
+  await seedDemoUserAccess(projectIds, userIds, createdBy);
 
   setClearedFlag(false);
 }
@@ -493,8 +520,9 @@ async function seedDemoBookings(
   userIds: Map<string, string>,
   leadIdByPhone: Map<string, string>,
   createdBy: string | null,
-): Promise<void> {
+): Promise<Map<string, string>> {
   const db = getDb();
+  const bookingIds = new Map<string, string>();
 
   // the discount ceilings the gating rule reads (Section 5.4)
   for (const rule of DEMO_DISCOUNT_RULES) {
@@ -583,7 +611,10 @@ async function seedDemoBookings(
 
     const createdAt = daysFromToday(-demo.days_ago);
     await db.bookings.update(booking.id, { created_at: createdAt, updated_at: createdAt });
+    bookingIds.set(`${demo.customer_key}::${demo.unit_code}`, booking.id);
   }
+
+  return bookingIds;
 }
 
 
@@ -601,7 +632,8 @@ async function seedDemoSiteProgress(
   projectIds: Map<string, string>,
   userIds: Map<string, string>,
   createdBy: string | null,
-): Promise<void> {
+): Promise<Map<string, string>> {
+  const requestIds = new Map<string, string>();
   const db = getDb();
 
   for (const demo of DEMO_TOWER_PROGRESS) {
@@ -736,14 +768,13 @@ async function seedDemoSiteProgress(
         }),
       );
 
-      const path: MaterialRequestStatus[] =
-        demo.status === 'rejected'
-          ? ['rejected']
-          : demo.status === 'approved'
-            ? ['approved']
-            : demo.status === 'ordered'
-              ? ['approved', 'ordered']
-              : ['approved', 'ordered', 'fulfilled'];
+      /*
+       * Only as far as the decision. `ordered` and `fulfilled` now belong to
+       * Module 6 — the purchase order raised below writes the first and the
+       * goods receipt that completes it writes the second, so seeding them
+       * here would fake the very transitions the module exists to produce.
+       */
+      const path: MaterialRequestStatus[] = demo.status === 'rejected' ? ['rejected'] : ['approved'];
 
       /*
        * Each step lands a few days after the one before it, so the request's
@@ -763,6 +794,282 @@ async function seedDemoSiteProgress(
 
     const createdAt = daysFromToday(-demo.days_ago);
     await db.material_requests.update(request.id, { created_at: createdAt, updated_at: createdAt });
+    requestIds.set(demo.key, request.id);
+  }
+
+  return requestIds;
+}
+
+/**
+ * Module 6 demo data (Section 7).
+ *
+ * Nothing here writes a stock row, a received quantity or a purchase-order
+ * status directly. Every one of those falls out of the same repository calls
+ * the UI makes — `createOrder`, `createReceipt`, `issue`, `transfer`, `pay` —
+ * so what the demo shows is exactly what the feature produces: the weighted
+ * average cost, the failed quality check that never reaches stock, the request
+ * that closes itself as Fulfilled when its order is fully received, and the
+ * cancellation that voids only the undelivered balance.
+ */
+async function seedDemoProcurement(
+  projectIds: Map<string, string>,
+  userIds: Map<string, string>,
+  requestIds: Map<string, string>,
+  createdBy: string | null,
+): Promise<void> {
+  const db = getDb();
+
+  const supplierIds = new Map<string, string>();
+  for (const demo of DEMO_SUPPLIERS) {
+    const saved = await supplierRepository.createSupplier(
+      {
+        name: demo.name,
+        type: demo.type,
+        contact_person: demo.contact_person ?? null,
+        phone: demo.phone,
+        address: demo.address ?? null,
+        notes: demo.notes ?? null,
+      },
+      createdBy,
+    );
+    supplierIds.set(demo.key, saved.id);
+  }
+
+  /*
+   * Orders are seeded oldest first. The order matters: a weighted average is
+   * a running figure, so loading the 512-taka lot before the 568-taka one is
+   * what produces a believable blended rate on the central store — doing it
+   * the other way round would give a different (and wrong) answer.
+   */
+  const ordered = [...DEMO_PURCHASE_ORDERS].sort((a, b) => b.days_ago - a.days_ago);
+
+  for (const demo of ordered) {
+    const supplierId = supplierIds.get(demo.supplier_key);
+    if (!supplierId) continue;
+
+    const orderDate = daysFromToday(-demo.days_ago);
+    const order = await purchaseOrderRepository.createOrder(
+      {
+        request_id: demo.request_key ? (requestIds.get(demo.request_key) ?? null) : null,
+        project_id: demo.project_name ? (projectIds.get(demo.project_name) ?? null) : null,
+        supplier_id: supplierId,
+        order_date: orderDate.slice(0, 10),
+        // a draft stays a draft; everything else is placed with the supplier,
+        // and the receipts below move it on from there
+        status: demo.status === 'draft' ? 'draft' : 'ordered',
+        notes: demo.notes ?? null,
+        items: demo.items,
+      },
+      createdBy,
+    );
+
+    const lines = await purchaseOrderItemRepository.listForOrder(order.id);
+    const lineByName = new Map(lines.map((line) => [line.item_name, line]));
+
+    for (const receipt of demo.receipts ?? []) {
+      const saved = await goodsReceiptRepository.createReceipt(
+        {
+          po_id: order.id,
+          receipt_date: daysFromToday(-receipt.days_ago).slice(0, 10),
+          received_by: userIds.get(receipt.received_by_key) ?? null,
+          notes: receipt.notes ?? null,
+          items: receipt.lines
+            .map((line) => ({
+              po_item_id: lineByName.get(line.item_name)?.id ?? '',
+              quantity_received: line.quantity_received,
+              quality_check: line.quality_check,
+            }))
+            .filter((line) => line.po_item_id),
+        },
+        createdBy,
+      );
+      const receivedAt = daysFromToday(-receipt.days_ago);
+      await db.goods_receipts.update(saved.id, { created_at: receivedAt, updated_at: receivedAt });
+    }
+
+    // cancelled last, so the part-delivery above is already on the record and
+    // only the undelivered balance is what gets voided
+    if (demo.status === 'cancelled') {
+      await purchaseOrderRepository.setStatus(order.id, 'cancelled', {
+        note: demo.cancel_reason ?? null,
+        actor: userIds.get('monir') ?? null,
+      });
+    }
+
+    for (const voucher of demo.vouchers ?? []) {
+      const saved = await supplierVoucherRepository.pay(
+        {
+          po_id: order.id,
+          amount: voucher.amount,
+          payment_date: daysFromToday(-voucher.days_ago).slice(0, 10),
+          payment_method: voucher.payment_method,
+          reference_no: voucher.reference_no ?? null,
+          paid_by: userIds.get(voucher.paid_by_key) ?? null,
+          notes: voucher.notes ?? null,
+        },
+        createdBy,
+      );
+      const paidAt = daysFromToday(-voucher.days_ago);
+      await db.supplier_vouchers.update(saved.id, { created_at: paidAt, updated_at: paidAt });
+    }
+
+    await db.purchase_orders.update(order.id, { created_at: orderDate, updated_at: orderDate });
+  }
+
+  // transfers before issues: a site cannot consume cement it has not received
+  for (const demo of [...DEMO_STOCK_TRANSFERS].sort((a, b) => b.days_ago - a.days_ago)) {
+    const toId = projectIds.get(demo.to_project_name);
+    if (!toId) continue;
+    const fromId = demo.from_project_name ? (projectIds.get(demo.from_project_name) ?? null) : null;
+
+    const saved = await stockTransferRepository.transfer(
+      {
+        item_name: demo.item_name,
+        unit: demo.unit,
+        quantity: demo.quantity,
+        from_project_id: fromId,
+        to_project_id: toId,
+        transfer_date: daysFromToday(-demo.days_ago).slice(0, 10),
+        transferred_by: userIds.get(demo.transferred_by_key) ?? null,
+        notes: demo.notes ?? null,
+      },
+      createdBy,
+    );
+    const movedAt = daysFromToday(-demo.days_ago);
+    await db.stock_transfers.update(saved.id, { created_at: movedAt, updated_at: movedAt });
+  }
+
+  for (const demo of [...DEMO_STOCK_ISSUES].sort((a, b) => b.days_ago - a.days_ago)) {
+    const projectId = projectIds.get(demo.project_name);
+    if (!projectId) continue;
+
+    const towers = await db.towers.where('project_id').equals(projectId).toArray();
+    const tower = demo.tower_name ? towers.find((t) => t.name === demo.tower_name) : undefined;
+    const workItems = tower ? await towerWorkItemRepository.listForTower(tower.id) : [];
+    const workItem = demo.work_item_name
+      ? workItems.find((w) => w.name === demo.work_item_name)
+      : undefined;
+
+    /*
+     * The demo quantities are written against what the orders above bring in,
+     * but a store can still come up short if a demo order is edited later —
+     * so the issue is trimmed to what is actually there rather than thrown.
+     * A seed that half-loads and then aborts is worse than one that scales a
+     * line down.
+     */
+    const available = await stockRepository.availableFor(projectId, demo.item_name, demo.unit);
+    const quantity = Math.min(demo.quantity_issued, available);
+    if (quantity <= 0) continue;
+
+    const saved = await stockIssueRepository.issue(
+      {
+        project_id: projectId,
+        work_item_id: workItem?.id ?? null,
+        item_name: demo.item_name,
+        unit: demo.unit,
+        quantity_issued: quantity,
+        issue_date: daysFromToday(-demo.days_ago).slice(0, 10),
+        issued_by: userIds.get(demo.issued_by_key) ?? null,
+        notes: demo.notes ?? null,
+      },
+      createdBy,
+    );
+    const issuedAt = daysFromToday(-demo.days_ago);
+    await db.stock_issues.update(saved.id, { created_at: issuedAt, updated_at: issuedAt });
+  }
+}
+
+/**
+ * Module 7 demo data (Section 8).
+ *
+ * The instalment schedules are deliberately absent from the demo dataset:
+ * they were already generated by the real code path when each booking was
+ * confirmed above, and the receipts recorded against those bookings have
+ * already been spread across them. Writing schedules here by hand would
+ * demonstrate a schedule the feature never produced — the same rule Module 5
+ * follows with progress percentages and Module 6 with stock levels.
+ *
+ * What is seeded is what has no other source: the cost ledger, and the refund
+ * on the booking that was cancelled after money had been taken.
+ */
+async function seedDemoFinance(
+  projectIds: Map<string, string>,
+  landIds: Map<string, string>,
+  userIds: Map<string, string>,
+  bookingIds: Map<string, string>,
+  createdBy: string | null,
+): Promise<void> {
+  const db = getDb();
+
+  for (const demo of DEMO_EXPENSES) {
+    const saved = await expenseRepository.createExpense(
+      {
+        project_id: demo.project_name ? (projectIds.get(demo.project_name) ?? null) : null,
+        land_id: demo.land_name ? (landIds.get(demo.land_name) ?? null) : null,
+        cost_category: demo.cost_category,
+        cost_reason: demo.cost_reason,
+        amount: demo.amount,
+        expense_date: daysFromToday(-demo.days_ago).slice(0, 10),
+        paid_to: demo.paid_to,
+        payment_method: demo.payment_method,
+        reference_no: demo.reference_no ?? null,
+        paid_by: userIds.get(demo.paid_by_key) ?? null,
+        notes: demo.notes ?? null,
+      },
+      createdBy,
+    );
+    const paidAt = daysFromToday(-demo.days_ago);
+    await db.expenses.update(saved.id, { created_at: paidAt, updated_at: paidAt });
+  }
+
+  for (const demo of DEMO_REFUNDS) {
+    const bookingId = bookingIds.get(`${demo.customer_key}::${demo.unit_code}`);
+    if (!bookingId) continue;
+
+    // through the repository, so the "never more than the buyer paid" guard is
+    // exercised by the demo rather than bypassed by it
+    const saved = await refundRepository.issue(
+      {
+        booking_id: bookingId,
+        amount: demo.amount,
+        deduction: demo.deduction,
+        refund_date: daysFromToday(-demo.days_ago).slice(0, 10),
+        payment_method: demo.payment_method,
+        reference_no: demo.reference_no ?? null,
+        processed_by: userIds.get(demo.processed_by_key) ?? null,
+        notes: demo.notes ?? null,
+      },
+      createdBy,
+    );
+    const refundedAt = daysFromToday(-demo.days_ago);
+    await db.refunds.update(saved.id, { created_at: refundedAt, updated_at: refundedAt });
+  }
+}
+
+/**
+ * Module 8 demo data (Section 9.5).
+ *
+ * Only the project scoping — the accounts themselves are seeded with the leads
+ * in Module 3, because leads needed somebody to be assigned to long before
+ * Module 8 existed. Nothing is written for `super_admin`, `management` or
+ * `land_team`: those roles see every project without a mapping, and a row for
+ * them would suggest a restriction that is never applied.
+ */
+async function seedDemoUserAccess(
+  projectIds: Map<string, string>,
+  userIds: Map<string, string>,
+  createdBy: string | null,
+): Promise<void> {
+  for (const demo of DEMO_USERS) {
+    if (!demo.projects?.length) continue;
+    const userId = userIds.get(demo.key);
+    if (!userId) continue;
+
+    const ids = demo.projects
+      .map((name) => projectIds.get(name))
+      .filter((id): id is string => Boolean(id));
+
+    await userProjectAssignmentRepository.setForUser(userId, ids, createdBy);
   }
 }
 
@@ -802,6 +1109,20 @@ export async function clearDemoData(): Promise<void> {
     db.material_requests.clear(),
     db.material_request_items.clear(),
     db.material_request_status_history.clear(),
+    db.suppliers.clear(),
+    db.purchase_orders.clear(),
+    db.purchase_order_items.clear(),
+    db.goods_receipts.clear(),
+    db.goods_receipt_items.clear(),
+    db.stock.clear(),
+    db.stock_issues.clear(),
+    db.stock_transfers.clear(),
+    db.supplier_vouchers.clear(),
+    db.payment_schedules.clear(),
+    db.payment_installments.clear(),
+    db.refunds.clear(),
+    db.expenses.clear(),
+    db.user_project_assignments.clear(),
   ]);
   setClearedFlag(true);
 }

@@ -4,9 +4,11 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, Building2, Pencil, Trash2, UserRound } from 'lucide-react';
+import { ArrowLeft, Building2, Pencil, Trash2, Undo2, UserRound } from 'lucide-react';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { BookingStatusCard } from '@/components/admin/bookings/BookingStatusCard';
+import { InstallmentSchedulePanel } from '@/components/admin/finance/InstallmentSchedulePanel';
+import { RefundModal } from '@/components/admin/finance/RefundModal';
 import { PaymentPanel } from '@/components/admin/bookings/PaymentPanel';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -16,11 +18,11 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { BOOKING_STATUS_META } from '@/lib/domain/booking';
 import { LEAD_STATUS_META } from '@/lib/domain/lead';
 import { UNIT_STATUS_META } from '@/lib/domain/project';
-import { bookingRepository } from '@/lib/repositories';
+import { bookingRepository, refundRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate, formatPhone } from '@/lib/utils/format';
 
-type Tab = 'overview' | 'payments' | 'documents';
+type Tab = 'overview' | 'schedule' | 'payments' | 'documents';
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -37,8 +39,12 @@ export default function BookingDetailPage() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('overview');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [refundOpen, setRefundOpen] = useState(false);
 
   const booking = useLiveQuery(() => bookingRepository.getWithRelations(id), [id]);
+  // Section 8.2 — what a cancelled booking still owes the buyer back
+  const refundable = useLiveQuery(() => refundRepository.refundableFor(id), [id]);
+  const refunds = useLiveQuery(() => refundRepository.listForBooking(id), [id]);
 
   if (booking === undefined) return <p className="text-sm text-ink-muted">Loading…</p>;
   if (!booking) {
@@ -56,6 +62,7 @@ export default function BookingDetailPage() {
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
+    { key: 'schedule', label: 'Instalments' },
     { key: 'payments', label: 'Payments' },
     { key: 'documents', label: 'Documents' },
   ];
@@ -241,6 +248,9 @@ export default function BookingDetailPage() {
             </div>
           )}
 
+          {/* Section 8.2 — the schedule the receipts are measured against */}
+          {tab === 'schedule' && <InstallmentSchedulePanel booking={booking} />}
+
           {tab === 'payments' && (
             <Card>
               <CardHeader title="Payments received" />
@@ -259,6 +269,57 @@ export default function BookingDetailPage() {
         <aside className="min-w-0 space-y-5 lg:order-2">
           <BookingStatusCard booking={booking} />
 
+          {/*
+            Section 8.2 — a cancelled booking is not finished until the money
+            the buyer put in has been dealt with, so the card appears the
+            moment it is cancelled rather than being buried on another screen.
+          */}
+          {booking.status === 'cancelled' && (refundable?.paid ?? 0) > 0 && (
+            <Card>
+              <CardHeader
+                title="Refund"
+                action={
+                  (refundable?.left ?? 0) <= 0.009 ? (
+                    <Badge tone="green">Settled</Badge>
+                  ) : (
+                    <Badge tone="amber">Owed back</Badge>
+                  )
+                }
+              />
+              <Row label="Buyer paid" value={formatBdt(refundable?.paid ?? 0)} />
+              <Row label="Already refunded" value={formatBdt(refundable?.refunded ?? 0)} />
+              <Row
+                label="Left to refund"
+                value={
+                  (refundable?.left ?? 0) > 0.009 ? (
+                    <span className="text-amber-600">{formatBdt(refundable?.left ?? 0)}</span>
+                  ) : (
+                    <span className="text-emerald-700">Nothing outstanding</span>
+                  )
+                }
+              />
+
+              {(refunds ?? []).length > 0 && (
+                <ul className="mt-3 space-y-1.5 border-t border-hairline pt-3">
+                  {(refunds ?? []).map((refund) => (
+                    <li key={refund.id} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="text-ink-muted">
+                        {refund.code} · {formatDate(refund.refund_date)}
+                      </span>
+                      <span className="font-medium text-ink">{formatBdt(refund.net_refund)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {(refundable?.left ?? 0) > 0.009 && (
+                <Button size="sm" className="mt-3 w-full" onClick={() => setRefundOpen(true)}>
+                  <Undo2 className="size-4" /> Refund the buyer
+                </Button>
+              )}
+            </Card>
+          )}
+
           <Card>
             <CardHeader title="Record" />
             <Row label="Status" value={BOOKING_STATUS_META[booking.status].label} />
@@ -270,6 +331,8 @@ export default function BookingDetailPage() {
           </Card>
         </aside>
       </div>
+
+      <RefundModal open={refundOpen} booking={booking} onClose={() => setRefundOpen(false)} />
 
       <ConfirmDialog
         open={confirmDelete}

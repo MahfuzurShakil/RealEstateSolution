@@ -20,6 +20,13 @@ export interface DemoUser {
   email: string;
   role: UserRole;
   status: 'active' | 'inactive';
+  /**
+   * Projects this person is scoped to (Section 9.5). Omitted for the roles
+   * that see everything anyway — a mapping on those would be dead weight.
+   * Deliberately left off one active user too, so the "assigned nothing"
+   * state is visible rather than only described.
+   */
+  projects?: string[];
 }
 
 export const DEMO_USERS: DemoUser[] = [
@@ -86,6 +93,7 @@ export const DEMO_USERS: DemoUser[] = [
     email: 'shirin@nokshiproperties.com.bd',
     role: 'project_manager',
     status: 'active',
+    projects: ['Nokshi Green Residence', 'Nokshi Dhanmondi Court'],
   },
   {
     key: 'faruk',
@@ -94,6 +102,12 @@ export const DEMO_USERS: DemoUser[] = [
     email: 'faruk@nokshiproperties.com.bd',
     role: 'accounts',
     status: 'active',
+    projects: [
+      'Nokshi Green Residence',
+      'Nokshi Dhanmondi Court',
+      'Nokshi Agrabad Trade Centre',
+      'Nokshi Uttara Heights',
+    ],
   },
   {
     key: 'imran',
@@ -112,6 +126,7 @@ export const DEMO_USERS: DemoUser[] = [
     email: 'jahangir@nokshiproperties.com.bd',
     role: 'site_manager',
     status: 'active',
+    projects: ['Nokshi Green Residence', 'Nokshi Dhanmondi Court'],
   },
   {
     key: 'salma',
@@ -120,6 +135,9 @@ export const DEMO_USERS: DemoUser[] = [
     email: 'salma@nokshiproperties.com.bd',
     role: 'site_manager',
     status: 'active',
+    // only one site: the difference between two site managers' reach is the
+    // whole point of Section 9.5, and it is invisible if both see everything
+    projects: ['Nokshi Green Residence'],
   },
   {
     key: 'monir',
@@ -128,6 +146,7 @@ export const DEMO_USERS: DemoUser[] = [
     email: 'monir@nokshiproperties.com.bd',
     role: 'procurement',
     status: 'active',
+    projects: ['Nokshi Green Residence', 'Nokshi Dhanmondi Court', 'Nokshi Agrabad Trade Centre'],
   },
 ];
 

@@ -295,6 +295,98 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     },
   },
 
+  /*
+   * An old confirmed booking, deliberately far enough back that its monthly
+   * instalments have started falling due — without one of these the
+   * collections queue and every overdue figure in Module 7 would be empty and
+   * unprovable. Paid up to a point and then stopped, which is the realistic
+   * shape of a late buyer.
+   */
+  {
+    customer_key: 'zubair',
+    project_name: 'Nokshi Dhanmondi Court',
+    unit_code: 'D-4A',
+    booked_by_key: 'nishat',
+    days_ago: 400,
+    floor_premium: 300000,
+    facing_premium: 200000,
+    parking_charge: 1000000,
+    other_charges: 300000,
+    discount_amount: 0,
+    booking_amount: 1400000,
+    installment_tenure_months: 24,
+    payments: [
+      {
+        amount: 1400000,
+        days_ago: 400,
+        method: 'bank',
+        reference_no: 'IBBL/TRF/220841',
+        notes: 'Booking money',
+      },
+      {
+        amount: 2400000,
+        days_ago: 320,
+        method: 'bank',
+        reference_no: 'IBBL/TRF/231907',
+        notes: 'Three monthly instalments together',
+      },
+      {
+        amount: 1600000,
+        days_ago: 250,
+        method: 'cheque',
+        reference_no: 'CHQ 0091244',
+        notes: 'Two instalments',
+      },
+      {
+        amount: 400000,
+        days_ago: 180,
+        method: 'mfs',
+        reference_no: 'BKS4T8N02LP',
+        notes: 'Part payment — said the rest would follow, and it has not',
+      },
+    ],
+  },
+
+  /*
+   * Cancelled AFTER money was taken — the case Section 8.2's refunds table
+   * exists for. The other cancelled booking below took nothing, so between
+   * them both halves of a cancellation are demonstrable.
+   */
+  {
+    customer_key: 'rownak',
+    project_name: 'Nokshi Dhanmondi Court',
+    unit_code: 'D-5B',
+    booked_by_key: 'rakib',
+    days_ago: 150,
+    floor_premium: 250000,
+    facing_premium: 150000,
+    parking_charge: 1000000,
+    other_charges: 250000,
+    discount_amount: 0,
+    booking_amount: 1300000,
+    installment_tenure_months: 24,
+    payments: [
+      {
+        amount: 1300000,
+        days_ago: 150,
+        method: 'bank',
+        reference_no: 'BRAC/TRF/771903',
+        notes: 'Booking money',
+      },
+      {
+        amount: 900000,
+        days_ago: 120,
+        method: 'bank',
+        reference_no: 'BRAC/TRF/779118',
+        notes: 'First instalment',
+      },
+    ],
+    cancel: {
+      reason:
+        'পরিবার নিয়ে কানাডা চলে যাচ্ছেন — বুকিং বাতিল করে টাকা ফেরত চেয়েছেন। চুক্তি অনুযায়ী cancellation charge কাটা হবে।',
+    },
+  },
+
   // cancelled — the unit goes back to available
   {
     customer_key: 'kamrul',

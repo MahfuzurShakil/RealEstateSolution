@@ -295,6 +295,8 @@ export const DEMO_TOWER_PROGRESS: DemoTowerProgress[] = [
  * ------------------------------------------------------------------ */
 
 export interface DemoMaterialRequest {
+  /** stable handle so the Module 6 demo can hang a purchase order off it */
+  key: string;
   project_name: string;
   /** omit for a site-wide request — Section 6.5 makes both nullable */
   tower_name?: string;
@@ -315,6 +317,7 @@ export interface DemoMaterialRequest {
 
 export const DEMO_MATERIAL_REQUESTS: DemoMaterialRequest[] = [
   {
+    key: 'slab-cement',
     project_name: 'Nokshi Green Residence',
     tower_name: 'Tower A',
     work_item_name: 'Superstructure',
@@ -330,6 +333,7 @@ export const DEMO_MATERIAL_REQUESTS: DemoMaterialRequest[] = [
     ],
   },
   {
+    key: 'tower-b-bricks',
     project_name: 'Nokshi Green Residence',
     tower_name: 'Tower B',
     work_item_name: 'Superstructure',
@@ -343,6 +347,7 @@ export const DEMO_MATERIAL_REQUESTS: DemoMaterialRequest[] = [
     ],
   },
   {
+    key: 'shuttering-ply',
     project_name: 'Nokshi Green Residence',
     tower_name: 'Tower A',
     work_item_name: 'Superstructure',
@@ -358,6 +363,7 @@ export const DEMO_MATERIAL_REQUESTS: DemoMaterialRequest[] = [
     ],
   },
   {
+    key: 'uttara-site-setup',
     project_name: 'Nokshi Uttara Heights',
     requested_by_key: 'salma',
     days_ago: 15,
@@ -371,6 +377,7 @@ export const DEMO_MATERIAL_REQUESTS: DemoMaterialRequest[] = [
     ],
   },
   {
+    key: 'electrical-conduit',
     project_name: 'Nokshi Green Residence',
     tower_name: 'Tower A',
     work_item_name: 'Electrical',
@@ -378,13 +385,15 @@ export const DEMO_MATERIAL_REQUESTS: DemoMaterialRequest[] = [
     days_ago: 40,
     status: 'ordered',
     notes: 'Conduit and boxes to be cast into the slabs — needed before the next pour.',
-    decision_note: 'PO placed with Bijoy Electric, Nawabpur. Delivery promised within ten days.',
+    decision_note:
+      'Approved in full. Bijoy Electric (Nawabpur) quoted the best rate — raising the order against them.',
     items: [
       { item_name: 'PVC Conduit Pipe 25mm', unit: 'bundle', quantity_requested: 120 },
       { item_name: 'Concealed Junction Box', unit: 'piece', quantity_requested: 600 },
     ],
   },
   {
+    key: 'dhanmondi-paint',
     project_name: 'Nokshi Dhanmondi Court',
     tower_name: 'Tower A',
     work_item_name: 'Finishing',
@@ -392,7 +401,8 @@ export const DEMO_MATERIAL_REQUESTS: DemoMaterialRequest[] = [
     days_ago: 110,
     status: 'fulfilled',
     notes: 'Final coat before the snag inspection.',
-    decision_note: 'Delivered to site and issued to the painting contractor. Request closed.',
+    decision_note:
+      'Approved in full for the final coat. Ordering from the Dhanmondi Berger dealer on the standing rate.',
     items: [
       { item_name: 'Berger Weathercoat (Exterior)', unit: 'litre', quantity_requested: 900 },
       { item_name: 'Wall Putty', unit: 'kg', quantity_requested: 400 },

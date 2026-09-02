@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Ban, Check, PackageCheck, ShoppingCart, ThumbsUp } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -14,7 +15,7 @@ import {
   MATERIAL_REQUEST_STATUS_META,
   MATERIAL_REQUEST_STEP_CONFIG,
   REQUEST_STEP_OWNER,
-  allowedNextRequestStatuses,
+  manualNextRequestStatuses,
 } from '@/lib/domain/site-progress';
 import type { MaterialRequestWithRelations } from '@/lib/repositories';
 import { materialRequestRepository } from '@/lib/repositories';
@@ -46,7 +47,7 @@ export function MaterialRequestStatusCard({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const next = allowedNextRequestStatuses(request.status);
+  const next = manualNextRequestStatuses(request.status);
   const isRejected = request.status === 'rejected';
   const currentIndex = MATERIAL_REQUEST_PIPELINE.indexOf(request.status);
   const config = action ? MATERIAL_REQUEST_STEP_CONFIG[action] : null;
@@ -169,7 +170,7 @@ export function MaterialRequestStatusCard({
             })}
           </div>
         ) : (
-          !isRejected && (
+          request.status === 'fulfilled' && (
             <p className="flex items-start gap-2 text-xs text-emerald-700">
               <PackageCheck className="mt-0.5 size-3.5 shrink-0" />
               Fulfilled — the material reached the site and this request is closed.
@@ -177,10 +178,31 @@ export function MaterialRequestStatusCard({
           )
         )}
 
+        {/*
+          Module 6 drives the rest of the lifecycle: raising a Purchase Order
+          marks the request `ordered`, and a Goods Receipt that completes that
+          order closes it as `fulfilled` (Section 7.2). So the approved state
+          offers the action that actually moves it, not a button that only
+          renames the status.
+        */}
         {request.status === 'approved' && (
+          <div className="mt-3 space-y-2">
+            <Link href={`/admin/purchase-orders/new?request=${request.id}`}>
+              <Button size="sm" className="w-full">
+                <ShoppingCart className="size-4" /> Raise Purchase Order
+              </Button>
+            </Link>
+            <p className="rounded-xl border border-hairline p-3 text-xs text-ink-muted">
+              The request moves to Ordered on its own when the order is placed, and closes as
+              Fulfilled once that order has been fully received.
+            </p>
+          </div>
+        )}
+
+        {request.status === 'ordered' && (
           <p className="mt-3 rounded-xl border border-hairline p-3 text-xs text-ink-muted">
-            Approved requests are what the Procurement module (Module 6) turns into a Purchase
-            Order. Until it is built, the remaining steps are marked here by hand.
+            Being bought now. It closes as Fulfilled by itself once the purchase order behind it is
+            fully received — nobody marks that by hand.
           </p>
         )}
 

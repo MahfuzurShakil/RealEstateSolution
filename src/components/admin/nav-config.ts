@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
+import type { ModuleKey } from '@/lib/domain/access';
 import {
   Building2,
   Coins,
@@ -14,6 +15,12 @@ import {
 export interface NavItem {
   label: string;
   href: string;
+  /**
+   * Which Section 9.6 module this item belongs to. The sidebar hides items the
+   * acting role cannot open, so the menu is the first place the permission
+   * matrix shows up rather than a table nobody reads.
+   */
+  module: ModuleKey | null;
   /** modules not built yet render disabled, so the shell shows the full map */
   disabled?: boolean;
 }
@@ -29,64 +36,67 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Dashboard',
     icon: LayoutDashboard,
-    items: [{ label: 'Overview', href: '/admin' }],
+    items: [{ label: 'Overview', href: '/admin', module: null }],
   },
   {
     label: 'Land Management',
     icon: Map,
     items: [
-      { label: 'Lands', href: '/admin/lands' },
-      { label: 'Landowners', href: '/admin/landowners' },
+      { label: 'Lands', href: '/admin/lands', module: 'land' },
+      { label: 'Landowners', href: '/admin/landowners', module: 'land' },
     ],
   },
   {
     label: 'Projects',
     icon: Building2,
     items: [
-      { label: 'All Projects', href: '/admin/projects' },
+      { label: 'All Projects', href: '/admin/projects', module: 'project' },
     ],
   },
   {
     label: 'Sales & CRM',
     icon: UserRound,
     items: [
-      { label: 'Leads', href: '/admin/leads' },
-      { label: 'Bookings', href: '/admin/bookings' },
-      { label: 'Customers', href: '/admin/customers' },
+      { label: 'Leads', href: '/admin/leads', module: 'crm' },
+      { label: 'Bookings', href: '/admin/bookings', module: 'booking' },
+      { label: 'Customers', href: '/admin/customers', module: 'booking' },
     ],
   },
   {
     label: 'Site Progress',
     icon: HardHat,
     items: [
-      { label: 'Progress Updates', href: '/admin/site-progress' },
-      { label: 'Material Requests', href: '/admin/material-requests' },
+      { label: 'Progress Updates', href: '/admin/site-progress', module: 'site_progress' },
+      { label: 'Material Requests', href: '/admin/material-requests', module: 'material_request' },
     ],
   },
   {
     label: 'Procurement',
     icon: Package,
     items: [
-      { label: 'Purchase Orders', href: '/admin/purchase-orders', disabled: true },
-      { label: 'Suppliers', href: '/admin/suppliers', disabled: true },
-      { label: 'Stock', href: '/admin/stock', disabled: true },
+      { label: 'Purchase Orders', href: '/admin/purchase-orders', module: 'procurement' },
+      { label: 'Suppliers', href: '/admin/suppliers', module: 'procurement' },
+      { label: 'Stock', href: '/admin/stock', module: 'procurement' },
+      { label: 'Supplier Vouchers', href: '/admin/supplier-vouchers', module: 'supplier_voucher' },
     ],
   },
   {
     label: 'Finance',
     icon: Coins,
     items: [
-      { label: 'Collections', href: '/admin/collections', disabled: true },
-      { label: 'Expenses', href: '/admin/expenses', disabled: true },
+      { label: 'Overview', href: '/admin/finance', module: 'dashboard' },
+      { label: 'Collections', href: '/admin/collections', module: 'finance_collection' },
+      { label: 'Expenses', href: '/admin/expenses', module: 'finance_expense' },
+      { label: 'Refunds', href: '/admin/refunds', module: 'finance_collection' },
     ],
   },
   {
     label: 'Administration',
     icon: Users,
     items: [
-      { label: 'Users & Roles', href: '/admin/users', disabled: true },
-      { label: 'Master Data', href: '/admin/master-data', disabled: true },
-      { label: 'Company Settings', href: '/admin/settings', disabled: true },
+      { label: 'Users & Roles', href: '/admin/users', module: 'user_management' },
+      { label: 'Master Data', href: '/admin/master-data', module: 'master_data' },
+      { label: 'Company Settings', href: '/admin/settings', module: 'master_data' },
     ],
   },
 ];
