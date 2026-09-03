@@ -3,7 +3,8 @@
 Known-open work that is **not** a blocker for what is already shipped. Add to
 this as modules land; delete an entry when it is done.
 
-Last reviewed: 2026-09-04, after the Tier 2 remediation batches 2A–2E from
+Last reviewed: 2026-09-04, after the client review batches F1–F4 (Section 0b)
+and the Tier 2 remediation batches 2A–2E from
 `REMEDIATION-PLAN.md` (see Section 0 below, which also covers Tier 1). The
 full defect list is in `ANALYSIS-REPORT_2026-09-02.md`.
 
@@ -137,6 +138,39 @@ That is the land payment schedule (Tier 3.4, which needs no schema change
 because `payment_schedules.entity_type` is already there — see 1.8). Until it
 lands, the page says explicitly that no instalment plan is recorded, rather
 than implying the balance is on time.
+
+---
+
+## 0b. Client review — done 2026-09-04 (feedback batches F1–F4)
+
+Seven points raised after a walkthrough of the land, project and unit
+screens. Two needed no code: the map already centred on Dhaka, and the unit
+price was already the user's to set (the gap was that it could not vary by
+floor). One schema addendum — `projects.cover_image_document_id`, nullable
+and not indexed, so no new Dexie version block.
+
+- **F1** — `MoneyInput` echoes what is being typed, grouped and in lakh/crore,
+  because an ungrouped number field makes 45000000 and 450000000 the same
+  shape on the fields that hold the price of land. An input aid only; money
+  is still displayed in full everywhere. The unit-grid legend now lists all
+  six statuses with counts instead of only the ones present. "Sold By" became
+  "Who sells it", and a developer-share flat can no longer be marked
+  owner-sold — that field drives the company-revenue filter.
+- **F2** — unit allocation offers only the landowners of the project's own
+  land, via `projectRepository.landownersForProject`.
+- **F3** — the bulk generator can price height, per floor as a percentage or
+  a fixed amount, counted from the first floor generated.
+- **F4** — a "Pictures" section on the project's Documents tab, with a
+  display picture chosen from the uploaded images.
+
+### Still open from this review
+
+**Money grouping is Western, not South Asian.** `formatBdt` renders
+`BDT 45,000,000`, where this market writes `4,50,00,000`. The crore/lakh echo
+on the input fields covers the moment where it matters most — typing — but
+every table and tile still groups in thousands. Switching `formatBdt` to
+`en-IN` grouping would change every money figure in the application at once,
+so it is worth deciding deliberately rather than in passing.
 
 ---
 
