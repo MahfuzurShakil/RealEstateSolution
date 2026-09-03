@@ -94,7 +94,7 @@ export default function ProjectDetailPage() {
                 <Pencil className="size-4" /> Edit
               </Button>
             </Link>
-            <Button variant="danger" onClick={() => setConfirmDelete(true)}>
+            <Button variant="dangerGhost" onClick={() => setConfirmDelete(true)}>
               <Trash2 className="size-4" /> Delete
             </Button>
           </div>

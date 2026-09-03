@@ -14,8 +14,9 @@ import { companySettingsRepository } from '@/lib/repositories';
  *
  * These fields are not decoration: `whatsapp_number` drives the Public
  * Portal's click-to-chat button (P4), `company_name`, `address` and
- * `trade_license_no` are what a printed booking form or money receipt carries,
- * and the Public Portal reads the rest for its contact page.
+ * `trade_license_no` are what a printed booking form or money receipt will
+ * carry once those documents exist, and the Public Portal reads the rest for
+ * its contact page.
  */
 export default function CompanySettingsPage() {
   const settings = useLiveQuery(() => companySettingsRepository.get(), []);
@@ -26,7 +27,7 @@ export default function CompanySettingsPage() {
     <>
       <PageHeader
         title="Company Settings"
-        subtitle="The company profile used on printed documents and the public website."
+        subtitle="The company profile used on the public website, and on printed documents once those are built."
       />
       {/* keyed on the row so the form starts from saved values without an
           effect copying them into state after the first render */}
@@ -120,7 +121,7 @@ function SettingsForm({
               />
             </Field>
 
-            <Field label="BIN / TIN" hint="Printed on invoices and money receipts">
+            <Field label="BIN / TIN" hint="For invoices and money receipts">
               <TextInput
                 value={form.tax_id}
                 onChange={(e) => set('tax_id', e.target.value)}
@@ -222,8 +223,10 @@ function SettingsForm({
             <li className="flex gap-2.5">
               <Building2 className="mt-0.5 size-4 shrink-0 text-admin-600" />
               <span>
-                <span className="font-medium text-ink">Printed documents</span> — the booking form,
-                money receipt and supplier voucher carry the name, address and licence numbers.
+                <span className="font-medium text-ink">Printed documents</span> — the booking
+                form, money receipt and supplier voucher are not built yet. When they are, they
+                read the name, address and licence numbers from here, so it is worth filling in
+                now.
               </span>
             </li>
             <li className="flex gap-2.5">

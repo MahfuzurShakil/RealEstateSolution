@@ -236,7 +236,7 @@ export default function PurchaseOrderDetailPage() {
               </Button>
             </Link>
             <Button
-              variant="danger"
+              variant="dangerGhost"
               onClick={async () => {
                 const paid = await purchaseOrderRepository.blockedByVouchers(order.id);
                 if (paid > 0) {

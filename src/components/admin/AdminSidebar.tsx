@@ -2,12 +2,76 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 import { ChevronRight, X } from 'lucide-react';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { canView } from '@/lib/domain/access';
 import { cn } from '@/lib/utils/cn';
 import { NAV_GROUPS } from './nav-config';
+
+const OPEN_GROUPS_KEY = 'admin.sidebar-open-groups';
+/** same-tab notification; the native `storage` event only fires in OTHER tabs */
+const OPEN_GROUPS_EVENT = 'admin-sidebar-groups-change';
+
+/*
+ * Which groups the user has explicitly opened or closed, kept in
+ * `localStorage` so the menu is where they left it after a reload. Read
+ * through `useSyncExternalStore` for the same reason the acting role is
+ * (`lib/auth/mock-session.tsx`): `localStorage` does not exist during the
+ * server render, so seeding state from it is a hydration mismatch.
+ *
+ * Only explicit toggles are stored. A group holding the current page still
+ * opens on its own, and more than one group can be open at once — this is a
+ * disclosure tree, not an accordion.
+ */
+/*
+ * `useSyncExternalStore` compares snapshots by identity, so the empty case
+ * has to be the same object every time or the store re-renders forever.
+ */
+const EMPTY_GROUPS: Record<string, boolean> = {};
+
+function readOpenGroups(): Record<string, boolean> {
+  try {
+    const raw = window.localStorage.getItem(OPEN_GROUPS_KEY);
+    if (!raw) return EMPTY_GROUPS;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return EMPTY_GROUPS;
+    const entries = Object.entries(parsed as Record<string, unknown>).filter(
+      ([, v]) => typeof v === 'boolean',
+    ) as Array<[string, boolean]>;
+    return entries.length === 0 ? EMPTY_GROUPS : Object.fromEntries(entries);
+  } catch {
+    // private mode, or a value written by an older build — start clean
+    return EMPTY_GROUPS;
+  }
+}
+
+/** Cached so an unchanged stored value keeps returning an identical object. */
+let groupsCacheRaw: string | null = null;
+let groupsCacheValue: Record<string, boolean> = EMPTY_GROUPS;
+
+function openGroupsSnapshot(): Record<string, boolean> {
+  let raw: string | null = null;
+  try {
+    raw = window.localStorage.getItem(OPEN_GROUPS_KEY);
+  } catch {
+    return EMPTY_GROUPS;
+  }
+  if (raw !== groupsCacheRaw) {
+    groupsCacheRaw = raw;
+    groupsCacheValue = readOpenGroups();
+  }
+  return groupsCacheValue;
+}
+
+function subscribeToOpenGroups(onChange: () => void): () => void {
+  window.addEventListener(OPEN_GROUPS_EVENT, onChange);
+  window.addEventListener('storage', onChange);
+  return () => {
+    window.removeEventListener(OPEN_GROUPS_EVENT, onChange);
+    window.removeEventListener('storage', onChange);
+  };
+}
 
 /** '/admin/lands/new' should still light up the '/admin/lands' item. */
 function isActiveHref(pathname: string, href: string): boolean {
@@ -50,12 +114,23 @@ export function AdminSidebar({
     ),
   })).filter((group) => group.items.length > 0);
 
-  // Only explicit user toggles are stored; a group holding the current page is
-  // open by default, so navigation needs no effect to keep the tree in sync.
-  const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  const toggled = useSyncExternalStore(
+    subscribeToOpenGroups,
+    openGroupsSnapshot,
+    () => EMPTY_GROUPS,
+  );
 
-  const toggle = (label: string, isOpen: boolean) =>
-    setToggled((prev) => ({ ...prev, [label]: !isOpen }));
+  const toggle = useCallback((label: string, isOpen: boolean) => {
+    try {
+      window.localStorage.setItem(
+        OPEN_GROUPS_KEY,
+        JSON.stringify({ ...readOpenGroups(), [label]: !isOpen }),
+      );
+    } catch {
+      // failing to remember is not worth breaking the menu over
+    }
+    window.dispatchEvent(new Event(OPEN_GROUPS_EVENT));
+  }, []);
 
   // the icons-only state is a desktop affordance; the drawer always has room
   const showLabels = !collapsed || mobileOpen;

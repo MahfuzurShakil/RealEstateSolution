@@ -14,8 +14,13 @@ import { cn } from '@/lib/utils/cn';
  * and hides the total; numbered paging keeps both, which is why every
  * inventory-style admin UI (and Airbnb, Zillow, Amazon on their card grids)
  * uses it rather than an endless feed.
+ *
+ * The default is 12 because these are card grids: 12 fills a three-across grid
+ * exactly and shows a whole screen's worth. It used to be 6, which turned an
+ * 11-row list of lands into two pages for no reason. Worklist tables default
+ * to 25 — see `DataTable`.
  */
-export function usePagination<T>(rows: T[], defaultPageSize = 6) {
+export function usePagination<T>(rows: T[], defaultPageSize = 12) {
   const [pageSize, setPageSize] = useState(defaultPageSize);
   const [page, setPage] = useState(0);
 
@@ -99,13 +104,20 @@ export function Pagination({
   alwaysVisible?: boolean;
   className?: string;
 }) {
-  // nothing to page through, and no size worth choosing
-  if (!alwaysVisible && total <= Math.min(...pageSizes)) return null;
+  /*
+   * Nothing to page through. Compared against the page size in force rather
+   * than the smallest offered size: with a default of 12, `Math.min` (6) left
+   * a paging bar sitting under an eight-card list that had no second page.
+   */
+  if (!alwaysVisible && total <= pageSize) return null;
+
+  // "1 refund", not "1 refunds" — every label passed in is a regular plural
+  const noun = total === 1 && label.endsWith('s') ? label.slice(0, -1) : label;
 
   return (
     <div className={cn('mt-5 flex flex-wrap items-center justify-between gap-3', className)}>
       <p className="text-xs text-ink-muted">
-        Showing {from}–{to} of {total} {label}
+        Showing {from}–{to} of {total} {noun}
       </p>
 
       {/*

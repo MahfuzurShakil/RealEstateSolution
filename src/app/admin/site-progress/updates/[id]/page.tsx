@@ -99,7 +99,7 @@ export default function ProgressUpdateDetailPage() {
             <Button variant="outline" onClick={() => setLogOpen(true)}>
               <HardHat className="size-4" /> Log new reading
             </Button>
-            <Button variant="danger" onClick={() => setConfirmDelete(true)}>
+            <Button variant="dangerGhost" onClick={() => setConfirmDelete(true)}>
               <Trash2 className="size-4" /> Delete
             </Button>
           </div>

@@ -59,8 +59,13 @@ export function DataTable<T extends { id: string }>({
     });
   }, [rows, columns, sortKey, direction]);
 
-  // same paging control the card lists use, so both feel identical
-  const paged = usePagination(sorted, 5);
+  /*
+   * Same paging control the card lists use, so both feel identical — but a
+   * worklist default of 25, not the grid's 12. Five rows across 102 collection
+   * instalments was 21 pages, and the first page was five rows belonging to
+   * one customer.
+   */
+  const paged = usePagination(sorted, 25);
 
   function toggleSort(column: Column<T>) {
     if (!column.sortValue) return;

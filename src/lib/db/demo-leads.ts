@@ -150,6 +150,32 @@ export const DEMO_USERS: DemoUser[] = [
   },
 ];
 
+/**
+ * How long ago each person joined, in days before the day the demo is loaded.
+ *
+ * Kept beside `DEMO_USERS` rather than on the records themselves because it is
+ * seeding chrome, not part of the staff list. Without it every account read
+ * "Added <today>", which is the one field on the Users screen that gave the
+ * demo away — the founders and the site engineers hired with Module 5 had
+ * identical join dates. The order mirrors the story: management first, then
+ * sales, then site and procurement.
+ */
+export const DEMO_USER_JOINED_DAYS_AGO: Record<string, number> = {
+  admin: 900,
+  chairman: 900,
+  shakib: 760,
+  tanzila: 610,
+  arif: 540,
+  nishat: 430,
+  rakib: 400,
+  shirin: 330,
+  faruk: 700,
+  imran: 480,
+  jahangir: 300,
+  salma: 240,
+  monir: 210,
+};
+
 export interface DemoLeadActivity {
   activity_type: LeadActivityType;
   /** days before today; 0 is today */

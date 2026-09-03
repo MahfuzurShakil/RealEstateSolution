@@ -38,7 +38,7 @@ import type { MaterialRequestStatus, ProjectStatus } from './types';
 import { getDb } from './database';
 import { DEMO_LANDS, DEMO_OWNERS } from './demo-data';
 import { DEMO_BOOKINGS, DEMO_CUSTOMERS, DEMO_DISCOUNT_RULES } from './demo-bookings';
-import { DEMO_LEADS, DEMO_USERS } from './demo-leads';
+import { DEMO_LEADS, DEMO_USER_JOINED_DAYS_AGO, DEMO_USERS } from './demo-leads';
 import { DEMO_PROJECTS } from './demo-projects';
 import { DEMO_MATERIAL_REQUESTS, DEMO_TOWER_PROGRESS } from './demo-site-progress';
 import { DEMO_EXPENSES, DEMO_REFUNDS } from './demo-finance';
@@ -454,6 +454,14 @@ async function seedDemoLeads(
       },
       createdBy,
     );
+    /*
+     * Back-date the account like every other demo record. `create` stamps
+     * `created_at` at load time, which left the whole staff list reading
+     * "Added <today>" against leads and bookings that were properly aged.
+     */
+    const joined = daysFromToday(-(DEMO_USER_JOINED_DAYS_AGO[user.key] ?? 365));
+    await db.users.update(saved.id, { created_at: joined, updated_at: joined });
+
     userIds.set(user.key, saved.id);
   }
 

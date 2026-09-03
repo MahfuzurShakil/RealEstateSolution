@@ -193,7 +193,7 @@ export default function SupplierDetailPage() {
               <Pencil className="size-4" /> Edit
             </Button>
             <Button
-              variant="danger"
+              variant="dangerGhost"
               onClick={async () => {
                 const count = await supplierRepository.blockedByOrders(supplier.id);
                 if (count > 0) {
