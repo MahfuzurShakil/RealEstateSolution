@@ -251,6 +251,19 @@ export interface Project extends BaseEntity {
   /** multi-select from lookup_values (category='amenity') */
   amenities: string[];
   cover_image_url?: string | null;
+  /**
+   * The uploaded picture used as the display image, when one has been chosen.
+   *
+   * Phase A keeps uploaded files as Blobs in IndexedDB, so an uploaded photo
+   * has no URL to put in `cover_image_url` — it is referenced by its
+   * `documents` row instead. Takes precedence over `cover_image_url`, which
+   * stays for an externally hosted image. In Phase B, when documents get real
+   * storage URLs, this collapses back into `cover_image_url`.
+   *
+   * Not indexed — nothing queries by it — so no new Dexie version block
+   * (same precedent as `towers.current_progress_pct`).
+   */
+  cover_image_document_id?: UUID | null;
   /** Public Portal P1 */
   is_public: boolean;
   is_featured: boolean;

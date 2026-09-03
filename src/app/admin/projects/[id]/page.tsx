@@ -7,6 +7,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { ArrowLeft, Globe, Map as MapIcon, Pencil, Star, Trash2 } from 'lucide-react';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { JvAllocationCard } from '@/components/admin/projects/JvAllocationCard';
+import { ProjectGalleryPanel } from '@/components/admin/projects/ProjectGalleryPanel';
 import { ProjectStatusCard } from '@/components/admin/projects/ProjectStatusCard';
 import { ProjectTimeline } from '@/components/admin/projects/ProjectTimeline';
 import { TowersUnitsPanel } from '@/components/admin/projects/TowersUnitsPanel';
@@ -220,10 +221,25 @@ export default function ProjectDetailPage() {
           )}
 
           {tab === 'documents' && (
-            <Card>
-              <CardHeader title="Documents" />
-              <DocumentsPanel entityType="project" entityId={project.id} />
-            </Card>
+            <div className="space-y-5">
+              {/*
+                Pictures first, because that is what a project is sold on, and
+                deliberately not an eighth tab — the strip already wraps to
+                three rows on a phone.
+              */}
+              <Card>
+                <CardHeader title="Pictures" />
+                <p className="-mt-2 mb-4 text-sm text-ink-muted">
+                  What the public website shows, and which one it leads with.
+                </p>
+                <ProjectGalleryPanel project={project} />
+              </Card>
+
+              <Card>
+                <CardHeader title="Documents" />
+                <DocumentsPanel entityType="project" entityId={project.id} />
+              </Card>
+            </div>
           )}
         </div>
 

@@ -413,7 +413,11 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
       <Card>
         <CardHeader title="Public Website" />
         <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Cover Image URL" className="md:col-span-2">
+          <Field
+            label="Cover image link"
+            className="md:col-span-2"
+            hint="Only for an image hosted elsewhere. To use your own photos, upload them on the project's Documents tab as “Gallery Image” and pick the display picture there — an uploaded picture takes precedence over this link."
+          >
             <TextInput
               value={form.cover_image_url}
               onChange={(e) => set('cover_image_url', e.target.value)}
