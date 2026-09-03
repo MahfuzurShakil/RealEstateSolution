@@ -276,6 +276,83 @@ export default function UsersPage() {
               columns={columns}
               initialSort={{ key: 'name' }}
               label="users"
+              mobileCard={(row) => (
+                <div className="space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-ink">{row.name}</p>
+                      <p className="truncate text-xs text-ink-muted">{row.email}</p>
+                      <p className="truncate text-xs text-ink-muted">{formatPhone(row.phone)}</p>
+                    </div>
+                    {/*
+                      The row actions stay on the card: on a phone this is the
+                      only way to reach them, and the table's icon column is
+                      hidden with the rest of the table.
+                    */}
+                    <div className="flex shrink-0 gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`${row.status === 'active' ? 'Deactivate' : 'Activate'} ${row.name}`}
+                        onClick={() =>
+                          userRepository.setStatus(
+                            row.id,
+                            row.status === 'active' ? 'inactive' : 'active',
+                          )
+                        }
+                      >
+                        <ShieldCheck
+                          className={cn(
+                            'size-4',
+                            row.status === 'active' ? 'text-emerald-600' : 'text-slate-400',
+                          )}
+                        />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Edit ${row.name}`}
+                        onClick={() => {
+                          setEditing(row);
+                          setModalOpen(true);
+                        }}
+                      >
+                        <Pencil className="size-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Delete ${row.name}`}
+                        onClick={() => requestDelete(row)}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge tone={USER_ROLE_META[row.role].tone}>
+                      {USER_ROLE_META[row.role].label}
+                    </Badge>
+                    <Badge tone={USER_STATUS_META[row.status].tone}>
+                      {USER_STATUS_META[row.status].label}
+                    </Badge>
+                    {row.all_projects ? (
+                      <Badge tone="teal">All projects</Badge>
+                    ) : row.assigned_projects.length === 0 ? (
+                      <span className="text-xs text-amber-600">Nothing assigned</span>
+                    ) : (
+                      <Badge tone="blue">
+                        <Building2 className="size-3.5" />
+                        {row.assigned_projects.length} project
+                        {row.assigned_projects.length === 1 ? '' : 's'}
+                      </Badge>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-ink-muted">Added {formatDate(row.created_at)}</p>
+                </div>
+              )}
               emptyState={
                 <EmptyState
                   icon={UsersIcon}

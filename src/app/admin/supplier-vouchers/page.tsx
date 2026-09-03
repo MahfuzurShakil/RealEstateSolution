@@ -221,6 +221,58 @@ export default function SupplierVouchersPage() {
             columns={columns}
             initialSort={{ key: 'payment_date', direction: 'desc' }}
             label="vouchers"
+            mobileCard={(row) => (
+              <div className="space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-ink">
+                      {row.supplier ? (
+                        <Link
+                          href={`/admin/suppliers/${row.supplier.id}`}
+                          className="text-admin-700 hover:underline"
+                        >
+                          {row.supplier.name}
+                        </Link>
+                      ) : (
+                        'Supplier removed'
+                      )}
+                    </p>
+                    <p className="truncate text-xs text-ink-muted">
+                      {row.code} · {formatDate(row.payment_date)}
+                    </p>
+                  </div>
+                  <p className="shrink-0 text-sm font-semibold text-ink">{formatBdt(row.amount)}</p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {row.project ? (
+                    <Badge tone="teal">
+                      <Building2 className="size-3.5" />
+                      {row.project.name}
+                    </Badge>
+                  ) : (
+                    <Badge tone="neutral">
+                      <Warehouse className="size-3.5" />
+                      Central stock
+                    </Badge>
+                  )}
+                  {row.order && (
+                    <Link
+                      href={`/admin/purchase-orders/${row.order.id}`}
+                      className="text-xs text-admin-700 hover:underline"
+                    >
+                      against {row.order.code}
+                    </Link>
+                  )}
+                </div>
+
+                <p className="truncate text-xs text-ink-muted">
+                  {SUPPLIER_PAYMENT_METHOD_META[row.payment_method]}
+                  {row.reference_no ? ` · ${row.reference_no}` : ''}
+                  {row.paid_by_name ? ` · paid by ${row.paid_by_name}` : ''}
+                </p>
+              </div>
+            )}
             emptyState={
               <EmptyState
                 icon={Receipt}

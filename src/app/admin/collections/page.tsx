@@ -316,6 +316,66 @@ function CollectionsPage() {
             rows={list}
             columns={columns}
             label="instalments"
+            /*
+             * Nine columns is a table a phone cannot use — the outstanding
+             * amount, which is the whole reason this screen exists, was three
+             * swipes to the right. The card leads with who owes and how much.
+             */
+            mobileCard={(row) => {
+              const meta = INSTALLMENT_STATUS_META[row.status];
+              const late = daysOverdue(row.installment, today);
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-ink">
+                        {row.customer?.name ?? 'Customer removed'}
+                      </p>
+                      <p className="truncate text-xs text-ink-muted">
+                        {row.booking.code} · {row.unit?.code ?? '—'}
+                      </p>
+                    </div>
+                    <Badge tone={meta.tone}>{meta.label}</Badge>
+                  </div>
+
+                  <p className="text-xs text-ink-muted">
+                    {row.installment.label}
+                    {row.project ? ` · ${row.project.name}` : ''}
+                  </p>
+
+                  <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+                    <p className="text-xs text-ink-muted">
+                      Due{' '}
+                      {row.installment.due_date ? formatDate(row.installment.due_date) : 'not set'}
+                      {late > 0 && (
+                        <span className="block text-red-600">
+                          {late} day{late === 1 ? '' : 's'} late
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-right text-sm">
+                      <span className="block text-xs text-ink-muted">
+                        {row.outstanding > 0.009 ? 'outstanding' : 'settled'}
+                      </span>
+                      <span
+                        className={
+                          row.status === 'overdue'
+                            ? 'font-semibold text-red-600'
+                            : row.outstanding > 0.009
+                              ? 'font-semibold text-ink'
+                              : 'font-medium text-emerald-700'
+                        }
+                      >
+                        {row.outstanding > 0.009 ? formatBdt(row.outstanding) : '—'}
+                      </span>
+                      <span className="block text-xs text-ink-muted">
+                        of {formatBdt(row.installment.amount_due)}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+              );
+            }}
             emptyState={
               <EmptyState
                 icon={CircleDollarSign}

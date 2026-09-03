@@ -26,6 +26,13 @@ type Direction = 'asc' | 'desc';
  *
  * Lists that grow without limit — landowners, users, suppliers, payments —
  * should use this rather than dumping every row on the page.
+ *
+ * Pass `mobileCard` and the same rows render as a card stack below `md`,
+ * sharing this component's sorting and paging. A phone cannot use a nine-
+ * column table: collections was 889 px of table inside a 299 px window, three
+ * swipes from the customer's name to what they owe. Omit it and the table
+ * keeps its horizontal scroll box, which is right for reference tables nobody
+ * works from on a phone.
  */
 export function DataTable<T extends { id: string }>({
   rows,
@@ -35,6 +42,7 @@ export function DataTable<T extends { id: string }>({
   emptyState,
   rowKey = (row) => row.id,
   label = 'rows',
+  mobileCard,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -43,6 +51,8 @@ export function DataTable<T extends { id: string }>({
   emptyState?: ReactNode;
   rowKey?: (row: T) => string;
   label?: string;
+  /** below `md`, render this instead of a table row */
+  mobileCard?: (row: T) => ReactNode;
 }) {
   const [sortKey, setSortKey] = useState<string | null>(initialSort?.key ?? null);
   const [direction, setDirection] = useState<Direction>(initialSort?.direction ?? 'asc');
@@ -82,7 +92,34 @@ export function DataTable<T extends { id: string }>({
 
   return (
     <div>
-      <div className="overflow-x-auto rounded-2xl border border-hairline bg-white">
+      {mobileCard && (
+        <ul className="space-y-3 md:hidden">
+          {paged.pageRows.map((row) => (
+            <li key={rowKey(row)}>
+              {onRowClick ? (
+                <button
+                  type="button"
+                  onClick={() => onRowClick(row)}
+                  className="w-full rounded-2xl border border-hairline bg-white p-4 text-left shadow-sm transition-colors hover:bg-admin-50/70"
+                >
+                  {mobileCard(row)}
+                </button>
+              ) : (
+                <div className="rounded-2xl border border-hairline bg-white p-4 shadow-sm">
+                  {mobileCard(row)}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div
+        className={cn(
+          'overflow-x-auto rounded-2xl border border-hairline bg-white',
+          mobileCard && 'hidden md:block',
+        )}
+      >
         <table className="w-full min-w-[640px] border-collapse text-left text-sm">
           <thead className="sticky top-0 z-10 bg-canvas/80 backdrop-blur">
             <tr>

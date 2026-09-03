@@ -242,6 +242,35 @@ function ExpensesPage() {
             columns={columns}
             initialSort={{ key: 'expense_date', direction: 'desc' }}
             label="costs"
+            mobileCard={(row) => (
+              <Link href={`/admin/expenses/${row.id}`} className="block space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-ink">{row.cost_reason}</p>
+                    <p className="truncate text-xs text-ink-muted">
+                      {row.code} · {formatDate(row.expense_date)}
+                    </p>
+                  </div>
+                  <p className="shrink-0 text-sm font-semibold text-ink">{formatBdt(row.amount)}</p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Badge tone={COST_CATEGORY_META[row.cost_category].tone}>
+                    {COST_CATEGORY_META[row.cost_category].label}
+                  </Badge>
+                  {row.project ? (
+                    <Badge tone="teal">{row.project.name}</Badge>
+                  ) : (
+                    <Badge tone="neutral">Company-level</Badge>
+                  )}
+                </div>
+
+                <p className="truncate text-xs text-ink-muted">
+                  Paid to {row.paid_to} · {SUPPLIER_PAYMENT_METHOD_META[row.payment_method]}
+                  {row.reference_no ? ` · ${row.reference_no}` : ''}
+                </p>
+              </Link>
+            )}
             emptyState={
               <EmptyState
                 icon={ReceiptText}
