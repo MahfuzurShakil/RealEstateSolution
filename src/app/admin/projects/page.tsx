@@ -11,6 +11,7 @@ import {
   Plus,
   Search,
   Star,
+  Wallet,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -24,7 +25,7 @@ import { ResultsLayout, ViewToggle, type ViewMode } from '@/components/ui/ViewTo
 import { PROJECT_STATUSES, PROJECT_TYPES, type ProjectStatus, type ProjectType } from '@/lib/db/types';
 import { PROJECT_STATUS_META, PROJECT_TYPE_LABEL } from '@/lib/domain/project';
 import { projectRepository, unitRepository } from '@/lib/repositories';
-import { formatDate } from '@/lib/utils/format';
+import { formatBdt, formatDate } from '@/lib/utils/format';
 
 type SortKey = 'newest' | 'oldest' | 'completion_soon' | 'name';
 
@@ -62,6 +63,10 @@ export default function ProjectsListPage() {
     }
     return stats;
   }, []);
+
+  /** Sold % and booked value, so four projects can be compared without
+      opening each one's Finance tab (P-4). */
+  const commercials = useLiveQuery(() => projectRepository.commercialSummaries(), []);
 
   const rows = useMemo(() => {
     const list = [...(projects ?? [])];
@@ -226,6 +231,7 @@ export default function ProjectsListPage() {
                 {paged.pageRows.map((project) => {
                   const meta = PROJECT_STATUS_META[project.status];
                   const stats = unitStats?.get(project.id);
+                  const money = commercials?.[project.id];
                   return (
                     <ResultCard
                       key={project.id}
@@ -260,6 +266,17 @@ export default function ProjectsListPage() {
                           {stats && stats.total > 0 && (
                             <Badge tone="teal">
                               {stats.total} units · {stats.available} available
+                            </Badge>
+                          )}
+                          {money && money.units > 0 && (
+                            <Badge tone={money.sold_pct > 0 ? 'blue' : 'neutral'}>
+                              {money.sold_pct}% sold
+                            </Badge>
+                          )}
+                          {money && money.booked_value > 0 && (
+                            <Badge tone="green">
+                              <Wallet className="size-3.5" />
+                              {formatBdt(money.booked_value)} booked
                             </Badge>
                           )}
                           {project.is_public && (

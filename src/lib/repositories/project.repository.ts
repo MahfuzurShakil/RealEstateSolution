@@ -161,6 +161,67 @@ class ProjectRepository extends BaseRepository<Project> {
     });
   }
 
+  /**
+   * Commercial roll-up per project for the list cards: how much of the
+   * inventory is spoken for, and what the confirmed bookings are worth.
+   *
+   * The project list carried no commercial information at all, so comparing
+   * four projects meant opening each one's Finance tab. Read in one pass over
+   * every unit and booking rather than a query per project, because the list
+   * renders all of them at once.
+   *
+   * "Sold" here means spoken for — booked, sold or handed over. Reserved and
+   * hold are deliberately excluded: neither is a sale, and counting them would
+   * flatter the number on exactly the screen used to compare projects.
+   * Booked value counts confirmed bookings only, matching the Finance tab.
+   */
+  async commercialSummaries(): Promise<
+    Record<string, { units: number; sold: number; sold_pct: number; booked_value: number }>
+  > {
+    const [projects, towers, units, bookings] = await Promise.all([
+      db.projects.toArray(),
+      db.towers.toArray(),
+      db.units.toArray(),
+      db.bookings.toArray(),
+    ]);
+
+    const projectByTower = new Map(towers.map((t) => [t.id, t.project_id]));
+    const projectByUnit = new Map<string, string | undefined>(
+      units.map((u) => [u.id, projectByTower.get(u.tower_id)]),
+    );
+
+    const out: Record<
+      string,
+      { units: number; sold: number; sold_pct: number; booked_value: number }
+    > = {};
+    for (const project of projects) {
+      out[project.id] = { units: 0, sold: 0, sold_pct: 0, booked_value: 0 };
+    }
+
+    const SPOKEN_FOR: ReadonlySet<string> = new Set(['booked', 'sold', 'handed_over']);
+    for (const unit of units) {
+      const projectId = projectByUnit.get(unit.id);
+      const entry = projectId ? out[projectId] : undefined;
+      if (!entry) continue;
+      entry.units += 1;
+      if (SPOKEN_FOR.has(unit.status)) entry.sold += 1;
+    }
+
+    for (const booking of bookings) {
+      if (booking.status !== 'confirmed') continue;
+      const projectId = projectByUnit.get(booking.unit_id);
+      const entry = projectId ? out[projectId] : undefined;
+      if (!entry) continue;
+      entry.booked_value += Number(booking.final_price) || 0;
+    }
+
+    for (const entry of Object.values(out)) {
+      entry.sold_pct = entry.units > 0 ? Math.round((entry.sold / entry.units) * 1000) / 10 : 0;
+      entry.booked_value = Math.round(entry.booked_value * 100) / 100;
+    }
+    return out;
+  }
+
   async countByStatus(): Promise<Record<string, number>> {
     const rows = await db.projects.toArray();
     return rows.reduce<Record<string, number>>((acc, p) => {
@@ -308,6 +369,23 @@ class TowerRepository extends BaseRepository<Tower> {
   async listForProject(projectId: string): Promise<Tower[]> {
     const rows = await db.towers.where('project_id').equals(projectId).toArray();
     return rows.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  }
+
+  /**
+   * How many units each tower in a project actually holds, keyed by tower id.
+   *
+   * The tower card can then say "18 of 22 generated": Tower A is
+   * `B+G+10 · 11 floors · 2/floor`, the grid holds 18 and starts at floor 2,
+   * and nothing said so. What a tower *should* hold is `floor_count ×
+   * unit_per_floor`, which is on the tower itself.
+   */
+  async unitCountsForProject(projectId: string): Promise<Record<string, number>> {
+    const towers = await this.listForProject(projectId);
+    const counts: Record<string, number> = {};
+    for (const tower of towers) {
+      counts[tower.id] = await db.units.where('tower_id').equals(tower.id).count();
+    }
+    return counts;
   }
 
   /**

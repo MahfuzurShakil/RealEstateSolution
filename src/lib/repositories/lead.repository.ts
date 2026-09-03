@@ -172,6 +172,24 @@ class LeadRepository extends BaseRepository<Lead> {
   }
 
   /**
+   * When each lead was last touched, whatever the activity was.
+   *
+   * Distinct from `followUpDueMap`, which is about the future and skips closed
+   * leads. This is the past, for every lead: the card showed "Added" and
+   * "Follow-up" and nothing about whether anyone had actually rung, so a lead
+   * going cold looked the same as one worked yesterday.
+   */
+  async lastActivityMap(): Promise<Map<string, string>> {
+    const activities = await db.lead_activities.toArray();
+    const map = new Map<string, string>();
+    for (const activity of activities) {
+      const seen = map.get(activity.lead_id);
+      if (!seen || activity.activity_date > seen) map.set(activity.lead_id, activity.activity_date);
+    }
+    return map;
+  }
+
+  /**
    * The open follow-up date per lead: the latest one recorded, since a newer
    * activity supersedes the date the previous one set. Closed leads are left
    * out — nobody follows up a booked or lost lead.

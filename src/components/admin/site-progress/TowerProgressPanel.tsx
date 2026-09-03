@@ -280,6 +280,14 @@ export function TowerProgressPanel({
                                 {varianceLabel(variance)}
                               </Badge>
                             )}
+                            {/*
+                              An item with no dates rendered with no badge at
+                              all while every sibling had one, so it looked
+                              like an oversight rather than a state. It is the
+                              reason the tower's planned figure is weighted
+                              over less than the whole tower, so it says so.
+                            */}
+                            {state === 'no_plan' && <Badge tone="neutral">No plan dates</Badge>}
                           </div>
                         </div>
 
@@ -293,9 +301,15 @@ export function TowerProgressPanel({
                             {item.actual_progress_pct}%
                           </span>
                         </div>
-                        {planned != null && (
+                        {planned != null ? (
                           <p className="mt-1.5 text-[11px] text-ink-muted">
                             Planned {planned.toFixed(0)}% by today
+                          </p>
+                        ) : (
+                          <p className="mt-1.5 text-[11px] text-amber-700">
+                            No planned dates, so this item is left out of the planned-vs-actual
+                            comparison above. Its {item.weight_pct}% still counts towards the
+                            tower&rsquo;s actual progress. Add dates from Edit to bring it in.
                           </p>
                         )}
 

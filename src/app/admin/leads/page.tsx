@@ -70,6 +70,8 @@ export default function LeadsListPage() {
   const allLeads = useLiveQuery(() => leadRepository.getAll(), []);
   /** every lead's next follow-up date — drives the per-card badge and the sort */
   const dueMap = useLiveQuery(() => leadRepository.followUpDueMap(), []);
+  /** when each lead was last actually worked — see C-3 on the card footer */
+  const lastActivityMap = useLiveQuery(() => leadRepository.lastActivityMap(), []);
   /*
    * The banner reads the same queue the dashboard does, rather than counting
    * raw follow-up dates: a lead that is booked, lost, or already carries a
@@ -361,6 +363,7 @@ export default function LeadsListPage() {
                 const meta = LEAD_STATUS_META[lead.status];
                 const due = dueMap?.get(lead.id) ?? null;
                 const state = followUpState(due, today);
+                const lastTouched = lastActivityMap?.get(lead.id) ?? null;
                 const assignee = lead.assigned_to ? teamById.get(lead.assigned_to) : undefined;
                 const project = lead.interested_project_id
                   ? projectById.get(lead.interested_project_id)
@@ -391,6 +394,14 @@ export default function LeadsListPage() {
                       footer={
                         <>
                           Added {formatDate(lead.created_at)}
+                          {/*
+                            "Added" and "Follow-up" say when the lead arrived
+                            and when it is next due — neither says when anyone
+                            last touched it, which is how a sales manager spots
+                            the ones going cold.
+                          */}
+                          {lastTouched && ` · Last activity ${formatDate(lastTouched)}`}
+                          {!lastTouched && ' · No activity logged'}
                           {due && ` · Follow-up ${formatDate(due)}`}
                         </>
                       }

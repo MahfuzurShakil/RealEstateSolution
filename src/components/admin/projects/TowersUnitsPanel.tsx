@@ -63,6 +63,10 @@ export function TowersUnitsPanel({ projectId }: { projectId: string }) {
   const [view, setView] = useState<ViewMode>('grid');
 
   const towers = useLiveQuery(() => towerRepository.listForProject(projectId), [projectId]);
+  const unitCounts = useLiveQuery(
+    () => towerRepository.unitCountsForProject(projectId),
+    [projectId],
+  );
   const owners = useLiveQuery(() => landownerRepository.getAll(), []);
   const ownerById = useMemo(
     () => new Map((owners ?? []).map((o: Landowner) => [o.id, o])),
@@ -125,6 +129,20 @@ export function TowersUnitsPanel({ projectId }: { projectId: string }) {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {towers.map((tower) => {
               const active = tower.id === activeTowerId;
+              /*
+               * Bulk generation can leave a hole — Tower A is 11 floors at
+               * 2/floor but its grid starts at floor 2, so it holds 18 of 22
+               * and nothing flagged it. Only claimed when the tower says how
+               * many it should have; without `unit_per_floor` there is no
+               * expected number to compare against.
+               */
+              const generated = unitCounts?.[tower.id];
+              const expected =
+                tower.unit_per_floor && tower.floor_count
+                  ? tower.unit_per_floor * tower.floor_count
+                  : null;
+              const shortfall =
+                expected !== null && generated !== undefined && generated < expected;
               return (
                 <div
                   key={tower.id}
@@ -153,6 +171,18 @@ export function TowersUnitsPanel({ projectId }: { projectId: string }) {
                       {tower.unit_per_floor ? ` · ${tower.unit_per_floor}/floor` : ''}
                       {tower.lift_count ? ` · ${tower.lift_count} lift` : ''}
                     </p>
+                    {generated !== undefined && (
+                      <p
+                        className={cn(
+                          'mt-1 text-xs',
+                          shortfall ? 'font-medium text-amber-700' : 'text-ink-muted',
+                        )}
+                      >
+                        {expected === null
+                          ? `${generated} unit${generated === 1 ? '' : 's'}`
+                          : `${generated} of ${expected} generated`}
+                      </p>
+                    )}
                   </button>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button size="sm" variant="outline" onClick={() => setGenerateFor(tower)}>

@@ -11,6 +11,7 @@ import {
   Search,
   ShoppingCart,
   Truck,
+  Wallet,
   Warehouse,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
@@ -321,7 +322,14 @@ export default function PurchaseOrdersPage() {
               <ResultsLayout view={view}>
                 {paged.pageRows.map((order) => {
                   const meta = PURCHASE_ORDER_STATUS_META[order.status];
+                  /*
+                   * Two different debts, and they read as one sentence when
+                   * "BDT 660K due" sits under "59.08% received". `undelivered`
+                   * is material the supplier still owes us; `due` is money we
+                   * still owe them. Both are said in taka and both are named.
+                   */
                   const due = order.totals.value - order.paid_value;
+                  const undelivered = order.totals.value - order.totals.received_value;
                   const headline = order.items[0]?.item_name ?? 'No items';
 
                   return (
@@ -357,7 +365,9 @@ export default function PurchaseOrdersPage() {
                           {order.status !== 'draft' && order.status !== 'cancelled' && (
                             <Badge tone={order.totals.fully_received ? 'green' : 'amber'}>
                               <Package className="size-3.5" />
-                              {order.totals.received_pct}% received
+                              {order.totals.fully_received
+                                ? 'All goods received'
+                                : `${formatBdt(undelivered)} of goods still to come`}
                             </Badge>
                           )}
                           {/* a cancelled order's undelivered balance is void, so
@@ -365,7 +375,10 @@ export default function PurchaseOrdersPage() {
                           {due > 0.009 &&
                             order.status !== 'draft' &&
                             order.status !== 'cancelled' && (
-                              <Badge tone="red">{formatBdt(due)} unpaid on order</Badge>
+                              <Badge tone="red">
+                                <Wallet className="size-3.5" />
+                                {formatBdt(due)} still to pay
+                              </Badge>
                             )}
                           {order.request && (
                             <Badge tone="neutral">
