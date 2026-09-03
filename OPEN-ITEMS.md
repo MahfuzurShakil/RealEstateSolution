@@ -3,9 +3,9 @@
 Known-open work that is **not** a blocker for what is already shipped. Add to
 this as modules land; delete an entry when it is done.
 
-Last reviewed: 2026-09-03, after the Tier 1 remediation batches 1A–1E from
-`REMEDIATION-PLAN.md` (see Section 0 below). The full defect list is in
-`ANALYSIS-REPORT_2026-09-02.md`.
+Last reviewed: 2026-09-04, after the Tier 2 remediation batches 2A–2E from
+`REMEDIATION-PLAN.md` (see Section 0 below, which also covers Tier 1). The
+full defect list is in `ANALYSIS-REPORT_2026-09-02.md`.
 
 ---
 
@@ -98,6 +98,102 @@ that money moves through the platform: `land_status_history`,
 `project_status_history` and `material_request_status_history` cover their own
 pipelines, but nothing records who edited a price, retired a master-data option
 or changed somebody's role.
+
+### 1.12 Printed documents are promised in copy, not built
+Company Settings now says the booking form, money receipt and supplier voucher
+are **not built yet** and explains why the fields are still worth filling in.
+That is honest, but it is honest about a gap: Tier 3.6 builds the documents,
+and when it does this copy should go back to the present tense.
+
+### 1.13 `sold` and `handed_over` demo units still have no booking behind them
+Tier 2 put real bookings behind Tower A's `booked` and `reserved` flats, so
+those statuses are now produced by `createBooking` and the Section 5.6 receipt
+rule rather than by `unit_status_overrides`. `sold` and `handed_over` are still
+seeded directly, on purpose: a flat sold before this software existed genuinely
+has no booking record, and that is the inventory a developer actually starts
+with.
+
+The cost of back-filling them is inventing a sales history for eleven more
+units and moving every finance figure on the dashboard, which is a demo-data
+decision rather than a defect. Worth agreeing with the client which of the two
+stories the demo should tell.
+
+### 1.14 Bulk lead assignment acts on the filter, not a selection
+`leadRepository.bulkAssign` reassigns every lead the filters currently match,
+including the ones on later pages, behind a confirm that says so. That fits the
+job it exists for — this morning's website enquiries, or everything unassigned.
+What it cannot do is "these four but not that one", which needs per-card
+selection the `ResultCard` component has no slot for. Raise it if anyone asks
+for it; the repository method already takes an arbitrary list of ids.
+
+### 1.15 The land page shows what was paid, not what was due
+`expenseRepository.landPaymentSummary` reads the cost ledger, so "paid to date"
+and "balance" are real, and the balance deliberately compares the agreed amount
+with land-payment costs only — registration and legal fees are money spent on
+the land but not money owed to the owner.
+
+What is still missing is the other side: what was agreed to be paid, and when.
+That is the land payment schedule (Tier 3.4, which needs no schema change
+because `payment_schedules.entity_type` is already there — see 1.8). Until it
+lands, the page says explicitly that no instalment plan is recorded, rather
+than implying the balance is on time.
+
+---
+
+## 0a. Tier 2 remediation — done 2026-09-04 (batches 2A–2E)
+
+Minor and cosmetic defects. No new table and no new index — the one schema-
+adjacent change is a `land_id` filter on `ExpenseFilters`, and that column was
+already there and already indexed, so no Dexie version block was opened.
+Browser-verified at 1440 px and 375 px against a freshly reloaded demo set;
+`tsc` and `eslint` clean after every batch.
+
+**2A — lists and shell.** Card grids default to 12 rows and worklist tables to
+25, so 102 collection instalments stopped being 21 pages and 11 lands stopped
+being two (L-2 / F-5). The paging bar hides itself against the page size in
+force rather than the smallest offered, and singularises its label — "1
+refund", not "1 refunds" (F-8). `Delete` on ten detail headers moved to a new
+quiet `dangerGhost` button so it stops out-shouting `Edit` (L-3). Sidebar
+groups are remembered across a reload in `localStorage`, read through
+`useSyncExternalStore` for the same hydration reason the acting role is
+(U-6). Seeded staff accounts are back-dated Mar 2024 – Feb 2026 instead of all
+reading "today" (U-7). Company Settings stops claiming printed documents
+exist (U-8) — see 1.12.
+
+**2B — the four data tables become cards on a phone.** `DataTable` takes an
+optional `mobileCard`; collections, expenses, supplier vouchers and users use
+it. Collections was 889 px of table inside a 299 px window, three swipes from
+the customer's name to the outstanding amount. Every other table keeps its
+scroll box, which is right for a reference table nobody works from on a phone.
+
+**2C — actions the money screens were missing.** "Record payment" straight from
+a collections row (F-6): the dialog moved out of `PaymentPanel` into a shared
+`RecordPaymentModal`, and receipts are still allocated oldest-first by the
+finance repository, so the money lands where the schedule says rather than on
+the row that was clicked. A negative amount now says "Amount must be greater
+than zero" instead of "Enter the amount received" (B-4). The Refunds page has
+a "Record refund" action that picks a cancelled booking first (B-3). A rejected
+discount has "Resubmit for approval" (B-5). Expenses has a sort control and a
+clickable category breakdown (F-7).
+
+**2D — cards carry the fact you had to open the record to find.** Sold % and
+booked value on the project list (P-4); "18 of 22 generated" on a tower whose
+bulk generation left a hole (P-3); last-activity date on the lead card (C-3);
+"goods still to come" separated from "still to pay" on the PO card (PR-5); a
+work item with no plan dates says it is outside the schedule maths (S-3).
+
+**2E — the unit/booking invariant, bulk assignment, land money.** See 1.13,
+1.14 and 1.15 below for what is deliberately still open.
+
+**Two findings did not reproduce and were left alone rather than "fixed":**
+
+- **P-5** — the report has the 7-tab project strip overflowing and scrolling
+  silently with `Documents` off-screen. The strip is `flex-wrap` and measures
+  `scrollWidth === clientWidth` at 1200, 900 and 375 px, wrapping to 2, 2 and
+  3 rows with every tab reachable and no page overflow.
+- **PR-6** — a draft order already reads "Drafted 30 Aug 2026", not "Ordered".
+  Left as "Drafted" rather than changed to "Created", because the date shown
+  is `order_date` and "Created" would imply `created_at`.
 
 ---
 
