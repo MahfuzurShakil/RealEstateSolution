@@ -505,6 +505,56 @@ class BookingRepository extends BaseRepository<Booking> {
     return updated;
   }
 
+  /**
+   * Puts a rejected discount back in front of an approver.
+   *
+   * A rejection leaves the booking on `hold` with the discount unchanged, and
+   * the only route back was the Edit form — where re-saving the same figures
+   * is what re-queues it, which is not something a sales person would guess.
+   * This is that same transition, said out loud.
+   *
+   * Only a rejected discount can be resubmitted. If the discount had been
+   * lowered inside the seller's ceiling, `update` would already have set it
+   * to `not_required`, so reaching this state means it still needs a decision.
+   */
+  async resubmitDiscount(
+    id: string,
+    note: string,
+    createdBy: string | null = null,
+  ): Promise<Booking | undefined> {
+    const current = await this.getById(id);
+    if (!current) return undefined;
+    if (current.discount_approval_status !== 'rejected') {
+      throw new Error('Only a rejected discount can be resubmitted for approval.');
+    }
+
+    const updated = await this.update(id, {
+      discount_approval_status: 'pending',
+      discount_approved_by: null,
+      discount_decision_note: note.trim() || null,
+      status: derivedStatus({ ...current, discount_approval_status: 'pending' }),
+    });
+
+    if (updated) {
+      await this.applySideEffects(updated, createdBy);
+      if (updated.lead_id) {
+        await leadActivityRepository.create(
+          {
+            lead_id: updated.lead_id,
+            activity_type: 'status_change',
+            activity_date: nowIso(),
+            next_follow_up_date: null,
+            notes: `Discount resubmitted for approval on ${updated.code}${
+              note.trim() ? `. ${note.trim()}` : ''
+            }`,
+          },
+          createdBy,
+        );
+      }
+    }
+    return updated;
+  }
+
   /** Cancels a booking and hands the unit back (Section 5.6). */
   async cancel(id: string, reason: string, createdBy: string | null = null): Promise<Booking | undefined> {
     const updated = await this.update(id, {

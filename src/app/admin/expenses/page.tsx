@@ -18,6 +18,7 @@ import { COST_CATEGORY_META } from '@/lib/domain/finance';
 import { SUPPLIER_PAYMENT_METHOD_META } from '@/lib/domain/procurement';
 import type { ExpenseWithRelations } from '@/lib/repositories';
 import { expenseRepository, projectRepository } from '@/lib/repositories';
+import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
 /**
@@ -73,6 +74,27 @@ function ExpensesPage() {
     setFromDate('');
     setToDate('');
   }
+
+  /*
+   * Sorting is lifted out of the table so the dropdown and the column headers
+   * are the same control. The list happened to arrive date-descending and
+   * there was no way to say otherwise — and below `md` there are no headers
+   * to click at all.
+   */
+  const [sort, setSort] = useState<{ key: string; direction: 'asc' | 'desc' }>({
+    key: 'expense_date',
+    direction: 'desc',
+  });
+
+  const SORT_OPTIONS: Array<{ value: string; label: string }> = [
+    { value: 'expense_date:desc', label: 'Newest first' },
+    { value: 'expense_date:asc', label: 'Oldest first' },
+    { value: 'amount:desc', label: 'Amount: high to low' },
+    { value: 'amount:asc', label: 'Amount: low to high' },
+    { value: 'cost_category:asc', label: 'Category' },
+    { value: 'paid_to:asc', label: 'Payee' },
+    { value: 'code:asc', label: 'Cost code' },
+  ];
 
   const columns: Column<ExpenseWithRelations>[] = [
     {
@@ -171,10 +193,32 @@ function ExpensesPage() {
             <p className="text-sm text-ink-muted">Nothing to break down yet.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
+              {/*
+                The breakdown was read-only, so seeing that Contractor Payment
+                is the biggest line and then wanting only those meant going to
+                the Category dropdown and finding it again. Clicking a slice
+                filters; clicking the active one clears.
+              */}
               {byCategory.map(([key, value]) => (
-                <Badge key={key} tone={COST_CATEGORY_META[key].tone}>
-                  {COST_CATEGORY_META[key].label} · {formatBdt(value )}
-                </Badge>
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setCategory(category === key ? 'all' : key)}
+                  aria-pressed={category === key}
+                  title={
+                    category === key
+                      ? `Showing ${COST_CATEGORY_META[key].label} only — click to clear`
+                      : `Show ${COST_CATEGORY_META[key].label} only`
+                  }
+                  className={cn(
+                    'rounded-full transition-shadow',
+                    category === key && 'ring-2 ring-admin-500 ring-offset-1',
+                  )}
+                >
+                  <Badge tone={COST_CATEGORY_META[key].tone}>
+                    {COST_CATEGORY_META[key].label} · {formatBdt(value)}
+                  </Badge>
+                </button>
               ))}
             </div>
           )}
@@ -228,11 +272,30 @@ function ExpensesPage() {
           </div>
         </div>
 
-        {filtersActive && (
-          <Button variant="outline" size="sm" className="mb-4" onClick={resetFilters}>
-            Clear filters
-          </Button>
-        )}
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          {filtersActive && (
+            <Button variant="outline" size="sm" onClick={resetFilters}>
+              Clear filters
+            </Button>
+          )}
+          <label className="ml-auto flex items-center gap-2 whitespace-nowrap text-xs text-ink-muted">
+            Sort
+            <SelectInput
+              value={`${sort.key}:${sort.direction}`}
+              onChange={(e) => {
+                const [key, direction] = e.target.value.split(':');
+                setSort({ key, direction: direction as 'asc' | 'desc' });
+              }}
+              className="h-9 w-auto py-1 text-xs"
+            >
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </SelectInput>
+          </label>
+        </div>
 
         {loading ? (
           <div className="h-40 animate-pulse rounded-2xl bg-canvas" />
@@ -240,7 +303,8 @@ function ExpensesPage() {
           <DataTable
             rows={rows}
             columns={columns}
-            initialSort={{ key: 'expense_date', direction: 'desc' }}
+            sort={sort}
+            onSortChange={setSort}
             label="costs"
             mobileCard={(row) => (
               <Link href={`/admin/expenses/${row.id}`} className="block space-y-2">

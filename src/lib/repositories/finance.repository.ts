@@ -467,6 +467,17 @@ class CollectionRepository {
  * Refunds (Section 8.2)
  * ------------------------------------------------------------------ */
 
+/** A cancelled booking with money still to give back. */
+export interface RefundableBooking {
+  booking: Booking;
+  customer?: Customer;
+  unit?: Unit;
+  project?: Project;
+  paid: number;
+  refunded: number;
+  left: number;
+}
+
 export interface RefundWithRelations extends Refund {
   booking?: Booking;
   customer?: Customer;
@@ -530,6 +541,62 @@ class RefundRepository extends BaseRepository<Refund> {
       { ...input, code, amount, deduction, net_refund: money(amount - deduction) },
       createdBy,
     );
+  }
+
+  /**
+   * Cancelled bookings that still have money owed back, newest cancellation
+   * first.
+   *
+   * The Refunds page lists refunds but had no way to raise one and said
+   * nothing about where one comes from, so the only route was to know that
+   * you open the booking. This is what its "Record refund" button picks from;
+   * `issue` still enforces the real rules.
+   */
+  async listRefundable(): Promise<RefundableBooking[]> {
+    const [bookings, customers, units, towers, projects, payments, refunds] = await Promise.all([
+      db.bookings.where('status').equals('cancelled').toArray(),
+      db.customers.toArray(),
+      db.units.toArray(),
+      db.towers.toArray(),
+      db.projects.toArray(),
+      db.payments.toArray(),
+      db.refunds.toArray(),
+    ]);
+    const customerById = new Map(customers.map((c) => [c.id, c]));
+    const unitById = new Map(units.map((u) => [u.id, u]));
+    const towerById = new Map(towers.map((t) => [t.id, t]));
+    const projectById = new Map(projects.map((p) => [p.id, p]));
+
+    const paidByBooking = new Map<string, number>();
+    for (const p of payments) {
+      paidByBooking.set(p.booking_id, (paidByBooking.get(p.booking_id) ?? 0) + (Number(p.amount) || 0));
+    }
+    const refundedByBooking = new Map<string, number>();
+    for (const r of refunds) {
+      refundedByBooking.set(
+        r.booking_id,
+        (refundedByBooking.get(r.booking_id) ?? 0) + (Number(r.amount) || 0),
+      );
+    }
+
+    return bookings
+      .map((booking) => {
+        const unit = unitById.get(booking.unit_id);
+        const tower = unit ? towerById.get(unit.tower_id) : undefined;
+        const paid = money(paidByBooking.get(booking.id) ?? 0);
+        const refunded = money(refundedByBooking.get(booking.id) ?? 0);
+        return {
+          booking,
+          customer: customerById.get(booking.customer_id),
+          unit,
+          project: tower ? projectById.get(tower.project_id) : undefined,
+          paid,
+          refunded,
+          left: money(Math.max(0, paid - refunded)),
+        };
+      })
+      .filter((row) => row.left > 0.009)
+      .sort((a, b) => b.booking.updated_at.localeCompare(a.booking.updated_at));
   }
 
   async list(filters: { search?: string; project_id?: string } = {}): Promise<RefundWithRelations[]> {

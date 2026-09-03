@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Building2, Search, Trash2, Undo2 } from 'lucide-react';
+import { RefundModal } from '@/components/admin/finance/RefundModal';
+import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -13,21 +15,25 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { SelectInput, TextInput } from '@/components/ui/Field';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SUPPLIER_PAYMENT_METHOD_META } from '@/lib/domain/procurement';
-import type { RefundWithRelations } from '@/lib/repositories';
+import type { RefundableBooking, RefundWithRelations } from '@/lib/repositories';
 import { projectRepository, refundRepository } from '@/lib/repositories';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
 /**
  * Money returned on cancelled bookings (Section 8.2).
  *
- * Refunds are raised from the booking they belong to, not from here — the
- * amount has to be checked against what that buyer actually paid, so there is
- * deliberately no "New refund" button on this page.
+ * A refund still belongs to a booking — the amount is checked against what
+ * that buyer actually paid — so "Record refund" here picks the cancelled
+ * booking first and then opens the same dialog the booking page uses. The
+ * page used to have no action at all and no explanation of where one came
+ * from, which left the only route "know to open the booking".
  */
 export default function RefundsPage() {
   const [search, setSearch] = useState('');
   const [projectId, setProjectId] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<RefundWithRelations | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [refundTarget, setRefundTarget] = useState<RefundableBooking | null>(null);
 
   const refunds = useLiveQuery(
     () => refundRepository.list({ search, project_id: projectId || undefined }),
@@ -35,6 +41,7 @@ export default function RefundsPage() {
   );
   const total = useLiveQuery(() => refundRepository.count(), []);
   const projects = useLiveQuery(() => projectRepository.list(), []);
+  const refundable = useLiveQuery(() => refundRepository.listRefundable(), []);
 
   const rows = useMemo(() => refunds ?? [], [refunds]);
   const totals = useMemo(
@@ -162,7 +169,20 @@ export default function RefundsPage() {
       <PageHeader
         title="Refunds"
         subtitle="Money returned after a booking was cancelled, and what was kept as a charge."
+        action={
+          <Button onClick={() => setPickerOpen(true)} disabled={(refundable ?? []).length === 0}>
+            <Undo2 className="size-4" /> Record refund
+          </Button>
+        }
       />
+
+      {refundable !== undefined && refundable.length === 0 && (
+        <p className="mb-5 text-sm text-ink-muted">
+          Nothing is waiting to be refunded. A refund can only be raised against a cancelled
+          booking that still has money on it, so cancel the booking first — the unit is released
+          and the amount left to return is worked out from the receipts taken.
+        </p>
+      )}
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
         {[
@@ -237,6 +257,51 @@ export default function RefundsPage() {
           />
         )}
       </Card>
+
+      <Modal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        title="Which booking is this refund against?"
+        subtitle="Cancelled bookings that still have money to give back, most recently cancelled first."
+      >
+        <ul className="space-y-2">
+          {(refundable ?? []).map((row) => (
+            <li key={row.booking.id}>
+              <button
+                type="button"
+                onClick={() => {
+                  setPickerOpen(false);
+                  setRefundTarget(row);
+                }}
+                className="flex w-full flex-wrap items-center justify-between gap-3 rounded-xl border border-hairline p-3 text-left transition-colors hover:bg-admin-50"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate font-medium text-ink">
+                    {row.customer?.name ?? 'Customer removed'}
+                  </span>
+                  <span className="block truncate text-xs text-ink-muted">
+                    {row.booking.code} · {row.unit?.code ?? '—'}
+                    {row.project ? ` · ${row.project.name}` : ''}
+                  </span>
+                </span>
+                <span className="text-right text-sm">
+                  <span className="block text-xs text-ink-muted">left to refund</span>
+                  <span className="font-semibold text-ink">{formatBdt(row.left)}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </Modal>
+
+      {refundTarget && (
+        <RefundModal
+          open
+          booking={refundTarget.booking}
+          onClose={() => setRefundTarget(null)}
+          onSaved={() => setRefundTarget(null)}
+        />
+      )}
 
       <ConfirmDialog
         open={deleteTarget !== null}

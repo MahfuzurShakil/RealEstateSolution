@@ -43,6 +43,8 @@ export function DataTable<T extends { id: string }>({
   rowKey = (row) => row.id,
   label = 'rows',
   mobileCard,
+  sort,
+  onSortChange,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -53,9 +55,21 @@ export function DataTable<T extends { id: string }>({
   label?: string;
   /** below `md`, render this instead of a table row */
   mobileCard?: (row: T) => ReactNode;
+  /*
+   * Sorting is this component's own state unless the caller wants to drive it.
+   * Passing `sort` + `onSortChange` lets a page put a sort dropdown beside its
+   * filters — the card layout has no column headers to click — without a
+   * second, competing sort order.
+   */
+  sort?: { key: string; direction: Direction };
+  onSortChange?: (sort: { key: string; direction: Direction }) => void;
 }) {
-  const [sortKey, setSortKey] = useState<string | null>(initialSort?.key ?? null);
-  const [direction, setDirection] = useState<Direction>(initialSort?.direction ?? 'asc');
+  const [ownSortKey, setOwnSortKey] = useState<string | null>(initialSort?.key ?? null);
+  const [ownDirection, setOwnDirection] = useState<Direction>(initialSort?.direction ?? 'asc');
+
+  const controlled = sort !== undefined;
+  const sortKey = controlled ? sort.key : ownSortKey;
+  const direction = controlled ? sort.direction : ownDirection;
 
   const sorted = useMemo(() => {
     const column = columns.find((c) => c.key === sortKey);
@@ -79,11 +93,16 @@ export function DataTable<T extends { id: string }>({
 
   function toggleSort(column: Column<T>) {
     if (!column.sortValue) return;
-    if (sortKey === column.key) {
-      setDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+    const next =
+      sortKey === column.key
+        ? { key: column.key, direction: (direction === 'asc' ? 'desc' : 'asc') as Direction }
+        : { key: column.key, direction: 'asc' as Direction };
+
+    if (controlled) {
+      onSortChange?.(next);
     } else {
-      setSortKey(column.key);
-      setDirection('asc');
+      setOwnSortKey(next.key);
+      setOwnDirection(next.direction);
     }
     paged.setPage(0);
   }

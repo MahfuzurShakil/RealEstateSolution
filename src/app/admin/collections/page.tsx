@@ -23,6 +23,7 @@ import { INSTALLMENT_STATUS_META, daysOverdue } from '@/lib/domain/finance';
 import type { CollectionRow } from '@/lib/repositories';
 import { collectionRepository, projectRepository } from '@/lib/repositories';
 import { formatBdt, formatDate, formatPhone, todayLocal } from '@/lib/utils/format';
+import { RecordPaymentModal } from '@/components/admin/bookings/RecordPaymentModal';
 
 type StatusFilter = 'all' | 'pending' | 'partially_paid' | 'paid' | 'overdue';
 
@@ -45,6 +46,7 @@ function CollectionsPage() {
       ? initialStatus
       : 'all',
   );
+  const [payFor, setPayFor] = useState<CollectionRow | null>(null);
   const [dueOnly, setDueOnly] = useState(true);
 
   const today = todayLocal();
@@ -168,6 +170,24 @@ function CollectionsPage() {
         return <Badge tone={meta.tone}>{meta.label}</Badge>;
       },
       sortValue: (row) => row.status,
+    },
+    {
+      /*
+       * Taking the money was four steps from the screen built for chasing it:
+       * open the booking, Payments tab, dialog, save. The same dialog opens
+       * here with this instalment's shortfall filled in — the receipt is still
+       * allocated oldest-first by the finance repository, so it lands where the
+       * schedule says, not necessarily on the row that was clicked.
+       */
+      key: 'actions',
+      header: '',
+      align: 'right',
+      cell: (row) =>
+        row.outstanding > 0.009 ? (
+          <Button size="sm" variant="outline" onClick={() => setPayFor(row)}>
+            <CircleDollarSign className="size-4" /> Record payment
+          </Button>
+        ) : null,
     },
   ];
 
@@ -373,6 +393,17 @@ function CollectionsPage() {
                       </span>
                     </p>
                   </div>
+
+                  {row.outstanding > 0.009 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => setPayFor(row)}
+                    >
+                      <CircleDollarSign className="size-4" /> Record payment
+                    </Button>
+                  )}
                 </div>
               );
             }}
@@ -397,6 +428,18 @@ function CollectionsPage() {
           />
         )}
       </Card>
+
+      {payFor && (
+        <RecordPaymentModal
+          open
+          booking={payFor.booking}
+          defaultAmount={payFor.outstanding}
+          subtitle={`${payFor.customer?.name ?? payFor.booking.code} · ${
+            payFor.installment.label
+          } · ${formatBdt(payFor.outstanding)} outstanding`}
+          onClose={() => setPayFor(null)}
+        />
+      )}
     </>
   );
 }

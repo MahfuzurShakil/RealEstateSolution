@@ -28,7 +28,7 @@ import {
 import { cn } from '@/lib/utils/cn';
 import { formatBdt } from '@/lib/utils/format';
 
-type Action = 'approve' | 'reject' | 'cancel';
+type Action = 'approve' | 'reject' | 'resubmit' | 'cancel';
 
 /**
  * The gating panel (Section 5.2 / 5.6). Status is never chosen here — the two
@@ -59,6 +59,7 @@ export function BookingStatusCard({ booking }: { booking: Booking }) {
   const pct = discountPct(booking.base_price, booking.discount_amount);
   const mayApprove = canApproveDiscount(role);
   const awaitingApproval = booking.discount_approval_status === 'pending';
+  const wasRejected = booking.discount_approval_status === 'rejected';
 
   function open(next: Action) {
     setAction(next);
@@ -76,6 +77,7 @@ export function BookingStatusCard({ booking }: { booking: Booking }) {
     try {
       if (action === 'approve') await bookingRepository.decideDiscount(booking.id, 'approved', userId, note, userId);
       if (action === 'reject') await bookingRepository.decideDiscount(booking.id, 'rejected', userId, note, userId);
+      if (action === 'resubmit') await bookingRepository.resubmitDiscount(booking.id, note, userId);
       if (action === 'cancel') await bookingRepository.cancel(booking.id, note.trim(), userId);
       setAction(null);
     } finally {
@@ -107,6 +109,15 @@ export function BookingStatusCard({ booking }: { booking: Booking }) {
       confirmLabel: 'Reject discount',
       tone: 'danger',
       needsNote: true,
+    },
+    resubmit: {
+      title: 'Send this discount back for approval',
+      message: `${pct.toFixed(2)}% (${formatBdt(
+        booking.discount_amount,
+      )}) goes back into the approval queue unchanged. If the figure should come down instead, edit the booking — a discount inside the seller's limit needs no approval at all.`,
+      confirmLabel: 'Resubmit for approval',
+      tone: 'default',
+      needsNote: false,
     },
     cancel: {
       title: `Cancel ${booking.code}`,
@@ -214,6 +225,17 @@ export function BookingStatusCard({ booking }: { booking: Booking }) {
                   Waiting on a Sales Manager or above. Switch role from the topbar to approve.
                 </p>
               ))}
+
+            {/*
+              A rejection leaves the booking on hold with the note "adjust it
+              and submit again", and the only route back was re-saving the Edit
+              form. This is the same transition with a name on it.
+            */}
+            {wasRejected && (
+              <Button size="sm" className="w-full" onClick={() => open('resubmit')}>
+                <ShieldCheck className="size-4" /> Resubmit for approval
+              </Button>
+            )}
 
             <Button size="sm" variant="danger" className="w-full" onClick={() => open('cancel')}>
               <Ban className="size-4" /> Cancel booking

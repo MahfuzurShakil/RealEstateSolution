@@ -109,6 +109,7 @@ export {
   type CollectionRow,
   type CollectionFilters,
   type RefundWithRelations,
+  type RefundableBooking,
   type ExpenseFilters,
   type ExpenseWithRelations,
 } from './finance.repository';

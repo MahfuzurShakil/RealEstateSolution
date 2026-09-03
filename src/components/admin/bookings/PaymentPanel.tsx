@@ -7,13 +7,12 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
-import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
-import { PAYMENT_METHODS, type Booking, type Payment, type PaymentMethod } from '@/lib/db/types';
+import type { Booking, Payment } from '@/lib/db/types';
 import { PAYMENT_METHOD_LABEL } from '@/lib/domain/booking';
 import { bookingRepository, paymentRepository, userRepository } from '@/lib/repositories';
-import { formatBdt, formatDate, todayLocal } from '@/lib/utils/format';
+import { formatBdt, formatDate } from '@/lib/utils/format';
+import { RecordPaymentModal } from './RecordPaymentModal';
 
 /**
  * Receipts taken against a booking (Section 8.2 `payments`).
@@ -26,56 +25,11 @@ export function PaymentPanel({ booking }: { booking: Booking }) {
   const { userId } = useMockSession();
   const [open, setOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Payment | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
 
   const payments = useLiveQuery(() => paymentRepository.listForBooking(booking.id), [booking.id]);
   const users = useLiveQuery(() => userRepository.getAll(), []);
   const received = (payments ?? []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
   const outstanding = booking.final_price - received;
-
-  const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(todayLocal());
-  const [method, setMethod] = useState<PaymentMethod>('bank');
-  const [reference, setReference] = useState('');
-  const [notes, setNotes] = useState('');
-
-  function openDialog() {
-    // default to whatever still covers the booking money, the usual first receipt
-    const due = Math.max(booking.booking_amount - received, 0);
-    setAmount(due > 0 ? String(due) : '');
-    setDate(todayLocal());
-    setMethod('bank');
-    setReference('');
-    setNotes('');
-    setError('');
-    setOpen(true);
-  }
-
-  async function save() {
-    const value = Number(amount);
-    if (!value || value <= 0) return setError('Enter the amount received');
-    if (value > outstanding + 0.01) return setError('That is more than the outstanding balance');
-
-    setBusy(true);
-    try {
-      await bookingRepository.recordPayment(
-        booking.id,
-        {
-          amount: value,
-          payment_date: date,
-          payment_method: method,
-          reference_no: reference,
-          notes,
-          received_by: userId,
-        },
-        userId,
-      );
-      setOpen(false);
-    } finally {
-      setBusy(false);
-    }
-  }
 
   const userName = (id?: string | null) =>
     users?.find((u) => u.id === id)?.name ?? '—';
@@ -108,7 +62,7 @@ export function PaymentPanel({ booking }: { booking: Booking }) {
             ? 'Loading…'
             : `${payments.length} receipt${payments.length === 1 ? '' : 's'}`}
         </p>
-        <Button size="sm" onClick={openDialog} disabled={outstanding <= 0}>
+        <Button size="sm" onClick={() => setOpen(true)} disabled={outstanding <= 0}>
           <CircleDollarSign className="size-4" /> Record payment
         </Button>
       </div>
@@ -121,7 +75,7 @@ export function PaymentPanel({ booking }: { booking: Booking }) {
           title="No money received yet"
           description="Record the booking money here — the date, how it was paid and the reference. The booking confirms itself once the full booking amount is in."
           action={
-            <Button onClick={openDialog}>
+            <Button onClick={() => setOpen(true)}>
               <CircleDollarSign className="size-4" /> Record payment
             </Button>
           }
@@ -171,68 +125,11 @@ export function PaymentPanel({ booking }: { booking: Booking }) {
         the Finance module. These receipts feed straight into it.
       </p>
 
-      <Modal
+      <RecordPaymentModal
         open={open}
-        title="Record payment"
-        subtitle={`${booking.code} · outstanding ${formatBdt(outstanding)}`}
-        icon={CircleDollarSign}
-        size="md"
+        booking={booking}
         onClose={() => setOpen(false)}
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setOpen(false)} disabled={busy}>
-              Cancel
-            </Button>
-            <Button onClick={save} disabled={busy}>
-              {busy ? 'Saving…' : 'Record payment'}
-            </Button>
-          </>
-        }
-      >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Amount (BDT)" required error={error || undefined}>
-            <TextInput
-              type="number"
-              min="0"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              invalid={Boolean(error)}
-            />
-          </Field>
-          <Field label="Received on" required>
-            <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </Field>
-          <Field label="Method" required>
-            <SelectInput
-              value={method}
-              onChange={(e) => setMethod(e.target.value as PaymentMethod)}
-            >
-              {PAYMENT_METHODS.map((m) => (
-                <option key={m} value={m}>
-                  {PAYMENT_METHOD_LABEL[m]}
-                </option>
-              ))}
-            </SelectInput>
-          </Field>
-          <Field
-            label="Reference"
-            hint="Cheque no., bank slip, bKash TrxID — whatever proves it."
-          >
-            <TextInput
-              value={reference}
-              onChange={(e) => setReference(e.target.value)}
-              placeholder="e.g. TRX8H2K91LM"
-            />
-          </Field>
-          <Field label="Notes" className="sm:col-span-2">
-            <TextArea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Anything worth remembering about this payment"
-            />
-          </Field>
-        </div>
-      </Modal>
+      />
 
       <ConfirmDialog
         open={deleteTarget !== null}
