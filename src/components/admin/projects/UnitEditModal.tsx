@@ -11,7 +11,6 @@ import { Modal } from '@/components/ui/Modal';
 import {
   ALLOCATION_TYPES,
   FOR_SALE_BY,
-  UNIT_STATUSES,
   type AllocationType,
   type ForSaleBy,
   type Landowner,
@@ -22,7 +21,9 @@ import {
   ALLOCATION_TYPE_LABEL,
   FOR_SALE_BY_LABEL,
   UNIT_STATUS_META,
+  isManualUnitStatus,
   isUnitEditable,
+  unitStatusOptions,
 } from '@/lib/domain/project';
 import { BOOKING_STATUS_META } from '@/lib/domain/booking';
 import {
@@ -235,13 +236,20 @@ export function UnitEditModal({
             onChange={(e) => set('base_price', Number(e.target.value))}
           />
         </Field>
-        <Field label="Status">
+        <Field
+          label="Status"
+          hint={
+            isManualUnitStatus(unit.status)
+              ? 'Reserved, Booked and Sold are set by the booking, not here.'
+              : `${UNIT_STATUS_META[unit.status].label} was set by a booking. Change it from the booking, not here.`
+          }
+        >
           <SelectInput
             value={form.status}
             onChange={(e) => set('status', e.target.value as UnitStatus)}
           >
-            {UNIT_STATUSES.map((s) => (
-              <option key={s} value={s}>
+            {unitStatusOptions(unit.status).map((s) => (
+              <option key={s} value={s} disabled={!isManualUnitStatus(s)}>
                 {UNIT_STATUS_META[s].label}
               </option>
             ))}

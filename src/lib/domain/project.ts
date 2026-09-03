@@ -236,6 +236,29 @@ export function isUnitEditable(status: UnitStatus): boolean {
   return status !== 'sold' && status !== 'handed_over';
 }
 
+/**
+ * Unit statuses a person may set by hand.
+ *
+ * `reserved`, `booked`, `sold` and `handed_over` are written by the booking
+ * flow — a unit reaches them because a booking exists, and the application
+ * enforces no invariant tying `units.status` back to `bookings`. Offering them
+ * in the unit form let anyone mark a flat booked with no booking behind it,
+ * which is how the inventory rail and the Finance tab came to disagree.
+ *
+ * The unit's own current status is always included, so opening the form on a
+ * reserved unit does not silently rewrite it — it is shown, and the caller
+ * marks it as not a manual choice.
+ */
+export const MANUAL_UNIT_STATUSES: readonly UnitStatus[] = ['available', 'hold'];
+
+export function isManualUnitStatus(status: UnitStatus): boolean {
+  return MANUAL_UNIT_STATUSES.includes(status);
+}
+
+export function unitStatusOptions(current: UnitStatus): UnitStatus[] {
+  return isManualUnitStatus(current) ? [...MANUAL_UNIT_STATUSES] : [...MANUAL_UNIT_STATUSES, current];
+}
+
 
 /* ------------------------------------------------------------------ *
  * What each pipeline step asks for before it is confirmed

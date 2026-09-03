@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Suspense, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Building2, Plus, ReceiptText, Search, Wallet } from 'lucide-react';
+import { Building2, Plus, ReceiptText, Search, Wallet, X } from 'lucide-react';
 import { ExpenseFormModal } from '@/components/admin/finance/ExpenseFormModal';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -36,6 +36,13 @@ function ExpensesPage() {
 
   const [search, setSearch] = useState('');
   const [projectId, setProjectId] = useState(params.get('project') ?? '');
+  /*
+   * Arrived from a land page's "View the payments" link. Held in state rather
+   * than read on every render so the user can drop it, and surfaced as a
+   * removable chip — an invisible filter that survives every other control
+   * being cleared is how a list comes to look wrong for no reason.
+   */
+  const [landId, setLandId] = useState(params.get('land') ?? '');
   const [category, setCategory] = useState<CostCategory | 'all'>('all');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
@@ -46,11 +53,12 @@ function ExpensesPage() {
       expenseRepository.list({
         search,
         project_id: projectId || undefined,
+        land_id: landId || undefined,
         cost_category: category,
         from_date: fromDate || undefined,
         to_date: toDate || undefined,
       }),
-    [search, projectId, category, fromDate, toDate],
+    [search, projectId, landId, category, fromDate, toDate],
   );
   const total = useLiveQuery(() => expenseRepository.count(), []);
   const projects = useLiveQuery(() => projectRepository.list(), []);
@@ -65,11 +73,13 @@ function ExpensesPage() {
 
   const loading = expenses === undefined;
   const hasAny = (total ?? 0) > 0;
-  const filtersActive = Boolean(search || projectId || fromDate || toDate) || category !== 'all';
+  const filtersActive =
+    Boolean(search || projectId || landId || fromDate || toDate) || category !== 'all';
 
   function resetFilters() {
     setSearch('');
     setProjectId('');
+    setLandId('');
     setCategory('all');
     setFromDate('');
     setToDate('');
@@ -273,6 +283,18 @@ function ExpensesPage() {
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-3">
+          {landId && (
+            <button
+              type="button"
+              onClick={() => setLandId('')}
+              className="inline-flex items-center gap-1.5 rounded-full border border-admin-200 bg-admin-50 px-3 py-1 text-xs font-medium text-admin-700 hover:bg-admin-100"
+            >
+              {rows[0]?.land?.code
+                ? `Costs against ${rows[0].land.code}`
+                : 'Costs against one land record'}
+              <X className="size-3.5" />
+            </button>
+          )}
           {filtersActive && (
             <Button variant="outline" size="sm" onClick={resetFilters}>
               Clear filters

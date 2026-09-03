@@ -107,6 +107,44 @@ export const DEMO_CUSTOMERS: DemoCustomer[] = [
     // no booking yet — the "nothing taken so far" case
     created_days_ago: 6,
   },
+  /*
+   * The three buyers behind Tower A's booked and reserved flats (P-1). Those
+   * units used to be forced into `booked` / `reserved` by
+   * `unit_status_overrides` with no booking behind them, so the project's
+   * Inventory rail said eight units were spoken for while its Finance tab
+   * said one booking. A unit only reaches those two statuses because a
+   * booking put it there, so now one did.
+   */
+  {
+    key: 'saiful',
+    name: 'Saiful Islam Khan',
+    phone: '01977 334455',
+    email: 'saiful.khan@gmail.com',
+    nid: '1983664422110',
+    address: 'Block D, Bashundhara R/A, Dhaka',
+    profession: 'Civil Engineer',
+    created_days_ago: 48,
+  },
+  {
+    key: 'afsana',
+    name: 'Afsana Karim',
+    phone: '01966 445566',
+    email: 'afsana.karim@gmail.com',
+    nid: '1990553311220',
+    address: 'Road 5, Nikunja 2, Dhaka 1229',
+    profession: 'Pharmacist',
+    created_days_ago: 41,
+  },
+  {
+    key: 'tariq',
+    name: 'Tariq Aziz',
+    phone: '01911 223344',
+    email: 'tariq.aziz@outlook.com',
+    nid: '1987443322110',
+    address: 'Sector 4, Uttara, Dhaka 1230',
+    profession: 'IT Consultant',
+    created_days_ago: 12,
+  },
 ];
 
 export interface DemoBooking {
@@ -405,5 +443,91 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     cancel: {
       reason: 'দ্বিতীয় ইউনিটের সিদ্ধান্ত বাতিল — ব্যবসার টাকা আটকে গেছে বলে জানিয়েছেন।',
     },
+  },
+
+  /*
+   * Tower A's booked and reserved flats (P-1). These three replace
+   * `unit_status_overrides` entries on Nokshi Green Residence: the status is
+   * now produced by `createBooking` and `recordPayment` like every other
+   * booking, so the Inventory rail and the Finance tab count the same events.
+   *
+   * A-4A and A-5B end up `booked` because the booking money is fully in;
+   * A-6A ends up `reserved` because it is not, which is the Section 5.6 rule
+   * doing the work rather than a status being typed in.
+   */
+  {
+    customer_key: 'saiful',
+    project_name: 'Nokshi Green Residence',
+    unit_code: 'A-4A',
+    booked_by_key: 'nishat',
+    days_ago: 46,
+    floor_premium: 300000,
+    facing_premium: 200000,
+    parking_charge: 800000,
+    other_charges: 250000,
+    discount_amount: 0,
+    booking_amount: 1400000,
+    installment_tenure_months: 24,
+    payments: [
+      {
+        amount: 1400000,
+        days_ago: 46,
+        method: 'bank',
+        reference_no: 'IBBL/TRF/220481',
+        notes: 'Booking money, Islami Bank transfer',
+      },
+    ],
+  },
+  {
+    customer_key: 'afsana',
+    project_name: 'Nokshi Green Residence',
+    unit_code: 'A-5B',
+    booked_by_key: 'rakib',
+    days_ago: 39,
+    floor_premium: 350000,
+    facing_premium: 150000,
+    parking_charge: 800000,
+    other_charges: 250000,
+    discount_amount: 300000,
+    booking_amount: 1300000,
+    installment_tenure_months: 30,
+    payments: [
+      { amount: 800000, days_ago: 39, method: 'cheque', reference_no: 'CHQ 4471290' },
+      {
+        amount: 500000,
+        days_ago: 33,
+        method: 'bank',
+        reference_no: 'CITY/TRF/889201',
+        notes: 'Balance of the booking money',
+      },
+    ],
+  },
+  {
+    /*
+     * Deliberately part-paid: the booking money is 1,200,000 and only 400,000
+     * has come in, so the unit stays `reserved` and the booking stays on hold.
+     * That is the state the inventory rail used to show with nothing behind it.
+     */
+    customer_key: 'tariq',
+    project_name: 'Nokshi Green Residence',
+    unit_code: 'A-6A',
+    booked_by_key: 'arif',
+    days_ago: 10,
+    floor_premium: 400000,
+    facing_premium: 200000,
+    parking_charge: 800000,
+    other_charges: 250000,
+    discount_amount: 0,
+    booking_amount: 1200000,
+    installment_tenure_months: 24,
+    payments: [
+      {
+        amount: 400000,
+        days_ago: 10,
+        method: 'mfs',
+        reference_no: 'NGD9K2P41ZX',
+        notes: 'Part of the booking money over Nagad — balance promised this month',
+      },
+    ],
   },
 ];

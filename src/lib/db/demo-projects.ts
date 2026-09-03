@@ -196,10 +196,20 @@ export const DEMO_PROJECTS: DemoProject[] = [
         'B-2B', 'B-3A', 'B-4B', 'B-5A', 'B-6B', 'B-7A',
       ],
     },
+    /*
+     * A-4A, A-5B and A-6A are no longer forced here (P-1). Module 4's demo
+     * bookings cover them, so `booked` and `reserved` are produced by
+     * `createBooking` and the Section 5.6 receipt rule rather than typed in —
+     * the Inventory rail and the Finance tab now count the same events.
+     *
+     * `sold` and `hold` are left as overrides on purpose. A flat sold before
+     * this software existed genuinely has no booking record, and that is the
+     * inventory a developer actually starts with; `hold` is a sales hold with
+     * no paperwork behind it yet. Both are states the application does not
+     * claim to own. See OPEN-ITEMS for the note on back-filling them.
+     */
     unit_status_overrides: {
       sold: ['A-2A', 'A-2B', 'A-3B'],
-      booked: ['A-4A', 'A-5B'],
-      reserved: ['A-6A'],
       hold: ['A-7B'],
     },
     history: [

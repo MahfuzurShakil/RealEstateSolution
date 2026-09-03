@@ -324,6 +324,23 @@ class LeadRepository extends BaseRepository<Lead> {
     await this.update(id, { assigned_to: userId });
   }
 
+  /**
+   * Assign several leads at once (C-4).
+   *
+   * A morning's website enquiries arrive together and go to one executive;
+   * doing that one lead at a time meant opening each record. Deliberately a
+   * loop over `assign` rather than a bulk `update`, so every lead still gets
+   * its activity row — the assignment trail is the point of Section 4.7, and
+   * a faster path that skipped it would be a worse feature.
+   */
+  async bulkAssign(
+    ids: string[],
+    userId: string | null,
+    createdBy: string | null = null,
+  ): Promise<void> {
+    for (const id of ids) await this.assign(id, userId, createdBy);
+  }
+
   async countByStatus(): Promise<Record<string, number>> {
     const rows = await db.leads.toArray();
     return rows.reduce<Record<string, number>>((acc, l) => {

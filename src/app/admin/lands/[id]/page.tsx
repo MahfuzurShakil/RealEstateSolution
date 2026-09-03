@@ -16,7 +16,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { ACQUISITION_TYPE_LABEL, LAND_SIZE_UNIT_LABEL } from '@/lib/domain/land';
 import { JV_SHARE_BASIS_LABEL } from '@/lib/domain/project';
-import { landRepository } from '@/lib/repositories';
+import { expenseRepository, landRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
@@ -39,6 +39,8 @@ export default function LandDetailPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const land = useLiveQuery(() => landRepository.getWithRelations(id), [id]);
+  /** what has actually been paid against this land, from the cost ledger (L-1) */
+  const landCosts = useLiveQuery(() => expenseRepository.landPaymentSummary(id), [id]);
 
   if (land === undefined) return <p className="text-sm text-ink-muted">Loading…</p>;
   if (!land) {
@@ -141,8 +143,60 @@ export default function LandDetailPage() {
                 <Row label="Asking price" value={formatBdt(land.asking_price)} />
                 <Row label="Negotiated price" value={formatBdt(land.negotiated_price)} />
                 <Row label="Final agreed amount" value={formatBdt(land.final_agreed_amount)} />
+
+                {/*
+                  The page used to say payments were "tracked in the Finance
+                  module" and stop there — no figure, no link — while EXP rows
+                  worth tens of millions sat against this exact land. Paid is
+                  what has actually gone out; a land payment *schedule* (what
+                  is due and when) is still to come, so balance is stated as
+                  agreed less paid and nothing more is implied.
+                */}
+                {landCosts && landCosts.count > 0 && (
+                  <>
+                    <Row label="Paid to date" value={formatBdt(landCosts.paid)} />
+                    {landCosts.other > 0 && (
+                      <Row
+                        label="— of which fees and extras"
+                        value={formatBdt(landCosts.other)}
+                      />
+                    )}
+                    {(land.final_agreed_amount ?? 0) > 0 && (
+                      <Row
+                        label="Balance"
+                        value={formatBdt((land.final_agreed_amount ?? 0) - landCosts.land_payment)}
+                      />
+                    )}
+                  </>
+                )}
+
                 <p className="mt-3 text-xs text-ink-muted">
-                  Payments and instalments against this land are tracked in the Finance module.
+                  {landCosts && landCosts.count > 0 ? (
+                    <>
+                      From {landCosts.count} cost
+                      {landCosts.count === 1 ? '' : 's'} booked against this land. Balance compares
+                      the agreed amount with land-payment costs only, so registration and legal
+                      fees do not reduce what the owner is still owed. An agreed instalment
+                      schedule is not recorded yet.{' '}
+                      <Link
+                        href={`/admin/expenses?land=${land.id}`}
+                        className="font-medium text-admin-700 hover:underline"
+                      >
+                        View the payments →
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      Nothing has been booked against this land in the cost ledger yet. Payments
+                      are recorded as costs in the Finance module.{' '}
+                      <Link
+                        href={`/admin/expenses?land=${land.id}`}
+                        className="font-medium text-admin-700 hover:underline"
+                      >
+                        Open the cost ledger →
+                      </Link>
+                    </>
+                  )}
                 </p>
               </Card>
 

@@ -666,6 +666,8 @@ export interface ExpenseFilters {
   search?: string;
   /** '' = everything, 'company' = the ones with no project */
   project_id?: string;
+  /** costs booked against one land record — drives the land page's link */
+  land_id?: string;
   cost_category?: CostCategory | 'all';
   payment_method?: SupplierPaymentMethod | 'all';
   from_date?: string;
@@ -703,6 +705,40 @@ class ExpenseRepository extends BaseRepository<Expense> {
     );
   }
 
+  /**
+   * What has actually been paid against one land record.
+   *
+   * The land page showed `final_agreed_amount` and a sentence saying payments
+   * are "tracked in the Finance module", with no figure and no link — while
+   * EXP rows worth tens of millions sat in the ledger against that exact land.
+   * Finding them meant going to Expenses and searching by hand.
+   *
+   * This is the paid side only. A land payment *schedule* — what is due, and
+   * when — is Tier 3.4, and until it exists there is no agreed instalment plan
+   * to compare against; `balance` here is simply the agreed amount less what
+   * has gone out. `land_payment` is separated from the rest because
+   * registration, mutation and legal fees are money spent on the land but not
+   * money paid to the owner.
+   */
+  async landPaymentSummary(
+    landId: string,
+  ): Promise<{ paid: number; land_payment: number; other: number; count: number }> {
+    const rows = await db.expenses.where('land_id').equals(landId).toArray();
+    let landPayment = 0;
+    let other = 0;
+    for (const row of rows) {
+      const amount = Number(row.amount) || 0;
+      if (row.cost_category === 'land_payment') landPayment += amount;
+      else other += amount;
+    }
+    return {
+      paid: money(landPayment + other),
+      land_payment: money(landPayment),
+      other: money(other),
+      count: rows.length,
+    };
+  }
+
   async list(filters: ExpenseFilters = {}): Promise<ExpenseWithRelations[]> {
     const [expenses, projects, lands, users] = await Promise.all([
       db.expenses.toArray(),
@@ -727,6 +763,7 @@ class ExpenseRepository extends BaseRepository<Expense> {
           ? rows.filter((r) => !r.project_id)
           : rows.filter((r) => r.project_id === filters.project_id);
     }
+    if (filters.land_id) rows = rows.filter((r) => r.land_id === filters.land_id);
     if (filters.cost_category && filters.cost_category !== 'all') {
       rows = rows.filter((r) => r.cost_category === filters.cost_category);
     }

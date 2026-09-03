@@ -15,12 +15,14 @@ import {
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Field, SelectInput, TextInput } from '@/components/ui/Field';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Pagination, usePagination } from '@/components/ui/Pagination';
 import { ResultCard } from '@/components/ui/ResultCard';
 import { ResultsLayout, ViewToggle, type ViewMode } from '@/components/ui/ViewToggle';
+import { useMockSession } from '@/lib/auth/mock-session';
 import { LEAD_SOURCES, LEAD_STATUSES, type LeadSource, type LeadStatus } from '@/lib/db/types';
 import {
   FOLLOW_UP_META,
@@ -130,6 +132,18 @@ export default function LeadsListPage() {
   }, [leads, sort, dueMap]);
 
   const paged = usePagination(rows);
+  const { userId } = useMockSession();
+
+  /*
+   * Bulk assignment (C-4) works on the filtered set, not a checkbox selection,
+   * because that is the shape of the job it exists for: filter to this
+   * morning's website enquiries, or to everything unassigned, and hand the lot
+   * to one executive. It covers every matching lead, not just the visible
+   * page, and says so before it runs.
+   */
+  const [bulkAssignee, setBulkAssignee] = useState<string>('');
+  const [bulkConfirm, setBulkConfirm] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const loading = leads === undefined;
   const hasAny = (allLeads?.length ?? 0) > 0;
@@ -324,6 +338,44 @@ export default function LeadsListPage() {
             </div>
           </div>
 
+          {!loading && rows.length > 0 && (
+            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-hairline bg-canvas/60 p-3">
+              <UserRound className="size-4 shrink-0 text-admin-600" />
+              <p className="text-sm text-ink">
+                Assign all{' '}
+                <span className="font-semibold">
+                  {rows.length} matching lead{rows.length === 1 ? '' : 's'}
+                </span>{' '}
+                to
+              </p>
+              <SelectInput
+                value={bulkAssignee}
+                onChange={(e) => setBulkAssignee(e.target.value)}
+                className="h-9 w-auto py-1 text-sm"
+                aria-label="Assign every matching lead to"
+              >
+                <option value="">Choose a person…</option>
+                <option value="__clear__">Nobody — clear the assignment</option>
+                {(salesTeam ?? []).map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+              </SelectInput>
+              <Button
+                size="sm"
+                disabled={!bulkAssignee || bulkBusy}
+                onClick={() => setBulkConfirm(true)}
+              >
+                {bulkBusy ? 'Assigning…' : 'Assign'}
+              </Button>
+              <p className="w-full text-xs text-ink-muted">
+                Everything the filters match, not just this page. Each lead gets its own
+                assignment entry in its follow-up log.
+              </p>
+            </div>
+          )}
+
           {loading ? (
             <div className="space-y-3">
               {[0, 1, 2].map((i) => (
@@ -450,6 +502,33 @@ export default function LeadsListPage() {
           )}
         </section>
       </div>
+
+      <ConfirmDialog
+        open={bulkConfirm}
+        title={`Assign ${rows.length} lead${rows.length === 1 ? '' : 's'}`}
+        subtitle={
+          bulkAssignee === '__clear__'
+            ? 'Clearing the assignment'
+            : (salesTeam ?? []).find((u) => u.id === bulkAssignee)?.name
+        }
+        message={`Every lead the filters currently match will be reassigned, including the ones on later pages. Each one is logged in its own follow-up trail, so this is visible afterwards rather than silent.`}
+        confirmLabel="Assign them"
+        onCancel={() => setBulkConfirm(false)}
+        onConfirm={async () => {
+          setBulkBusy(true);
+          try {
+            await leadRepository.bulkAssign(
+              rows.map((l) => l.id),
+              bulkAssignee === '__clear__' ? null : bulkAssignee,
+              userId,
+            );
+            setBulkConfirm(false);
+            setBulkAssignee('');
+          } finally {
+            setBulkBusy(false);
+          }
+        }}
+      />
     </>
   );
 }
