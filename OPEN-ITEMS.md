@@ -3,8 +3,9 @@
 Known-open work that is **not** a blocker for what is already shipped. Add to
 this as modules land; delete an entry when it is done.
 
-Last reviewed: 2026-09-02, after Modules 6 (Procurement), 7 (Finance) and 8
-(Users, Roles, Master Data, Settings) — the last of the eight admin modules.
+Last reviewed: 2026-09-03, after the Tier 1 remediation batches 1A–1E from
+`REMEDIATION-PLAN.md` (see Section 0 below). The full defect list is in
+`ANALYSIS-REPORT_2026-09-02.md`.
 
 ---
 
@@ -47,6 +48,12 @@ Cancelling voids the undelivered balance, but any voucher already raised
 against the order stays as it is (correctly — the money did move). What is
 missing is the other half: recovering an advance on a cancelled order. That is
 the same gap as 1.3 and belongs with it.
+
+**Since 1D:** the money is no longer invisible. A cancelled order stops
+reporting a payable (its balance is void, not owed), the part of a payment that
+bought material still counts as billable, and only the remainder — money that
+bought nothing — is surfaced, on the order as a note and on the supplier row as
+"advance held". Recovering it still needs the Phase 2 debit note.
 
 ### 1.6 Overdue reminders are a dashboard list, not a notification
 Section 8.4 defers automated SMS/push to Phase 2. Today an overdue instalment
@@ -91,6 +98,117 @@ that money moves through the platform: `land_status_history`,
 `project_status_history` and `material_request_status_history` cover their own
 pipelines, but nothing records who edited a price, retired a master-data option
 or changed somebody's role.
+
+---
+
+## 0. Tier 1 remediation — done 2026-09-03 (batches 1A–1E)
+
+No schema change; nothing in this pass writes to the database that did not
+write there before. Browser-verified against a freshly reloaded demo set.
+
+**1A — money is readable.** `formatBdt`'s `compact` option is gone; all 34 call
+sites now print in full. Every column on the Finance Overview adds up by eye
+(sales 158,740,000 = 97,590,000 + 44,830,000 + 16,320,000, and so on), and the
+overdue banner and the Overdue column finally show the same figure. New
+`formatBdtRate` prints unit prices and weighted-average costs to two decimals,
+so a BDT 13.50 brick stops displaying as BDT 14 and lines multiply out again.
+The two "Collected" figures were relabelled rather than merged — the Finance
+Overview counts every receipt, the collections queue counts what is allocated
+to instalments, and the queue now says why it reads lower.
+
+**1B — site progress tells the truth.** `rollupProgress` gained
+`comparable_actual_pct` and `planned_coverage_pct`; `actual_pct` is untouched,
+so `towers.current_progress_pct`, the public-portal repository, the "behind
+schedule" filter and the site-list ordering all behave exactly as before. The
+caption is now built once, in `scheduleCaption`, and names the actual it
+measured against: *"planned 37.8% by today vs 38.4% on the 97% of work that has
+dates · +0.6%"* instead of a bare "+0.7%" beside a smaller number. Tower chips
+and the `Σ (progress × weight ÷ 100)` footer agree to one decimal. A site that
+has gone quiet loses its green badge — `scheduleBadge` renders "On Track ·
+unconfirmed" in amber, because a site nobody has reported from in twenty days
+is unknown rather than fine. "Behind Schedule" keeps its red.
+
+**1C — a confirmed booking is no longer born overdue.** `planInstallments`
+takes `bookingAmount`; when the template has an `on_booking` line and the
+booking carries an agreed amount, that amount wins over the percentage and the
+difference is spread across the later lines in proportion. Guards: the template
+stands if the agreed amount is zero, at or above the price, or if the template
+is entirely `on_booking` (nothing to absorb the difference). Verified on
+`BOOK-2026-003`: instalment 1 is now BDT 1,000,000 and `Paid` rather than BDT
+1,337,000 and five days late, monthlies moved 222,833 → 229,074, and the
+schedule still totals the price to the taka. Company overdue fell from BDT
+8,424,000 across 11 instalments to BDT 4,541,111 across 7 — the difference was
+arrears the platform had invented.
+
+**1D — payables are real money.** Supplier stats now separate what was placed
+from what was drafted: BSRM reads 1 order + 1 draft and BDT 1,732,800 due, not
+BDT 6,405,600. `received_value` and `awaiting_delivery_value` sit alongside so a
+commitment is never read as an invoice, and `supplierBalance` reports an
+overpayment as "advance held" rather than a negative. **The order-level policy
+was deliberately left alone** — `paymentSummary` still measures due against
+order value, because Section 7.9 treats a PO as a ledger entry rather than a
+bill and paying an advance is normal here. Whether payables should move to a
+received-value basis is a question for the client, not a bug fix; it is not
+done. The voucher register gained a Date column and now opens in date order
+instead of by voucher code.
+
+**1E — the shell stops lying.** The acting role is persisted through
+`useSyncExternalStore` on `localStorage`, so it survives a reload instead of
+silently reverting to `super_admin` and defeating the route guard. The dashboard
+reads the same `PERMISSION_MATRIX` the sidebar does — an Accounts user no longer
+opens the platform to land plots and a sales follow-up queue — and gained a
+Money card (collected, still due, overdue, due this month) for the roles that
+Section 9.6 gives the dashboard to. The topbar's non-functional search box and
+four unlabelled icon buttons are gone, as is the inert "Help and Support" entry
+whose `/admin/help` route 404s; the avatar shows the acting user's initials
+instead of a hardcoded "DU". A lead with a live booking drops out of the
+follow-up queue (it used to keep nagging the desk about a buyer already at
+`pending_approval`), and the leads banner now counts unassigned leads.
+
+### Follow-up, same day — Material Request flow
+
+Two things found while answering "who approves a material request", both fixed
+and browser-verified. Recorded in the scope Decision Log (Section 11).
+
+- **A requester could approve his own request.** The permission matrix drove
+  the sidebar and the route guard but not the buttons inside the page, so a
+  Site Manager saw "Approve request" on the request he had just raised —
+  against 9.6, which gives him "Create (assigned)" and nothing more. Approve
+  and reject now sit behind `canApprove(role, 'material_request')`
+  (Procurement, Project Manager), and "Raise Request" / "Request material" sit
+  behind `canEdit(...)` (Site Manager), so the two halves stay apart. The
+  "(assigned)" half — *which* projects — is still Phase B (1.9).
+- **Section 7.8a route (b) did not exist.** The scope gives Procurement two
+  ways out of an approved request: raise a purchase order, or transfer material
+  the central store already holds, buying nothing. Only the first was built,
+  and `stock_transfers` never touched request status — so taking the second
+  route left the request on `approved` for ever while the material was already
+  on site. Added `stock_transfers.request_id` (nullable, **not** indexed, so no
+  new Dexie version block — the `towers.current_progress_pct` precedent) and
+  `approved → fulfilled` for this route only. "Fulfil from central stock" now
+  sits beside "Raise Purchase Order", and deleting the transfer reopens the
+  request, mirroring the goods-receipt rollback.
+
+- **Procurement's inbox was filed under someone else's module.** Material
+  Requests sat in the Site Progress nav group for every role, so Procurement —
+  who has no `site_progress` access at all in 9.6 — had to open a Site Progress
+  heading to reach the queue they live in, while their own Procurement group
+  did not mention it. It is the Section 6.5 bridge, so it now appears once, in
+  the group that matches what the role does with it: approvers who do not raise
+  requests (Procurement, Project Manager) find it under **Procurement**,
+  everyone else under **Site Progress**. `NavItem.visibleFor` carries the rule;
+  nobody sees it twice.
+- **Deciding and buying were treated as one job.** "Raise Purchase Order" and
+  "Fulfil from central stock" rendered for everyone who could open an approved
+  request, including a Site Manager with no procurement access and a Project
+  Manager who only views it — both linking to a page that would refuse them.
+  Those two actions now need `canEdit(role, 'procurement')`; the others get a
+  line saying Procurement takes it from here. Seeing the decision and its note
+  was never gated and still is not — the site is told what happened to its
+  request, it just cannot decide or buy.
+
+**Not done, deliberately:** Tier 2 (minor and cosmetic) and Tier 3 (the
+features worth building in now) from `REMEDIATION-PLAN.md`.
 
 ---
 
