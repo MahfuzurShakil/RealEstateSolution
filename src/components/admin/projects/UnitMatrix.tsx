@@ -65,11 +65,22 @@ export function UnitMatrix({
     };
   }, [units]);
 
-  /** Only statuses actually present, so the legend stays honest. */
-  const presentStatuses = useMemo(
-    () => (Object.keys(UNIT_STATUS_META) as UnitStatus[]).filter((s) => units.some((u) => u.status === s)),
-    [units],
-  );
+  /*
+   * Every status, with how many units are in it.
+   *
+   * This used to list only the statuses present, so the legend could never
+   * describe a colour that was not on screen. Honest, but it meant the key
+   * changed shape between towers and a reader never learned the full colour
+   * system — the first tower they opened taught them three colours out of six.
+   * Showing all of them with a count keeps it honest a different way: an
+   * absent status reads "0" and is dimmed, rather than being hidden.
+   */
+  const statusCounts = useMemo(() => {
+    const counts = new Map<UnitStatus, number>();
+    for (const status of Object.keys(UNIT_STATUS_META) as UnitStatus[]) counts.set(status, 0);
+    for (const unit of units) counts.set(unit.status, (counts.get(unit.status) ?? 0) + 1);
+    return [...counts.entries()];
+  }, [units]);
 
   if (units.length === 0) return null;
 
@@ -77,10 +88,23 @@ export function UnitMatrix({
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-hairline bg-canvas/50 px-3 py-2">
         <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Legend</span>
-        {presentStatuses.map((status) => (
-          <span key={status} className="flex items-center gap-1.5 text-xs text-ink">
-            <span className={cn('size-3 rounded border border-black/10', LEGEND_SWATCH[status])} />
+        {statusCounts.map(([status, count]) => (
+          <span
+            key={status}
+            className={cn(
+              'flex items-center gap-1.5 text-xs',
+              count > 0 ? 'text-ink' : 'text-slate-400',
+            )}
+          >
+            <span
+              className={cn(
+                'size-3 rounded border border-black/10',
+                LEGEND_SWATCH[status],
+                count === 0 && 'opacity-40',
+              )}
+            />
             {UNIT_STATUS_META[status].label}
+            <span className={count > 0 ? 'font-semibold text-ink' : ''}>{count}</span>
           </span>
         ))}
         <span className="flex items-center gap-1.5 text-xs text-ink-muted">

@@ -28,7 +28,7 @@ import {
 } from '@/lib/db/types';
 import {
   ALLOCATION_TYPE_LABEL,
-  FOR_SALE_BY_LABEL,
+  FOR_SALE_BY_SHORT,
   TOWER_STATUS_META,
   UNIT_STATUS_META,
 } from '@/lib/domain/project';
@@ -353,7 +353,7 @@ export function TowersUnitsPanel({ projectId }: { projectId: string }) {
                           <Badge tone="teal">Developer</Badge>
                         )}
                         <span className="ml-1 text-xs text-ink-muted">
-                          · {FOR_SALE_BY_LABEL[unit.for_sale_by]}
+                          · {FOR_SALE_BY_SHORT[unit.for_sale_by]}
                         </span>
                       </td>
                       <td className="py-2.5 pr-3 text-right">

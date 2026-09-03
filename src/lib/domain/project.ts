@@ -78,9 +78,26 @@ export const ALLOCATION_TYPE_LABEL: Record<AllocationType, string> = {
   landowner_share: 'Landowner Share',
 };
 
+/*
+ * Who is responsible for selling a unit — NOT an assertion that it is being
+ * sold. `owner_direct` covers the ordinary JV case where the landowner simply
+ * keeps their flat under the agreement and the company never markets it; the
+ * old "Sold By: Owner Direct" wording read as "the owner is selling it", which
+ * is a claim the record does not make.
+ *
+ * This is what keeps company revenue honest: only `company` units count
+ * towards sales and collections (Section 8.5), so the distinction is money,
+ * not vocabulary.
+ */
 export const FOR_SALE_BY_LABEL: Record<ForSaleBy, string> = {
-  company: 'Company',
-  owner_direct: 'Owner Direct',
+  company: 'Company sells it',
+  owner_direct: "Owner's own — company does not sell it",
+};
+
+/** Short form for badges and grids, where the sentence above will not fit. */
+export const FOR_SALE_BY_SHORT: Record<ForSaleBy, string> = {
+  company: 'Company sells',
+  owner_direct: "Owner's own",
 };
 
 export const JV_SHARE_BASIS_LABEL: Record<JvShareBasis, string> = {

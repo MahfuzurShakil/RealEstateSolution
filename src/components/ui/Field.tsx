@@ -7,6 +7,7 @@ import type {
   TextareaHTMLAttributes,
 } from 'react';
 import { cn } from '@/lib/utils/cn';
+import { formatBdt, formatTakaWords } from '@/lib/utils/format';
 
 const CONTROL =
   'w-full rounded-xl border border-hairline bg-white px-3 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-slate-400 focus:border-admin-400 focus:ring-2 focus:ring-admin-100 disabled:bg-slate-50';
@@ -49,6 +50,50 @@ export function TextInput({
   ...props
 }: InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }) {
   return <input className={cn(CONTROL, invalid && 'border-red-300', className)} {...props} />;
+}
+
+/**
+ * A money field that says what the number means while it is being typed.
+ *
+ * A bare `<input type="number">` shows an ungrouped run of digits, so
+ * 45000000 and 450000000 are the same shape to the eye — and these fields hold
+ * the price of land. Underneath it, the amount is echoed grouped and in the
+ * units this market actually speaks in ("BDT 4,50,00,000 · 4.5 crore").
+ *
+ * The echo is a reading aid only: the value handled and stored is the plain
+ * number typed, and money everywhere else is still displayed in full.
+ */
+export function MoneyInput({
+  value,
+  className,
+  invalid,
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & {
+  value: string;
+  invalid?: boolean;
+}) {
+  const amount = value.trim() === '' ? null : Number(value);
+  const valid = amount !== null && !Number.isNaN(amount);
+  const words = valid ? formatTakaWords(amount) : '';
+
+  return (
+    <>
+      <input
+        type="number"
+        min="0"
+        inputMode="numeric"
+        value={value}
+        className={cn(CONTROL, invalid && 'border-red-300', className)}
+        {...props}
+      />
+      {valid && amount !== 0 && (
+        <span className="mt-1 block text-xs font-medium text-admin-700" aria-live="polite">
+          {formatBdt(amount)}
+          {words && ` · ${words}`}
+        </span>
+      )}
+    </>
+  );
 }
 
 export function SelectInput({

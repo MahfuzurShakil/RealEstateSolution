@@ -7,7 +7,7 @@ import { AlertTriangle, Info, ShieldCheck } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
-import { Checkbox, Field, SelectInput, TextInput } from '@/components/ui/Field';
+import { Checkbox, Field, MoneyInput, SelectInput, TextInput } from '@/components/ui/Field';
 import { useMockSession } from '@/lib/auth/mock-session';
 import {
   PAYMENT_METHODS,
@@ -373,42 +373,32 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
         <CardHeader title="Pricing (BDT)" />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <Field label="Base Price" required error={errors.base_price} hint="Snapshot of the unit price">
-            <TextInput
-              type="number"
-              min="0"
+            <MoneyInput
               value={form.base_price}
               onChange={(e) => set('base_price', e.target.value)}
               invalid={Boolean(errors.base_price)}
             />
           </Field>
           <Field label="Floor Premium">
-            <TextInput
-              type="number"
-              min="0"
+            <MoneyInput
               value={form.floor_premium}
               onChange={(e) => set('floor_premium', e.target.value)}
             />
           </Field>
           <Field label="Facing Premium">
-            <TextInput
-              type="number"
-              min="0"
+            <MoneyInput
               value={form.facing_premium}
               onChange={(e) => set('facing_premium', e.target.value)}
             />
           </Field>
           <Field label="Parking Charge">
-            <TextInput
-              type="number"
-              min="0"
+            <MoneyInput
               value={form.parking_charge}
               onChange={(e) => set('parking_charge', e.target.value)}
             />
           </Field>
           <Field label="Other Charges" hint="Utility connection, corner charge…">
-            <TextInput
-              type="number"
-              min="0"
+            <MoneyInput
               value={form.other_charges}
               onChange={(e) => set('other_charges', e.target.value)}
             />
@@ -418,9 +408,7 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
             error={errors.discount_amount}
             hint={parts.discount_amount > 0 ? `${pct.toFixed(2)}% of base price` : undefined}
           >
-            <TextInput
-              type="number"
-              min="0"
+            <MoneyInput
               value={form.discount_amount}
               onChange={(e) => set('discount_amount', e.target.value)}
               invalid={Boolean(errors.discount_amount)}
@@ -498,9 +486,7 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
             error={errors.booking_amount}
             hint="The advance expected from the buyer"
           >
-            <TextInput
-              type="number"
-              min="0"
+            <MoneyInput
               value={form.booking_amount}
               onChange={(e) => set('booking_amount', e.target.value)}
               invalid={Boolean(errors.booking_amount)}

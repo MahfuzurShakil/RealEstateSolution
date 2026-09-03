@@ -6,7 +6,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Home, Lock } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { Field, SelectInput, TextInput } from '@/components/ui/Field';
+import { Field, MoneyInput, SelectInput, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import {
   ALLOCATION_TYPES,
@@ -229,9 +229,7 @@ export function UnitEditModal({
           />
         </Field>
         <Field label="Base Price (BDT)" required>
-          <TextInput
-            type="number"
-            min="0"
+          <MoneyInput
             value={str(form.base_price)}
             onChange={(e) => set('base_price', Number(e.target.value))}
           />
@@ -255,9 +253,23 @@ export function UnitEditModal({
             ))}
           </SelectInput>
         </Field>
-        <Field label="Sold By">
+        <Field
+          label="Who sells it"
+          hint={
+            form.allocation_type === 'landowner_share'
+              ? "A landowner's own flat is not counted in company sales or collections."
+              : 'A developer-share flat is the company’s to sell, so this stays with the company.'
+          }
+        >
           <SelectInput
             value={form.for_sale_by}
+            /*
+             * A developer-share flat sold "owner direct" is not a real state,
+             * and it silently drops the unit out of company revenue (Section
+             * 8.5 filters on exactly this field). The bulk allocate modal
+             * already pairs the two; the single-unit form let them diverge.
+             */
+            disabled={form.allocation_type === 'developer_share'}
             onChange={(e) => set('for_sale_by', e.target.value as ForSaleBy)}
           >
             {FOR_SALE_BY.map((v) => (
@@ -271,7 +283,13 @@ export function UnitEditModal({
         <Field label="Allocation" className="sm:col-span-2">
           <SelectInput
             value={form.allocation_type}
-            onChange={(e) => set('allocation_type', e.target.value as AllocationType)}
+            onChange={(e) => {
+              const next = e.target.value as AllocationType;
+              set('allocation_type', next);
+              // developer share is always the company's to sell; a landowner's
+              // flat defaults to their own, which they can hand back to us
+              set('for_sale_by', next === 'developer_share' ? 'company' : 'owner_direct');
+            }}
           >
             {ALLOCATION_TYPES.map((a) => (
               <option key={a} value={a}>

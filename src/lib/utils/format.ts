@@ -37,6 +37,34 @@ export function formatBdtRate(amount?: number | null): string {
   }).format(amount);
 }
 
+/**
+ * What a typed amount actually says, in the units this market speaks in.
+ *
+ * Bangladesh counts money in lakh and crore, not thousands and millions — the
+ * demo's own lead notes say "1.85 কোটি", because that is how the conversation
+ * happens. A money field on a form is a row of digits with no grouping while
+ * it is being typed, so "45000000" and "450000000" look the same at a glance
+ * and a land gets bought for ten times its price.
+ *
+ * This is an **input aid**, shown under the field being typed into. It is not
+ * a display format: stored and displayed amounts stay in full (see the note on
+ * `formatBdt`), so nothing here reintroduces compact money in a table.
+ */
+export function formatTakaWords(amount?: number | null): string {
+  if (amount === null || amount === undefined || Number.isNaN(amount) || amount === 0) return '';
+
+  const abs = Math.abs(amount);
+  const sign = amount < 0 ? '-' : '';
+
+  // trims a trailing ".00" so a round figure does not read "4.00 crore"
+  const trim = (n: number) => String(Number(n.toFixed(2)));
+
+  if (abs >= 10000000) return `${sign}${trim(abs / 10000000)} crore`;
+  if (abs >= 100000) return `${sign}${trim(abs / 100000)} lakh`;
+  if (abs >= 1000) return `${sign}${trim(abs / 1000)} thousand`;
+  return '';
+}
+
 export function formatDate(value?: string | null): string {
   if (!value) return '—';
   const d = new Date(value);

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
-import { Checkbox, Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
+import { Checkbox, Field, MoneyInput, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
 import { MapPicker } from '@/components/ui/map/MapPicker';
 import { LandownerQuickAddModal } from './LandownerQuickAddModal';
 import {
@@ -391,9 +391,7 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
         <CardHeader title="Commercials (BDT)" />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <Field label="Asking Price" required error={errors.asking_price}>
-            <TextInput
-              type="number"
-              min="0"
+            <MoneyInput
               value={form.asking_price}
               placeholder="e.g. 45000000"
               onChange={(e) => set('asking_price', e.target.value)}
@@ -401,9 +399,7 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
             />
           </Field>
           <Field label="Negotiated Price">
-            <TextInput
-              type="number"
-              min="0"
+            <MoneyInput
               value={form.negotiated_price}
               placeholder="e.g. 42000000"
               onChange={(e) => set('negotiated_price', e.target.value)}
@@ -413,9 +409,7 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
             label="Final Agreed Amount"
             hint="Reference only — payments are tracked in the Finance module"
           >
-            <TextInput
-              type="number"
-              min="0"
+            <MoneyInput
               value={form.final_agreed_amount}
               placeholder="e.g. 40000000"
               onChange={(e) => set('final_agreed_amount', e.target.value)}
