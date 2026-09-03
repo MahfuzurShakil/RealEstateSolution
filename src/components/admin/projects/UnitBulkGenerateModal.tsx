@@ -11,6 +11,7 @@ import {
   floorsInRange,
   previewUnitCodes,
   priceFor,
+  priceOnFloor,
   type UnitPatternRow,
 } from '@/lib/domain/project';
 import { lookupRepository, unitRepository } from '@/lib/repositories';
@@ -60,6 +61,15 @@ export function UnitBulkGenerateModal({
       emptyRow(String.fromCharCode(65 + i)),
     ),
   );
+  /*
+   * Height is priced everywhere in this market, and the generator used to
+   * apply one figure to every floor — so a 22-flat tower came out at one price
+   * and had to be corrected unit by unit afterwards. The step is counted from
+   * the first floor generated, so the price typed into the row is the price of
+   * that first flat.
+   */
+  const [premiumMode, setPremiumMode] = useState<'none' | 'amount' | 'percent'>('percent');
+  const [premiumValue, setPremiumValue] = useState('1.5');
   const [unitTypes, setUnitTypes] = useState<string[]>([]);
   const [facings, setFacings] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -85,12 +95,18 @@ export function UnitBulkGenerateModal({
     floor_from: Number(floorFrom),
     floor_to: Number(floorTo),
     excluded_floors: excludedFloors,
+    floor_premium_mode: premiumMode,
+    floor_premium_value: premiumValue,
     rows,
   };
 
   const floors = floorsInRange(pattern);
   const codes = previewUnitCodes(pattern);
-  const totalValue = floors.length * rows.reduce((sum, r) => sum + priceFor(r), 0);
+  // the real total now that each floor can be priced differently
+  const totalValue = floors.reduce(
+    (sum, floor) => sum + rows.reduce((rowSum, r) => rowSum + priceOnFloor(r, floor, pattern), 0),
+    0,
+  );
 
   const rangeInvalid = floors.length === 0;
   const overFloorCount = Number(floorTo) > tower.floor_count;
@@ -195,6 +211,49 @@ export function UnitBulkGenerateModal({
               {floors.length} floor{floors.length === 1 ? '' : 's'}:{' '}
               {floors.length > 0 ? floors.join(', ') : '—'}
             </p>
+
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <Field
+                label="Higher floors cost more"
+                hint="Counted from the first floor generated, so the price below is that floor's price"
+              >
+                <SelectInput
+                  value={premiumMode}
+                  onChange={(e) =>
+                    setPremiumMode(e.target.value as 'none' | 'amount' | 'percent')
+                  }
+                >
+                  <option value="percent">Yes — a % per floor</option>
+                  <option value="amount">Yes — a fixed amount per floor</option>
+                  <option value="none">No — every floor the same price</option>
+                </SelectInput>
+              </Field>
+              {premiumMode !== 'none' && (
+                <Field label={premiumMode === 'percent' ? 'Per floor (%)' : 'Per floor (BDT)'}>
+                  <TextInput
+                    type="number"
+                    min="0"
+                    step={premiumMode === 'percent' ? '0.1' : '1000'}
+                    value={premiumValue}
+                    onChange={(e) => setPremiumValue(e.target.value)}
+                  />
+                </Field>
+              )}
+            </div>
+
+            {premiumMode !== 'none' && floors.length > 1 && rows.length > 0 && (
+              <p className="mt-2 text-xs text-ink-muted">
+                Floor {floors[0]}:{' '}
+                <span className="font-medium text-ink">
+                  {formatBdt(priceOnFloor(rows[0], floors[0], pattern))}
+                </span>{' '}
+                → floor {floors[floors.length - 1]}:{' '}
+                <span className="font-medium text-ink">
+                  {formatBdt(priceOnFloor(rows[0], floors[floors.length - 1], pattern))}
+                </span>{' '}
+                for the first unit row.
+              </p>
+            )}
           </section>
 
           <section className="rounded-xl border border-hairline bg-white p-4">
@@ -307,7 +366,14 @@ export function UnitBulkGenerateModal({
                     />
                   </Field>
                   <div className="flex items-end justify-between gap-2 xl:col-span-2">
-                    <p className="pb-2.5 text-sm font-medium text-ink">{formatBdt(priceFor(row))}</p>
+                    <p className="pb-2.5 text-sm font-medium text-ink">
+                      {formatBdt(priceFor(row))}
+                      {premiumMode !== 'none' && floors.length > 0 && (
+                        <span className="block text-xs font-normal text-ink-muted">
+                          on floor {floors[0]}, rising with height
+                        </span>
+                      )}
+                    </p>
                     {rows.length > 1 && (
                       <Button
                         variant="ghost"

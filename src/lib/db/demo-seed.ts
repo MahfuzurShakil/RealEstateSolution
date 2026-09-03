@@ -321,6 +321,14 @@ async function seedDemoProjects(
             floor_from: pattern.floor_from,
             floor_to: pattern.floor_to,
             excluded_floors: pattern.excluded_floors ?? [],
+            /*
+             * Height is priced in this market, so the demo prices it too:
+             * every floor up adds 1.5% to the flat below it. Without this the
+             * whole tower generated at one price, which is not what any of
+             * these towers would really sell for.
+             */
+            floor_premium_mode: pattern.floor_premium_mode ?? 'percent',
+            floor_premium_value: pattern.floor_premium_value ?? '1.5',
             rows: pattern.rows.map((row) => ({
               suffix: row.suffix,
               unit_type: row.unit_type,

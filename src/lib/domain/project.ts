@@ -136,6 +136,19 @@ export interface UnitPatternInput {
   floor_to: number;
   /** floors to skip — the ground floor is often parking or commercial */
   excluded_floors: number[];
+  /**
+   * What a floor adds to the price of the flat below it.
+   *
+   * Height is priced everywhere in this market — a 10th-floor flat is not
+   * worth what the 2nd-floor flat costs — but the generator applied one figure
+   * to every floor, so every unit in a tower came out at the same price and
+   * had to be corrected one at a time afterwards. `floor_premium_mode` says
+   * whether the step is taka per floor or a percentage of the base, and it is
+   * counted from `floor_from`, so the first generated floor is always the
+   * price actually typed in.
+   */
+  floor_premium_mode: 'none' | 'amount' | 'percent';
+  floor_premium_value: string;
   rows: UnitPatternRow[];
 }
 
@@ -165,10 +178,38 @@ export function previewUnitCodes(input: UnitPatternInput): string[] {
   );
 }
 
+/** The pattern row's own price, before any floor premium. */
 export function priceFor(row: UnitPatternRow): number {
   const value = Number(row.price_value) || 0;
   if (row.price_mode === 'fixed') return value;
   return Math.round(value * (Number(row.size_sqft) || 0));
+}
+
+/**
+ * The price of one unit on one floor: the row's price plus the floor premium
+ * for every floor above the first one being generated.
+ *
+ * Counted from `floor_from` rather than from floor 1, because the figure typed
+ * into the form is the price of the first flat generated — if the tower starts
+ * at floor 2, floor 2 is what was quoted, not floor 1 plus a premium nobody
+ * asked for.
+ */
+export function priceOnFloor(
+  row: UnitPatternRow,
+  floor: number,
+  input: Pick<UnitPatternInput, 'floor_from' | 'floor_premium_mode' | 'floor_premium_value'>,
+): number {
+  const base = priceFor(row);
+  if (input.floor_premium_mode === 'none') return base;
+
+  const step = Number(input.floor_premium_value) || 0;
+  if (step === 0) return base;
+
+  const stepsUp = Math.max(0, floor - input.floor_from);
+  if (input.floor_premium_mode === 'percent') {
+    return Math.round(base * (1 + (step / 100) * stepsUp));
+  }
+  return Math.round(base + step * stepsUp);
 }
 
 /* ------------------------------------------------------------------ *

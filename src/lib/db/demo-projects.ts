@@ -27,6 +27,9 @@ export interface DemoUnitPattern {
   floor_from: number;
   floor_to: number;
   excluded_floors?: number[];
+  /** what each floor up adds; defaults to 1.5% a floor when omitted */
+  floor_premium_mode?: 'none' | 'amount' | 'percent';
+  floor_premium_value?: string;
   rows: Array<{
     suffix: string;
     unit_type: string;

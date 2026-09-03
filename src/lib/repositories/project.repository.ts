@@ -18,7 +18,7 @@ import type {
 import {
   floorsInRange,
   jvAllocationSummary,
-  priceFor,
+  priceOnFloor,
   unitCode,
   type AllocationTotals,
   type JvAllocationSummary,
@@ -527,7 +527,7 @@ class UnitRepository extends BaseRepository<Unit> {
               balcony_count: numOrNull(row.balcony_count),
               size_sqft: Number(row.size_sqft) || 0,
               facing: row.facing.trim() || null,
-              base_price: priceFor(row),
+              base_price: priceOnFloor(row, floor, input),
               parking_allocated: Number(row.parking_allocated) || 0,
               status: 'available',
               allocation_type: 'developer_share',
