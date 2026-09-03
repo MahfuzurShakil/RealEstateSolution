@@ -22,6 +22,7 @@ import {
 import type { PurchaseOrderWithRelations, SupplierVoucherWithRelations } from '@/lib/repositories';
 import {
   purchaseOrderRepository,
+  supplierBalance,
   supplierRepository,
   supplierVoucherRepository,
 } from '@/lib/repositories';
@@ -66,7 +67,7 @@ export default function SupplierDetailPage() {
     );
   }
 
-  const due = supplier.ordered_value - supplier.paid_value;
+  const { due, advance } = supplierBalance(supplier);
 
   const orderColumns: Column<PurchaseOrderWithRelations>[] = [
     {
@@ -296,13 +297,28 @@ export default function SupplierDetailPage() {
               }
             />
             <Row label="Orders placed" value={supplier.po_count} />
+            {supplier.draft_count > 0 && (
+              <Row
+                label="Drafts, not placed"
+                value={`${supplier.draft_count} · ${formatBdt(supplier.draft_value)}`}
+              />
+            )}
             <Row label="Ordered value" value={formatBdt(supplier.ordered_value)} />
+            <Row label="Received" value={formatBdt(supplier.received_value)} />
+            {supplier.awaiting_delivery_value > 0.009 && (
+              <Row
+                label="Awaiting delivery"
+                value={formatBdt(supplier.awaiting_delivery_value)}
+              />
+            )}
             <Row label="Paid" value={formatBdt(supplier.paid_value)} />
             <Row
               label="Outstanding"
               value={
                 due > 0.009 ? (
                   <span className="text-amber-600">{formatBdt(due)}</span>
+                ) : advance > 0.009 ? (
+                  <span className="text-blue-700">{formatBdt(advance)} advance held</span>
                 ) : (
                   <span className="text-emerald-700">Settled</span>
                 )

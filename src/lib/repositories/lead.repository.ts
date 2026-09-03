@@ -193,11 +193,33 @@ class LeadRepository extends BaseRepository<Lead> {
   }
 
   /** Daily task list (Section 4.4) — overdue first, then today's. */
+  /**
+   * Who the sales desk has to call today.
+   *
+   * Leads that already have a live booking are left out. A lead only flips to
+   * `booked` when the booking is *confirmed*, so one sitting at
+   * `pending_approval` kept its old status and stayed on this queue — the desk
+   * was being told to chase a buyer who had already paid his booking money and
+   * was waiting on the sales manager's signature. Lost leads are out for the
+   * obvious reason.
+   */
   async followUpQueue(today: string): Promise<Array<{ lead: Lead; date: string }>> {
-    const due = await this.followUpDueMap();
-    const leads = await db.leads.toArray();
+    const [due, leads, bookings] = await Promise.all([
+      this.followUpDueMap(),
+      db.leads.toArray(),
+      db.bookings.toArray(),
+    ]);
+
+    const withLiveBooking = new Set(
+      bookings
+        .filter((b) => b.status !== 'cancelled' && b.lead_id)
+        .map((b) => b.lead_id as string),
+    );
+
     return leads
       .flatMap((lead) => {
+        if (lead.status === 'booked' || lead.status === 'lost') return [];
+        if (withLiveBooking.has(lead.id)) return [];
         const date = due.get(lead.id);
         return date && date <= today ? [{ lead, date }] : [];
       })

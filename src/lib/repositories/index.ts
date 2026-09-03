@@ -79,6 +79,7 @@ export {
   stockTransferRepository,
   supplierVoucherRepository,
   procurementCostRepository,
+  supplierBalance,
   InsufficientStockError,
   type SupplierFilters,
   type SupplierWithStats,

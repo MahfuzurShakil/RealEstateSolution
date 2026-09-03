@@ -278,7 +278,7 @@ export default function LandDetailPage() {
             />
             <Row
               label="Price"
-              value={formatBdt(land.negotiated_price ?? land.asking_price, { compact: true })}
+              value={formatBdt(land.negotiated_price ?? land.asking_price )}
             />
             <Row label="Owners" value={land.owners.length} />
             <Row label="Created" value={formatDate(land.created_at)} />

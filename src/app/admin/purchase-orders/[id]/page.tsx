@@ -45,7 +45,7 @@ import {
   supplierVoucherRepository,
 } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
-import { formatBdt, formatDate } from '@/lib/utils/format';
+import { formatBdt, formatBdtRate, formatDate } from '@/lib/utils/format';
 
 type Tab = 'items' | 'receipts' | 'payments' | 'documents';
 
@@ -109,7 +109,7 @@ export default function PurchaseOrderDetailPage() {
       key: 'unit_price',
       header: 'Rate',
       align: 'right',
-      cell: (row) => formatBdt(row.unit_price),
+      cell: (row) => formatBdtRate(row.unit_price),
       sortValue: (row) => row.unit_price,
     },
     {
@@ -445,13 +445,28 @@ export default function PurchaseOrderDetailPage() {
             <Row
               label="Still due"
               value={
-                summary.due > 0.009 ? (
+                /* cancelling voids the undelivered balance, so what is left
+                   unpaid on a cancelled order is not a debt — and any voucher
+                   already raised against it is money sitting with the supplier */
+                order.status === 'cancelled' ? (
+                  <span className="text-ink-muted">Order cancelled</span>
+                ) : summary.due > 0.009 ? (
                   <span className="text-amber-600">{formatBdt(summary.due)}</span>
                 ) : (
                   <span className="text-emerald-700">Nothing outstanding</span>
                 )
               }
             />
+            {/* only the part that bought nothing is money sitting with the
+                supplier; what arrived before the cancellation is in the store */}
+            {order.status === 'cancelled' &&
+              summary.paid - order.totals.received_value > 0.009 && (
+                <p className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700">
+                  {formatBdt(summary.paid - order.totals.received_value)} of what was paid bought
+                  nothing — the order was cancelled before it arrived — and is still held by the
+                  supplier. Recovering it needs a debit note, which is Phase 2 (Section 7.6).
+                </p>
+              )}
             {summary.overpaid && (
               <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-600">
                 {formatBdt(summary.paid - summary.po_value)} more has been paid than this order is

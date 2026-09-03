@@ -68,7 +68,15 @@ export default function LeadsListPage() {
   );
 
   const allLeads = useLiveQuery(() => leadRepository.getAll(), []);
+  /** every lead's next follow-up date — drives the per-card badge and the sort */
   const dueMap = useLiveQuery(() => leadRepository.followUpDueMap(), []);
+  /*
+   * The banner reads the same queue the dashboard does, rather than counting
+   * raw follow-up dates: a lead that is booked, lost, or already carries a
+   * live booking is not somebody to ring today, and counting it here made the
+   * two screens disagree about how much work was outstanding.
+   */
+  const queueRows = useLiveQuery(() => leadRepository.followUpQueue(today), [today]);
   const salesTeam = useLiveQuery(() => userRepository.salesTeam(), []);
   const projects = useLiveQuery(() => projectRepository.list(), []);
 
@@ -81,16 +89,25 @@ export default function LeadsListPage() {
     [projects],
   );
 
-  /** Overdue and due-today counts, for the queue banner. */
+  /** Overdue, due-today and unassigned counts, for the queue banner. */
   const queue = useMemo(() => {
     let overdue = 0;
     let dueToday = 0;
-    for (const date of (dueMap ?? new Map()).values()) {
+    for (const { date } of queueRows ?? []) {
       if (date < today) overdue += 1;
       else if (date === today) dueToday += 1;
     }
-    return { overdue, dueToday };
-  }, [dueMap, today]);
+    /*
+     * Section 9.6 makes assignment a manager's job, and an unassigned lead is
+     * nobody's problem until somebody notices. The filter for them existed;
+     * nothing ever pointed at it, so a website enquiry could sit unowned for
+     * days without appearing on any count.
+     */
+    const unassigned = (allLeads ?? []).filter(
+      (lead) => !lead.assigned_to && lead.status !== 'lost' && lead.status !== 'booked',
+    ).length;
+    return { overdue, dueToday, unassigned };
+  }, [queueRows, allLeads, today]);
 
   const rows = useMemo(() => {
     const list = [...(leads ?? [])];
@@ -145,7 +162,7 @@ export default function LeadsListPage() {
         }
       />
 
-      {(queue.overdue > 0 || queue.dueToday > 0) && (
+      {(queue.overdue > 0 || queue.dueToday > 0 || queue.unassigned > 0) && (
         <div className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl border border-hairline bg-white p-4 shadow-sm">
           <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-admin-50 text-admin-600">
             <CalendarClock className="size-5" />
@@ -158,6 +175,13 @@ export default function LeadsListPage() {
             {queue.overdue > 0 && queue.dueToday > 0 && ' · '}
             {queue.dueToday > 0 && (
               <span className="text-amber-600">{queue.dueToday} due today</span>
+            )}
+            {(queue.overdue > 0 || queue.dueToday > 0) && queue.unassigned > 0 && ' · '}
+            {queue.unassigned > 0 && (
+              <span className="text-ink-muted">{queue.unassigned} unassigned</span>
+            )}
+            {queue.overdue === 0 && queue.dueToday === 0 && queue.unassigned > 0 && (
+              <span className="text-ink-muted"> — nothing to call today</span>
             )}
           </p>
           {queue.overdue > 0 && (
@@ -176,6 +200,15 @@ export default function LeadsListPage() {
               onClick={() => setFollowUp(followUp === 'today' ? 'all' : 'today')}
             >
               Show today
+            </Button>
+          )}
+          {queue.unassigned > 0 && (
+            <Button
+              size="sm"
+              variant={assignedTo === 'unassigned' ? 'primary' : 'outline'}
+              onClick={() => setAssignedTo(assignedTo === 'unassigned' ? 'all' : 'unassigned')}
+            >
+              Show unassigned
             </Button>
           )}
         </div>

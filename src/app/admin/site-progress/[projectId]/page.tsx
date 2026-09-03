@@ -17,11 +17,15 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { useMockSession } from '@/lib/auth/mock-session';
+import { canEdit } from '@/lib/domain/access';
 import { PROJECT_STATUS_META } from '@/lib/domain/project';
 import {
   MATERIAL_REQUEST_STATUS_META,
   SCHEDULE_STATE_META,
   STALE_AFTER_DAYS,
+  scheduleBadge,
+  scheduleCaption,
   isSiteActive,
 } from '@/lib/domain/site-progress';
 import { materialRequestRepository, projectProgressRepository } from '@/lib/repositories';
@@ -30,11 +34,6 @@ import { formatDate, todayLocal } from '@/lib/utils/format';
 
 type Tab = 'breakdown' | 'timeline' | 'requests' | 'photos';
 
-function varianceLabel(variance: number | null): string {
-  if (variance === null) return '—';
-  const sign = variance > 0 ? '+' : variance < 0 ? '−' : '';
-  return `${sign}${Math.abs(variance).toFixed(1)}%`;
-}
 
 /**
  * Construction of one project, end to end.
@@ -45,6 +44,7 @@ function varianceLabel(variance: number | null): string {
  * only mean something next to the story behind them.
  */
 export default function ProjectProgressPage() {
+  const { role } = useMockSession();
   const { projectId } = useParams<{ projectId: string }>();
   const today = todayLocal();
   const [tab, setTab] = useState<Tab>('breakdown');
@@ -97,11 +97,13 @@ export default function ProjectProgressPage() {
         subtitle={`${project.code}${project.location_summary ? ` · ${project.location_summary}` : ''}`}
         action={
           <div className="flex flex-wrap gap-2">
-            <Link href={`/admin/material-requests/new?project=${project.id}`}>
-              <Button variant="outline">
-                <Package className="size-4" /> Request material
-              </Button>
-            </Link>
+            {canEdit(role, 'material_request') && (
+              <Link href={`/admin/material-requests/new?project=${project.id}`}>
+                <Button variant="outline">
+                  <Package className="size-4" /> Request material
+                </Button>
+              </Link>
+            )}
             <Button onClick={() => setLogOpen(true)}>
               <Plus className="size-4" /> Log Update
             </Button>
@@ -113,8 +115,8 @@ export default function ProjectProgressPage() {
         <div className="grid gap-5 md:grid-cols-[1fr_220px] md:items-end">
           <div className="min-w-0">
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <Badge tone={SCHEDULE_STATE_META[rollup.state].tone}>
-                {SCHEDULE_STATE_META[rollup.state].label}
+              <Badge tone={scheduleBadge(rollup.state, row.is_stale).tone}>
+                {scheduleBadge(rollup.state, row.is_stale).label}
               </Badge>
               <Badge tone={PROJECT_STATUS_META[project.status].tone}>
                 {PROJECT_STATUS_META[project.status].label}
@@ -140,9 +142,7 @@ export default function ProjectProgressPage() {
                 {rollup.actual_pct.toFixed(1)}%
               </span>
               <span className="text-sm text-ink-muted">
-                {rollup.planned_pct === null
-                  ? 'no planned dates set'
-                  : `planned ${rollup.planned_pct.toFixed(1)}% by today · ${varianceLabel(rollup.variance)}`}
+                {scheduleCaption(rollup)}
               </span>
             </div>
             <div className="mt-3">
@@ -196,7 +196,7 @@ export default function ProjectProgressPage() {
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate text-sm font-medium text-ink">{tower.name}</span>
                   <span className="text-sm font-semibold text-ink">
-                    {towerRollup.actual_pct.toFixed(0)}%
+                    {towerRollup.actual_pct.toFixed(1)}%
                   </span>
                 </div>
                 <div className="mt-2">

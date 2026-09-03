@@ -45,7 +45,14 @@ export default function FinanceOverviewPage() {
       hint: 'company-owned units, live bookings',
       icon: Building2,
     },
-    { label: 'Collected', value: data.collected, hint: 'money actually received', icon: Wallet },
+    {
+      label: 'Collected',
+      value: data.collected,
+      // every receipt, including booking money taken before a schedule exists —
+      // the collections queue counts only what is allocated, and says so
+      hint: 'every receipt taken, allocated or not',
+      icon: Wallet,
+    },
     { label: 'Due', value: data.due, hint: 'sales value not yet collected', icon: CircleDollarSign },
     { label: 'Refunded', value: data.refunded, hint: 'paid back on cancellations', icon: Undo2 },
     { label: 'Total cost', value: data.total_cost, hint: 'ledger + procurement', icon: ReceiptText },
@@ -76,7 +83,7 @@ export default function FinanceOverviewPage() {
       key: 'sales_value',
       header: 'Sales',
       align: 'right',
-      cell: (row) => formatBdt(row.sales_value, { compact: true }),
+      cell: (row) => formatBdt(row.sales_value ),
       sortValue: (row) => row.sales_value,
     },
     {
@@ -85,7 +92,7 @@ export default function FinanceOverviewPage() {
       align: 'right',
       cell: (row) => (
         <span className="text-sm text-ink">
-          {formatBdt(row.collected, { compact: true })}
+          {formatBdt(row.collected )}
           {row.sales_value > 0 && (
             <span className="mt-1 block w-24">
               <ProgressBar
@@ -103,7 +110,7 @@ export default function FinanceOverviewPage() {
       key: 'due',
       header: 'Due',
       align: 'right',
-      cell: (row) => formatBdt(row.due, { compact: true }),
+      cell: (row) => formatBdt(row.due ),
       sortValue: (row) => row.due,
     },
     {
@@ -114,7 +121,7 @@ export default function FinanceOverviewPage() {
         row.overdue_count > 0 ? (
           <Link href={`/admin/collections?status=overdue&project=${row.project_id}`}>
             <span className="font-medium text-red-600">
-              {formatBdt(row.overdue_amount, { compact: true })}
+              {formatBdt(row.overdue_amount )}
               <span className="block text-xs font-normal">
                 {row.overdue_count} instalment{row.overdue_count === 1 ? '' : 's'}
               </span>
@@ -131,9 +138,9 @@ export default function FinanceOverviewPage() {
       align: 'right',
       cell: (row) => (
         <span className="text-sm text-ink">
-          {formatBdt(row.total_cost, { compact: true })}
+          {formatBdt(row.total_cost )}
           <span className="block text-xs text-ink-muted">
-            {formatBdt(row.cost_procurement, { compact: true })} material
+            {formatBdt(row.cost_procurement )} material
           </span>
         </span>
       ),
@@ -149,7 +156,7 @@ export default function FinanceOverviewPage() {
             row.estimated_profit >= 0 ? 'font-medium text-emerald-700' : 'font-medium text-red-600'
           }
         >
-          {formatBdt(row.estimated_profit, { compact: true })}
+          {formatBdt(row.estimated_profit )}
         </span>
       ),
       sortValue: (row) => row.estimated_profit,
@@ -212,7 +219,7 @@ export default function FinanceOverviewPage() {
                   tile.accent === false ? 'text-red-600' : 'text-ink'
                 }`}
               >
-                {formatBdt(tile.value, { compact: true })}
+                {formatBdt(tile.value )}
               </p>
               <p className="truncate text-xs text-ink-muted">{tile.hint}</p>
             </div>
@@ -246,7 +253,7 @@ export default function FinanceOverviewPage() {
         {data.unallocated_cost > 0 && (
           <p className="mt-4 flex items-start gap-1.5 text-xs text-ink-muted">
             <Badge tone="neutral" className="shrink-0">
-              {formatBdt(data.unallocated_cost, { compact: true })}
+              {formatBdt(data.unallocated_cost )}
             </Badge>
             <span>
               of cost belongs to no single project — company-level expenses and material bought

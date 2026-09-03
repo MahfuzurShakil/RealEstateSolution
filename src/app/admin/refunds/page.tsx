@@ -177,7 +177,7 @@ export default function RefundsPage() {
             <div className="min-w-0">
               <p className="text-xs text-ink-muted">{tile.label}</p>
               <p className="truncate text-lg font-semibold text-ink">
-                {formatBdt(tile.value, { compact: true })}
+                {formatBdt(tile.value )}
               </p>
               <p className="truncate text-xs text-ink-muted">{tile.hint}</p>
             </div>

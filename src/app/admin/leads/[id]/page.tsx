@@ -206,7 +206,7 @@ export default function LeadDetailPage() {
                     <p className="mt-1 text-xs text-ink-muted">
                       {lead.unit.unit_type} · {lead.unit.size_sqft} sqft
                       {lead.unit.facing && ` · ${lead.unit.facing} facing`} ·{' '}
-                      {formatBdt(lead.unit.base_price, { compact: true })}
+                      {formatBdt(lead.unit.base_price )}
                     </p>
                   </div>
                 )}

@@ -16,7 +16,7 @@ import {
   towerWorkItemRepository,
   userRepository,
 } from '@/lib/repositories';
-import { formatBdt, todayLocal } from '@/lib/utils/format';
+import { formatBdt, formatBdtRate, todayLocal } from '@/lib/utils/format';
 
 /**
  * Issue material from a project's own store to the work on site (Section 7.8).
@@ -179,7 +179,7 @@ function IssueDialog({
             {(available ?? []).map((row) => (
               <option key={row.id} value={`${row.item_name}|${row.unit}`}>
                 {row.item_name} — {row.quantity_available} {row.unit} @{' '}
-                {formatBdt(row.average_unit_price)}
+                {formatBdtRate(row.average_unit_price)}
               </option>
             ))}
           </SelectInput>
@@ -263,7 +263,7 @@ function IssueDialog({
 
       {selected && requested > 0 && !tooMuch && (
         <p className="mt-4 rounded-xl border border-hairline bg-white p-3 text-xs text-ink-muted">
-          Booked to the project at {formatBdt(selected.average_unit_price)} per {selected.unit} —{' '}
+          Booked to the project at {formatBdtRate(selected.average_unit_price)} per {selected.unit} —{' '}
           <span className="font-semibold text-ink">{formatBdt(cost)}</span> of material cost. The
           rate is frozen now, so a later purchase at a different price will not restate it.
         </p>

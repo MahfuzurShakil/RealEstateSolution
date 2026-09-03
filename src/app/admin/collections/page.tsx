@@ -175,25 +175,31 @@ function CollectionsPage() {
     ? [
         {
           label: 'Billed',
-          value: formatBdt(summary.billed, { compact: true }),
+          value: formatBdt(summary.billed ),
           hint: 'across every live schedule',
           icon: CalendarClock,
         },
         {
-          label: 'Collected',
-          value: formatBdt(summary.collected, { compact: true }),
-          hint: 'allocated to instalments',
+          /*
+           * Deliberately not called "Collected". The Finance Overview counts
+           * every receipt, including money taken on a booking that is still on
+           * hold and therefore has no schedule to sit on — so the two pages
+           * showed different figures under the same word.
+           */
+          label: 'Allocated to instalments',
+          value: formatBdt(summary.collected),
+          hint: 'confirmed bookings only',
           icon: Wallet,
         },
         {
           label: 'Due this month',
-          value: formatBdt(summary.due_this_month, { compact: true }),
+          value: formatBdt(summary.due_this_month ),
           hint: 'not yet overdue',
           icon: CircleDollarSign,
         },
         {
           label: 'Overdue',
-          value: formatBdt(summary.overdue_amount, { compact: true }),
+          value: formatBdt(summary.overdue_amount ),
           hint: `${summary.overdue_count} instalment${summary.overdue_count === 1 ? '' : 's'}`,
           icon: AlertTriangle,
           alert: summary.overdue_count > 0,
@@ -248,6 +254,12 @@ function CollectionsPage() {
               </div>
             </Card>
           ))}
+          <p className="col-span-full text-xs text-ink-muted">
+            A booking only gets a schedule when it is confirmed, so money taken while one is still
+            on hold has no instalment to sit against and is not counted here. The Finance
+            Overview&rsquo;s &ldquo;Collected&rdquo; counts every receipt, which is why it reads
+            higher.
+          </p>
         </div>
       )}
 

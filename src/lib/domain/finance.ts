@@ -124,6 +124,16 @@ export function addMonths(date: string, months: number): string {
  * Tenure. `month_count` on the template is the project's default, but tenure
  * is what an individual buyer negotiates, so `bookings.installment_tenure_months`
  * wins when it is set.
+ *
+ * Booking amount. The template's `on_booking` line is a percentage of the
+ * price, but the booking money is negotiated per buyer and stored on the
+ * booking itself. Taking the percentage produced a schedule that disagreed
+ * with the deal: a buyer who paid the BDT 1,000,000 agreed with him was billed
+ * the template's BDT 1,337,000, dated the booking date, and so was BDT 337,000
+ * overdue the second the booking was confirmed. `bookingAmount` therefore wins
+ * over the percentage, and the difference is spread across the later lines in
+ * proportion — never dumped on the last one, which would move the whole
+ * shortfall onto the handover milestone years away.
  */
 export function planInstallments(
   template: Array<{
@@ -138,16 +148,44 @@ export function planInstallments(
     bookingDate: string;
     /** the buyer's negotiated tenure, when there is one */
     tenureMonths?: number | null;
+    /** the booking money actually agreed with this buyer, when there is one */
+    bookingAmount?: number | null;
   },
 ): PlannedInstallment[] {
   const total = money(options.totalAmount);
   const ordered = [...template].sort((a, b) => a.sequence_no - b.sequence_no);
 
+  /*
+   * The agreed booking money replaces the template percentage, but only when
+   * it is a sane figure: zero means "not agreed yet", and anything at or above
+   * the full price would leave nothing — or a negative amount — to spread over
+   * the rest of the schedule. In both cases the template stands.
+   */
+  const onBookingPct = ordered
+    .filter((l) => l.schedule_type === 'on_booking')
+    .reduce((sum, l) => sum + (Number(l.percentage) || 0), 0);
+  const templateBooking = money((total * onBookingPct) / 100);
+  const agreedBooking = money(options.bookingAmount ?? 0);
+  const restPct = Math.max(0, 100 - onBookingPct);
+  const useAgreed =
+    onBookingPct > 0 &&
+    restPct > 0 && // nothing else to absorb the difference; leave the template alone
+    agreedBooking > 0 &&
+    agreedBooking < total &&
+    agreedBooking !== templateBooking;
+
+  // what the later lines have to absorb between them, positive or negative
+  const spread = useAgreed ? money(templateBooking - agreedBooking) : 0;
+
   const rows: PlannedInstallment[] = [];
   let no = 1;
 
   for (const line of ordered) {
-    const share = money((total * (Number(line.percentage) || 0)) / 100);
+    const pct = Number(line.percentage) || 0;
+    const share =
+      line.schedule_type === 'on_booking' && useAgreed
+        ? money((agreedBooking * pct) / onBookingPct)
+        : money((total * pct) / 100 + (restPct > 0 ? (spread * pct) / restPct : 0));
 
     if (line.schedule_type === 'monthly') {
       const count = Math.max(1, Math.round(options.tenureMonths ?? line.month_count ?? 1));

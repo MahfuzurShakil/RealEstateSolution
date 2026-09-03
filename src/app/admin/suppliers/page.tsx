@@ -16,7 +16,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { SUPPLIER_TYPES, type Supplier, type SupplierType } from '@/lib/db/types';
 import { SUPPLIER_TYPE_META } from '@/lib/domain/procurement';
 import type { SupplierWithStats } from '@/lib/repositories';
-import { supplierRepository } from '@/lib/repositories';
+import { supplierBalance, supplierRepository } from '@/lib/repositories';
 import { formatBdt, formatDate, formatPhone } from '@/lib/utils/format';
 
 /** Supplier master list (Section 7.3) — reused across purchase orders. */
@@ -86,27 +86,56 @@ export default function SuppliersPage() {
       key: 'po_count',
       header: 'Orders',
       align: 'right',
-      cell: (row) => (row.po_count > 0 ? row.po_count : <span className="text-ink-muted">—</span>),
+      cell: (row) => (
+        <span className="text-sm">
+          {row.po_count > 0 ? row.po_count : <span className="text-ink-muted">—</span>}
+          {row.draft_count > 0 && (
+            <span className="block text-xs text-ink-muted">+{row.draft_count} draft</span>
+          )}
+        </span>
+      ),
       sortValue: (row) => row.po_count,
     },
     {
       key: 'ordered_value',
       header: 'Ordered',
       align: 'right',
-      cell: (row) => formatBdt(row.ordered_value),
+      cell: (row) => (
+        <span className="text-sm">
+          {formatBdt(row.ordered_value)}
+          {row.awaiting_delivery_value > 0.009 && (
+            <span className="block text-xs text-ink-muted">
+              {formatBdt(row.awaiting_delivery_value)} not yet delivered
+            </span>
+          )}
+        </span>
+      ),
       sortValue: (row) => row.ordered_value,
+    },
+    {
+      key: 'received_value',
+      header: 'Received',
+      align: 'right',
+      cell: (row) => formatBdt(row.received_value),
+      sortValue: (row) => row.received_value,
     },
     {
       key: 'paid_value',
       header: 'Paid',
       align: 'right',
       cell: (row) => {
-        const due = row.ordered_value - row.paid_value;
+        // owed against what has arrived, not against what was ordered
+        const { due, advance } = supplierBalance(row);
         return (
           <span className="text-sm">
             {formatBdt(row.paid_value)}
             {due > 0.009 && (
               <span className="block text-xs text-amber-600">{formatBdt(due)} due</span>
+            )}
+            {advance > 0.009 && (
+              <span className="block text-xs text-blue-700">
+                {formatBdt(advance)} advance held
+              </span>
             )}
           </span>
         );

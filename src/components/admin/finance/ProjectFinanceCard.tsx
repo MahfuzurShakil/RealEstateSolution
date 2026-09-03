@@ -61,7 +61,7 @@ export function ProjectFinanceCard({ projectId }: { projectId: string }) {
           <div key={figure.label} className="min-w-0 rounded-xl border border-hairline p-3">
             <p className="text-xs text-ink-muted">{figure.label}</p>
             <p className="truncate text-base font-semibold text-ink">
-              {formatBdt(figure.value, { compact: true })}
+              {formatBdt(figure.value )}
             </p>
             <p className="mt-0.5 truncate text-[11px] text-ink-muted">{figure.hint}</p>
           </div>

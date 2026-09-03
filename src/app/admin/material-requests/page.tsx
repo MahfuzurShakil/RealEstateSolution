@@ -30,6 +30,8 @@ import {
   userRepository,
 } from '@/lib/repositories';
 import { formatDate } from '@/lib/utils/format';
+import { useMockSession } from '@/lib/auth/mock-session';
+import { canEdit } from '@/lib/domain/access';
 
 type SortKey = 'newest' | 'oldest' | 'status' | 'project';
 
@@ -42,6 +44,13 @@ const SORT_LABELS: Record<SortKey, string> = {
 
 /** Material requests (Section 6.5) — the Site → Procurement queue. */
 function MaterialRequestsPage() {
+  const { role } = useMockSession();
+  /*
+   * 9.6 gives a Site Manager "Create (assigned)" and Procurement / the Project
+   * Manager "Approve". Offering "Raise Request" to an approver blurs the one
+   * split this workflow exists to keep, so the button follows the matrix.
+   */
+  const mayRaise = canEdit(role, 'material_request');
   /*
    * Procurement links straight into this list from its own screens
    * ("2 approved requests with no order yet", a project's cost tab), so the
@@ -137,11 +146,13 @@ function MaterialRequestsPage() {
         title="Material Requests"
         subtitle="What the site has asked for — raised here, decided by Procurement, closed when the stock arrives."
         action={
-          <Link href="/admin/material-requests/new">
-            <Button>
-              <Plus className="size-4" /> Raise Request
-            </Button>
-          </Link>
+          mayRaise ? (
+            <Link href="/admin/material-requests/new">
+              <Button>
+                <Plus className="size-4" /> Raise Request
+              </Button>
+            </Link>
+          ) : undefined
         }
       />
 
@@ -277,13 +288,13 @@ function MaterialRequestsPage() {
                   <Button variant="outline" onClick={resetFilters}>
                     Clear filters
                   </Button>
-                ) : (
+                ) : mayRaise ? (
                   <Link href="/admin/material-requests/new">
                     <Button>
                       <Plus className="size-4" /> Raise Request
                     </Button>
                   </Link>
-                )
+                ) : undefined
               }
             />
           ) : (

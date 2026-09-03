@@ -299,7 +299,7 @@ export default function BookingsListPage() {
                           )}
                           <Badge>
                             <Wallet className="size-3.5" />
-                            {formatBdt(booking.final_price, { compact: true })}
+                            {formatBdt(booking.final_price )}
                           </Badge>
                           {booking.discount_amount > 0 && (
                             <Badge

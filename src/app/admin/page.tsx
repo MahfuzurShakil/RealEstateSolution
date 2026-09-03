@@ -42,23 +42,39 @@ import {
   unitRepository,
 } from '@/lib/repositories';
 import { useMockSession } from '@/lib/auth/mock-session';
+import { canView } from '@/lib/domain/access';
+import { financeDashboardRepository, collectionRepository } from '@/lib/repositories';
 
 /**
- * Placeholder dashboard — proves the shell, the Dexie connection and the
- * repository layer all work end to end. Real KPI cards (Design Reference A.4
- * Pattern 2) arrive with Module 8.
+ * The dashboard, filtered to the acting role.
+ *
+ * It used to show the same nine counters and every panel to everybody, so an
+ * Accounts user opened the platform to land plots, landowners and a sales
+ * follow-up queue — three things Section 9.6 does not let that role open at
+ * all — and no money, which is the only thing that role is there for. The
+ * sidebar was already honouring the permission matrix; the page it lands on
+ * was not.
+ *
+ * Everything here is gated on the same `PERMISSION_MATRIX` the sidebar and the
+ * route guard read, so a card can never offer a link to a page that will
+ * refuse to open.
  */
 export default function AdminDashboardPage() {
-  const { userName } = useMockSession();
+  const { role, userName } = useMockSession();
+  const see = (module: Parameters<typeof canView>[1]) => canView(role, module);
+  const seesMoney = see('dashboard') || see('finance_collection');
 
   const today = todayLocal();
 
   /** The sales team's daily task list (Section 4.4). */
-  const followUps = useLiveQuery(() => leadRepository.followUpQueue(today), [today]);
+  const followUps = useLiveQuery(
+    () => (see('crm') ? leadRepository.followUpQueue(today) : Promise.resolve([])),
+    [today, role],
+  );
   /** Bookings a manager has to sign off (Section 5.4). */
   const pendingApprovals = useLiveQuery(
-    () => bookingRepository.list({ awaiting_approval: true }),
-    [],
+    () => (see('booking') ? bookingRepository.list({ awaiting_approval: true }) : Promise.resolve([])),
+    [role],
   );
   const customerNameById = useLiveQuery(
     async () =>
@@ -88,67 +104,92 @@ export default function AdminDashboardPage() {
 
   /** The Procurement inbox (Section 6.5). */
   const pendingRequests = useLiveQuery(
-    () => materialRequestRepository.list({ pending_only: true }),
-    [],
+    () =>
+      see('material_request')
+        ? materialRequestRepository.list({ pending_only: true })
+        : Promise.resolve([]),
+    [role],
+  );
+
+  /*
+   * The owner's first question — "how much came in, how much is still out" —
+   * had no answer anywhere on this page. Accounts and management get it here
+   * rather than having to remember which module it lives under.
+   */
+  const finance = useLiveQuery(
+    () => (seesMoney ? financeDashboardRepository.company() : Promise.resolve(null)),
+    [role],
+  );
+  const collections = useLiveQuery(
+    () => (seesMoney ? collectionRepository.summary() : Promise.resolve(null)),
+    [role],
   );
 
   const tiles = [
-    { label: 'Lands', value: counts?.lands, icon: Map, tint: 'bg-admin-100 text-admin-700' },
+    { label: 'Lands', value: counts?.lands, icon: Map, tint: 'bg-admin-100 text-admin-700', show: see('land') },
     {
       label: 'Landowners',
       value: counts?.landowners,
       icon: Users,
       tint: 'bg-orange-100 text-orange-600',
+      show: see('land'),
     },
     {
       label: 'Projects',
       value: counts?.projects,
       icon: Building2,
       tint: 'bg-blue-100 text-blue-600',
+      show: see('project'),
     },
     {
       label: 'Units',
       value: counts?.units,
       icon: Layers,
       tint: 'bg-emerald-100 text-emerald-600',
+      show: see('project'),
     },
     {
       label: 'Leads',
       value: counts?.leads,
       icon: UserRound,
       tint: 'bg-violet-100 text-violet-600',
+      show: see('crm'),
     },
     {
       label: 'Bookings',
       value: counts?.bookings,
       icon: FileSignature,
       tint: 'bg-rose-100 text-rose-600',
+      show: see('booking'),
     },
     {
       label: 'Site Updates',
       value: counts?.site_updates,
       icon: HardHat,
       tint: 'bg-amber-100 text-amber-600',
+      show: see('site_progress'),
     },
     {
       label: 'Material Requests',
       value: counts?.material_requests,
       icon: Package,
       tint: 'bg-teal-100 text-teal-600',
+      show: see('material_request'),
     },
     {
       label: 'Documents',
       value: counts?.documents,
       icon: FileText,
       tint: 'bg-slate-100 text-slate-600',
+      show: true,
     },
-  ];
+  ].filter((tile) => tile.show);
 
   return (
     <>
       <PageHeader
         title={`Hello, ${userName}`}
-        subtitle="All eight admin modules are live. The Public Portal is next on the roadmap."
+        subtitle="What needs you today, filtered to what your role can act on."
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
@@ -163,6 +204,65 @@ export default function AdminDashboardPage() {
         ))}
       </div>
 
+      {seesMoney && finance && collections && (
+        <Card className="mt-6">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-ink">Money</h2>
+            <Link href="/admin/finance" className="text-sm text-admin-700 hover:underline">
+              Finance overview
+            </Link>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              {
+                label: 'Collected',
+                value: formatBdt(finance.collected),
+                hint: 'every receipt taken',
+              },
+              {
+                label: 'Still due',
+                value: formatBdt(finance.due),
+                hint: 'sold but not yet received',
+              },
+              {
+                label: 'Overdue',
+                value: formatBdt(collections.overdue_amount),
+                hint: `${collections.overdue_count} instalment${
+                  collections.overdue_count === 1 ? '' : 's'
+                } past their date`,
+                alert: collections.overdue_amount > 0,
+              },
+              {
+                label: 'Due this month',
+                value: formatBdt(collections.due_this_month),
+                hint: 'not yet overdue',
+              },
+            ].map((figure) => (
+              <div key={figure.label} className="rounded-xl border border-hairline p-3">
+                <p className="text-xs text-ink-muted">{figure.label}</p>
+                <p
+                  className={`mt-1 text-lg font-semibold ${
+                    figure.alert ? 'text-red-600' : 'text-ink'
+                  }`}
+                >
+                  {figure.value}
+                </p>
+                <p className="mt-0.5 text-xs text-ink-muted">{figure.hint}</p>
+              </div>
+            ))}
+          </div>
+          {collections.overdue_count > 0 && (
+            <Link
+              href="/admin/collections?status=overdue"
+              className="mt-3 inline-block text-sm text-admin-700 hover:underline"
+            >
+              Open the collections queue →
+            </Link>
+          )}
+        </Card>
+      )}
+
+      {see('site_progress') && (
       <Card className="mt-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-base font-semibold text-ink">Construction progress</h2>
@@ -200,6 +300,7 @@ export default function AdminDashboardPage() {
           </>
         )}
       </Card>
+      )}
 
       {pendingRequests && pendingRequests.length > 0 && (
         <Card className="mt-6">
@@ -240,6 +341,7 @@ export default function AdminDashboardPage() {
         </Card>
       )}
 
+      {see('crm') && (
       <Card className="mt-6">
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-base font-semibold text-ink">Follow-ups due</h2>
@@ -285,6 +387,7 @@ export default function AdminDashboardPage() {
           </ul>
         )}
       </Card>
+      )}
 
       {pendingApprovals && pendingApprovals.length > 0 && (
         <Card className="mt-6">
@@ -323,9 +426,11 @@ export default function AdminDashboardPage() {
         </Card>
       )}
 
+      {/* build manifest — useful while demoing, noise on an owner's home screen */}
       <div className="mt-6 grid gap-5 lg:grid-cols-2">
         <DemoDataCard />
 
+      {role === 'super_admin' && (
       <Card>
         <h2 className="text-base font-semibold text-ink">What is wired up</h2>
         <ul className="mt-3 space-y-2 text-sm text-ink-muted">
@@ -343,6 +448,7 @@ export default function AdminDashboardPage() {
           <li>• Module 8 — Users &amp; Roles: project scoping, permission matrix, master data, company settings</li>
         </ul>
       </Card>
+      )}
       </div>
     </>
   );

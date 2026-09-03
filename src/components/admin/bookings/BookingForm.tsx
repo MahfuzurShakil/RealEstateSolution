@@ -353,7 +353,7 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
               <option value="">Pick a unit</option>
               {selectableUnits.map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.code} · {u.unit_type} · {u.size_sqft} sqft · {formatBdt(u.base_price, { compact: true })}
+                  {u.code} · {u.unit_type} · {u.size_sqft} sqft · {formatBdt(u.base_price )}
                 </option>
               ))}
             </SelectInput>

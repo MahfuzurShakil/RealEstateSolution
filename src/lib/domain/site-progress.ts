@@ -108,10 +108,30 @@ export const SCHEDULE_STATE_META: Record<ScheduleState, { label: string; tone: B
 
 /** Roll-up over a whole tower or project, used by the cards and the dashboard. */
 export interface ProgressRollup {
+  /**
+   * True progress: Σ actual × weight over EVERY work item. This is the number
+   * cached on `towers.current_progress_pct` and the one the public portal
+   * shows, so it counts items with no plan dates too.
+   */
   actual_pct: number;
   planned_pct: number | null;
   variance: number | null;
   state: ScheduleState;
+  /**
+   * The same actual restricted to the items that HAVE plan dates — the number
+   * `variance` was actually measured against.
+   *
+   * These two exist separately because a card used to show all three of
+   * `actual_pct`, `planned_pct` and `variance` side by side and they
+   * contradicted each other: 37.3% actual, 37.7% planned, "+0.7%". The actual
+   * was weighted over 100% of the work while the planned side quietly dropped
+   * a 6%-weight item that had no dates, so the two were never on the same
+   * base. Anything printing the planned/variance pair must print this actual,
+   * not `actual_pct`. Null when nothing has a plan.
+   */
+  comparable_actual_pct: number | null;
+  /** Share of total weight that carries plan dates, 0–100. */
+  planned_coverage_pct: number;
 }
 
 /**
@@ -135,14 +155,80 @@ export function rollupProgress(items: TowerWorkItem[], today: string): ProgressR
   }
 
   if (plannedWeight === 0) {
-    return { actual_pct, planned_pct: null, variance: null, state: 'no_plan' };
+    return {
+      actual_pct,
+      planned_pct: null,
+      variance: null,
+      state: 'no_plan',
+      comparable_actual_pct: null,
+      planned_coverage_pct: 0,
+    };
   }
 
-  const planned_pct = Math.round((plannedWeighted / plannedWeight) * 100) / 100;
-  const comparableActual = actualWeighted / plannedWeight;
-  const variance = Math.round((comparableActual - planned_pct) * 100) / 100;
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const planned_pct = round2(plannedWeighted / plannedWeight);
+  const comparable_actual_pct = round2(actualWeighted / plannedWeight);
+  const variance = round2(comparable_actual_pct - planned_pct);
+  const total = totalWeight(items);
 
-  return { actual_pct, planned_pct, variance, state: scheduleState(variance) };
+  return {
+    actual_pct,
+    planned_pct,
+    variance,
+    state: scheduleState(variance),
+    comparable_actual_pct,
+    planned_coverage_pct: total > 0 ? round2((plannedWeight / total) * 100) : 0,
+  };
+}
+
+/**
+ * The schedule badge, softened when nobody has reported from the site.
+ *
+ * A green "On Track" on a site that has been silent for nineteen days is the
+ * most dangerous badge in the application: it is not on track, it is unknown,
+ * and the owner who believes it does not visit. Reassuring states lose their
+ * green while the site is quiet; "Behind Schedule" keeps its red, because that
+ * much we do know.
+ */
+export function scheduleBadge(
+  state: ScheduleState,
+  isStale: boolean,
+): { label: string; tone: BadgeTone } {
+  const meta = SCHEDULE_STATE_META[state];
+  if (!isStale || state === 'behind' || state === 'no_plan') return meta;
+  return { label: `${meta.label} · unconfirmed`, tone: 'amber' };
+}
+
+/** Signed variance, e.g. "+4.2%" / "−11.0%". */
+export function varianceLabel(variance: number | null): string {
+  if (variance === null) return '—';
+  const sign = variance > 0 ? '+' : variance < 0 ? '−' : '';
+  return `${sign}${Math.abs(variance).toFixed(1)}%`;
+}
+
+/**
+ * The line printed beside the headline percentage on every progress card.
+ *
+ * Lives here rather than in four components because the numbers have to agree
+ * with each other, and four copies of the same string is how they stopped
+ * agreeing. When part of the WBS has no plan dates the variance is measured
+ * only over the part that does, so the caption says which actual it compared —
+ * otherwise the card reads "37.3%, planned 37.7%, +0.7%" and the reader is
+ * right to think one of the three is wrong.
+ */
+export function scheduleCaption(rollup: ProgressRollup): string {
+  if (rollup.planned_pct === null) return 'no planned dates set';
+
+  const planned = `planned ${rollup.planned_pct.toFixed(1)}% by today`;
+  const variance = varianceLabel(rollup.variance);
+
+  const covered = rollup.planned_coverage_pct;
+  const comparable = rollup.comparable_actual_pct;
+  if (comparable === null || covered >= 99.99) return `${planned} · ${variance}`;
+
+  return `${planned} vs ${comparable.toFixed(1)}% on the ${covered.toFixed(
+    0,
+  )}% of work that has dates · ${variance}`;
 }
 
 /**
@@ -168,26 +254,39 @@ export function rollupAcrossTowers(items: TowerWorkItem[], today: string): Progr
   }
 
   const towers = [...byTower.values()].map((group) => rollupProgress(group, today));
-  if (towers.length === 0) {
-    return { actual_pct: 0, planned_pct: null, variance: null, state: 'no_plan' };
-  }
-
   const round = (n: number) => Math.round(n * 100) / 100;
+  const empty: ProgressRollup = {
+    actual_pct: 0,
+    planned_pct: null,
+    variance: null,
+    state: 'no_plan',
+    comparable_actual_pct: null,
+    planned_coverage_pct: 0,
+  };
+  if (towers.length === 0) return empty;
+
   const actual_pct = round(towers.reduce((s, t) => s + t.actual_pct, 0) / towers.length);
 
   // towers with no plan dates sit out the planned side rather than dragging
   // the average to zero — the same rule rollupProgress uses per item
   const planned = towers.filter((t) => t.planned_pct !== null);
-  if (planned.length === 0) {
-    return { actual_pct, planned_pct: null, variance: null, state: 'no_plan' };
-  }
+  if (planned.length === 0) return { ...empty, actual_pct };
 
-  const planned_pct = round(
-    planned.reduce((s, t) => s + (t.planned_pct ?? 0), 0) / planned.length,
-  );
-  const variance = round(planned.reduce((s, t) => s + (t.variance ?? 0), 0) / planned.length);
+  const avg = (pick: (t: ProgressRollup) => number) =>
+    round(planned.reduce((s, t) => s + pick(t), 0) / planned.length);
 
-  return { actual_pct, planned_pct, variance, state: scheduleState(variance) };
+  const planned_pct = avg((t) => t.planned_pct ?? 0);
+  const comparable_actual_pct = avg((t) => t.comparable_actual_pct ?? 0);
+  const variance = avg((t) => t.variance ?? 0);
+
+  return {
+    actual_pct,
+    planned_pct,
+    variance,
+    state: scheduleState(variance),
+    comparable_actual_pct,
+    planned_coverage_pct: avg((t) => t.planned_coverage_pct),
+  };
 }
 
 /* ------------------------------------------------------------------ *
@@ -225,7 +324,15 @@ export function allowedNextRequestStatuses(
     case 'pending':
       return ['approved', 'rejected'];
     case 'approved':
-      return ['ordered'];
+      /*
+       * `fulfilled` is reachable without passing through `ordered` because
+       * Section 7.8a gives Procurement two routes out of an approved request:
+       * raise a purchase order, or — when the material is already sitting in
+       * the central store — transfer it across, with nothing bought. Before
+       * this, route (b) left the request stuck on `approved` for ever: the
+       * site had its material and the queue still said it was waiting.
+       */
+      return ['ordered', 'fulfilled'];
     case 'ordered':
       return ['fulfilled'];
     default:

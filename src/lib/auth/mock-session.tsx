@@ -1,6 +1,13 @@
 'use client';
 
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { userRepository } from '@/lib/repositories';
 
@@ -31,8 +38,57 @@ interface MockSession {
 
 const SessionContext = createContext<MockSession | null>(null);
 
+const ROLE_STORAGE_KEY = 'admin.mock-role';
+const DEFAULT_ROLE: Role = 'super_admin';
+/** same-tab notification; the native `storage` event only fires in OTHER tabs */
+const ROLE_EVENT = 'admin-mock-role-change';
+
+function isRole(value: unknown): value is Role {
+  return typeof value === 'string' && (ROLES as readonly string[]).includes(value);
+}
+
+/*
+ * The chosen role is kept in `localStorage` rather than component state,
+ * because it has to survive a reload. It did not: switching to Accounts and
+ * refreshing put you back as Super Admin, looking at screens that role cannot
+ * open, while the topbar and the route guard both believed you.
+ *
+ * Read through `useSyncExternalStore` rather than an effect. `localStorage`
+ * does not exist while the server renders, so seeding `useState` from it gives
+ * a hydration mismatch, and reading it in an effect is a cascading render the
+ * lint rule rightly objects to. This is what the hook is for: the server
+ * snapshot is the default role, the client snapshot is whatever was stored.
+ */
+function readStoredRole(): Role {
+  try {
+    const stored = window.localStorage.getItem(ROLE_STORAGE_KEY);
+    return isRole(stored) ? stored : DEFAULT_ROLE;
+  } catch {
+    // private mode, or site data blocked — the dropdown still works per-session
+    return DEFAULT_ROLE;
+  }
+}
+
+function subscribeToRole(onChange: () => void): () => void {
+  window.addEventListener(ROLE_EVENT, onChange);
+  window.addEventListener('storage', onChange);
+  return () => {
+    window.removeEventListener(ROLE_EVENT, onChange);
+    window.removeEventListener('storage', onChange);
+  };
+}
+
 export function MockSessionProvider({ children }: { children: ReactNode }) {
-  const [role, setRole] = useState<Role>('super_admin');
+  const role = useSyncExternalStore(subscribeToRole, readStoredRole, () => DEFAULT_ROLE);
+
+  const setRole = useCallback((next: Role) => {
+    try {
+      window.localStorage.setItem(ROLE_STORAGE_KEY, next);
+    } catch {
+      // failing to remember is not worth breaking the page over
+    }
+    window.dispatchEvent(new Event(ROLE_EVENT));
+  }, []);
 
   /*
    * Resolve the simulated role to a real `users` row where one exists, so
@@ -52,7 +108,7 @@ export function MockSessionProvider({ children }: { children: ReactNode }) {
       userName: actingUser?.name ?? 'Demo User',
       userId: actingUser?.id ?? 'mock-user',
     }),
-    [role, actingUser],
+    [role, setRole, actingUser],
   );
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

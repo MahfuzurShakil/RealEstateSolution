@@ -27,18 +27,13 @@ import { Field, SelectInput, TextInput } from '@/components/ui/Field';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { PROJECT_STATUSES } from '@/lib/db/types';
 import { PROJECT_STATUS_META } from '@/lib/domain/project';
-import { SCHEDULE_STATE_META, STALE_AFTER_DAYS } from '@/lib/domain/site-progress';
+import { STALE_AFTER_DAYS, scheduleBadge, scheduleCaption } from '@/lib/domain/site-progress';
 import { projectProgressRepository, type ProjectProgressRow } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatDate, todayLocal } from '@/lib/utils/format';
 
 type Mode = 'projects' | 'activity';
 
-function varianceLabel(variance: number | null): string {
-  if (variance === null) return '—';
-  const sign = variance > 0 ? '+' : variance < 0 ? '−' : '';
-  return `${sign}${Math.abs(variance).toFixed(1)}%`;
-}
 
 /**
  * The Site Progress board.
@@ -342,8 +337,8 @@ function ProjectCard({ row }: { row: ProjectProgressRow }) {
                 : `Quiet ${row.days_since_update}d`}
             </Badge>
           )}
-          <Badge tone={SCHEDULE_STATE_META[rollup.state].tone}>
-            {SCHEDULE_STATE_META[rollup.state].label}
+          <Badge tone={scheduleBadge(rollup.state, row.is_stale).tone}>
+            {scheduleBadge(rollup.state, row.is_stale).label}
           </Badge>
           <Badge tone={stage.tone}>{stage.label}</Badge>
         </div>
@@ -354,9 +349,7 @@ function ProjectCard({ row }: { row: ProjectProgressRow }) {
           <div className="flex flex-wrap items-baseline gap-3">
             <span className="text-3xl font-semibold text-ink">{rollup.actual_pct.toFixed(1)}%</span>
             <span className="text-sm text-ink-muted">
-              {rollup.planned_pct === null
-                ? 'no planned dates'
-                : `planned ${rollup.planned_pct.toFixed(1)}% · ${varianceLabel(rollup.variance)}`}
+              {scheduleCaption(rollup)}
             </span>
           </div>
           <div className="mt-2">
@@ -381,7 +374,7 @@ function ProjectCard({ row }: { row: ProjectProgressRow }) {
               <div className="flex items-center justify-between gap-2">
                 <span className="truncate text-xs font-medium text-ink">{tower.name}</span>
                 <span className="text-xs font-semibold text-ink">
-                  {towerRollup.actual_pct.toFixed(0)}%
+                  {towerRollup.actual_pct.toFixed(1)}%
                 </span>
               </div>
               <div className="mt-1.5">

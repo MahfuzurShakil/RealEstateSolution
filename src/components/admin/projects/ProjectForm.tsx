@@ -375,9 +375,7 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
                     <span className="block text-xs text-ink-muted">
                       {land.land_size} {LAND_SIZE_UNIT_LABEL[land.land_size_unit]} ·{' '}
                       {ACQUISITION_TYPE_LABEL[land.acquisition_type]} ·{' '}
-                      {formatBdt(land.final_agreed_amount ?? land.negotiated_price ?? land.asking_price, {
-                        compact: true,
-                      })}
+                      {formatBdt(land.final_agreed_amount ?? land.negotiated_price ?? land.asking_price )}
                     </span>
                   </span>
                 </button>

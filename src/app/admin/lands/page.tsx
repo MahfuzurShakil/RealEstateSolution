@@ -231,9 +231,7 @@ export default function LandsListPage() {
                           </Badge>
                           <Badge>
                             <Wallet className="size-3.5" />
-                            {formatBdt(land.negotiated_price ?? land.asking_price, {
-                              compact: true,
-                            })}
+                            {formatBdt(land.negotiated_price ?? land.asking_price )}
                           </Badge>
                           <Badge
                             tone={land.acquisition_type === 'joint_venture' ? 'teal' : 'neutral'}

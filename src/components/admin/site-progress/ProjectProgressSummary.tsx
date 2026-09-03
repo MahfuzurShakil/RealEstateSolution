@@ -18,6 +18,8 @@ import {
   ACTIVITY_META,
   SCHEDULE_STATE_META,
   STALE_AFTER_DAYS,
+  scheduleBadge,
+  scheduleCaption,
   dayHeading,
   isSiteActive,
 } from '@/lib/domain/site-progress';
@@ -27,11 +29,6 @@ import { ProgressBar } from './ProgressBar';
 import { ProgressSparkline } from './ProgressSparkline';
 import { PublicProgressPreview } from './PublicProgressPreview';
 
-function varianceLabel(variance: number | null): string {
-  if (variance === null) return '—';
-  const sign = variance > 0 ? '+' : variance < 0 ? '−' : '';
-  return `${sign}${Math.abs(variance).toFixed(1)}%`;
-}
 
 /**
  * Construction summary on the project record.
@@ -76,8 +73,8 @@ export function ProjectProgressSummary({ projectId }: { projectId: string }) {
         <CardHeader
           title="Construction Progress"
           action={
-            <Badge tone={SCHEDULE_STATE_META[rollup.state].tone}>
-              {SCHEDULE_STATE_META[rollup.state].label}
+            <Badge tone={scheduleBadge(rollup.state, row.is_stale).tone}>
+              {scheduleBadge(rollup.state, row.is_stale).label}
             </Badge>
           }
         />
@@ -89,9 +86,7 @@ export function ProjectProgressSummary({ projectId }: { projectId: string }) {
                 {rollup.actual_pct.toFixed(1)}%
               </span>
               <span className="text-sm text-ink-muted">
-                {rollup.planned_pct === null
-                  ? 'no planned dates set'
-                  : `planned ${rollup.planned_pct.toFixed(1)}% by today · ${varianceLabel(rollup.variance)}`}
+                {scheduleCaption(rollup)}
               </span>
             </div>
             <div className="mt-3">
@@ -154,7 +149,7 @@ export function ProjectProgressSummary({ projectId }: { projectId: string }) {
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate text-sm font-medium text-ink">{tower.name}</span>
                   <span className="text-sm font-semibold text-ink">
-                    {towerRollup.actual_pct.toFixed(0)}%
+                    {towerRollup.actual_pct.toFixed(1)}%
                   </span>
                 </div>
                 <div className="mt-2">

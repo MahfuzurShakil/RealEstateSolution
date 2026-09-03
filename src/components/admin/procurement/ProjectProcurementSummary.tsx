@@ -28,7 +28,7 @@ import {
   stockIssueRepository,
   stockRepository,
 } from '@/lib/repositories';
-import { formatBdt, formatDate } from '@/lib/utils/format';
+import { formatBdt, formatBdtRate, formatDate } from '@/lib/utils/format';
 
 /**
  * Section 7.11 — the cost chain, read for one project.
@@ -155,7 +155,7 @@ export function ProjectProcurementSummary({ projectId }: { projectId: string }) 
       key: 'average_unit_price',
       header: 'Avg. cost',
       align: 'right',
-      cell: (row) => formatBdt(row.average_unit_price),
+      cell: (row) => formatBdtRate(row.average_unit_price),
       sortValue: (row) => row.average_unit_price,
     },
     {

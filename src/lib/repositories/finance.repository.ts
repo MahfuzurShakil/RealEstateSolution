@@ -118,6 +118,9 @@ class PaymentScheduleRepository extends BaseRepository<PaymentSchedule> {
       totalAmount: booking.final_price,
       bookingDate: booking.booking_date,
       tenureMonths: booking.installment_tenure_months,
+      // the money actually agreed with this buyer beats the template's
+      // percentage, so confirming does not invent an arrear on day one
+      bookingAmount: booking.booking_amount,
     });
 
     for (const line of planned) {

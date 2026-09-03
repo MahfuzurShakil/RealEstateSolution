@@ -14,10 +14,24 @@ import {
   stockTransferRepository,
   userRepository,
 } from '@/lib/repositories';
-import { formatBdt, todayLocal } from '@/lib/utils/format';
+import { formatBdt, formatBdtRate, todayLocal } from '@/lib/utils/format';
 
 /** `''` is the central store; a project id is that project's own store. */
 const CENTRAL = '';
+
+export interface TransferDefaults {
+  from_project_id?: string | null;
+  to_project_id?: string;
+  item_name?: string;
+  unit?: string;
+  /**
+   * Set when the transfer is answering an approved material request (Section
+   * 7.8a route b). Recorded on the row, and it closes the request as fulfilled
+   * — no purchase order in between, because nothing is being bought.
+   */
+  request_id?: string;
+  request_code?: string;
+}
 
 /**
  * Move material between stores (Section 7.8a).
@@ -34,7 +48,7 @@ export function StockTransferModal({
   onSaved,
 }: {
   open: boolean;
-  defaults?: { from_project_id?: string | null; item_name?: string; unit?: string };
+  defaults?: TransferDefaults;
   onClose: () => void;
   onSaved?: () => void;
 }) {
@@ -47,14 +61,14 @@ function TransferDialog({
   onClose,
   onSaved,
 }: {
-  defaults?: { from_project_id?: string | null; item_name?: string; unit?: string };
+  defaults?: TransferDefaults;
   onClose: () => void;
   onSaved?: () => void;
 }) {
   const { userId } = useMockSession();
 
   const [fromId, setFromId] = useState(defaults?.from_project_id ?? CENTRAL);
-  const [toId, setToId] = useState('');
+  const [toId, setToId] = useState(defaults?.to_project_id ?? '');
   const [stockKey, setStockKey] = useState(
     defaults?.item_name && defaults?.unit ? `${defaults.item_name}|${defaults.unit}` : '',
   );
@@ -104,6 +118,7 @@ function TransferDialog({
           to_project_id: toId,
           transfer_date: transferDate,
           transferred_by: transferredBy || userId,
+          request_id: defaults?.request_id ?? null,
           notes: notes.trim() || null,
         },
         userId,
@@ -121,7 +136,11 @@ function TransferDialog({
     <Modal
       open
       title="Transfer Stock"
-      subtitle="Central store → project, or project → project"
+      subtitle={
+        defaults?.request_code
+          ? `Meeting ${defaults.request_code} from stock — no purchase needed`
+          : 'Central store → project, or project → project'
+      }
       icon={ArrowLeftRight}
       onClose={onClose}
       footer={
@@ -183,7 +202,7 @@ function TransferDialog({
             {(available ?? []).map((row) => (
               <option key={row.id} value={`${row.item_name}|${row.unit}`}>
                 {row.item_name} — {row.quantity_available} {row.unit} @{' '}
-                {formatBdt(row.average_unit_price)}
+                {formatBdtRate(row.average_unit_price)}
               </option>
             ))}
           </SelectInput>
@@ -238,7 +257,7 @@ function TransferDialog({
       {selected && requested > 0 && !tooMuch && (
         <p className="mt-4 rounded-xl border border-hairline bg-white p-3 text-xs text-ink-muted">
           Moving {formatBdt(money(requested * selected.average_unit_price))} of material at{' '}
-          {formatBdt(selected.average_unit_price)} per {selected.unit}. The destination store
+          {formatBdtRate(selected.average_unit_price)} per {selected.unit}. The destination store
           recalculates its own weighted average with this cost, so the project is charged what the
           material really cost rather than a nominal rate.
         </p>

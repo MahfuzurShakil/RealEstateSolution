@@ -307,7 +307,7 @@ export function TowersUnitsPanel({ projectId }: { projectId: string }) {
                       </td>
                       <td className="py-2.5 pr-3 text-ink-muted">{unit.size_sqft} sqft</td>
                       <td className="py-2.5 pr-3 text-ink-muted">{unit.facing ?? '—'}</td>
-                      <td className="py-2.5 pr-3 text-ink">{formatBdt(unit.base_price, { compact: true })}</td>
+                      <td className="py-2.5 pr-3 text-ink">{formatBdt(unit.base_price )}</td>
                       <td className="py-2.5 pr-3">
                         <Badge tone={UNIT_STATUS_META[unit.status].tone}>
                           {UNIT_STATUS_META[unit.status].label}

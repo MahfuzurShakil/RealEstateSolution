@@ -3,11 +3,11 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { ChevronRight, LifeBuoy, X } from 'lucide-react';
+import { ChevronRight, X } from 'lucide-react';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { canView } from '@/lib/domain/access';
 import { cn } from '@/lib/utils/cn';
-import { HELP_ITEM, NAV_GROUPS } from './nav-config';
+import { NAV_GROUPS } from './nav-config';
 
 /** '/admin/lands/new' should still light up the '/admin/lands' item. */
 function isActiveHref(pathname: string, href: string): boolean {
@@ -43,7 +43,11 @@ export function AdminSidebar({
    */
   const groups = NAV_GROUPS.map((group) => ({
     ...group,
-    items: group.items.filter((item) => item.module === null || canView(role, item.module)),
+    items: group.items.filter(
+      (item) =>
+        (item.module === null || canView(role, item.module)) &&
+        (item.visibleFor === undefined || item.visibleFor(role)),
+    ),
   })).filter((group) => group.items.length > 0);
 
   // Only explicit user toggles are stored; a group holding the current page is
@@ -162,15 +166,6 @@ export function AdminSidebar({
           })}
         </nav>
 
-        <div className="border-t border-hairline p-3">
-          <span
-            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-ink-muted"
-            title={HELP_ITEM.label}
-          >
-            <LifeBuoy className="size-[18px] shrink-0" />
-            {showLabels && HELP_ITEM.label}
-          </span>
-        </div>
       </aside>
     </>
   );

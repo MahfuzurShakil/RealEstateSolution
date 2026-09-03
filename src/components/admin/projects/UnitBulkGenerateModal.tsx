@@ -341,7 +341,7 @@ export function UnitBulkGenerateModal({
               <div className="flex items-end pb-1">
                 <div>
                   <p className="text-xs text-ink-muted">Total for this run</p>
-                  <p className="text-sm font-semibold text-ink">{formatBdt(totalValue, { compact: true })}</p>
+                  <p className="text-sm font-semibold text-ink">{formatBdt(totalValue )}</p>
                 </div>
               </div>
             </div>

@@ -57,11 +57,53 @@ export interface SupplierFilters {
 }
 
 export interface SupplierWithStats extends Supplier {
+  /** orders actually placed — drafts are not orders and are counted separately */
   po_count: number;
-  /** value of every non-cancelled order placed with them */
+  /** value of every placed, non-cancelled order */
   ordered_value: number;
+  /** what has actually arrived, at order rates */
+  received_value: number;
   paid_value: number;
+  /** placed but not yet delivered — a commitment, shown so the two are not confused */
+  awaiting_delivery_value: number;
+  /**
+   * What the supplier can actually bill for: placed orders, plus whatever had
+   * already been delivered on an order that was later cancelled. Cancelling
+   * voids the undelivered balance, not the material already in the store.
+   */
+  billable_value: number;
+  draft_count: number;
+  draft_value: number;
   last_order_date?: string | null;
+}
+
+/**
+ * What a supplier is owed, or is holding of ours.
+ *
+ * The balance is measured against the **order value**, keeping the position
+ * `paymentSummary` already takes: a PO is not a bill, a supplier's ledger reads
+ * this way, and paying an advance before delivery is normal in this trade. What
+ * changed is what counts as an order — a `draft` is a shopping list nobody has
+ * placed, and counting one made a supplier with a BDT 4,672,800 draft look like
+ * a BDT 6.4M liability before a single delivery. Drafts are now excluded here
+ * and reported separately, and `received_value` / `awaiting_delivery_value` sit
+ * alongside so a commitment is never mistaken for an invoice.
+ *
+ * A cancelled order is not simply dropped either. Cancelling voids the
+ * undelivered balance, but material that had already arrived is in the store
+ * and was rightly paid for, so its received value stays billable — otherwise a
+ * settled account showed the whole payment as an advance nobody was holding.
+ *
+ * Where vouchers still exceed what is billable — a genuine advance paid before
+ * delivery — the balance is an asset held with the supplier, not a debt, and is
+ * reported as such rather than as a negative payable.
+ */
+export function supplierBalance(row: Pick<SupplierWithStats, 'billable_value' | 'paid_value'>): {
+  due: number;
+  advance: number;
+} {
+  const net = money(row.billable_value - row.paid_value);
+  return { due: Math.max(0, net), advance: Math.max(0, -net) };
 }
 
 class SupplierRepository extends BaseRepository<Supplier> {
@@ -91,14 +133,48 @@ class SupplierRepository extends BaseRepository<Supplier> {
     ]);
 
     const itemsByPo = groupBy(items, (i) => i.po_id);
-    const stats = new Map<string, { count: number; value: number; last: string | null }>();
+    type Entry = {
+      count: number;
+      value: number;
+      received: number;
+      cancelledReceived: number;
+      draftCount: number;
+      draftValue: number;
+      last: string | null;
+    };
+    const blank = (): Entry => ({
+      count: 0,
+      value: 0,
+      received: 0,
+      cancelledReceived: 0,
+      draftCount: 0,
+      draftValue: 0,
+      last: null,
+    });
+    const stats = new Map<string, Entry>();
     for (const order of orders) {
-      if (order.status === 'cancelled') continue;
-      const entry = stats.get(order.supplier_id) ?? { count: 0, value: 0, last: null };
-      entry.count += 1;
-      entry.value += poTotals(itemsByPo.get(order.id) ?? []).value;
-      entry.last =
-        entry.last && entry.last > order.order_date ? entry.last : order.order_date;
+      const entry = stats.get(order.supplier_id) ?? blank();
+      const totals = poTotals(itemsByPo.get(order.id) ?? []);
+
+      if (order.status === 'cancelled') {
+        // the undelivered balance is void, but material that had already
+        // arrived stays in the store and is still owed for
+        entry.cancelledReceived += totals.received_value;
+        stats.set(order.supplier_id, entry);
+        continue;
+      }
+
+      if (order.status === 'draft') {
+        // a draft is a shopping list, not a commitment — kept visible, kept
+        // out of every figure that reads as money owed or ordered
+        entry.draftCount += 1;
+        entry.draftValue += totals.value;
+      } else {
+        entry.count += 1;
+        entry.value += totals.value;
+        entry.received += totals.received_value;
+        entry.last = entry.last && entry.last > order.order_date ? entry.last : order.order_date;
+      }
       stats.set(order.supplier_id, entry);
     }
 
@@ -112,10 +188,18 @@ class SupplierRepository extends BaseRepository<Supplier> {
 
     let rows: SupplierWithStats[] = suppliers.map((supplier) => {
       const entry = stats.get(supplier.id);
+      const ordered = money(entry?.value ?? 0);
+      const cancelledReceived = money(entry?.cancelledReceived ?? 0);
+      const received = money((entry?.received ?? 0) + cancelledReceived);
       return {
         ...supplier,
         po_count: entry?.count ?? 0,
-        ordered_value: money(entry?.value ?? 0),
+        ordered_value: ordered,
+        received_value: received,
+        awaiting_delivery_value: money(Math.max(0, ordered - (entry?.received ?? 0))),
+        billable_value: money(ordered + cancelledReceived),
+        draft_count: entry?.draftCount ?? 0,
+        draft_value: money(entry?.draftValue ?? 0),
         paid_value: money(paidBySupplier.get(supplier.id) ?? 0),
         last_order_date: entry?.last ?? null,
       };
@@ -140,7 +224,19 @@ class SupplierRepository extends BaseRepository<Supplier> {
     const supplier = await this.getById(id);
     if (!supplier) return null;
     const rows = await this.list();
-    return rows.find((r) => r.id === id) ?? { ...supplier, po_count: 0, ordered_value: 0, paid_value: 0 };
+    return (
+      rows.find((r) => r.id === id) ?? {
+        ...supplier,
+        po_count: 0,
+        ordered_value: 0,
+        received_value: 0,
+        awaiting_delivery_value: 0,
+        billable_value: 0,
+        draft_count: 0,
+        draft_value: 0,
+        paid_value: 0,
+      }
+    );
   }
 
   /**
@@ -413,6 +509,43 @@ class PurchaseOrderRepository extends BaseRepository<PurchaseOrder> {
 }
 
 /** Section 6.5: raising the order tells the site its request is being bought. */
+/**
+ * Route (b) of Section 7.8a: an approved request met from the central store,
+ * with nothing bought. Without this the request sat on `approved` for ever —
+ * the site had its material and the procurement queue still listed it as
+ * waiting to be ordered.
+ *
+ * Only a request still at `approved` is closed. One that already went through
+ * a purchase order is Module 6's to finish, and a transfer topping it up
+ * should not close it early.
+ */
+async function markRequestFulfilledByTransfer(
+  transfer: StockTransfer,
+  actor: string | null,
+): Promise<void> {
+  if (!transfer.request_id) return;
+  const request = await db.material_requests.get(transfer.request_id);
+  if (!request || request.status !== 'approved') return;
+
+  await materialRequestRepository.setStatus(transfer.request_id, 'fulfilled', {
+    decided_by: actor,
+    decision_note: `Met from stock — transfer ${transfer.code}, no purchase needed.`,
+  });
+}
+
+/** The other half: deleting that transfer takes the material back, so the
+ *  request is open again. Mirrors the goods-receipt rollback. */
+async function reopenRequestClosedByTransfer(transfer: StockTransfer): Promise<void> {
+  if (!transfer.request_id) return;
+  const request = await db.material_requests.get(transfer.request_id);
+  if (!request || request.status !== 'fulfilled') return;
+
+  await materialRequestRepository.setStatus(transfer.request_id, 'approved', {
+    decided_by: request.created_by ?? null,
+    decision_note: `Transfer ${transfer.code} was deleted — the material went back, so this is waiting again.`,
+  });
+}
+
 async function markRequestOrdered(order: PurchaseOrder, actor: string | null): Promise<void> {
   if (!order.request_id) return;
   const request = await db.material_requests.get(order.request_id);
@@ -1018,6 +1151,7 @@ class StockTransferRepository extends BaseRepository<StockTransfer> {
       unitCost,
       createdBy,
     );
+    await markRequestFulfilledByTransfer(transfer, createdBy);
     return transfer;
   }
 
@@ -1072,6 +1206,9 @@ class StockTransferRepository extends BaseRepository<StockTransfer> {
   async removeCascade(id: string): Promise<void> {
     const transfer = await this.getById(id);
     if (!transfer) return;
+    // the material goes back before the request does, so a failure here leaves
+    // the request open rather than closed against stock that has moved
+    await reopenRequestClosedByTransfer(transfer);
     await stockRepository.withdraw(
       transfer.to_project_id,
       transfer.item_name,

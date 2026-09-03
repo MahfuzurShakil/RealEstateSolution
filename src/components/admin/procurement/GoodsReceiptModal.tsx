@@ -12,7 +12,7 @@ import { QUALITY_CHECKS, type QualityCheck } from '@/lib/db/types';
 import { QUALITY_CHECK_META, money, outstanding } from '@/lib/domain/procurement';
 import type { PurchaseOrderWithRelations } from '@/lib/repositories';
 import { goodsReceiptRepository, userRepository } from '@/lib/repositories';
-import { formatBdt, todayLocal } from '@/lib/utils/format';
+import { formatBdt, formatBdtRate, todayLocal } from '@/lib/utils/format';
 
 /**
  * Record a delivery against a purchase order (Section 7.6).
@@ -206,7 +206,7 @@ function ReceiptDialog({
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-ink">{item.item_name}</p>
                     <p className="text-xs text-ink-muted">
-                      {max} {item.unit} outstanding · {formatBdt(item.unit_price)}/{item.unit}
+                      {max} {item.unit} outstanding · {formatBdtRate(item.unit_price)}/{item.unit}
                     </p>
                   </div>
                   <Field label="Received">

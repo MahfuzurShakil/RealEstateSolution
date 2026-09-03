@@ -153,25 +153,25 @@ export default function PurchaseOrdersPage() {
             {
               label: 'Open orders',
               value: `${dashboard.open_po_count}`,
-              hint: formatBdt(dashboard.open_po_value, { compact: true }),
+              hint: formatBdt(dashboard.open_po_value ),
               icon: ShoppingCart,
             },
             {
               label: 'Still to arrive',
-              value: formatBdt(dashboard.awaiting_grn_value, { compact: true }),
+              value: formatBdt(dashboard.awaiting_grn_value ),
               hint: 'ordered but not received',
               icon: Package,
             },
             {
               label: 'Stock on hand',
-              value: formatBdt(dashboard.stock_value, { compact: true }),
+              value: formatBdt(dashboard.stock_value ),
               hint: 'at weighted average cost',
               icon: Warehouse,
             },
             {
               label: 'Unpaid to suppliers',
-              value: formatBdt(dashboard.unpaid_value, { compact: true }),
-              hint: 'across live orders',
+              value: formatBdt(dashboard.unpaid_value ),
+              hint: 'against placed orders',
               icon: Truck,
             },
           ].map((tile) => (
@@ -337,7 +337,9 @@ export default function PurchaseOrdersPage() {
                           : undefined
                       }
                       status={<Badge tone={meta.tone}>{meta.label}</Badge>}
-                      footer={`Ordered ${formatDate(order.order_date)} · ${formatBdt(order.totals.value)}`}
+                      footer={`${order.status === 'draft' ? 'Drafted' : 'Ordered'} ${formatDate(
+                        order.order_date,
+                      )} · ${formatBdt(order.totals.value)}`}
                       facts={
                         <>
                           <Badge tone="teal">
@@ -358,9 +360,13 @@ export default function PurchaseOrdersPage() {
                               {order.totals.received_pct}% received
                             </Badge>
                           )}
-                          {due > 0.009 && order.status !== 'draft' && (
-                            <Badge tone="red">{formatBdt(due, { compact: true })} due</Badge>
-                          )}
+                          {/* a cancelled order's undelivered balance is void, so
+                              the unpaid remainder is not money owed */}
+                          {due > 0.009 &&
+                            order.status !== 'draft' &&
+                            order.status !== 'cancelled' && (
+                              <Badge tone="red">{formatBdt(due)} unpaid on order</Badge>
+                            )}
                           {order.request && (
                             <Badge tone="neutral">
                               <ClipboardList className="size-3.5" />

@@ -26,7 +26,9 @@ import {
   plannedPctOn,
   rollupAcrossTowers,
   rollupProgress,
+  scheduleCaption,
   scheduleState,
+  varianceLabel,
   totalWeight,
   varianceOn,
   weightsBalanced,
@@ -36,18 +38,14 @@ import {
   towerRepository,
   towerWorkItemRepository,
 } from '@/lib/repositories';
+import { useMockSession } from '@/lib/auth/mock-session';
+import { canEdit } from '@/lib/domain/access';
 import { cn } from '@/lib/utils/cn';
 import { formatDate, todayLocal } from '@/lib/utils/format';
 import { ProgressBar } from './ProgressBar';
 import { ProgressUpdateModal } from './ProgressUpdateModal';
 import { WorkItemFormModal } from './WorkItemFormModal';
 
-/** Signed variance, e.g. "+4.2%" / "−11.0%". */
-function varianceLabel(variance: number | null): string {
-  if (variance === null) return '—';
-  const sign = variance > 0 ? '+' : variance < 0 ? '−' : '';
-  return `${sign}${Math.abs(variance).toFixed(1)}%`;
-}
 
 /**
  * The Progress tab of a project (Module 5, Sections 6.2 / 6.3).
@@ -64,6 +62,7 @@ export function TowerProgressPanel({
   projectId: string;
   showRollup?: boolean;
 }) {
+  const { role } = useMockSession();
   const today = todayLocal();
   const [selectedTowerId, setSelectedTowerId] = useState<string | null>(null);
   const [logFor, setLogFor] = useState<TowerWorkItem | null>(null);
@@ -135,11 +134,7 @@ export function TowerProgressPanel({
             {projectRollup.actual_pct.toFixed(1)}%
           </span>
           <span className="text-sm text-ink-muted">
-            {projectRollup.planned_pct === null
-              ? 'no planned dates set'
-              : `planned ${projectRollup.planned_pct.toFixed(1)}% by today · ${varianceLabel(
-                  projectRollup.variance,
-                )}`}
+            {scheduleCaption(projectRollup)}
           </span>
         </div>
         <div className="mt-3">
@@ -180,7 +175,7 @@ export function TowerProgressPanel({
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate text-sm font-medium text-ink">{tower.name}</span>
                   <span className="text-sm font-semibold text-ink">
-                    {rollup.actual_pct.toFixed(0)}%
+                    {rollup.actual_pct.toFixed(1)}%
                   </span>
                 </div>
                 <div className="mt-2">
@@ -308,13 +303,15 @@ export function TowerProgressPanel({
                           <Button size="sm" onClick={() => setLogFor(item)}>
                             <HardHat className="size-4" /> Log progress
                           </Button>
-                          <Link
-                            href={`/admin/material-requests/new?project=${projectId}&tower=${item.tower_id}&item=${item.id}`}
-                          >
-                            <Button size="sm" variant="outline">
-                              <Package className="size-4" /> Request material
-                            </Button>
-                          </Link>
+                          {canEdit(role, 'material_request') && (
+                            <Link
+                              href={`/admin/material-requests/new?project=${projectId}&tower=${item.tower_id}&item=${item.id}`}
+                            >
+                              <Button size="sm" variant="outline">
+                                <Package className="size-4" /> Request material
+                              </Button>
+                            </Link>
+                          )}
                           <Button
                             size="sm"
                             variant="ghost"
@@ -332,7 +329,9 @@ export function TowerProgressPanel({
                 </ul>
 
                 <p className="mt-4 border-t border-hairline pt-3 text-xs text-ink-muted">
-                  Tower progress {towerRollup.actual_pct.toFixed(2)}% ={' '}
+                  {/* one decimal, same as the chip above it — the two used to
+                      disagree (37% against 36.50%) six lines apart */}
+                  Tower progress {towerRollup.actual_pct.toFixed(1)}% ={' '}
                   <span className="font-mono">Σ (progress × weight ÷ 100)</span> across{' '}
                   {items.length} item{items.length === 1 ? '' : 's'}.
                 </p>

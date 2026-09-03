@@ -885,6 +885,13 @@ export interface StockTransfer extends BaseEntity {
   unit_cost_snapshot: number;
   transfer_date: ISODate;
   transferred_by: UUID | null;
+  /**
+   * Set when this transfer was made to satisfy an approved material request —
+   * route (b) of Section 7.8a, where the material is already in the central
+   * store and no purchase is needed. Not indexed, so it needs no new Dexie
+   * version block (same as `towers.current_progress_pct`).
+   */
+  request_id?: UUID | null;
   notes?: string | null;
 }
 

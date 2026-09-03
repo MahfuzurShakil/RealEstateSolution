@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Ban, Check, PackageCheck, ShoppingCart, ThumbsUp } from 'lucide-react';
+import { ArrowLeftRight, Ban, Check, PackageCheck, ShoppingCart, ThumbsUp } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -10,6 +10,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Field, TextArea, TextInput } from '@/components/ui/Field';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { MaterialRequestStatus } from '@/lib/db/types';
+import { canApprove, canEdit } from '@/lib/domain/access';
 import {
   MATERIAL_REQUEST_PIPELINE,
   MATERIAL_REQUEST_STATUS_META,
@@ -20,6 +21,7 @@ import {
 import type { MaterialRequestWithRelations } from '@/lib/repositories';
 import { materialRequestRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
+import { StockTransferModal } from '@/components/admin/procurement/StockTransferModal';
 
 const ICONS: Record<Exclude<MaterialRequestStatus, 'pending'>, typeof ThumbsUp> = {
   approved: ThumbsUp,
@@ -40,12 +42,32 @@ export function MaterialRequestStatusCard({
 }: {
   request: MaterialRequestWithRelations;
 }) {
-  const { userId } = useMockSession();
+  const { role, userId } = useMockSession();
+  /*
+   * Section 9.6 gives Material Request "Create (assigned)" to a Site Manager
+   * and "Approve" to Procurement and the Project Manager. Without this check
+   * the decision buttons rendered for everybody who could open the page, so
+   * the engineer who raised the request could approve it himself — the one
+   * separation the workflow exists to keep.
+   *
+   * Phase A stops at the role. Which *projects* an approver may act on is the
+   * "(assigned)" half of 9.6, and enforcing that in the browser would be a
+   * control the user can undo from devtools (OPEN-ITEMS 1.9).
+   */
+  const mayDecide = canApprove(role, 'material_request');
+  /*
+   * Deciding and buying are different jobs. A Project Manager approves a
+   * request for his own site (9.6) but only *views* Procurement, and a Site
+   * Manager has no procurement access at all — yet both were shown "Raise
+   * Purchase Order", a link to a page that would refuse to open.
+   */
+  const mayProcure = canEdit(role, 'procurement');
   const [action, setAction] = useState<Exclude<MaterialRequestStatus, 'pending'> | null>(null);
   const [note, setNote] = useState('');
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
 
   const next = manualNextRequestStatuses(request.status);
   const isRejected = request.status === 'rejected';
@@ -149,7 +171,12 @@ export function MaterialRequestStatusCard({
           </ol>
         )}
 
-        {next.length > 0 ? (
+        {next.length > 0 && !mayDecide ? (
+          <p className="rounded-xl border border-hairline p-3 text-xs text-ink-muted">
+            Waiting on a decision from Procurement or the project manager. Raising the request is
+            where this role&rsquo;s part ends (Section 9.6).
+          </p>
+        ) : next.length > 0 ? (
           <div className="space-y-2">
             {next.map((status) => {
               const Icon = ICONS[status as Exclude<MaterialRequestStatus, 'pending'>];
@@ -185,16 +212,39 @@ export function MaterialRequestStatusCard({
           offers the action that actually moves it, not a button that only
           renames the status.
         */}
-        {request.status === 'approved' && (
+        {request.status === 'approved' && !mayProcure && (
+          <p className="mt-3 rounded-xl border border-hairline p-3 text-xs text-ink-muted">
+            Approved. Procurement takes it from here — either a purchase order, or a transfer from
+            a store that already holds the material.
+          </p>
+        )}
+
+        {request.status === 'approved' && mayProcure && (
           <div className="mt-3 space-y-2">
             <Link href={`/admin/purchase-orders/new?request=${request.id}`}>
               <Button size="sm" className="w-full">
                 <ShoppingCart className="size-4" /> Raise Purchase Order
               </Button>
             </Link>
+            {/*
+              Section 7.8a gives Procurement a second way out of an approved
+              request: if the material is already in the central store, move it
+              across instead of buying more. Only the purchase route existed, so
+              anyone taking this one left the request sitting on Approved with
+              the material already on site.
+            */}
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full"
+              onClick={() => setTransferOpen(true)}
+            >
+              <ArrowLeftRight className="size-4" /> Fulfil from central stock
+            </Button>
             <p className="rounded-xl border border-hairline p-3 text-xs text-ink-muted">
-              The request moves to Ordered on its own when the order is placed, and closes as
-              Fulfilled once that order has been fully received.
+              The request moves to Ordered on its own when a purchase order is placed, and closes
+              as Fulfilled once that order has been fully received. Transferring the material from
+              a store that already holds it closes the request straight away — nothing is bought.
             </p>
           </div>
         )}
@@ -212,6 +262,18 @@ export function MaterialRequestStatusCard({
           </p>
         )}
       </Card>
+
+      <StockTransferModal
+        open={transferOpen}
+        defaults={{
+          to_project_id: request.project_id,
+          item_name: request.items[0]?.item_name,
+          unit: request.items[0]?.unit,
+          request_id: request.id,
+          request_code: request.code,
+        }}
+        onClose={() => setTransferOpen(false)}
+      />
 
       <ConfirmDialog
         open={action !== null && config !== null}

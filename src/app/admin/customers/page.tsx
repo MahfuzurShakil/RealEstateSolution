@@ -286,7 +286,7 @@ export default function CustomersListPage() {
                               <Badge tone="teal">
                                 {stats.count} booking{stats.count === 1 ? '' : 's'}
                               </Badge>
-                              <Badge>{formatBdt(stats.value, { compact: true })}</Badge>
+                              <Badge>{formatBdt(stats.value )}</Badge>
                             </>
                           )}
                         </>

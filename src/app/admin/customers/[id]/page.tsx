@@ -195,13 +195,12 @@ export default function CustomerDetailPage() {
                           <p className="truncate text-sm font-medium text-ink">{booking.code}</p>
                           <p className="text-xs text-ink-muted">
                             {formatDate(booking.booking_date)} ·{' '}
-                            {formatBdt(booking.final_price, { compact: true })}
+                            {formatBdt(booking.final_price )}
                             {booking.status !== 'cancelled' && (
                               <>
                                 {' · '}
                                 {formatBdt(
-                                  customer.finance.received_by_booking[booking.id] ?? 0,
-                                  { compact: true },
+                                  customer.finance.received_by_booking[booking.id] ?? 0 ,
                                 )}{' '}
                                 received
                                 {booking.installment_tenure_months

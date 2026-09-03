@@ -34,7 +34,7 @@ import {
   stockTransferRepository,
 } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
-import { formatBdt, formatDate } from '@/lib/utils/format';
+import { formatBdt, formatBdtRate, formatDate } from '@/lib/utils/format';
 
 type Tab = 'on_hand' | 'issues' | 'transfers';
 
@@ -129,7 +129,7 @@ function StockPage() {
       align: 'right',
       cell: (row) => (
         <span className="text-sm text-ink">
-          {formatBdt(row.average_unit_price)}
+          {formatBdtRate(row.average_unit_price)}
           <span className="block text-xs text-ink-muted">per {row.unit}</span>
         </span>
       ),
@@ -197,7 +197,7 @@ function StockPage() {
         <span className="text-sm font-medium text-ink">
           {formatBdt(row.total_cost)}
           <span className="block text-xs font-normal text-ink-muted">
-            @ {formatBdt(row.unit_cost_snapshot)}
+            @ {formatBdtRate(row.unit_cost_snapshot)}
           </span>
         </span>
       ),
@@ -318,7 +318,7 @@ function StockPage() {
         {[
           {
             label: 'Stock value',
-            value: formatBdt(totals.value, { compact: true }),
+            value: formatBdt(totals.value ),
             hint: `${totals.items} item row${totals.items === 1 ? '' : 's'}`,
             icon: Warehouse,
           },
@@ -330,7 +330,7 @@ function StockPage() {
           },
           {
             label: 'Consumed on site',
-            value: formatBdt(consumed, { compact: true }),
+            value: formatBdt(consumed ),
             hint: `${issues?.length ?? 0} issue${(issues?.length ?? 0) === 1 ? '' : 's'}`,
             icon: PackageMinus,
           },

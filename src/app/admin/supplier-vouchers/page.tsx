@@ -57,15 +57,20 @@ export default function SupplierVouchersPage() {
     {
       key: 'code',
       header: 'Voucher',
-      cell: (row) => (
-        <span className="font-medium text-ink">
-          {row.code}
-          <span className="block text-xs font-normal text-ink-muted">
-            {formatDate(row.payment_date)}
-          </span>
-        </span>
-      ),
+      cell: (row) => <span className="font-medium text-ink">{row.code}</span>,
       sortValue: (row) => row.code,
+    },
+    {
+      /*
+       * A payment register reads in date order. This used to sort by voucher
+       * code with the date tucked under it and no column of its own, so the
+       * page opened as 26 Aug, 12 Aug, 07 Aug, 13 Aug — and there was no
+       * header to click to put it right.
+       */
+      key: 'payment_date',
+      header: 'Date',
+      cell: (row) => <span className="text-sm text-ink">{formatDate(row.payment_date)}</span>,
+      sortValue: (row) => row.payment_date,
     },
     {
       key: 'supplier',
@@ -214,7 +219,7 @@ export default function SupplierVouchersPage() {
           <DataTable
             rows={rows}
             columns={columns}
-            initialSort={{ key: 'code', direction: 'desc' }}
+            initialSort={{ key: 'payment_date', direction: 'desc' }}
             label="vouchers"
             emptyState={
               <EmptyState

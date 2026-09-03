@@ -173,7 +173,7 @@ function ExpensesPage() {
             <div className="flex flex-wrap gap-2">
               {byCategory.map(([key, value]) => (
                 <Badge key={key} tone={COST_CATEGORY_META[key].tone}>
-                  {COST_CATEGORY_META[key].label} · {formatBdt(value, { compact: true })}
+                  {COST_CATEGORY_META[key].label} · {formatBdt(value )}
                 </Badge>
               ))}
             </div>
