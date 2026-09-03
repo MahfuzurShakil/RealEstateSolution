@@ -10,10 +10,11 @@ import {
   FOR_SALE_BY,
   type AllocationType,
   type ForSaleBy,
+  type Land,
   type Landowner,
 } from '@/lib/db/types';
 import { ALLOCATION_TYPE_LABEL, FOR_SALE_BY_LABEL } from '@/lib/domain/project';
-import { landownerRepository, unitRepository } from '@/lib/repositories';
+import { projectRepository, unitRepository } from '@/lib/repositories';
 
 /**
  * Bulk allocation — the second half of the 2026-09-01 decision: select units,
@@ -28,25 +29,34 @@ import { landownerRepository, unitRepository } from '@/lib/repositories';
  */
 export function UnitBulkAllocateModal({
   open,
+  projectId,
   unitIds,
   onClose,
 }: {
   open: boolean;
+  /** scopes the landowner list to the owners of this project's own land */
+  projectId: string;
   unitIds: string[];
   onClose: () => void;
 }) {
   const [allocationType, setAllocationType] = useState<AllocationType>('landowner_share');
   const [ownerId, setOwnerId] = useState('');
   const [forSaleBy, setForSaleBy] = useState<ForSaleBy>('owner_direct');
-  const [owners, setOwners] = useState<Landowner[]>([]);
+  const [owners, setOwners] = useState<
+    Array<{ owner: Landowner; lands: Array<{ land: Land; share_pct: number }> }>
+  >([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
+  /*
+   * Only the owners of the land this project sits on. Offering every landowner
+   * in the system let a flat be handed to someone with no stake here, and the
+   * JV target-vs-actual check counts per owner, so the mistake lands in the
+   * one screen a joint venture is argued from.
+   */
   useEffect(() => {
-    landownerRepository
-      .getAll()
-      .then((rows) => setOwners(rows.sort((a, b) => a.name.localeCompare(b.name))));
-  }, []);
+    projectRepository.landownersForProject(projectId).then(setOwners);
+  }, [projectId]);
 
   const isLandowner = allocationType === 'landowner_share';
 
@@ -109,17 +119,23 @@ export function UnitBulkAllocateModal({
             onChange={(e) => setOwnerId(e.target.value)}
           >
             <option value="">—</option>
-            {owners.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
+            {owners.map(({ owner, lands }) => (
+              <option key={owner.id} value={owner.id}>
+                {owner.name} — {lands.map((l) => `${l.land.code} ${l.share_pct}%`).join(', ')}
               </option>
             ))}
           </SelectInput>
         </Field>
+        {isLandowner && owners.length === 0 && (
+          <p className="text-xs text-amber-700">
+            No landowner is attached to this project&rsquo;s land yet. Link the land on the project,
+            and record its owners on the land record, before allocating a landowner share.
+          </p>
+        )}
 
         <Field
-          label="Sold By"
-          hint="Owner-direct sales stay out of the company's collection roll-up."
+          label="Who sells it"
+          hint="A landowner's own flat stays out of the company's sales and collections."
         >
           <SelectInput
             value={forSaleBy}

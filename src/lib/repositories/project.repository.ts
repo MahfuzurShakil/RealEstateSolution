@@ -231,6 +231,44 @@ class ProjectRepository extends BaseRepository<Project> {
   }
 
   /**
+   * The landowners who actually have a stake in this project.
+   *
+   * A unit can only sensibly be allocated to someone who owns a share of the
+   * land the project sits on: project → `land_project_mapping` → lands →
+   * `land_owner_mapping` → owners. The allocation forms used to offer every
+   * landowner in the system, so a flat in Bashundhara could be handed to the
+   * owner of an unrelated plot in Sylhet — and because `allocation()` counts
+   * per owner, that lands straight in the JV target-vs-actual check, which is
+   * the one screen a joint venture is argued from.
+   *
+   * Each owner comes back with the land they hold and their share of it, so
+   * the picker can say *why* they are on the list.
+   */
+  async landownersForProject(
+    projectId: string,
+  ): Promise<Array<{ owner: Landowner; lands: Array<{ land: Land; share_pct: number }> }>> {
+    const lands = await landProjectMappingRepository.landsForProject(projectId);
+    if (lands.length === 0) return [];
+
+    const byOwner = new Map<string, Array<{ land: Land; share_pct: number }>>();
+    for (const land of lands) {
+      const mappings = await db.land_owner_mapping.where('land_id').equals(land.id).toArray();
+      for (const mapping of mappings) {
+        const list = byOwner.get(mapping.owner_id) ?? [];
+        list.push({ land, share_pct: Number(mapping.ownership_share_pct) || 0 });
+        byOwner.set(mapping.owner_id, list);
+      }
+    }
+
+    const out: Array<{ owner: Landowner; lands: Array<{ land: Land; share_pct: number }> }> = [];
+    for (const [ownerId, entries] of byOwner) {
+      const owner = await db.landowners.get(ownerId);
+      if (owner) out.push({ owner, lands: entries });
+    }
+    return out.sort((a, b) => a.owner.name.localeCompare(b.owner.name));
+  }
+
+  /**
    * Target-vs-actual JV allocation for a project (see domain/project.ts).
    * Reads the units actually created and the JV terms of the mapped lands.
    */

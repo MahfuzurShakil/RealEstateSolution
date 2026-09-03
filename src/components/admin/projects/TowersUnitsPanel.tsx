@@ -395,11 +395,19 @@ export function TowersUnitsPanel({ projectId }: { projectId: string }) {
         />
       )}
 
-      {editUnit && <UnitEditModal open unit={editUnit} onClose={() => setEditUnit(null)} />}
+      {editUnit && (
+        <UnitEditModal
+          open
+          projectId={projectId}
+          unit={editUnit}
+          onClose={() => setEditUnit(null)}
+        />
+      )}
 
       {allocateOpen && (
         <UnitBulkAllocateModal
           open
+          projectId={projectId}
           unitIds={selection}
           onClose={() => {
             setAllocateOpen(false);

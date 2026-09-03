@@ -13,6 +13,7 @@ import {
   FOR_SALE_BY,
   type AllocationType,
   type ForSaleBy,
+  type Land,
   type Landowner,
   type Unit,
   type UnitStatus,
@@ -28,8 +29,8 @@ import {
 import { BOOKING_STATUS_META } from '@/lib/domain/booking';
 import {
   bookingRepository,
-  landownerRepository,
   lookupRepository,
+  projectRepository,
   unitRepository,
 } from '@/lib/repositories';
 
@@ -46,15 +47,20 @@ const num = (v: string) => (v.trim() === '' ? null : Number(v));
  */
 export function UnitEditModal({
   open,
+  projectId,
   unit,
   onClose,
 }: {
   open: boolean;
+  /** scopes the landowner list to the owners of this project's own land */
+  projectId: string;
   unit: Unit;
   onClose: () => void;
 }) {
   const [form, setForm] = useState<Unit>(() => ({ ...unit }));
-  const [owners, setOwners] = useState<Landowner[]>([]);
+  const [owners, setOwners] = useState<
+    Array<{ owner: Landowner; lands: Array<{ land: Land; share_pct: number }> }>
+  >([]);
   const [unitTypes, setUnitTypes] = useState<string[]>([]);
   const [facings, setFacings] = useState<string[]>([]);
   const [error, setError] = useState('');
@@ -65,12 +71,15 @@ export function UnitEditModal({
   const booking = useLiveQuery(() => bookingRepository.activeForUnit(unit.id), [unit.id]);
 
   useEffect(() => {
-    landownerRepository.getAll().then((rows) =>
-      setOwners(rows.sort((a, b) => a.name.localeCompare(b.name))),
-    );
+    /*
+     * Only the owners of the land this project sits on — allocating to anyone
+     * else is not a thing that can be true, and `allocation()` counts per
+     * owner, so it would land in the JV target-vs-actual check.
+     */
+    projectRepository.landownersForProject(projectId).then(setOwners);
     lookupRepository.options('unit_type').then((o) => setUnitTypes(o.map((r) => r.value)));
     lookupRepository.options('facing').then((o) => setFacings(o.map((r) => r.value)));
-  }, []);
+  }, [projectId]);
 
   const set = <K extends keyof Unit>(key: K, value: Unit[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -305,13 +314,20 @@ export function UnitEditModal({
             onChange={(e) => set('allocated_to_owner_id', e.target.value || null)}
           >
             <option value="">—</option>
-            {owners.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
+            {owners.map(({ owner, lands }) => (
+              <option key={owner.id} value={owner.id}>
+                {owner.name} — {lands.map((l) => `${l.land.code} ${l.share_pct}%`).join(', ')}
               </option>
             ))}
           </SelectInput>
         </Field>
+        {form.allocation_type === 'landowner_share' && owners.length === 0 && (
+          <p className="-mt-2 text-xs text-amber-700 sm:col-span-2">
+            No landowner is attached to this project&rsquo;s land yet. Link the land on the
+            project, and record its owners on the land record, before allocating a landowner
+            share.
+          </p>
+        )}
       </div>
       </fieldset>
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
