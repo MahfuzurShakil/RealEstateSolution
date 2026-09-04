@@ -22,14 +22,17 @@ import {
   unitCode,
   type AllocationTotals,
   type JvAllocationSummary,
+  type ProjectReadiness,
   type UnitPatternInput,
 } from '../domain/project';
 import { nextCode } from '../utils/id';
+import { todayLocal } from '../utils/format';
 import { BaseRepository, type NewRecord } from './base.repository';
 import { documentRepository } from './document.repository';
 import { userProjectAssignmentRepository } from './user.repository';
 import { installmentPlanTemplateRepository } from './payment.repository';
 import { materialRequestRepository, towerWorkItemRepository } from './site-progress.repository';
+import { paymentRepository } from './payment.repository';
 
 export interface ProjectFilters {
   search?: string;
@@ -128,6 +131,41 @@ class ProjectRepository extends BaseRepository<Project> {
     );
 
     return { ...project, lands, towers, unit_counts, unit_total: units.length };
+  }
+
+  /**
+   * What the project actually has, so a pipeline move can be checked against
+   * its own records rather than taken on trust.
+   *
+   * The rules that read this live in `domain/project.ts` as pure functions —
+   * same split as the booking blockers, which this follows.
+   */
+  async readiness(projectId: string, today = todayLocal()): Promise<ProjectReadiness> {
+    const [towers, units, rollup, bookings] = await Promise.all([
+      towerRepository.listForProject(projectId),
+      unitRepository.listForProject(projectId),
+      towerWorkItemRepository.rollupForProject(projectId, today),
+      db.bookings.toArray(),
+    ]);
+
+    const unitIds = new Set(units.map((u) => u.id));
+    let outstanding = 0;
+    for (const booking of bookings) {
+      if (booking.status !== 'confirmed') continue;
+      if (!unitIds.has(booking.unit_id)) continue;
+      const paid = await paymentRepository.totalForBooking(booking.id);
+      outstanding += Math.max(0, (Number(booking.final_price) || 0) - paid);
+    }
+
+    const SPOKEN_FOR: ReadonlySet<string> = new Set(['booked', 'sold', 'handed_over']);
+    return {
+      tower_count: towers.length,
+      unit_count: units.length,
+      progress_pct: rollup.actual_pct,
+      units_spoken_for: units.filter((u) => SPOKEN_FOR.has(u.status)).length,
+      units_handed_over: units.filter((u) => u.status === 'handed_over').length,
+      outstanding_amount: Math.round(outstanding * 100) / 100,
+    };
   }
 
   /**

@@ -47,6 +47,116 @@ export function allowedNextProjectStatuses(current: ProjectStatus): ProjectStatu
   );
 }
 
+/**
+ * What the project actually has, for checking a pipeline move against reality.
+ *
+ * Read once by the repository and passed in, so these stay pure functions the
+ * way the booking blockers are.
+ */
+export interface ProjectReadiness {
+  tower_count: number;
+  unit_count: number;
+  /** weighted construction progress across every tower, 0–100 */
+  progress_pct: number;
+  /** units that are booked, sold or handed over */
+  units_spoken_for: number;
+  units_handed_over: number;
+  /** money still owed on confirmed bookings for this project */
+  outstanding_amount: number;
+}
+
+/**
+ * Moves that the project's own records say cannot have happened.
+ *
+ * The pipeline captured a date and remarks and asked nothing else, so a
+ * project with no towers, no units and no site progress could be walked all
+ * the way to Closed in six clicks — which is exactly the report a developer
+ * would never trust again. These are the checks where the answer is not a
+ * matter of judgement: you cannot be building without a tower, and you cannot
+ * hand over or close a building nobody has reported any work on.
+ *
+ * Deliberately narrow. Anything a manager might legitimately do early is a
+ * warning instead (see `projectStatusWarnings`) — this list only holds the
+ * things that cannot be true.
+ */
+export function projectStatusBlockers(
+  target: ProjectStatus,
+  facts: ProjectReadiness,
+): string[] {
+  const blockers: string[] = [];
+  const buildStages: ProjectStatus[] = [
+    'under_construction',
+    'nearly_complete',
+    'handover_ongoing',
+    'closed',
+  ];
+
+  if (buildStages.includes(target) && facts.tower_count === 0) {
+    blockers.push('No tower has been added yet, so there is nothing to build');
+  }
+
+  if (
+    (target === 'handover_ongoing' || target === 'closed') &&
+    facts.tower_count > 0 &&
+    facts.progress_pct <= 0
+  ) {
+    blockers.push(
+      'No construction progress has been reported — nothing can be handed over yet',
+    );
+  }
+
+  if (target === 'closed' && facts.unit_count > 0 && facts.units_handed_over === 0) {
+    blockers.push('No unit has been handed over, so the project cannot be closed');
+  }
+
+  return blockers;
+}
+
+/**
+ * Moves the records make look unlikely, but which a manager may still have a
+ * good reason for. Shown, acknowledged, and allowed.
+ */
+export function projectStatusWarnings(
+  target: ProjectStatus,
+  facts: ProjectReadiness,
+): string[] {
+  const warnings: string[] = [];
+
+  if (target === 'nearly_complete' && facts.progress_pct < 75) {
+    warnings.push(
+      `Construction is reported at ${facts.progress_pct.toFixed(1)}%, which is not what "nearly complete" usually means`,
+    );
+  }
+
+  if (target === 'handover_ongoing' && facts.progress_pct < 95) {
+    warnings.push(
+      `Construction is reported at ${facts.progress_pct.toFixed(1)}% — handover normally waits for the building to be finished`,
+    );
+  }
+
+  if (target === 'closed' && facts.progress_pct < 100) {
+    warnings.push(`Construction is reported at ${facts.progress_pct.toFixed(1)}%, not 100%`);
+  }
+
+  if (target === 'closed' && facts.unit_count > 0 && facts.units_handed_over < facts.unit_count) {
+    warnings.push(
+      `${facts.unit_count - facts.units_handed_over} of ${facts.unit_count} units have not been handed over`,
+    );
+  }
+
+  if (target === 'closed' && facts.outstanding_amount > 0.009) {
+    warnings.push(
+      `Buyers still owe money on this project — closing it does not write that off`,
+    );
+  }
+
+  if (target === 'under_construction' && facts.unit_count === 0) {
+    warnings.push('No units have been generated yet, so nothing can be sold while it is built');
+  }
+
+  return warnings;
+}
+
 /** `actual_start_date` is stamped when construction actually begins. */
 export function statusStartsConstruction(status: ProjectStatus): boolean {
   return status === 'under_construction';

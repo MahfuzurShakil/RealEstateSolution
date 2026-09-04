@@ -499,10 +499,17 @@ export const DEMO_PROJECTS: DemoProject[] = [
      * bookings cover those, and a unit's status should come from its booking
      * rather than being set twice and disagreeing.
      */
+    /*
+     * `reserved` is a status only a booking can produce (Section 5.6), so
+     * D-2B is a sales hold instead — the manual state that means "spoken for,
+     * nothing signed". Leaving it as `reserved` left one unit in the whole
+     * demo claiming a booking that does not exist, which is the same
+     * inconsistency the Tower A overrides were replaced to remove.
+     */
     unit_status_overrides: {
       handed_over: ['D-3A', 'D-3B', 'D-4A', 'D-4B', 'D-5A'],
       sold: ['D-5B', 'D-6A'],
-      reserved: ['D-2B'],
+      hold: ['D-2B'],
     },
     history: [
       {

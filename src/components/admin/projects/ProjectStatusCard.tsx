@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, GitBranch } from 'lucide-react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { AlertTriangle, Check, GitBranch, Lock } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -14,6 +15,8 @@ import {
   PROJECT_STATUS_META,
   PROJECT_STEP_CONFIG,
   allowedNextProjectStatuses,
+  projectStatusBlockers,
+  projectStatusWarnings,
   type ProjectStepField,
 } from '@/lib/domain/project';
 import { projectRepository } from '@/lib/repositories';
@@ -39,6 +42,22 @@ export function ProjectStatusCard({ project }: { project: Project }) {
   const nextStatuses = allowedNextProjectStatuses(project.status);
   const config = target ? PROJECT_STEP_CONFIG[target] : null;
 
+  /*
+   * The pipeline used to ask only for a date and remarks, so a project with no
+   * towers, no units and no reported work could be walked to Closed in six
+   * clicks. Checked against the project's own records now: things that cannot
+   * be true block the move, things that are merely unlikely are shown and
+   * allowed.
+   */
+  const readiness = useLiveQuery(() => projectRepository.readiness(project.id), [project.id]);
+  const blockersFor = (status: ProjectStatus) =>
+    readiness ? projectStatusBlockers(status, readiness) : [];
+  const warningsFor = (status: ProjectStatus) =>
+    readiness ? projectStatusWarnings(status, readiness) : [];
+
+  const targetBlockers = target ? blockersFor(target) : [];
+  const targetWarnings = target ? warningsFor(target) : [];
+
   function open(status: ProjectStatus) {
     setTarget(status);
     setValues({
@@ -50,6 +69,10 @@ export function ProjectStatusCard({ project }: { project: Project }) {
 
   async function confirm() {
     if (!target || !config) return;
+    if (targetBlockers.length > 0) {
+      setError(targetBlockers[0]);
+      return;
+    }
     const missing = config.fields.find((f) => f.required && !values[f.key]?.trim());
     if (missing) {
       setError(`${missing.label.replace(' (required)', '')} is required`);
@@ -151,17 +174,31 @@ export function ProjectStatusCard({ project }: { project: Project }) {
           <div className="space-y-2">
             {nextStatuses.map((status) => {
               const forward = PROJECT_PIPELINE_STEPS.indexOf(status) > currentIndex;
+              const blocked = blockersFor(status);
               return (
-                <Button
-                  key={status}
-                  variant={forward ? 'primary' : 'outline'}
-                  size="sm"
-                  className="w-full"
-                  onClick={() => open(status)}
-                >
-                  <GitBranch className="size-4" />
-                  {forward ? 'Move to' : 'Back to'} {PROJECT_STATUS_META[status].label}
-                </Button>
+                <div key={status}>
+                  <Button
+                    variant={forward ? 'primary' : 'outline'}
+                    size="sm"
+                    className="w-full"
+                    disabled={blocked.length > 0}
+                    onClick={() => open(status)}
+                  >
+                    {blocked.length > 0 ? (
+                      <Lock className="size-4" />
+                    ) : (
+                      <GitBranch className="size-4" />
+                    )}
+                    {forward ? 'Move to' : 'Back to'} {PROJECT_STATUS_META[status].label}
+                  </Button>
+                  {blocked.length > 0 && (
+                    <ul className="mt-1.5 space-y-1 text-xs text-amber-700">
+                      {blocked.map((b) => (
+                        <li key={b}>• {b}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -180,6 +217,21 @@ export function ProjectStatusCard({ project }: { project: Project }) {
         onCancel={() => setTarget(null)}
         onConfirm={confirm}
       >
+        {targetWarnings.length > 0 && (
+          <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <p className="flex items-center gap-1.5 text-sm font-medium text-amber-800">
+              <AlertTriangle className="size-4" /> The records do not agree with this yet
+            </p>
+            <ul className="mt-1 space-y-1 text-xs text-amber-700">
+              {targetWarnings.map((w) => (
+                <li key={w}>• {w}</li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs text-amber-700">
+              You can still record the move — say why in the remarks so it makes sense later.
+            </p>
+          </div>
+        )}
         {config?.fields.map(renderField)}
         {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
       </ConfirmDialog>
