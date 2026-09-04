@@ -1,8 +1,9 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { CircleDollarSign, Receipt, Trash2 } from 'lucide-react';
+import { CircleDollarSign, Printer, Receipt, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -103,7 +104,18 @@ export function PaymentPanel({ booking }: { booking: Booking }) {
                   </td>
                   <td className="py-2.5 pr-3 text-ink-muted">{payment.reference_no || '—'}</td>
                   <td className="py-2.5 pr-3 text-ink-muted">{userName(payment.received_by)}</td>
-                  <td className="py-2.5 pr-3 text-right">
+                  <td className="py-2.5 pr-3 text-right whitespace-nowrap">
+                    {/* Opens in a new tab: printing is a detour, and the clerk
+                        is usually mid-way through something else on this page. */}
+                    <Link
+                      href={`/admin/collections/receipt/${payment.id}/print`}
+                      target="_blank"
+                      rel="noopener"
+                    >
+                      <Button size="sm" variant="ghost" aria-label="Print money receipt">
+                        <Printer className="size-4" />
+                      </Button>
+                    </Link>
                     <Button
                       size="sm"
                       variant="ghost"

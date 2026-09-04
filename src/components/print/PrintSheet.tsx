@@ -40,7 +40,12 @@ export function PrintSheet({
       </div>
 
       <div className="print-sheet shadow-sm print:shadow-none">
-        <header className="flex items-start justify-between gap-6 border-b-2 border-ink pb-4">
+        {/* Stacks on a phone and sits side by side from 640 px up. On paper the
+            sheet is always A4-wide, so `print:flex-row` keeps the letterhead in
+            its proper two-column shape regardless of the screen it was
+            triggered from — without this the title fell off the right edge at
+            375 px. */}
+        <header className="flex flex-col items-start justify-between gap-3 border-b-2 border-ink pb-4 sm:flex-row sm:gap-6 print:flex-row print:gap-6">
           <div className="flex items-start gap-3">
             {company?.logo_url ? (
               // Deliberately a plain <img>, not next/image: the logo is an
@@ -62,26 +67,25 @@ export function PrintSheet({
               {company?.address ? (
                 <p className="mt-0.5 max-w-md text-xs text-ink-muted">{company.address}</p>
               ) : null}
-              <p className="mt-0.5 text-xs text-ink-muted">
-                {[
+              {/* An unfilled Settings field leaves no empty line behind — a
+                  letterhead with a gap where the licence number should be
+                  looks like a printing fault, not like missing data. */}
+              <ContactLine
+                parts={[
                   company?.phone ? `Phone ${company.phone}` : null,
                   company?.email,
                   company?.website,
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </p>
-              <p className="mt-0.5 text-xs text-ink-muted">
-                {[
+                ]}
+              />
+              <ContactLine
+                parts={[
                   company?.trade_license_no ? `Trade licence ${company.trade_license_no}` : null,
                   company?.tax_id ? `TIN/BIN ${company.tax_id}` : null,
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </p>
+                ]}
+              />
             </div>
           </div>
-          <div className="shrink-0 text-right">
+          <div className="shrink-0 text-left sm:text-right print:text-right">
             <p className="text-lg font-semibold uppercase tracking-wide text-ink">{title}</p>
             {subtitle ? <p className="text-xs text-ink-muted">{subtitle}</p> : null}
           </div>
@@ -97,6 +101,11 @@ export function PrintSheet({
       </div>
     </>
   );
+}
+
+function ContactLine({ parts }: { parts: (string | null | undefined)[] }) {
+  const text = parts.filter(Boolean).join(' · ');
+  return text ? <p className="mt-0.5 text-xs text-ink-muted">{text}</p> : null;
 }
 
 /** A label above its value — the layout every block on these documents uses. */
