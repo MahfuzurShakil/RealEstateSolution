@@ -3,7 +3,8 @@
 Known-open work that is **not** a blocker for what is already shipped. Add to
 this as modules land; delete an entry when it is done.
 
-Last reviewed: 2026-09-04, after Tier 3.3 — cost categories (Section 0e) and
+Last reviewed: 2026-09-04, after Tier 3.4 — land payment schedule (Section 0f),
+Tier 3.3 — cost categories (Section 0e) and
 Tier 3.6 — printed documents (Section 0d),
 the client review batches F1–F4 (Section 0b)
 and the Tier 2 remediation batches 2A–2E from
@@ -70,10 +71,10 @@ Costs and collections are filterable by date, but there is no month-end close,
 no locked period, and no statement a buyer could be handed. Not in Section 8,
 not invented — flag it when Phase B accounting integration is discussed.
 
-### 1.8 `payment_schedules.entity_type` is an ENUM of one
-Section 8.2 names it, so it is there, but only `booking` is ever written. It
-earns its place when the Contractor module lands and a running bill needs the
-same shape; until then it is a column that does nothing.
+### 1.8 `payment_schedules.entity_type` — **closed** by Tier 3.4, see Section 0f
+`land` joined `booking` when the land payment schedule landed, so the column
+and its `[entity_type+entity_id]` index now do the job Section 8.2 named them
+for. A contractor's running bill is still the third value it is waiting on.
 
 ### 1.9 Project scoping is enforced at the route, not yet in every query
 Section 9.6 now drives the sidebar and a route guard in the shell, so a role
@@ -127,17 +128,78 @@ What it cannot do is "these four but not that one", which needs per-card
 selection the `ResultCard` component has no slot for. Raise it if anyone asks
 for it; the repository method already takes an arbitrary list of ids.
 
-### 1.15 The land page shows what was paid, not what was due
-`expenseRepository.landPaymentSummary` reads the cost ledger, so "paid to date"
-and "balance" are real, and the balance deliberately compares the agreed amount
-with land-payment costs only — registration and legal fees are money spent on
-the land but not money owed to the owner.
+### 1.15 The land page shows what was due — **closed** by Tier 3.4, see Section 0f
+The other side — what was agreed to be paid, and when — is now the Payment plan
+tab. `landPaymentSummary` still answers "how much has gone out"; the plan
+answers "how much should have, by now", and the two are computed by different
+code paths from the same ledger rows, so they cross-check each other.
 
-What is still missing is the other side: what was agreed to be paid, and when.
-That is the land payment schedule (Tier 3.4, which needs no schema change
-because `payment_schedules.entity_type` is already there — see 1.8). Until it
-lands, the page says explicitly that no instalment plan is recorded, rather
-than implying the balance is on time.
+---
+
+## 0f. Tier 3.4 — land payment schedule — done 2026-09-04 (batches A–C)
+
+**No schema change.** `SCHEDULE_ENTITY_TYPES` gains `land`; the column and the
+`[entity_type+entity_id]` index were always there (Section 8.2). Closes 1.8
+and 1.15.
+
+**The plan's 🔴 does not hold, and it was tested rather than assumed.** §4.0
+says `collectionRepository.list` and the finance dashboard have no
+`entity_type` filter, so land instalments would appear in the buyer collections
+queue and land money would be added to "Still due" and "Overdue". A land
+schedule with four overdue lines worth 82,000,000 was inserted and the filter
+then removed again: collections stayed at 156 rows, the dashboard stayed at
+207,751,600 due and 5,558,712 overdue across 9 instalments, and no land line
+ever appeared. Both readers join through `bookings` and drop anything whose
+`entity_id` is not a booking id.
+
+The filters went in regardless. The join drops land rows only as a side effect
+of a land id never matching a booking id — an invariant nothing states and
+nothing protects. What §4.0 got right is that this had to be settled before the
+first land row existed. It was simply already true.
+
+**Land needs its own generator**, as §4.0 correctly noted:
+`generateForBooking` walks booking → unit → tower → the project's instalment
+template, none of which a plot has. Terms are entered per land — advance
+(bayna), monthly count, registration hold-back — because a plot is negotiated
+once with one owner in taka rather than in percentages of a price list.
+Direct purchase only, and only with a `final_agreed_amount`: a joint venture
+pays the owner in units (Section 2.4), so there is no price to schedule, and
+the tab says that rather than showing an empty table.
+
+**Land instalments settle from the cost ledger, not from `payments`.**
+`recalculateForLand` allocates `land_payment` expenses oldest-first — the same
+waterfall as the buyer side, from the other direction. `amount_paid` stays
+derived, so the plan and the ledger cannot drift apart; that is the argument
+against letting Accounts tick lines by hand, which would put two numbers on one
+fact. Nothing is written back to the expense row: a payment carries
+`installment_id` so a receipt can name its instalment, an expense needs no such
+column, and adding one would be a schema change for provenance nobody prints.
+
+**All three expense write paths recalculate**, including edits that *move* a
+cost. Verified in both directions on seeded data: recording 2,000,000 against
+the Dhanmondi plot took instalment 5 from 5,500,000 to settled; switching that
+cost's category out of `land_payment` put it straight back to 5,500,000 and
+partially paid; deleting it left it there. Doing only the new side of an edit
+would leave the old land showing an instalment settled by a cost no longer
+against it.
+
+**A cross-check worth keeping.** The Dhanmondi plot's plan totals 82,000,000
+with 70,000,000 allocated, so it still owes 12,000,000 — the same figure the
+land page's balance reaches through `landPaymentSummary`, which is a different
+code path over the same ledger rows. When those two disagree, one of them is
+wrong.
+
+**One demo plan is seeded**, generated through `generateForLand` rather than
+written by hand, following the rule the booking schedules already follow: a
+hand-written plan would demonstrate a schedule the feature never produced. It
+seeds part-paid, which is the state worth showing. A full demo reload
+reproduces it exactly and leaves the dashboard figures unchanged.
+
+`planLandInstallments` was checked on twelve cases — totals that do not divide
+evenly, 31 Jan clamping to 30 Apr, four rejection cases — plus a control
+proving the assertions can fail. Terms that do not total the agreement produce
+no lines at all, because a plan that disagrees with the agreement leaves a
+balance that never reaches zero however much is paid.
 
 ---
 

@@ -6,6 +6,7 @@ import { useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ArrowLeft, Handshake, Pencil, Trash2, User } from 'lucide-react';
 import { LandTimeline } from '@/components/admin/lands/LandTimeline';
+import { LandPaymentPlanPanel } from '@/components/admin/lands/LandPaymentPlanPanel';
 import { LocationCard } from '@/components/ui/map/LocationCard';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { LandStatusCard } from '@/components/admin/lands/LandStatusCard';
@@ -20,7 +21,7 @@ import { expenseRepository, landRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
-type Tab = 'overview' | 'owners' | 'jv' | 'documents' | 'timeline';
+type Tab = 'overview' | 'owners' | 'jv' | 'payments' | 'documents' | 'timeline';
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -61,6 +62,9 @@ export default function LandDetailPage() {
     { key: 'overview', label: 'Overview' },
     { key: 'owners', label: `Owners (${land.owners.length})` },
     ...(isJv ? [{ key: 'jv' as Tab, label: 'Joint Venture' }] : []),
+    // shown for a JV too: the tab explains why there is no plan, which is more
+    // use than the tab simply not being there
+    { key: 'payments', label: 'Payment plan' },
     { key: 'documents', label: 'Documents' },
     { key: 'timeline', label: 'Timeline' },
   ];
@@ -176,8 +180,15 @@ export default function LandDetailPage() {
                       From {landCosts.count} cost
                       {landCosts.count === 1 ? '' : 's'} booked against this land. Balance compares
                       the agreed amount with land-payment costs only, so registration and legal
-                      fees do not reduce what the owner is still owed. An agreed instalment
-                      schedule is not recorded yet.{' '}
+                      fees do not reduce what the owner is still owed.{' '}
+                      <button
+                        type="button"
+                        onClick={() => setTab('payments')}
+                        className="font-medium text-admin-700 hover:underline"
+                      >
+                        See the agreed plan
+                      </button>{' '}
+                      for what was due and when.{' '}
                       <Link
                         href={`/admin/expenses?land=${land.id}`}
                         className="font-medium text-admin-700 hover:underline"
@@ -296,6 +307,8 @@ export default function LandDetailPage() {
               )}
             </Card>
           )}
+
+          {tab === 'payments' && <LandPaymentPlanPanel land={land} />}
 
           {tab === 'timeline' && (
             <Card>

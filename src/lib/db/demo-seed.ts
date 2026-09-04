@@ -31,6 +31,7 @@ import {
   supplierRepository,
   supplierVoucherRepository,
   expenseRepository,
+  paymentScheduleRepository,
   refundRepository,
   userProjectAssignmentRepository,
 } from '../repositories';
@@ -1059,6 +1060,32 @@ async function seedDemoFinance(
     );
     const refundedAt = daysFromToday(-demo.days_ago);
     await db.refunds.update(saved.id, { created_at: refundedAt, updated_at: refundedAt });
+  }
+
+  /*
+   * One land payment plan (Tier 3.4), generated through the real code path for
+   * the same reason the booking schedules are: a plan written by hand would
+   * demonstrate a schedule the feature never produced.
+   *
+   * The Dhanmondi plot is the one worth showing — it was agreed at 82,000,000
+   * with 70,000,000 already in the cost ledger above, so the plan seeds itself
+   * part-paid: the bayna and three monthlies settled, the fourth short, and
+   * the registration money still to go. Generation is deliberately last, after
+   * the expenses exist, so the allocation runs over real rows.
+   */
+  const dhanmondiLandId = landIds.get('Dhanmondi Road 27 plot');
+  if (dhanmondiLandId) {
+    await paymentScheduleRepository.generateForLand(
+      dhanmondiLandId,
+      {
+        agreementDate: '2024-08-05',
+        advanceAmount: 42000000,
+        monthlyCount: 4,
+        registrationAmount: 10000000,
+        registrationAfterMonths: 7,
+      },
+      createdBy,
+    );
   }
 }
 
