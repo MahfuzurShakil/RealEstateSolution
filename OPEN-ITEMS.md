@@ -3,7 +3,8 @@
 Known-open work that is **not** a blocker for what is already shipped. Add to
 this as modules land; delete an entry when it is done.
 
-Last reviewed: 2026-09-04, after Tier 3.6 — printed documents (Section 0d),
+Last reviewed: 2026-09-04, after Tier 3.3 — cost categories (Section 0e) and
+Tier 3.6 — printed documents (Section 0d),
 the client review batches F1–F4 (Section 0b)
 and the Tier 2 remediation batches 2A–2E from
 `REMEDIATION-PLAN.md` (see Section 0 below, which also covers Tier 1). The
@@ -137,6 +138,65 @@ That is the land payment schedule (Tier 3.4, which needs no schema change
 because `payment_schedules.entity_type` is already there — see 1.8). Until it
 lands, the page says explicitly that no instalment plan is recorded, rather
 than implying the balance is on time.
+
+---
+
+## 0e. Tier 3.3 — cost_category becomes a lookup list — done 2026-09-04 (A–C)
+
+§1.2 always named `cost_category` a `lookup_values` category. It was a
+hard-coded ENUM and Master Data did not list it, so adding "Legal &
+Registration" needed a developer — the one thing Master Data exists to
+prevent. This was a gap against the frozen scope, not a new idea.
+
+**No Dexie version block.** Two nullable, non-indexed columns on
+`lookup_values`: `code` (the stable key a record stores) and `is_system` (a
+seeded option the code depends on). Same precedent as
+`towers.current_progress_pct`.
+
+**Why this one list stores a code and the other five store their label.**
+`facing: 'South'` means renaming "South" renames it on every unit at once,
+which is right for a typo. `cost_category` cannot work that way:
+`expenseRepository.landPaymentSummary` and the expense form both key off
+`land_payment`, so if the key were the label, a rename in Master Data would
+silently change what a land's balance means. The label is renameable; the key
+underneath it does not move. Verified: renaming "Land Payment" to "Payment to
+Landowner" moved the label on every screen, left the code at `land_payment`,
+and left the land's balance at 12,000,000 with fees at 5,850,000.
+
+**System options can be renamed and reordered, never retired.** There is no
+delete in Master Data, so deactivating is the only way a built-in could
+vanish, and deactivating `land_payment` would leave no way to record money
+paid to a landowner while the land page carried on reporting a balance as
+though there were. The six carry a "Built-in" badge and a disabled retire
+button; `deactivate()` routes through the guarded `setActive` so it cannot be
+stepped around. The user-added seventh option stayed retireable, which is what
+makes that check worth anything.
+
+**A category added through Master Data gets a slug generated once** and
+uniquified against the seeded codes, so "Other Costs" cannot collide with
+`other`. It never follows a later rename — that is the point of having it.
+
+**Two things found only by verifying:**
+
+- A cost recorded under a category that was then retired lost its real name and
+  fell back to a humanised code — "Legal Registration", ampersand and all,
+  instead of "Legal & Registration". The label lookup was reading the *active*
+  list. It now reads every option and the dropdowns filter for active, which is
+  the only place a retired option genuinely must not appear.
+- The repository guard held against retiring a built-in, but the confirm dialog
+  sat open with no explanation and the error went to the console. The button is
+  now disabled with the reason, and the dialog surfaces the error if it ever
+  fires anyway.
+
+**One claim in the plan's §4.0 does not hold.** It lists `ExpenseFormModal` as
+a place that "shows the land picker only when the category is `land_payment` or
+`land_extra_cost`". It does not — the picker is shown for every category and
+always has been; those two names only change its hint text. Left exactly as it
+is. Restricting it would have been a regression rather than a no-op:
+`landPaymentSummary` splits money paid to the owner from everything else booked
+against the land, and "everything else" is precisely where a user-added
+category like "Legal & Registration" belongs. No seeded expense attaches a
+non-land category to a land, so nothing depended on the looseness either way.
 
 ---
 

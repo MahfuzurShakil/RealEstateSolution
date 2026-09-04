@@ -88,7 +88,13 @@ function ExpensesPage() {
    * screen follows without a reload.
    */
   const categories = useLiveQuery(() => lookupRepository.costCategories(), []);
+  // every option, so a retired category still labels the costs that carry it
   const categoryOptions = useMemo(() => categories ?? [], [categories]);
+  // only the live ones are offered as a filter
+  const activeCategories = useMemo(
+    () => categoryOptions.filter((c) => c.is_active),
+    [categoryOptions],
+  );
   // The export names the category by its current label, like the table above it
   const csvColumns = useMemo(() => expenseCsvColumns(categoryOptions), [categoryOptions]);
 
@@ -301,7 +307,7 @@ function ExpensesPage() {
               onChange={(e) => setCategory(e.target.value as CostCategory | 'all')}
             >
               <option value="all">All categories</option>
-              {categoryOptions.map((c) => (
+              {activeCategories.map((c) => (
                 <option key={c.id} value={c.code ?? c.value}>
                   {c.value}
                 </option>

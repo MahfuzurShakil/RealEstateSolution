@@ -21,7 +21,7 @@ import { Modal } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { LookupValue } from '@/lib/db/types';
-import { DuplicateLookupError, lookupRepository } from '@/lib/repositories';
+import { DuplicateLookupError, SystemOptionError, lookupRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { humanize } from '@/lib/utils/format';
 
@@ -45,6 +45,7 @@ export default function MasterDataPage() {
   const [addTo, setAddTo] = useState<{ category: string; scope: string | null } | null>(null);
   const [renaming, setRenaming] = useState<LookupValue | null>(null);
   const [confirmHide, setConfirmHide] = useState<LookupValue | null>(null);
+  const [hideError, setHideError] = useState<string | null>(null);
 
   const groups = useLiveQuery(() => lookupRepository.groups(), []);
 
@@ -105,7 +106,10 @@ export default function MasterDataPage() {
                     category={group.category}
                     scope={group.scope}
                     onRename={setRenaming}
-                    onHide={setConfirmHide}
+                    onHide={(row) => {
+                      setHideError(null);
+                      setConfirmHide(row);
+                    }}
                   />
                 )}
               </Card>
@@ -137,11 +141,33 @@ export default function MasterDataPage() {
         tone="warning"
         icon={EyeOff}
         confirmLabel="Retire option"
-        message="It stops appearing in the dropdown, but records that already use it keep reading correctly — which is why an option is retired rather than deleted. It can be brought back at any time."
-        onCancel={() => setConfirmHide(null)}
-        onConfirm={async () => {
-          if (confirmHide) await lookupRepository.setActive(confirmHide.id, false);
+        message={
+          hideError ??
+          'It stops appearing in the dropdown, but records that already use it keep reading correctly — which is why an option is retired rather than deleted. It can be brought back at any time.'
+        }
+        onCancel={() => {
           setConfirmHide(null);
+          setHideError(null);
+        }}
+        onConfirm={async () => {
+          /*
+           * The retire button is already disabled for a built-in option, so
+           * this catch is the second line rather than the first. It is here
+           * because the repository guard is the one that actually protects the
+           * data, and a rejected write that closed the dialog silently would
+           * look exactly like a successful one.
+           */
+          if (!confirmHide) return;
+          try {
+            await lookupRepository.setActive(confirmHide.id, false);
+            setConfirmHide(null);
+          } catch (error) {
+            setHideError(
+              error instanceof SystemOptionError
+                ? error.message
+                : 'That option could not be retired.',
+            );
+          }
         }}
       />
     </>
@@ -187,6 +213,10 @@ function OptionList({
           </span>
 
           {!row.is_active && <Badge tone="neutral">Retired</Badge>}
+          {/* A built-in option the application's own code keys off (Tier 3.3).
+              Saying so is the point: an admin who cannot retire "Land Payment"
+              should be able to see why without trying it. */}
+          {row.is_system && <Badge tone="teal">Built-in</Badge>}
 
           <div className="flex shrink-0 items-center gap-1">
             <Button
@@ -220,6 +250,12 @@ function OptionList({
                 variant="ghost"
                 size="sm"
                 aria-label={`Retire ${row.value}`}
+                disabled={row.is_system}
+                title={
+                  row.is_system
+                    ? 'A built-in option cannot be retired — the finance screens key off it. It can still be renamed and reordered.'
+                    : undefined
+                }
                 onClick={() => onHide(row)}
               >
                 <EyeOff className="size-4" />

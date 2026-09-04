@@ -95,6 +95,7 @@ function ExpenseDialog({
 
   const categories = useLiveQuery(() => lookupRepository.costCategories(), []);
   const categoryOptions = categories ?? [];
+  const activeCategories = categoryOptions.filter((c) => c.is_active);
   /*
    * The category on the row being edited, when it is no longer in the active
    * list. Without this the select would fall back to its first option and a
@@ -103,7 +104,7 @@ function ExpenseDialog({
   const retiredCategory =
     categoryOptions.length > 0 &&
     form.cost_category &&
-    !categoryOptions.some((c) => (c.code ?? c.value) === form.cost_category)
+    !activeCategories.some((c) => (c.code ?? c.value) === form.cost_category)
       ? form.cost_category
       : null;
 
@@ -185,7 +186,7 @@ function ExpenseDialog({
                 being edited under a category that has since been retired keeps
                 that category as an option, so re-saving the row cannot silently
                 move it into another one. */}
-            {categoryOptions.map((c) => (
+            {activeCategories.map((c) => (
               <option key={c.id} value={c.code ?? c.value}>
                 {c.value}
               </option>

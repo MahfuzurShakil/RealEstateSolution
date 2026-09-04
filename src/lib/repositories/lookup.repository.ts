@@ -68,11 +68,17 @@ class LookupRepository extends BaseRepository<LookupValue> {
   /** Goes through `setActive`, so the system-option guard cannot be sidestepped. */
   /**
    * The cost-category list the expense screens read (Section 8.3 / §1.2).
-   * Active options only — a retired category still reads correctly on the
-   * expenses that already carry it, but must not be offered for a new one.
+   *
+   * Returns **every** option, retired ones included, because the screens need
+   * it for two different jobs and only one of them wants the active subset.
+   * Labelling a cost recorded under a category that has since been retired
+   * still has to show that category's real name — "Legal & Registration", not
+   * a humanised guess at its code — so the label lookup must be able to see it.
+   * Callers filter on `is_active` for the dropdowns, where a retired option
+   * genuinely must not be offered.
    */
   async costCategories(): Promise<LookupValue[]> {
-    return this.options('cost_category');
+    return this.listAll('cost_category');
   }
 
   async deactivate(id: string): Promise<void> {
