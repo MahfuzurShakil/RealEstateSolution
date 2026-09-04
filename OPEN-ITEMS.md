@@ -141,6 +141,64 @@ than implying the balance is on time.
 
 ---
 
+## 0c. Pipeline guard + end-to-end integrity pass — 2026-09-04
+
+**A project could be closed without any work happening.** Reported from a
+walkthrough. The pipeline captured a date and remarks and checked nothing, so
+Planning → Closed took six clicks on a project with no tower, no unit and no
+site progress. Now split into hard blocks (things that cannot be true: no
+tower, no reported progress, nothing handed over) and warnings (things merely
+unlikely: closing under 100%, units not handed over, buyers still owing).
+Moving *back* is never blocked — correcting a premature move must stay
+possible. Rules are pure functions in `domain/project.ts`, facts come from
+`projectRepository.readiness`.
+
+**The two "not a function" TypeErrors were not from this codebase.** Both
+stack traces pointed at `..ealEstateSolution\.next\...` — a different,
+older project in a sibling folder (its own git history, port 3000, no
+`format.ts`, no `LandForm.tsx`). This project is `RealEstateSolution3` on
+port 3001. A clean `rm -rf .next && next build` compiles all 40+ routes.
+Worth deleting or renaming the old folder to stop the confusion recurring.
+
+### End-to-end integrity pass
+
+Ran against a freshly seeded demo, reconciling every cross-module link
+directly against IndexedDB rather than trusting the screens:
+
+- **Referential integrity: 0 failures.** towers→projects, units→towers,
+  bookings→units/customers/leads, schedules→bookings, instalments→schedules,
+  payments→bookings, refunds→bookings, PO items→orders, GRNs→orders, GRN
+  items→GRNs, vouchers→orders.
+- **Finance:** every confirmed booking has a schedule; every schedule totals
+  to `final_price` to the taka; every booking-amount line equals the agreed
+  `booking_amount` (Tier 1 B-1 holding). The one schedule on a non-confirmed
+  booking belongs to the cancelled, refunded BOOK-2026-008 — correct.
+- **Money agrees across screens:** dashboard "Collected" (16,900,000) is
+  receipts excluding cancelled bookings, exactly; the collections queue's
+  "allocated to instalments" (13,000,000) is lower by the money taken on
+  bookings with no schedule yet — the F-2 distinction, holding.
+- **Procurement:** PO line `received_quantity` equals the sum of *passed* GRN
+  lines on all 22 lines — failed and pending quality checks correctly
+  excluded from both stock and the received figure.
+- **Stock ledger reconciles exactly:** every row's `quantity_available`
+  equals passed receipts − issues ± transfers. No orphan movements, no
+  negative stock.
+- **Site progress:** work-item weights total 100 on all 5 towers; every
+  cached `towers.current_progress_pct` matches its computed roll-up.
+- **Module 5 → 6 handoff:** every `ordered`/`fulfilled` material request has
+  a PO or a stock transfer behind it; no rejection without a reason; no
+  orphan status history.
+- **Lead → customer → booking:** every booked lead has a converted customer
+  and a booking. (Two leads carry no activity — both `new`, created 1–3 Sept,
+  never contacted. Realistic, not a defect.)
+- **Section 9.6 role scoping** verified per role: site manager sees
+  Dashboard/Projects/Site Progress, accounts sees Finance and Procurement but
+  no Land, land team sees Land but no Finance, and only super_admin sees
+  Administration.
+- All 20 list pages and the detail routes return 200 with no server errors.
+
+---
+
 ## 0b. Client review — done 2026-09-04 (feedback batches F1–F4)
 
 Seven points raised after a walkthrough of the land, project and unit
