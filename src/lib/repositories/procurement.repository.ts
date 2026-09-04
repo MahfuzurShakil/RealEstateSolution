@@ -686,11 +686,27 @@ class GoodsReceiptRepository extends BaseRepository<GoodsReceipt> {
         createdBy,
       );
 
+      /*
+       * Only ACCEPTED quantity counts against the order line.
+       *
+       * This used to add everything that arrived, including a batch that
+       * failed its quality check — so PO-2026-008 read "received" in full
+       * while all 150 units had failed and nothing had reached stock. The
+       * order looked closed, nobody chased the supplier for a replacement,
+       * and because the payable is computed from received value (PR-1), we
+       * were also reporting money owed for material we had rejected.
+       *
+       * The physical arrival is not lost: the GRN line still records the
+       * quantity and its quality check, which is what an argument with the
+       * supplier is had from. Same measure as stock, so the order line, the
+       * store and the payable can never disagree again.
+       */
+      const stockable = stockableQuantity(saved);
+
       await db.purchase_order_items.update(poItem.id, {
-        quantity_received: qty((Number(poItem.quantity_received) || 0) + quantity),
+        quantity_received: qty((Number(poItem.quantity_received) || 0) + stockable),
       });
 
-      const stockable = stockableQuantity(saved);
       if (stockable > 0) {
         await stockRepository.receive(
           order?.project_id ?? null,
@@ -768,15 +784,16 @@ class GoodsReceiptRepository extends BaseRepository<GoodsReceipt> {
 
     for (const line of lines) {
       const poItem = await db.purchase_order_items.get(line.po_item_id);
+      // symmetric with the create path: only what was accepted ever went on
+      // the line, so only that comes back off it
+      const stockable = stockableQuantity(line);
+
       if (poItem) {
         await db.purchase_order_items.update(poItem.id, {
-          quantity_received: qty(
-            Math.max(0, (Number(poItem.quantity_received) || 0) - line.quantity_received),
-          ),
+          quantity_received: qty(Math.max(0, (Number(poItem.quantity_received) || 0) - stockable)),
         });
       }
 
-      const stockable = stockableQuantity(line);
       if (stockable > 0 && poItem) {
         await stockRepository.withdraw(
           order?.project_id ?? null,

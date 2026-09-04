@@ -114,17 +114,45 @@ export default function PurchaseOrderDetailPage() {
     },
     {
       key: 'quantity_received',
-      header: 'Received',
+      header: 'Accepted',
       align: 'right',
       cell: (row) => {
         const left = outstanding(row);
-        if (row.quantity_received <= 0) return <span className="text-ink-muted">nothing yet</span>;
+        /*
+         * "Accepted", not "Received": a batch that arrived and failed its
+         * quality check is on the GRN but never counts here, so a line can
+         * read "nothing yet" while a delivery has been and gone. The
+         * Deliveries tab is where that batch is, and it says why.
+         */
+        const arrived = (receipts ?? [])
+          .flatMap((r) => r.items ?? [])
+          .filter((i) => i.po_item_id === row.id)
+          .reduce((sum, i) => sum + (Number(i.quantity_received) || 0), 0);
+        const rejected = Math.round((arrived - row.quantity_received) * 1000) / 1000;
+
+        if (row.quantity_received <= 0) {
+          return (
+            <span className="text-ink-muted">
+              nothing yet
+              {rejected > 0 && (
+                <span className="block text-xs text-red-600">
+                  {rejected} {row.unit} arrived, not accepted
+                </span>
+              )}
+            </span>
+          );
+        }
         return (
           <span className={left > 0 ? 'font-medium text-amber-600' : 'font-medium text-emerald-700'}>
             {row.quantity_received} {row.unit}
             {left > 0 && (
               <span className="block text-xs font-normal text-ink-muted">
                 {left} {row.unit} to come
+              </span>
+            )}
+            {rejected > 0 && (
+              <span className="block text-xs font-normal text-red-600">
+                {rejected} {row.unit} arrived, not accepted
               </span>
             )}
           </span>
