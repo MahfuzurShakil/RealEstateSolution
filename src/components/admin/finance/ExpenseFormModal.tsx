@@ -15,15 +15,17 @@ import {
   type SupplierPaymentMethod,
 } from '@/lib/db/types';
 import { costCategoryLabel } from '@/lib/domain/finance';
+import { previewLandPayment } from '@/lib/domain/land-schedule';
 import { SUPPLIER_PAYMENT_METHOD_META } from '@/lib/domain/procurement';
 import {
   expenseRepository,
   landRepository,
   lookupRepository,
+  paymentScheduleRepository,
   projectRepository,
   userRepository,
 } from '@/lib/repositories';
-import { todayLocal } from '@/lib/utils/format';
+import { formatBdt, formatDate, todayLocal } from '@/lib/utils/format';
 
 /**
  * Add or edit a cost (Section 8.3).
@@ -108,22 +110,46 @@ function ExpenseDialog({
       ? form.cost_category
       : null;
 
-  const set = (key: keyof typeof form, value: string) => setForm((f) => ({ ...f, [key]: value }));
   /*
-   * Drives the Land field's *hint*, not whether it is shown — the picker is
-   * offered for every category and always has been. Kept that way deliberately
-   * through Tier 3.3: `landPaymentSummary` splits `land_payment` (money to the
-   * owner) from everything else booked against the land, and "everything else"
-   * is exactly where a user-added category like "Legal & Registration" belongs.
-   * Hiding the picker for categories the code does not know by name would make
-   * that bucket un-fillable by the categories Master Data exists to add.
-   *
-   * The two names below are still the ones that matter, because they are what
-   * `landPaymentSummary` keys on — which is why they are system options.
+   * What this plot still owes, so the person paying is not typing blind. Only
+   * `land_payment` settles instalments — `land_extra_cost` is a fee on the
+   * land, not money to the owner, so it attaches to the plot without touching
+   * the plan (`recalculateForLand` reads land-payment rows only).
    */
-  const isLandCost = (LAND_LINKED_COST_CATEGORIES as readonly string[]).includes(
-    form.cost_category,
+  const settlesPlan = form.cost_category === 'land_payment';
+  const due = useLiveQuery(
+    () =>
+      settlesPlan && form.land_id
+        ? paymentScheduleRepository.landDueSummary(form.land_id)
+        : Promise.resolve(null),
+    [settlesPlan, form.land_id],
   );
+
+  const isLandCost = (categoryCode: string) =>
+    (LAND_LINKED_COST_CATEGORIES as readonly string[]).includes(categoryCode);
+
+  /*
+   * Changing the category away from a land one clears the plot with it.
+   *
+   * The Land field used to be offered for every category and only its *hint*
+   * changed, which meant picking a plot under Land Payment and then switching
+   * to Marketing saved a marketing cost carrying a `land_id`.
+   * `landPaymentSummary` counts every expense against a land, so that cost
+   * turned up in the plot's "fees and extras" — money the land never cost,
+   * with nothing on screen to suggest anything was wrong.
+   *
+   * Land fees are not stranded by this: `land_extra_cost` is the seeded
+   * category for registration, mutation and legal fees, and it keeps the
+   * picker.
+   */
+  const set = (key: keyof typeof form, value: string) =>
+    setForm((f) => {
+      const next = { ...f, [key]: value };
+      if (key === 'cost_category' && !isLandCost(value)) next.land_id = '';
+      return next;
+    });
+
+  const landLinked = isLandCost(form.cost_category);
 
   async function save() {
     const next: typeof errors = {};
@@ -176,6 +202,19 @@ function ExpenseDialog({
         </>
       }
     >
+      {/*
+        Above the fields, not below them: the whole point is to be read while
+        the amount is being typed, and the modal body scrolls — at the bottom it
+        sat off-screen behind the very field it exists to inform.
+      */}
+      {due && (
+        <LandPlanPanel
+          due={due}
+          amount={Number(form.amount) || 0}
+          onUseAmount={(v) => set('amount', String(v))}
+        />
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Category" required>
           <SelectInput
@@ -242,10 +281,18 @@ function ExpenseDialog({
 
         <Field
           label="Land"
-          hint={isLandCost ? 'Which plot this payment is against' : 'Only for land-related costs'}
+          hint={
+            landLinked
+              ? 'Which plot this payment is against'
+              : 'Only Land Payment and Land Extra Cost attach to a plot'
+          }
         >
-          <SelectInput value={form.land_id} onChange={(e) => set('land_id', e.target.value)}>
-            <option value="">Not land-related</option>
+          <SelectInput
+            value={form.land_id}
+            disabled={!landLinked}
+            onChange={(e) => set('land_id', e.target.value)}
+          >
+            <option value="">{landLinked ? 'Not land-related' : '—'}</option>
             {(lands ?? []).map((l) => (
               <option key={l.id} value={l.id}>
                 {l.code} — {l.name}
@@ -308,5 +355,104 @@ function ExpenseDialog({
         </p>
       )}
     </Modal>
+  );
+}
+
+type LandDue = NonNullable<Awaited<ReturnType<typeof paymentScheduleRepository.landDueSummary>>>;
+
+/**
+ * What the plot owes, and what the amount being typed would do about it.
+ *
+ * The effect is computed by `previewLandPayment`, which runs the same allocator
+ * the ledger runs when the cost is saved — so what this says will happen is
+ * what happens. A preview derived separately would eventually disagree, and it
+ * is the half a person makes the decision on.
+ */
+function LandPlanPanel({
+  due,
+  amount,
+  onUseAmount,
+}: {
+  due: LandDue;
+  amount: number;
+  onUseAmount: (value: number) => void;
+}) {
+  const next = due.next_unsettled;
+  const effect = amount > 0 ? previewLandPayment(due.lines, amount) : null;
+
+  return (
+    <div className="mb-4 rounded-xl border border-admin-200 bg-admin-50/60 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <p className="text-sm font-medium text-ink">
+          {next ? (
+            <>
+              Next unsettled: {next.label} —{' '}
+              <span className="font-semibold">{formatBdt(next.outstanding)}</span> outstanding
+            </>
+          ) : (
+            'This plan is fully paid.'
+          )}
+        </p>
+        {next && next.outstanding > 0 && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => onUseAmount(next.outstanding)}
+          >
+            Use this amount
+          </Button>
+        )}
+      </div>
+
+      {next && (
+        <p className="mt-0.5 text-xs text-ink-muted">
+          {next.due_date ? `Due ${formatDate(next.due_date)}` : 'No due date set'}
+          {next.days_late > 0 && (
+            <span className="text-red-600">
+              {' '}
+              · {next.days_late} day{next.days_late === 1 ? '' : 's'} late
+            </span>
+          )}
+          {' · '}
+          {formatBdt(due.outstanding)} still owed on the plan
+          {due.overdue_count > 0 && ` · ${due.overdue_count} instalment${due.overdue_count === 1 ? '' : 's'} overdue`}
+        </p>
+      )}
+
+      {/*
+        Said before the money is recorded rather than discovered afterwards on
+        the land's plan tab. Paying part of an instalment is normal here — the
+        shortfall stays on that instalment rather than moving to the end of the
+        plan, so it keeps reading as arrears.
+      */}
+      {effect && (
+        <p className="mt-2 border-t border-admin-200 pt-2 text-xs text-ink">
+          {formatBdt(amount)} would{' '}
+          {effect.settles.length > 0 && (
+            <>
+              settle <span className="font-medium">{effect.settles.join(', ')}</span>
+              {effect.partial ? ', and ' : '. '}
+            </>
+          )}
+          {effect.partial && (
+            <>
+              leave{' '}
+              <span className="font-medium">{formatBdt(effect.partial.remaining)}</span> outstanding
+              on {effect.partial.label}.{' '}
+            </>
+          )}
+          {effect.settles.length === 0 && !effect.partial && effect.excess <= 0.009 && (
+            <>change nothing on the plan. </>
+          )}
+          {effect.excess > 0.009 && (
+            <span className="text-amber-700">
+              {formatBdt(effect.excess)} is more than the plan still accounts for — it will be
+              recorded, and shown as unallocated on the plan.
+            </span>
+          )}
+        </p>
+      )}
+    </div>
   );
 }

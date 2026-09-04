@@ -15,9 +15,11 @@ import type {
   SupplierPaymentMethod,
   Unit,
 } from '../db/types';
+import { LAND_LINKED_COST_CATEGORIES } from '../db/types';
 import {
   installmentStatus,
   money,
+  daysOverdue,
   outstandingOn,
   planInstallments,
   settledStatus,
@@ -26,6 +28,7 @@ import {
   type ScheduleSummary,
 } from '../domain/finance';
 import {
+  allocateOldestFirst,
   planLandInstallments,
   type LandPaymentTerms,
 } from '../domain/land-schedule';
@@ -301,6 +304,55 @@ class PaymentScheduleRepository extends BaseRepository<PaymentSchedule> {
       unallocated: money(Math.max(0, paid - allocated)),
       agreed_total: agreed,
       stale_total: Math.abs(agreed - schedule.total_amount) > 0.009,
+    };
+  }
+
+  /**
+   * What this land still owes, for the expense form (Tier 3.4 follow-up).
+   *
+   * `next_unsettled` is deliberately **not** `summariseSchedule.next_due`:
+   * that one skips overdue lines to answer "what falls due next", which is the
+   * right question on a dashboard and the wrong one at the counter. Somebody
+   * about to pay an owner needs the oldest line that is still open — which is
+   * usually the overdue one, and is always the line their money will actually
+   * land on.
+   */
+  async landDueSummary(landId: string): Promise<{
+    agreed_total: number;
+    paid: number;
+    outstanding: number;
+    overdue_count: number;
+    next_unsettled: {
+      label: string;
+      due_date: string | null;
+      outstanding: number;
+      days_late: number;
+    } | null;
+    lines: PaymentInstallment[];
+  } | null> {
+    const schedule = await this.forLand(landId);
+    if (!schedule) return null;
+
+    const lines = await paymentInstallmentRepository.listForSchedule(schedule.id);
+    const today = todayLocal();
+    const summary = summariseSchedule(lines, today);
+
+    const open = lines.find((line) => outstandingOn(line) > 0.009) ?? null;
+
+    return {
+      agreed_total: schedule.total_amount,
+      paid: summary.paid,
+      outstanding: summary.due,
+      overdue_count: summary.overdue_count,
+      next_unsettled: open
+        ? {
+            label: open.label,
+            due_date: open.due_date ?? null,
+            outstanding: outstandingOn(open),
+            days_late: daysOverdue(open, today),
+          }
+        : null,
+      lines,
     };
   }
 
@@ -659,24 +711,11 @@ export async function recalculateForLand(
   const installments = await paymentInstallmentRepository.listForSchedule(schedule.id);
   const paidRows = await landPaymentExpenses(landId);
 
-  const filled = new Map<string, number>(installments.map((line) => [line.id, 0]));
-
-  let cursor = 0;
-  for (const expense of paidRows) {
-    let remaining = Number(expense.amount) || 0;
-    while (remaining > 0.005 && cursor < installments.length) {
-      const line = installments[cursor];
-      const room = (Number(line.amount_due) || 0) - (filled.get(line.id) ?? 0);
-      if (room <= 0.005) {
-        cursor += 1;
-        continue;
-      }
-      const take = Math.min(remaining, room);
-      filled.set(line.id, money((filled.get(line.id) ?? 0) + take));
-      remaining = money(remaining - take);
-      if (take >= room - 0.005) cursor += 1;
-    }
-  }
+  // one implementation of the waterfall, shared with the expense form's preview
+  const { filled } = allocateOldestFirst(
+    installments,
+    paidRows.map((e) => Number(e.amount) || 0),
+  );
 
   for (const line of installments) {
     const paid = money(filled.get(line.id) ?? 0);
@@ -908,6 +947,26 @@ export interface ExpenseWithRelations extends Expense {
   paid_by_name?: string | null;
 }
 
+/**
+ * A cost only carries a plot when its category says it is land money.
+ *
+ * Enforced here as well as on the form, because this is the layer Phase B
+ * keeps: a `land_id` left over from a category the user changed their mind
+ * about would be counted by `landPaymentSummary` as a cost against that plot,
+ * and no screen would show anything odd. The two land categories are system
+ * options for exactly this reason — `land_extra_cost` is where registration,
+ * mutation and legal fees go, so land fees are not stranded by the rule.
+ */
+function landIdForCategory(
+  costCategory: string | undefined,
+  landId: string | null | undefined,
+): string | null {
+  if (!costCategory) return landId ?? null;
+  return (LAND_LINKED_COST_CATEGORIES as readonly string[]).includes(costCategory)
+    ? (landId ?? null)
+    : null;
+}
+
 class ExpenseRepository extends BaseRepository<Expense> {
   constructor() {
     super(() => db.expenses);
@@ -928,7 +987,14 @@ class ExpenseRepository extends BaseRepository<Expense> {
 
     const code = input.code?.trim() ? input.code : await this.generateCode();
     const created = await this.create(
-      { ...input, code, amount, cost_reason: input.cost_reason.trim(), paid_to: input.paid_to.trim() },
+      {
+        ...input,
+        code,
+        amount,
+        cost_reason: input.cost_reason.trim(),
+        paid_to: input.paid_to.trim(),
+        land_id: landIdForCategory(input.cost_category, input.land_id),
+      },
       createdBy,
     );
     // a payment to the owner settles the next instalment on the agreed plan
@@ -952,7 +1018,19 @@ class ExpenseRepository extends BaseRepository<Expense> {
     createdBy: string | null = null,
   ): Promise<Expense | undefined> {
     const before = await this.getById(id);
-    const updated = await this.update(id, changes);
+    /*
+     * The category being written, or the one already stored when the edit does
+     * not touch it — a change to either side can strand a `land_id`.
+     */
+    const category = changes.cost_category ?? before?.cost_category;
+    const landId =
+      changes.land_id !== undefined || changes.cost_category !== undefined
+        ? landIdForCategory(category, changes.land_id ?? before?.land_id)
+        : undefined;
+    const updated = await this.update(id, {
+      ...changes,
+      ...(landId !== undefined ? { land_id: landId } : {}),
+    });
     const affected = new Set(
       [before?.land_id, updated?.land_id].filter((v): v is string => Boolean(v)),
     );

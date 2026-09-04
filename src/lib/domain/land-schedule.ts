@@ -159,3 +159,113 @@ export function planLandInstallments(terms: LandPaymentTerms): PlannedInstallmen
 
   return lines;
 }
+
+/** One instalment as the allocator sees it. */
+export interface AllocatableLine {
+  id: string;
+  amount_due: number;
+}
+
+export interface AllocationResult {
+  /** How much of each line is covered, keyed by line id. */
+  filled: Map<string, number>;
+  /** Money with no line left to carry it. */
+  unallocated: number;
+}
+
+/**
+ * Spreads amounts across instalments, oldest line first.
+ *
+ * The single implementation of the rule, shared by `recalculateForLand` (which
+ * writes the result) and the expense form's preview (which shows what an amount
+ * *would* do). Two implementations of one rule drift, and the one that drifts
+ * is the preview — which is the half a person makes decisions on.
+ *
+ * Underpayment is deliberately carried on the line it fell short of: pay
+ * 1,500,000 against a 2,000,000 instalment and that instalment stays open for
+ * 500,000 and goes overdue on its own date, rather than the shortfall being
+ * quietly moved to the end of the plan. The arrears then read as arrears, and
+ * the plan still describes what was agreed rather than what happened to be
+ * paid.
+ *
+ * `lines` must already be in instalment order, and `amounts` in the order the
+ * money was actually paid.
+ */
+export function allocateOldestFirst(
+  lines: AllocatableLine[],
+  amounts: number[],
+): AllocationResult {
+  const filled = new Map<string, number>(lines.map((line) => [line.id, 0]));
+  let cursor = 0;
+  let unallocated = 0;
+
+  for (const amount of amounts) {
+    let remaining = Number(amount) || 0;
+    while (remaining > 0.005 && cursor < lines.length) {
+      const line = lines[cursor];
+      const room = (Number(line.amount_due) || 0) - (filled.get(line.id) ?? 0);
+      if (room <= 0.005) {
+        cursor += 1;
+        continue;
+      }
+      const take = Math.min(remaining, room);
+      filled.set(line.id, money((filled.get(line.id) ?? 0) + take));
+      remaining = money(remaining - take);
+      if (take >= room - 0.005) cursor += 1;
+    }
+    // every line is full and there is still money — real money, recorded, with
+    // a plan that no longer accounts for all of it
+    if (remaining > 0.005) unallocated = money(unallocated + remaining);
+  }
+
+  return { filled, unallocated };
+}
+
+export interface PaymentEffect {
+  /** Instalments this amount settles outright. */
+  settles: string[];
+  /** The line it lands on but does not finish, and what would be left on it. */
+  partial: { label: string; remaining: number } | null;
+  /** Beyond what the plan still accounts for. */
+  excess: number;
+  /** Nothing is outstanding — the plan is already fully covered. */
+  alreadySettled: boolean;
+}
+
+/**
+ * What a payment of `amount` would do to the plan, without writing anything.
+ *
+ * Runs the *same* allocator the ledger runs, over the amounts already paid plus
+ * the new one, and reports the difference. Deriving it from the shared function
+ * rather than re-deriving the rule is the point: a preview that disagrees with
+ * what actually happens is worse than no preview, because it is believed.
+ */
+export function previewLandPayment(
+  lines: Array<AllocatableLine & { label: string; amount_paid: number }>,
+  amount: number,
+): PaymentEffect {
+  const paidAlready = lines.map((l) => Number(l.amount_paid) || 0);
+  const before = allocateOldestFirst(lines, paidAlready);
+  const after = allocateOldestFirst(lines, [...paidAlready, Number(amount) || 0]);
+
+  const settles: string[] = [];
+  let partial: PaymentEffect['partial'] = null;
+
+  for (const line of lines) {
+    const wasFull = (before.filled.get(line.id) ?? 0) >= line.amount_due - 0.005;
+    const nowFilled = after.filled.get(line.id) ?? 0;
+    const nowFull = nowFilled >= line.amount_due - 0.005;
+
+    if (!wasFull && nowFull) settles.push(line.label);
+    else if (!nowFull && nowFilled > (before.filled.get(line.id) ?? 0) + 0.005) {
+      partial = { label: line.label, remaining: money(line.amount_due - nowFilled) };
+    }
+  }
+
+  return {
+    settles,
+    partial,
+    excess: money(after.unallocated - before.unallocated),
+    alreadySettled: lines.every((l) => (before.filled.get(l.id) ?? 0) >= l.amount_due - 0.005),
+  };
+}
