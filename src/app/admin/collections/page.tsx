@@ -18,9 +18,11 @@ import { Card } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SelectInput, TextInput } from '@/components/ui/Field';
+import { ExportCsvButton } from '@/components/ui/ExportCsvButton';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { INSTALLMENT_STATUS_META, daysOverdue } from '@/lib/domain/finance';
 import type { CollectionRow } from '@/lib/repositories';
+import type { CsvColumn } from '@/lib/utils/csv';
 import { collectionRepository, projectRepository } from '@/lib/repositories';
 import { formatBdt, formatDate, formatPhone, todayLocal } from '@/lib/utils/format';
 import { RecordPaymentModal } from '@/components/admin/bookings/RecordPaymentModal';
@@ -35,6 +37,27 @@ type StatusFilter = 'all' | 'pending' | 'partially_paid' | 'paid' | 'overdue';
  * repository: chasing an instalment on a booking that no longer exists is the
  * mistake this list is here to prevent.
  */
+/*
+ * The export carries the ids and dates a spreadsheet needs to be reconciled
+ * against the system afterwards — `formatBdt` output would arrive in Excel as
+ * text reading "BDT 1,500,000" and refuse to be summed, so amounts go out as
+ * plain numbers and dates as ISO, which every spreadsheet sorts correctly.
+ */
+const COLLECTION_CSV_COLUMNS: CsvColumn<CollectionRow>[] = [
+  { header: 'Booking', value: (r) => r.booking.code },
+  { header: 'Customer', value: (r) => r.customer?.name ?? '' },
+  { header: 'Phone', value: (r) => r.customer?.phone ?? '' },
+  { header: 'Project', value: (r) => r.project?.name ?? '' },
+  { header: 'Unit', value: (r) => r.unit?.code ?? '' },
+  { header: 'Instalment no', value: (r) => r.installment.installment_no },
+  { header: 'Instalment', value: (r) => r.installment.label },
+  { header: 'Due date', value: (r) => r.installment.due_date ?? '' },
+  { header: 'Amount due', value: (r) => r.installment.amount_due },
+  { header: 'Amount paid', value: (r) => r.installment.amount_paid },
+  { header: 'Outstanding', value: (r) => r.outstanding },
+  { header: 'Status', value: (r) => r.status },
+];
+
 function CollectionsPage() {
   const params = useSearchParams();
   const initialStatus = params.get('status');
@@ -232,6 +255,13 @@ function CollectionsPage() {
       <PageHeader
         title="Collections"
         subtitle="What every buyer owes and when — overdue first, so the list reads as a worklist."
+        action={
+          <ExportCsvButton
+            rows={rows ?? []}
+            columns={COLLECTION_CSV_COLUMNS}
+            filenamePrefix="collections"
+          />
+        }
       />
 
       {summary && summary.overdue_count > 0 && (
@@ -445,6 +475,7 @@ function CollectionsPage() {
 }
 
 /** The finance dashboard links in with ?status= and ?project=. */
+
 export default function Page() {
   return (
     <Suspense fallback={<p className="text-sm text-ink-muted">Loading…</p>}>

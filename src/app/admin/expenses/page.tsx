@@ -12,11 +12,13 @@ import { Card } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Field, SelectInput, TextInput } from '@/components/ui/Field';
+import { ExportCsvButton } from '@/components/ui/ExportCsvButton';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { COST_CATEGORIES, type CostCategory } from '@/lib/db/types';
 import { COST_CATEGORY_META } from '@/lib/domain/finance';
 import { SUPPLIER_PAYMENT_METHOD_META } from '@/lib/domain/procurement';
 import type { ExpenseWithRelations } from '@/lib/repositories';
+import type { CsvColumn } from '@/lib/utils/csv';
 import { expenseRepository, projectRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate } from '@/lib/utils/format';
@@ -31,6 +33,22 @@ import { formatBdt, formatDate } from '@/lib/utils/format';
  * module and are added to this at roll-up time (8.3), so nothing is counted
  * twice.
  */
+/* Amounts and dates go out raw, for the reason given on the collections
+ * export: a spreadsheet cannot sum "BDT 1,500,000". */
+const EXPENSE_CSV_COLUMNS: CsvColumn<ExpenseWithRelations>[] = [
+  { header: 'Code', value: (r) => r.code },
+  { header: 'Date', value: (r) => r.expense_date },
+  { header: 'Category', value: (r) => COST_CATEGORY_META[r.cost_category].label },
+  { header: 'Reason', value: (r) => r.cost_reason },
+  { header: 'Project', value: (r) => r.project?.name ?? '' },
+  { header: 'Land', value: (r) => r.land?.name ?? '' },
+  { header: 'Paid to', value: (r) => r.paid_to },
+  { header: 'Method', value: (r) => SUPPLIER_PAYMENT_METHOD_META[r.payment_method] },
+  { header: 'Reference', value: (r) => r.reference_no ?? '' },
+  { header: 'Paid by', value: (r) => r.paid_by_name ?? '' },
+  { header: 'Amount', value: (r) => r.amount },
+];
+
 function ExpensesPage() {
   const params = useSearchParams();
 
@@ -177,9 +195,16 @@ function ExpensesPage() {
         title="Expenses"
         subtitle="Every cost the company carries — land, contractors, marketing, admin, and the one-offs nothing else covers."
         action={
-          <Button onClick={() => setModalOpen(true)}>
-            <Plus className="size-4" /> Record Cost
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <ExportCsvButton
+              rows={rows}
+              columns={EXPENSE_CSV_COLUMNS}
+              filenamePrefix="expenses"
+            />
+            <Button onClick={() => setModalOpen(true)}>
+              <Plus className="size-4" /> Record Cost
+            </Button>
+          </div>
         }
       />
 

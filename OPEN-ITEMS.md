@@ -3,7 +3,8 @@
 Known-open work that is **not** a blocker for what is already shipped. Add to
 this as modules land; delete an entry when it is done.
 
-Last reviewed: 2026-09-04, after the client review batches F1–F4 (Section 0b)
+Last reviewed: 2026-09-04, after Tier 3.6 — printed documents (Section 0d),
+the client review batches F1–F4 (Section 0b)
 and the Tier 2 remediation batches 2A–2E from
 `REMEDIATION-PLAN.md` (see Section 0 below, which also covers Tier 1). The
 full defect list is in `ANALYSIS-REPORT_2026-09-02.md`.
@@ -100,11 +101,9 @@ that money moves through the platform: `land_status_history`,
 pipelines, but nothing records who edited a price, retired a master-data option
 or changed somebody's role.
 
-### 1.12 Printed documents are promised in copy, not built
-Company Settings now says the booking form, money receipt and supplier voucher
-are **not built yet** and explains why the fields are still worth filling in.
-That is honest, but it is honest about a gap: Tier 3.6 builds the documents,
-and when it does this copy should go back to the present tense.
+### 1.12 Printed documents — **closed** by Tier 3.6, see Section 0d
+The number is kept rather than reused, because Sections 0a and 0b refer to
+1.12 by number and renumbering the list would silently repoint them.
 
 ### 1.13 `sold` and `handed_over` demo units still have no booking behind them
 Tier 2 put real bookings behind Tower A's `booked` and `reserved` flats, so
@@ -138,6 +137,61 @@ That is the land payment schedule (Tier 3.4, which needs no schema change
 because `payment_schedules.entity_type` is already there — see 1.8). Until it
 lands, the page says explicitly that no instalment plan is recorded, rather
 than implying the balance is on time.
+
+---
+
+## 0d. Tier 3.6 — printed documents — done 2026-09-04 (batches A–D)
+
+No schema change and no Dexie version block: every field the three documents
+print was already stored. Entirely additive — there was no print code and no
+CSV code anywhere in the app before this. `tsc` and `eslint` clean after each
+batch; all three documents and all three register pages measure 375/375 with
+no horizontal scroll.
+
+**A — the layer underneath.** `lib/domain/document.ts` spells an amount in
+words in crore/lakh (`amountInWords`), checked against eight cases plus a
+control proving the comparison can fail. `lib/utils/csv.ts` quotes anything
+that would change the file's shape and prefixes a quote to a cell starting
+`=`, `+`, `-` or `@`, which Excel would otherwise evaluate as a formula; the
+file carries a UTF-8 BOM (verified as bytes `EF BB BF`) so Bangla names do not
+arrive as mojibake. `lib/repositories/print.repository.ts` does every read, so
+the document pages stay off Dexie.
+
+**The shell steps aside on a `/print` route** rather than hiding itself in
+`@media print`. Suppressing the sidebar in print CSS still leaves the shell's
+flex column and padding shaping the sheet. `MockSessionProvider` and
+`AccessGate` deliberately stay: a document is a URL, and a pasted URL must
+still obey §9.6. Checked in both directions — `site_manager` is refused both
+the receipt and the voucher, `accounts` is admitted to the receipt.
+
+**B — money receipt** at `/admin/collections/receipt/[paymentId]/print`,
+reached from the booking's Payments tab. **C — booking form** at
+`/admin/bookings/[id]/print` and **supplier voucher** at
+`/admin/supplier-vouchers/[id]/print`, the latter reached from the register
+(and repeated on the mobile card, since its column is not rendered at 375 px).
+All three were reconciled against the seeded rows rather than read off the
+screen.
+
+**D — CSV export** on collections, expenses and the voucher register. It
+exports the **filtered set, not the visible page** — the button says so and
+carries the row count, because at a page size of 12 or 25 the difference is
+easy to be wrong about silently. Verified as capable of failing: filtering the
+register to one supplier took the export from 9 rows to 3. Amounts and dates
+go out raw (numbers, ISO dates), not through `formatBdt` — a spreadsheet
+cannot sum a cell reading "BDT 1,500,000".
+
+**1.12 is closed.** Company Settings is back in the present tense: the
+documents it describes now exist.
+
+**Two things worth knowing:**
+
+- The words on a receipt read "Taka Fifteen Lakh Only" while the figure beside
+  them reads `BDT 1,500,000`. That is the open `formatBdt` grouping decision in
+  §0b showing up on paper. Raised and deliberately left alone rather than
+  changed in passing — see the Decision Log.
+- An unfilled Settings field leaves **no line** on the letterhead rather than a
+  blank one. A gap where the trade licence should be reads as a printing fault,
+  not as missing data.
 
 ---
 

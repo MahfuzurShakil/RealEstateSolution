@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SelectInput, TextInput } from '@/components/ui/Field';
+import { ExportCsvButton } from '@/components/ui/ExportCsvButton';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SUPPLIER_PAYMENT_METHODS } from '@/lib/db/types';
 import { SUPPLIER_PAYMENT_METHOD_META } from '@/lib/domain/procurement';
@@ -19,6 +20,7 @@ import {
   supplierRepository,
   supplierVoucherRepository,
 } from '@/lib/repositories';
+import type { CsvColumn } from '@/lib/utils/csv';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
 /**
@@ -28,6 +30,20 @@ import { formatBdt, formatDate } from '@/lib/utils/format';
  * project has to come off the order for the Section 7.11 cost chain to hold,
  * so there is deliberately no "New voucher" button on this page.
  */
+/* A voucher with no project is a central-store purchase, so the column says
+ * so rather than leaving a blank cell that reads as missing data. */
+const VOUCHER_CSV_COLUMNS: CsvColumn<SupplierVoucherWithRelations>[] = [
+  { header: 'Voucher', value: (r) => r.code },
+  { header: 'Date', value: (r) => r.payment_date },
+  { header: 'Supplier', value: (r) => r.supplier?.name ?? '' },
+  { header: 'Against order', value: (r) => r.order?.code ?? '' },
+  { header: 'Booked to', value: (r) => r.project?.name ?? 'Central stock' },
+  { header: 'Method', value: (r) => SUPPLIER_PAYMENT_METHOD_META[r.payment_method] },
+  { header: 'Reference', value: (r) => r.reference_no ?? '' },
+  { header: 'Paid by', value: (r) => r.paid_by_name ?? '' },
+  { header: 'Amount', value: (r) => r.amount },
+];
+
 export default function SupplierVouchersPage() {
   const [search, setSearch] = useState('');
   const [supplierId, setSupplierId] = useState('');
@@ -168,6 +184,13 @@ export default function SupplierVouchersPage() {
       <PageHeader
         title="Supplier Vouchers"
         subtitle="Every payment made to a supplier, and which order and project it belongs to."
+        action={
+          <ExportCsvButton
+            rows={rows}
+            columns={VOUCHER_CSV_COLUMNS}
+            filenamePrefix="supplier-vouchers"
+          />
+        }
       />
 
       <Card>
