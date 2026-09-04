@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, Building2, Pencil, Trash2, Undo2, UserRound } from 'lucide-react';
+import { ArrowLeft, Building2, Pencil, Printer, Trash2, Undo2, UserRound } from 'lucide-react';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { BookingStatusCard } from '@/components/admin/bookings/BookingStatusCard';
 import { InstallmentSchedulePanel } from '@/components/admin/finance/InstallmentSchedulePanel';
@@ -92,6 +92,11 @@ export default function BookingDetailPage() {
         }`}
         action={
           <div className="flex gap-2">
+            <Link href={`/admin/bookings/${booking.id}/print`} target="_blank" rel="noopener">
+              <Button variant="outline">
+                <Printer className="size-4" /> Booking form
+              </Button>
+            </Link>
             <Link href={`/admin/bookings/${booking.id}/edit`}>
               <Button variant="outline">
                 <Pencil className="size-4" /> Edit

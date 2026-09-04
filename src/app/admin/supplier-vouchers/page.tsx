@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Building2, Receipt, Search, Warehouse } from 'lucide-react';
+import { Building2, Printer, Receipt, Search, Warehouse } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -147,6 +147,20 @@ export default function SupplierVouchersPage() {
       cell: (row) => <span className="font-medium text-ink">{formatBdt(row.amount)}</span>,
       sortValue: (row) => row.amount,
     },
+    {
+      /* The voucher is the piece of paper the payment is filed against, so it
+         prints from the register rather than only from the order it pays. */
+      key: 'print',
+      header: '',
+      align: 'right',
+      cell: (row) => (
+        <Link href={`/admin/supplier-vouchers/${row.id}/print`} target="_blank" rel="noopener">
+          <Button size="sm" variant="ghost" aria-label={`Print voucher ${row.code}`}>
+            <Printer className="size-4" />
+          </Button>
+        </Link>
+      ),
+    },
   ];
 
   return (
@@ -266,11 +280,26 @@ export default function SupplierVouchersPage() {
                   )}
                 </div>
 
-                <p className="truncate text-xs text-ink-muted">
-                  {SUPPLIER_PAYMENT_METHOD_META[row.payment_method]}
-                  {row.reference_no ? ` · ${row.reference_no}` : ''}
-                  {row.paid_by_name ? ` · paid by ${row.paid_by_name}` : ''}
-                </p>
+                <div className="flex items-end justify-between gap-3">
+                  <p className="min-w-0 truncate text-xs text-ink-muted">
+                    {SUPPLIER_PAYMENT_METHOD_META[row.payment_method]}
+                    {row.reference_no ? ` · ${row.reference_no}` : ''}
+                    {row.paid_by_name ? ` · paid by ${row.paid_by_name}` : ''}
+                  </p>
+                  {/* The card is what the register looks like on a phone, so
+                      the print action has to be here too — the column it lives
+                      in on the desktop table is not rendered at this width. */}
+                  <Link
+                    href={`/admin/supplier-vouchers/${row.id}/print`}
+                    target="_blank"
+                    rel="noopener"
+                    className="shrink-0"
+                  >
+                    <Button size="sm" variant="ghost" aria-label={`Print voucher ${row.code}`}>
+                      <Printer className="size-4" />
+                    </Button>
+                  </Link>
+                </div>
               </div>
             )}
             emptyState={
