@@ -162,6 +162,11 @@ Worth deleting or renaming the old folder to stop the confusion recurring.
 
 ### End-to-end integrity pass
 
+Re-run in full after the fixes below; every check listed passes on freshly
+seeded data. A lesson worth keeping: a check that reports "0 failures" is
+worth confirming it can fail at all — one here passed for months of reading
+because both sides of the comparison were `undefined`.
+
 Ran against a freshly seeded demo, reconciling every cross-module link
 directly against IndexedDB rather than trusting the screens:
 
@@ -177,9 +182,15 @@ directly against IndexedDB rather than trusting the screens:
   receipts excluding cancelled bookings, exactly; the collections queue's
   "allocated to instalments" (13,000,000) is lower by the money taken on
   bookings with no schedule yet — the F-2 distinction, holding.
-- **Procurement:** PO line `received_quantity` equals the sum of *passed* GRN
-  lines on all 22 lines — failed and pending quality checks correctly
-  excluded from both stock and the received figure.
+- **Procurement:** the first run of this check was **vacuous** — it compared
+  two misspelled field names, so both sides were zero and it passed without
+  testing anything. Re-run against the real fields (`quantity_ordered` /
+  `quantity_received`) it failed on 2 of 22 lines and exposed a money bug:
+  the order line counted delivered quantity regardless of the quality check,
+  while stock counted only what passed. PO-2026-008 read "Received" in full
+  with all 150 kg of GI wire failed and nothing in stock, and the payable
+  claimed BDT 19,200 for rejected material. Fixed — the line now counts
+  accepted quantity only, symmetric on GRN delete. All 22 lines reconcile.
 - **Stock ledger reconciles exactly:** every row's `quantity_available`
   equals passed receipts − issues ± transfers. No orphan movements, no
   negative stock.
