@@ -3,7 +3,8 @@
 Known-open work that is **not** a blocker for what is already shipped. Add to
 this as modules land; delete an entry when it is done.
 
-Last reviewed: 2026-09-04, after Tier 3.4 — land payment schedule (Section 0f),
+Last reviewed: 2026-09-05, after the land expense ↔ instalment feedback
+(Section 0g); before that 2026-09-04, after Tier 3.4 — land payment schedule (Section 0f),
 Tier 3.3 — cost categories (Section 0e) and
 Tier 3.6 — printed documents (Section 0d),
 the client review batches F1–F4 (Section 0b)
@@ -133,6 +134,56 @@ The other side — what was agreed to be paid, and when — is now the Payment p
 tab. `landPaymentSummary` still answers "how much has gone out"; the plan
 answers "how much should have, by now", and the two are computed by different
 code paths from the same ledger rows, so they cross-check each other.
+
+---
+
+## 0g. Land expense ↔ instalment connection — 2026-09-05 (client feedback)
+
+Three points raised after 3.4 landed. One was a data bug, not a display gap.
+
+**The Land picker is now disabled unless the category is land money, and the
+plot is cleared when the category moves away.** `land_id` was never cleared on
+a category change, so picking a plot under Land Payment and then switching to
+Marketing saved a marketing cost carrying a `land_id`. `landPaymentSummary`
+counts every expense against a land, so it turned up in that plot's "fees and
+extras" — money the land never cost, and nothing on screen looked wrong. The
+rule is enforced in `createExpense`/`updateExpense` as well as on the form.
+Land fees are not stranded by it: `land_extra_cost` is the seeded category for
+registration, mutation and legal fees, and it keeps the picker.
+
+This reverses the call recorded in 0e. The objection there — that a user-added
+category like "Legal & Registration" belongs in the land's fees bucket — did
+not survive checking: `land_extra_cost` already **is** that bucket.
+
+**The expense form is no longer blind to the plan.** With Land Payment and a
+plot selected it shows the oldest unsettled instalment, how late it is, what is
+outstanding on it, and the plan total still owed — plus what the amount being
+typed would do. `landDueSummary` deliberately reports the oldest *unsettled*
+line rather than `summariseSchedule.next_due`, which skips overdue lines: the
+right answer on a dashboard, the wrong one at the counter, where the money
+lands on the overdue line.
+
+**`allocateOldestFirst` is now the single implementation of the waterfall**,
+shared by `recalculateForLand` (which writes) and `previewLandPayment` (which
+predicts). Two implementations of one rule drift, and the one that drifts is
+the preview — the half somebody makes the decision on.
+
+**Underpayment, the case the client asked about, keeps its behaviour and now
+says so on screen.** Pay 1,500,000 against a 2,000,000 instalment and the
+shortfall stays on *that* instalment, going overdue on its own date, rather
+than moving to the end of the plan. Arrears read as arrears and the plan still
+describes what was agreed. Renegotiating a shortfall onto a later instalment is
+the existing per-line edit, which is the right place for it: a change to the
+agreement, made deliberately.
+
+**Overpayment warns and saves anyway.** The money left the account; refusing to
+record it would make the ledger wrong to protect a plan that is merely out of
+date. The excess shows as unallocated on the plan tab, as before.
+
+Verified end to end: an 800,000 part payment produced exactly the 1,200,000
+outstanding the preview promised, and deleting it rolled back to 70,000,000.
+The panel sits above the fields — the modal body scrolls, and below them it sat
+off-screen behind the very field it exists to inform.
 
 ---
 
