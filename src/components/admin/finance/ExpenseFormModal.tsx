@@ -8,17 +8,18 @@ import { Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import {
-  COST_CATEGORIES,
+  LAND_LINKED_COST_CATEGORIES,
   SUPPLIER_PAYMENT_METHODS,
   type CostCategory,
   type Expense,
   type SupplierPaymentMethod,
 } from '@/lib/db/types';
-import { COST_CATEGORY_META } from '@/lib/domain/finance';
+import { costCategoryLabel } from '@/lib/domain/finance';
 import { SUPPLIER_PAYMENT_METHOD_META } from '@/lib/domain/procurement';
 import {
   expenseRepository,
   landRepository,
+  lookupRepository,
   projectRepository,
   userRepository,
 } from '@/lib/repositories';
@@ -92,9 +93,36 @@ function ExpenseDialog({
     [],
   );
 
+  const categories = useLiveQuery(() => lookupRepository.costCategories(), []);
+  const categoryOptions = categories ?? [];
+  /*
+   * The category on the row being edited, when it is no longer in the active
+   * list. Without this the select would fall back to its first option and a
+   * quiet re-save would move the cost into a category nobody chose.
+   */
+  const retiredCategory =
+    categoryOptions.length > 0 &&
+    form.cost_category &&
+    !categoryOptions.some((c) => (c.code ?? c.value) === form.cost_category)
+      ? form.cost_category
+      : null;
+
   const set = (key: keyof typeof form, value: string) => setForm((f) => ({ ...f, [key]: value }));
-  const isLandCost =
-    form.cost_category === 'land_payment' || form.cost_category === 'land_extra_cost';
+  /*
+   * Drives the Land field's *hint*, not whether it is shown — the picker is
+   * offered for every category and always has been. Kept that way deliberately
+   * through Tier 3.3: `landPaymentSummary` splits `land_payment` (money to the
+   * owner) from everything else booked against the land, and "everything else"
+   * is exactly where a user-added category like "Legal & Registration" belongs.
+   * Hiding the picker for categories the code does not know by name would make
+   * that bucket un-fillable by the categories Master Data exists to add.
+   *
+   * The two names below are still the ones that matter, because they are what
+   * `landPaymentSummary` keys on — which is why they are system options.
+   */
+  const isLandCost = (LAND_LINKED_COST_CATEGORIES as readonly string[]).includes(
+    form.cost_category,
+  );
 
   async function save() {
     const next: typeof errors = {};
@@ -153,11 +181,20 @@ function ExpenseDialog({
             value={form.cost_category}
             onChange={(e) => set('cost_category', e.target.value)}
           >
-            {COST_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {COST_CATEGORY_META[c].label}
+            {/* The list is Master Data now, not an ENUM (Tier 3.3). A cost
+                being edited under a category that has since been retired keeps
+                that category as an option, so re-saving the row cannot silently
+                move it into another one. */}
+            {categoryOptions.map((c) => (
+              <option key={c.id} value={c.code ?? c.value}>
+                {c.value}
               </option>
             ))}
+            {retiredCategory ? (
+              <option value={retiredCategory}>
+                {costCategoryLabel(retiredCategory, categoryOptions)} (retired)
+              </option>
+            ) : null}
           </SelectInput>
         </Field>
 

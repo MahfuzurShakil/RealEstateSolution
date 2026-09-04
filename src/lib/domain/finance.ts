@@ -1,6 +1,5 @@
 import type { BadgeTone } from '@/components/ui/Badge';
 import type {
-  CostCategory,
   InstallmentStatus,
   PaymentInstallment,
   ScheduleType,

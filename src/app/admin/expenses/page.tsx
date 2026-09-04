@@ -14,12 +14,12 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Field, SelectInput, TextInput } from '@/components/ui/Field';
 import { ExportCsvButton } from '@/components/ui/ExportCsvButton';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { COST_CATEGORIES, type CostCategory } from '@/lib/db/types';
-import { COST_CATEGORY_META } from '@/lib/domain/finance';
+import type { CostCategory } from '@/lib/db/types';
+import { costCategoryLabel, costCategoryTone } from '@/lib/domain/finance';
 import { SUPPLIER_PAYMENT_METHOD_META } from '@/lib/domain/procurement';
 import type { ExpenseWithRelations } from '@/lib/repositories';
 import type { CsvColumn } from '@/lib/utils/csv';
-import { expenseRepository, projectRepository } from '@/lib/repositories';
+import { expenseRepository, lookupRepository, projectRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
@@ -35,10 +35,12 @@ import { formatBdt, formatDate } from '@/lib/utils/format';
  */
 /* Amounts and dates go out raw, for the reason given on the collections
  * export: a spreadsheet cannot sum "BDT 1,500,000". */
-const EXPENSE_CSV_COLUMNS: CsvColumn<ExpenseWithRelations>[] = [
+const expenseCsvColumns = (
+  categoryOptions: { code?: string | null; value: string }[],
+): CsvColumn<ExpenseWithRelations>[] => [
   { header: 'Code', value: (r) => r.code },
   { header: 'Date', value: (r) => r.expense_date },
-  { header: 'Category', value: (r) => COST_CATEGORY_META[r.cost_category].label },
+  { header: 'Category', value: (r) => costCategoryLabel(r.cost_category, categoryOptions) },
   { header: 'Reason', value: (r) => r.cost_reason },
   { header: 'Project', value: (r) => r.project?.name ?? '' },
   { header: 'Land', value: (r) => r.land?.name ?? '' },
@@ -80,6 +82,15 @@ function ExpensesPage() {
   );
   const total = useLiveQuery(() => expenseRepository.count(), []);
   const projects = useLiveQuery(() => projectRepository.list(), []);
+  /*
+   * The category list is data now (Tier 3.3), so the dropdown, the badges and
+   * the breakdown all read it live — rename a category in Master Data and this
+   * screen follows without a reload.
+   */
+  const categories = useLiveQuery(() => lookupRepository.costCategories(), []);
+  const categoryOptions = useMemo(() => categories ?? [], [categories]);
+  // The export names the category by its current label, like the table above it
+  const csvColumns = useMemo(() => expenseCsvColumns(categoryOptions), [categoryOptions]);
 
   const rows = useMemo(() => expenses ?? [], [expenses]);
   const sum = useMemo(() => rows.reduce((acc, r) => acc + r.amount, 0), [rows]);
@@ -140,8 +151,8 @@ function ExpensesPage() {
       key: 'cost_category',
       header: 'Category',
       cell: (row) => (
-        <Badge tone={COST_CATEGORY_META[row.cost_category].tone}>
-          {COST_CATEGORY_META[row.cost_category].label}
+        <Badge tone={costCategoryTone(row.cost_category)}>
+          {costCategoryLabel(row.cost_category, categoryOptions)}
         </Badge>
       ),
       sortValue: (row) => row.cost_category,
@@ -198,7 +209,7 @@ function ExpensesPage() {
           <div className="flex flex-wrap gap-2">
             <ExportCsvButton
               rows={rows}
-              columns={EXPENSE_CSV_COLUMNS}
+              columns={csvColumns}
               filenamePrefix="expenses"
             />
             <Button onClick={() => setModalOpen(true)}>
@@ -242,16 +253,16 @@ function ExpensesPage() {
                   aria-pressed={category === key}
                   title={
                     category === key
-                      ? `Showing ${COST_CATEGORY_META[key].label} only — click to clear`
-                      : `Show ${COST_CATEGORY_META[key].label} only`
+                      ? `Showing ${costCategoryLabel(key, categoryOptions)} only — click to clear`
+                      : `Show ${costCategoryLabel(key, categoryOptions)} only`
                   }
                   className={cn(
                     'rounded-full transition-shadow',
                     category === key && 'ring-2 ring-admin-500 ring-offset-1',
                   )}
                 >
-                  <Badge tone={COST_CATEGORY_META[key].tone}>
-                    {COST_CATEGORY_META[key].label} · {formatBdt(value)}
+                  <Badge tone={costCategoryTone(key)}>
+                    {costCategoryLabel(key, categoryOptions)} · {formatBdt(value)}
                   </Badge>
                 </button>
               ))}
@@ -290,9 +301,9 @@ function ExpensesPage() {
               onChange={(e) => setCategory(e.target.value as CostCategory | 'all')}
             >
               <option value="all">All categories</option>
-              {COST_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {COST_CATEGORY_META[c].label}
+              {categoryOptions.map((c) => (
+                <option key={c.id} value={c.code ?? c.value}>
+                  {c.value}
                 </option>
               ))}
             </SelectInput>
@@ -366,8 +377,8 @@ function ExpensesPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <Badge tone={COST_CATEGORY_META[row.cost_category].tone}>
-                    {COST_CATEGORY_META[row.cost_category].label}
+                  <Badge tone={costCategoryTone(row.cost_category)}>
+                    {costCategoryLabel(row.cost_category, categoryOptions)}
                   </Badge>
                   {row.project ? (
                     <Badge tone="teal">{row.project.name}</Badge>
