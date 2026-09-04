@@ -154,7 +154,8 @@ possible. Rules are pure functions in `domain/project.ts`, facts come from
 `projectRepository.readiness`.
 
 **The two "not a function" TypeErrors were not from this codebase.** Both
-stack traces pointed at `..ealEstateSolution\.next\...` — a different,
+stack traces pointed at `..
+ealEstateSolution\.next\...` — a different,
 older project in a sibling folder (its own git history, port 3000, no
 `format.ts`, no `LandForm.tsx`). This project is `RealEstateSolution3` on
 port 3001. A clean `rm -rf .next && next build` compiles all 40+ routes.
