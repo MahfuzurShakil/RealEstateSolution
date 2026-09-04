@@ -149,7 +149,7 @@ function ExpenseDialog({
         notes: form.notes.trim() || null,
       };
       const saved = expense
-        ? ((await expenseRepository.update(expense.id, payload)) as Expense)
+        ? ((await expenseRepository.updateExpense(expense.id, payload, userId)) as Expense)
         : await expenseRepository.createExpense(payload, userId);
       onSaved(saved);
     } finally {

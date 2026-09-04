@@ -965,13 +965,28 @@ export const SUPPLIER_VOUCHER_DOCUMENT_TYPES = ['payment_receipt', 'cheque_copy'
  * today, kept because the scope names it: a contractor's running bill will
  * hang off the same table when the Contractor module lands.
  */
-export const SCHEDULE_ENTITY_TYPES = ['booking'] as const;
+/**
+ * `land` joined `booking` in Tier 3.4. The column and the
+ * `[entity_type+entity_id]` compound index were always there (Section 8.2);
+ * until then only `booking` was ever written, which is what OPEN-ITEMS 1.8
+ * recorded.
+ *
+ * A land schedule is what was **agreed with the owner**; the money against it
+ * comes from the expense ledger, not from `payments`. Everything that reads
+ * these tables therefore has to say which kind it means — a land instalment is
+ * not something the collections desk chases a buyer for.
+ */
+export const SCHEDULE_ENTITY_TYPES = ['booking', 'land'] as const;
 export type ScheduleEntityType = (typeof SCHEDULE_ENTITY_TYPES)[number];
 
 export interface PaymentSchedule extends BaseEntity {
   entity_type: ScheduleEntityType;
   entity_id: UUID;
-  /** snapshot of bookings.final_price when the schedule was generated */
+  /**
+   * Snapshot of the total when the schedule was generated —
+   * `bookings.final_price` for a booking, `lands.final_agreed_amount` for a
+   * land.
+   */
   total_amount: number;
 }
 

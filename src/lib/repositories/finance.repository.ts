@@ -25,9 +25,13 @@ import {
   type ProjectFinanceSummary,
   type ScheduleSummary,
 } from '../domain/finance';
+import {
+  planLandInstallments,
+  type LandPaymentTerms,
+} from '../domain/land-schedule';
 import { nextCode } from '../utils/id';
 import { todayLocal } from '../utils/format';
-import { BaseRepository, type NewRecord } from './base.repository';
+import { BaseRepository, type NewRecord, type UpdateRecord } from './base.repository';
 import { documentRepository } from './document.repository';
 import { paymentRepository } from './payment.repository';
 
@@ -55,6 +59,36 @@ export interface ScheduleWithInstallments extends PaymentSchedule {
    */
   stale_total: boolean;
   booking_total: number;
+}
+
+/** A land's agreed plan, read alongside what the ledger says has been paid. */
+export interface LandScheduleWithInstallments extends PaymentSchedule {
+  installments: PaymentInstallment[];
+  summary: ReturnType<typeof summariseSchedule>;
+  /** Land payments in the ledger that no line had room for — an overpayment. */
+  unallocated: number;
+  /** `lands.final_agreed_amount` as it stands now. */
+  agreed_total: number;
+  /** The agreed amount has moved since the plan was built. */
+  stale_total: boolean;
+}
+
+/**
+ * The expenses that count as money paid to the owner, oldest first.
+ *
+ * `land_payment` only — the same split `expenseRepository.landPaymentSummary`
+ * makes, and for the same reason: registration, mutation and legal fees are
+ * money spent *on* the land but not money paid *for* it, so they must not
+ * settle an instalment the owner is still waiting on.
+ */
+async function landPaymentExpenses(landId: string) {
+  const rows = await db.expenses.where('land_id').equals(landId).toArray();
+  return rows
+    .filter((e) => e.cost_category === 'land_payment')
+    .sort(
+      (a, b) =>
+        a.expense_date.localeCompare(b.expense_date) || a.created_at.localeCompare(b.created_at),
+    );
 }
 
 class PaymentScheduleRepository extends BaseRepository<PaymentSchedule> {
@@ -174,6 +208,112 @@ class PaymentScheduleRepository extends BaseRepository<PaymentSchedule> {
     };
   }
 
+  /* --- Land purchase schedules (Tier 3.4, Section 8.2) --- */
+
+  async forLand(landId: string): Promise<PaymentSchedule | undefined> {
+    const rows = await db.payment_schedules
+      .where('[entity_type+entity_id]')
+      .equals(['land', landId])
+      .toArray();
+    return rows[0];
+  }
+
+  /**
+   * Builds the agreed payment plan for a land purchase.
+   *
+   * A land needs its own generator rather than a reuse of `generateForBooking`:
+   * that one walks booking → unit → tower → the project's instalment template,
+   * none of which a plot has. The terms come from the form instead, because a
+   * plot is negotiated once with one owner in taka rather than in percentages
+   * of a price list.
+   *
+   * Idempotent for the same reason a booking's is: lines get re-dated by hand
+   * once the owner asks for a month's grace, and regenerating would throw that
+   * away silently.
+   */
+  async generateForLand(
+    landId: string,
+    terms: Omit<LandPaymentTerms, 'totalAmount'>,
+    createdBy: string | null = null,
+  ): Promise<PaymentSchedule | undefined> {
+    const existing = await this.forLand(landId);
+    if (existing) return existing;
+
+    const land = await db.lands.get(landId);
+    if (!land) return undefined;
+    // A joint venture pays the owner in units, not taka (Section 2.4), so there
+    // is no purchase price to schedule.
+    if (land.acquisition_type !== 'direct_purchase') return undefined;
+
+    const total = Number(land.final_agreed_amount) || 0;
+    if (!(total > 0)) return undefined;
+
+    const planned = planLandInstallments({ ...terms, totalAmount: total });
+    // terms that do not add up to the agreement produce no lines, and a
+    // schedule with no lines is worse than none at all
+    if (planned.length === 0) return undefined;
+
+    const schedule = await this.create(
+      { entity_type: 'land', entity_id: landId, total_amount: money(total) },
+      createdBy,
+    );
+
+    for (const line of planned) {
+      await paymentInstallmentRepository.create(
+        {
+          schedule_id: schedule.id,
+          installment_no: line.installment_no,
+          label: line.label,
+          due_date: line.due_date,
+          amount_due: line.amount_due,
+          amount_paid: 0,
+          status: 'pending',
+        },
+        createdBy,
+      );
+    }
+
+    // land payments already in the ledger find their place on the new plan
+    await recalculateForLand(landId);
+    return schedule;
+  }
+
+  /** `null` when this land has no agreed plan — distinct from a pending read. */
+  async withInstallmentsForLand(landId: string): Promise<LandScheduleWithInstallments | null> {
+    const schedule = await this.forLand(landId);
+    if (!schedule) return null;
+
+    const [installments, land, paidRows] = await Promise.all([
+      paymentInstallmentRepository.listForSchedule(schedule.id),
+      db.lands.get(landId),
+      landPaymentExpenses(landId),
+    ]);
+
+    const today = todayLocal();
+    const paid = money(paidRows.reduce((sum, e) => sum + (Number(e.amount) || 0), 0));
+    const allocated = money(installments.reduce((sum, i) => sum + (Number(i.amount_paid) || 0), 0));
+    const agreed = money(Number(land?.final_agreed_amount) || schedule.total_amount);
+
+    return {
+      ...schedule,
+      installments,
+      summary: summariseSchedule(installments, today),
+      unallocated: money(Math.max(0, paid - allocated)),
+      agreed_total: agreed,
+      stale_total: Math.abs(agreed - schedule.total_amount) > 0.009,
+    };
+  }
+
+  async removeForLand(landId: string): Promise<void> {
+    const schedule = await this.forLand(landId);
+    if (!schedule) return;
+    const lines = await paymentInstallmentRepository.listForSchedule(schedule.id);
+    await db.payment_installments.bulkDelete(lines.map((l) => l.id));
+    // the expenses stay untouched: the plan is what was agreed, and deleting it
+    // does not un-spend money that has already left the account
+    await this.remove(schedule.id);
+  }
+
   async removeForBooking(bookingId: string): Promise<void> {
     const schedule = await this.forBooking(bookingId);
     if (!schedule) return;
@@ -218,8 +358,19 @@ class PaymentInstallmentRepository extends BaseRepository<PaymentInstallment> {
       ...(changes.amount_due !== undefined ? { amount_due: money(changes.amount_due) } : {}),
     });
 
+    /*
+     * Which recalculation depends on what the schedule is for. Before Tier 3.4
+     * this called `recalculateForBooking` with whatever `entity_id` held, which
+     * was always a booking id. A land id passed to it would have found no
+     * booking schedule and returned quietly — harmless, and wrong in the way
+     * that only shows up much later.
+     */
     const schedule = await db.payment_schedules.get(line.schedule_id);
-    if (schedule) await recalculateForBooking(schedule.entity_id, createdBy);
+    if (schedule?.entity_type === 'booking') {
+      await recalculateForBooking(schedule.entity_id, createdBy);
+    } else if (schedule?.entity_type === 'land') {
+      await recalculateForLand(schedule.entity_id, createdBy);
+    }
     return updated;
   }
 }
@@ -359,8 +510,21 @@ class CollectionRepository {
     const unitById = new Map(units.map((u) => [u.id, u]));
     const towerById = new Map(towers.map((t) => [t.id, t]));
     const projectById = new Map(projects.map((p) => [p.id, p]));
+    /*
+     * Buyer schedules only (Tier 3.4). Since land schedules exist, this table
+     * holds two kinds of instalment and this queue means exactly one of them:
+     * what a *buyer* still owes us. A land instalment is money we owe an owner,
+     * and it has no customer to chase.
+     *
+     * Filtering on `entity_type` rather than relying on the booking join below
+     * to drop them. The join does drop them today, but only as a side effect of
+     * a land id never matching a booking id — an invariant nothing states and
+     * nothing protects.
+     */
     const bookingByScheduleId = new Map(
-      schedules.map((s) => [s.id, bookingById.get(s.entity_id)]),
+      schedules
+        .filter((s) => s.entity_type === 'booking')
+        .map((s) => [s.id, bookingById.get(s.entity_id)]),
     );
 
     let rows: CollectionRow[] = [];
@@ -460,6 +624,70 @@ class CollectionRepository {
       overdue_count: overdueCount,
       due_this_month: money(dueThisMonth),
     };
+  }
+}
+
+/**
+ * Spreads what has actually been paid to the owner across the agreed plan,
+ * oldest instalment first.
+ *
+ * The same waterfall as `recalculateForBooking`, from the other side of the
+ * business. The difference is where the money comes from: a buyer pays us and
+ * it lands in `payments`, whereas we pay an owner and it leaves through the
+ * expense ledger. So the source rows are `expenses` with this `land_id` and
+ * category `land_payment`.
+ *
+ * `amount_paid` stays derived, never authoritative — recomputed from the ledger
+ * every time — so the plan and the ledger cannot drift apart. That is the whole
+ * argument against letting Accounts tick lines by hand: two numbers for one
+ * fact disagree the first time somebody records the payment and forgets the
+ * tick.
+ *
+ * Unlike the booking side nothing is written back to the source row. A payment
+ * carries `installment_id` so a receipt can say which instalment it was for;
+ * an expense has no such column, needs none, and adding one would be a schema
+ * change for a line of provenance nobody prints.
+ */
+export async function recalculateForLand(
+  landId: string,
+  createdBy: string | null = null,
+): Promise<void> {
+  void createdBy;
+  const schedule = await paymentScheduleRepository.forLand(landId);
+  if (!schedule) return;
+
+  const installments = await paymentInstallmentRepository.listForSchedule(schedule.id);
+  const paidRows = await landPaymentExpenses(landId);
+
+  const filled = new Map<string, number>(installments.map((line) => [line.id, 0]));
+
+  let cursor = 0;
+  for (const expense of paidRows) {
+    let remaining = Number(expense.amount) || 0;
+    while (remaining > 0.005 && cursor < installments.length) {
+      const line = installments[cursor];
+      const room = (Number(line.amount_due) || 0) - (filled.get(line.id) ?? 0);
+      if (room <= 0.005) {
+        cursor += 1;
+        continue;
+      }
+      const take = Math.min(remaining, room);
+      filled.set(line.id, money((filled.get(line.id) ?? 0) + take));
+      remaining = money(remaining - take);
+      if (take >= room - 0.005) cursor += 1;
+    }
+  }
+
+  for (const line of installments) {
+    const paid = money(filled.get(line.id) ?? 0);
+    const status = settledStatus(line.amount_due, paid);
+    if (Math.abs(paid - (Number(line.amount_paid) || 0)) > 0.005 || status !== line.status) {
+      await db.payment_installments.update(line.id, {
+        amount_paid: paid,
+        status,
+        updated_at: new Date().toISOString(),
+      });
+    }
   }
 }
 
@@ -699,10 +927,37 @@ class ExpenseRepository extends BaseRepository<Expense> {
     if (!input.cost_reason?.trim()) throw new Error('Say what the cost was for.');
 
     const code = input.code?.trim() ? input.code : await this.generateCode();
-    return this.create(
+    const created = await this.create(
       { ...input, code, amount, cost_reason: input.cost_reason.trim(), paid_to: input.paid_to.trim() },
       createdBy,
     );
+    // a payment to the owner settles the next instalment on the agreed plan
+    await recalculateForLand(created.land_id ?? '');
+    return created;
+  }
+
+  /**
+   * Edits a cost and re-settles whatever plan it affects (Tier 3.4).
+   *
+   * Both sides have to be recalculated, because an edit can *move* money: a
+   * cost re-pointed from one land to another, or switched out of
+   * `land_payment` into a fee, has to stop settling the plan it used to settle
+   * as well as start settling the one it now does. Doing only the new side
+   * would leave the old land showing an instalment paid by a cost that is no
+   * longer against it.
+   */
+  async updateExpense(
+    id: string,
+    changes: UpdateRecord<Expense>,
+    createdBy: string | null = null,
+  ): Promise<Expense | undefined> {
+    const before = await this.getById(id);
+    const updated = await this.update(id, changes);
+    const affected = new Set(
+      [before?.land_id, updated?.land_id].filter((v): v is string => Boolean(v)),
+    );
+    for (const landId of affected) await recalculateForLand(landId, createdBy);
+    return updated;
   }
 
   /**
@@ -805,8 +1060,11 @@ class ExpenseRepository extends BaseRepository<Expense> {
   }
 
   async removeCascade(id: string): Promise<void> {
+    const before = await this.getById(id);
     await documentRepository.removeForEntity('expense', id);
     await this.remove(id);
+    // deleting the payment un-settles the instalment it was covering
+    if (before?.land_id) await recalculateForLand(before.land_id);
   }
 }
 
@@ -859,7 +1117,10 @@ class FinanceDashboardRepository {
       unitById.get(booking.unit_id)?.for_sale_by === 'company';
 
     const bookingById = new Map(bookings.map((b) => [b.id, b]));
-    const scheduleBooking = new Map(schedules.map((s) => [s.id, s.entity_id]));
+    // buyer schedules only — see the note in `collectionRepository.list`
+    const scheduleBooking = new Map(
+      schedules.filter((s) => s.entity_type === 'booking').map((s) => [s.id, s.entity_id]),
+    );
     const installmentsBySchedule = new Map<string, typeof installments>();
     for (const line of installments) {
       const list = installmentsBySchedule.get(line.schedule_id);
