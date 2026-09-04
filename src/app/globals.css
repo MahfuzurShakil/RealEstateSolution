@@ -50,3 +50,58 @@ body {
   font: inherit;
   z-index: 0;
 }
+
+/* ------------------------------------------------------------------ *
+ * Printed documents (Tier 3.6)
+ *
+ * The three documents render on their own routes ending in `/print`, outside
+ * the admin sidebar and topbar, so `window.print()` gets a clean page instead
+ * of a screenshot of the application. On screen the sheet is a paper-like card
+ * on the canvas; on paper it fills the page and the toolbar disappears.
+ * ------------------------------------------------------------------ */
+
+.print-sheet {
+  width: 100%;
+  max-width: 210mm;        /* A4 */
+  margin: 0 auto;
+  background: #ffffff;
+  color: #14202e;
+  padding: 12mm 10mm;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  body {
+    background: #ffffff;
+  }
+
+  /* The print/back buttons are for the screen only — they must never be
+     rendered onto the sheet they trigger. */
+  .print-hide {
+    display: none !important;
+  }
+
+  .print-sheet {
+    max-width: none;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  /* A receipt or voucher that breaks across two pages is unusable as a
+     document; a booking form legitimately runs long, so only its table rows
+     are protected. */
+  .print-nobreak {
+    break-inside: avoid;
+  }
+
+  /* Tailwind's default table borders survive printing; background fills often
+     do not, so any tone that carries meaning is drawn as a border instead. */
+  .print-sheet * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

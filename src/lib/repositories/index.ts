@@ -7,6 +7,12 @@ export {
 } from './lookup.repository';
 export { companySettingsRepository } from './settings.repository';
 export {
+  printRepository,
+  type ReceiptPrintData,
+  type BookingFormPrintData,
+  type VoucherPrintData,
+} from './print.repository';
+export {
   landRepository,
   landownerRepository,
   landOwnerMappingRepository,
