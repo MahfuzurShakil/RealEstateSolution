@@ -241,6 +241,90 @@ or analytical rework (screens that must be rebuilt once the feature exists).
 Everything else from the future-scope section stays deferred, and §4.7 says
 so explicitly.
 
+> **Re-validated 2026-09-04 against the code as it now stands.** This section
+> was written before Tier 1, and roughly twenty-five commits have landed since
+> (Tier 1, Tier 2, the F1–F4 client feedback, the project pipeline guard, the
+> rejected-delivery fix). The direction still holds and the Dexie numbering is
+> still right — the database is on **v12**, so the next block really is v13.
+> Two things did not survive contact with the current code: one claim in §3.4
+> is wrong, and one breakage nobody had looked for is real. Both are recorded
+> in §4.0 below, which should be read before starting any of these.
+
+### 4.0 What re-validation found
+
+Per-item risk against the code as it is today. 🟢 nothing existing is
+disturbed · 🟡 existing code must be adjusted as part of the work · 🔴 a
+specific thing breaks unless it is handled first.
+
+| # | Schema | Risk | What it touches that already exists |
+|---|---|---|---|
+| 3.6 Printed documents | none | 🟢 | Nothing. There is no print code in the app at all — not one `window.print` or `@media print`. Entirely additive. |
+| 3.2 Project budget / BOQ | v13 | 🟢 | New table read by new screens. |
+| 3.3 Cost category → lookups | none | 🟡 | Three places key off the ENUM — see below. |
+| 3.1 Material item catalogue | v13 | 🟡 | Stock identity — see below. |
+| 3.5 Bank accounts | v14 | 🟡 | Double-counting risk — see below. |
+| 3.4 Land payment schedule | none | 🔴 | **Collections and the dashboard have no `entity_type` filter.** |
+
+#### 🔴 3.4 — the one that breaks something
+
+`collectionRepository.list` and the finance dashboard both read
+`db.payment_schedules.toArray()` with **no `entity_type` filter anywhere**.
+The moment the first land schedule row exists, land instalments appear in the
+buyer collections queue, and land money is added to "Still due" and "Overdue"
+on the dashboard — figures that are supposed to mean *what buyers owe us*.
+
+The fix is small (filter in two places) but it has to land **before** the
+first land schedule is written, not after, because nothing about the wrong
+numbers would look wrong.
+
+**And one claim in §3.4 below is overstated.** "This feature needs no schema
+change at all — it reuses the instalment engine that Module 7 already proved"
+is only half true. `payment_installments` and the `[entity_type+entity_id]`
+compound index are genuinely ready and need no migration. But
+`paymentScheduleRepository.generateForBooking` is booking-shaped throughout —
+it reads `bookings`, then `units`, then `towers`, then the project's
+instalment template. Land needs its **own generator**, not a reuse of that
+function, and `SCHEDULE_ENTITY_TYPES` (still `['booking']`) needs its second
+value. Size is Small–Medium as stated; the reasoning was just wrong about why.
+
+#### 🟡 3.3 — three places assume the ENUM
+
+Making `cost_category` dynamic is right and cheap, but three pieces of code
+read specific values and would quietly misbehave:
+
+1. `COST_CATEGORY_META` (`domain/finance.ts`) is a `Record<CostCategory, …>`
+   of label and badge tone. A category added through Master Data has no entry,
+   so every screen showing a cost needs a fallback.
+2. `ExpenseFormModal` shows the land picker only when the category is
+   `land_payment` or `land_extra_cost`.
+3. `expenseRepository.landPaymentSummary` — added for L-1 — separates
+   `land_payment` from fees so the land page's balance means "still owed to
+   the owner". Lose that distinction and the land balance silently changes
+   meaning.
+
+So the six seeded categories have to stay as **system categories**: renameable,
+not deletable, with unknown categories falling back to a neutral label. Good
+news: `LookupCategory` already declares `'cost_category'`, and the Master Data
+screen renders whatever categories exist, so seeding the rows makes the screen
+work with no UI change.
+
+#### 🟡 3.1 — decide what a stock row is keyed by
+
+Stock is keyed `[project_id + item_name + unit]`, and the weighted average
+cost lives on that row. Adding a nullable `item_id` beside free text is
+additive and safe, but it does not by itself answer what happens when two
+spellings of one item both hold stock. Until the key moves to the item, a
+rename splits both the quantity and the average cost. Settle the identity
+question before writing the migration, not after.
+
+#### 🟡 3.5 — write the definition down first
+
+§8.3 already says supplier vouchers are added at roll-up time so nothing is
+counted twice. A cash position that adds payments in and takes expenses,
+vouchers and refunds out can double-count the same taka if a cost is recorded
+both as an expense and as a voucher. The arithmetic is easy; the definition is
+the work.
+
 ### 3.1 Material item catalogue — *highest migration cost of anything on the list*
 
 **Why now.** Item names are free text today, and they are already written
@@ -296,8 +380,11 @@ already a string. Seed the rows, point the dropdown at them.
 **Why now.** `payment_schedules.entity_type` is an ENUM of one, and
 OPEN-ITEMS 1.8 already records that it is a column doing nothing until a
 second entity needs it. The `[entity_type+entity_id]` compound index is
-already in place. **This feature needs no schema change at all** — it reuses
-the instalment engine that Module 7 already proved. It also answers the
+already in place. **This feature needs no migration** — `payment_installments`
+takes land instalments as they are. It does need a land-shaped generator of
+its own and a second value in `SCHEDULE_ENTITY_TYPES`; see §4.0, which
+corrects the "reuses the instalment engine" claim this paragraph used to
+make, and flags the collections filter that must land first. It also answers the
 client's loudest Module 1 complaint (agreed / paid / balance on the land
 page, L-1).
 
@@ -362,13 +449,29 @@ them costs little:
 
 ## 5. Sequencing, and the rules to work under
 
-**Order:** Tier 1 batches 1A → 1E, then Tier 2 in one pass, then Tier 3
-in the order 3.3 → 3.4 → 3.1 → 3.2 → 3.6 → 3.5.
+**Order:** Tier 1 batches 1A → 1E *(done)*, Tier 2 *(done)*, then Tier 3.
 
-That Tier 3 order is deliberate: 3.3 and 3.4 need no schema change at all and
-can land immediately; 3.1 and 3.2 share a single Dexie **v13** block so the
-version history stays clean; 3.5 opens **v14** last, once the cost model is
-settled, because that is the change most likely to want one more column.
+**Tier 3 order, revised 2026-09-04:**
+
+> **3.6 → 3.3 → 3.4 → 3.1 → 3.2 → 3.5**
+
+The original order opened with 3.3 and 3.4 because they need no schema change.
+That reasoning still holds, but 3.6 now goes first for two better ones: it is
+the only item on the list that cannot break anything (there is no print code
+in the app to conflict with), and it is the client's stated blocker — the
+thing that separates a demo from something an office can use. It also closes
+the honesty gap Tier 2 opened, where Company Settings had to be reworded to
+admit the documents do not exist yet.
+
+3.3 then comes before 3.4 so the cost-category work and the collections
+`entity_type` filter — both in the same finance repository — land together,
+before any land schedule row exists to be mis-counted. 3.1 and 3.2 still share
+one Dexie **v13** block so the version history stays clean, and 3.5 still
+opens **v14** last, once the cost model is settled.
+
+The admin portal is finished at the end of 3.5. The Public Portal (P1–P4) is
+deliberately after all of it — today it is a placeholder page, and it should
+read a schema that has stopped moving.
 
 **Rules to hold to while doing it**
 
