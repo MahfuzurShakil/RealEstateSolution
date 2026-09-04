@@ -10,6 +10,38 @@ export interface LookupGroupKey {
   scope: string | null;
 }
 
+/**
+ * Categories whose records store a stable `code` rather than the label.
+ *
+ * Only `cost_category` today (Tier 3.3). Everything else stores its value on
+ * the record, which is why renaming "South" renames it on every unit at once.
+ * See the note on `LookupValue.code` for why this one cannot work that way.
+ */
+export const CODE_KEYED_LOOKUP_CATEGORIES: LookupCategory[] = ['cost_category'];
+
+export class SystemOptionError extends Error {
+  constructor(value: string) {
+    super(`"${value}" is a built-in option and cannot be retired.`);
+    this.name = 'SystemOptionError';
+  }
+}
+
+/**
+ * `Land Registration Fee` -> `land_registration_fee`.
+ *
+ * The code is generated once, when the option is created, and never follows a
+ * later rename — that is the whole point of having it. Uniqueness is only
+ * needed within the one list.
+ */
+function slugify(value: string): string {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'category'
+  );
+}
+
 export class DuplicateLookupError extends Error {
   constructor(value: string) {
     super(`"${value}" is already in this list.`);
@@ -33,8 +65,18 @@ class LookupRepository extends BaseRepository<LookupValue> {
       .sort((a, b) => a.sort_order - b.sort_order || a.value.localeCompare(b.value));
   }
 
+  /** Goes through `setActive`, so the system-option guard cannot be sidestepped. */
+  /**
+   * The cost-category list the expense screens read (Section 8.3 / §1.2).
+   * Active options only — a retired category still reads correctly on the
+   * expenses that already carry it, but must not be offered for a new one.
+   */
+  async costCategories(): Promise<LookupValue[]> {
+    return this.options('cost_category');
+  }
+
   async deactivate(id: string): Promise<void> {
-    await this.update(id, { is_active: false });
+    await this.setActive(id, false);
   }
 
   /* --- Module 8: Master Data screen (Section 9.7) --- */
@@ -99,6 +141,20 @@ class LookupRepository extends BaseRepository<LookupValue> {
       throw new DuplicateLookupError(trimmed);
     }
 
+    /*
+     * A code-keyed list needs its key at creation time, because the record will
+     * store the code and not the label. Uniquified against the codes already in
+     * this list, including the seeded ones — "Other Costs" must not collide
+     * with the seeded `other`, or two categories would become one.
+     */
+    let code: string | null = null;
+    if (CODE_KEYED_LOOKUP_CATEGORIES.includes(category)) {
+      const taken = new Set(existing.map((r) => r.code).filter(Boolean));
+      const base = slugify(trimmed);
+      code = base;
+      for (let n = 2; taken.has(code); n += 1) code = `${base}_${n}`;
+    }
+
     return this.create(
       {
         category,
@@ -106,6 +162,8 @@ class LookupRepository extends BaseRepository<LookupValue> {
         value: trimmed,
         is_active: true,
         sort_order: existing.length + 1,
+        code,
+        is_system: false,
       },
       createdBy,
     );
@@ -136,7 +194,21 @@ class LookupRepository extends BaseRepository<LookupValue> {
     return this.update(id, { value: trimmed });
   }
 
+  /**
+   * Retiring an option is refused for a seeded one the code depends on.
+   *
+   * There is no delete in Master Data — an option is retired by being
+   * deactivated — so this is the only way a built-in category could disappear.
+   * Deactivating `land_payment` would leave no way to record money paid to a
+   * landowner while the land page carried on reporting a balance as though
+   * there were, and nothing on screen would look wrong. Renaming and
+   * reordering stay open: it is the key underneath, not the label, that the
+   * code holds on to.
+   */
   async setActive(id: string, isActive: boolean): Promise<LookupValue | undefined> {
+    const row = await this.getById(id);
+    if (!row) return undefined;
+    if (!isActive && row.is_system) throw new SystemOptionError(row.value);
     return this.update(id, { is_active: isActive });
   }
 
@@ -169,6 +241,11 @@ class LookupRepository extends BaseRepository<LookupValue> {
    * would be worse than admitting there isn't one.
    */
   async usageCount(row: LookupValue): Promise<number | null> {
+    // Countable since Tier 3.3, because an expense stores the code.
+    if (row.category === 'cost_category' && row.code) {
+      const code = row.code;
+      return (await db.expenses.toArray()).filter((e) => e.cost_category === code).length;
+    }
     if (row.category !== 'document_type' || !row.scope) return null;
     const docs = await db.documents
       .where('entity_type')

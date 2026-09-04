@@ -4,7 +4,10 @@ import type {
   InstallmentStatus,
   PaymentInstallment,
   ScheduleType,
+  SystemCostCategory,
 } from '@/lib/db/types';
+import { COST_CATEGORIES } from '@/lib/db/types';
+import { humanize } from '@/lib/utils/format';
 import { money } from './procurement';
 
 export { money };
@@ -274,7 +277,17 @@ export function summariseSchedule(
   };
 }
 
-export const COST_CATEGORY_META: Record<CostCategory, { label: string; tone: BadgeTone }> = {
+/**
+ * Badge tone for the six seeded categories.
+ *
+ * Deliberately typed on `SystemCostCategory`, not on the widened
+ * `CostCategory`: widening it would make every lookup type-check and then
+ * return `undefined` at runtime for a category added through Master Data, so
+ * `COST_CATEGORY_META[code].label` would compile and crash. Keyed this way the
+ * compiler points at each call site and makes it choose a fallback, which is
+ * `costCategoryTone` / `costCategoryLabel` below.
+ */
+export const COST_CATEGORY_META: Record<SystemCostCategory, { label: string; tone: BadgeTone }> = {
   land_payment: { label: 'Land Payment', tone: 'teal' },
   land_extra_cost: { label: 'Land Extra Cost', tone: 'blue' },
   contractor_payment: { label: 'Contractor Payment', tone: 'amber' },
@@ -282,6 +295,36 @@ export const COST_CATEGORY_META: Record<CostCategory, { label: string; tone: Bad
   admin: { label: 'Admin', tone: 'neutral' },
   other: { label: 'Other', tone: 'neutral' },
 };
+
+/** Is this one of the six the code knows by name? */
+export function isSystemCostCategory(code: string): code is SystemCostCategory {
+  return (COST_CATEGORIES as readonly string[]).includes(code);
+}
+
+/**
+ * What to show for a category code.
+ *
+ * `options` is the live `cost_category` list from `lookup_values`, so a renamed
+ * category reads by its new name everywhere at once. Three fallbacks, in order:
+ * the current list, then the seeded label (a category that has been renamed and
+ * whose list has not loaded yet still reads correctly), then the code itself
+ * humanised — which is what an expense recorded under a category that was later
+ * renamed away is honestly worth showing.
+ */
+export function costCategoryLabel(
+  code: string,
+  options: { code?: string | null; value: string }[] = [],
+): string {
+  const match = options.find((o) => o.code === code);
+  if (match) return match.value;
+  if (isSystemCostCategory(code)) return COST_CATEGORY_META[code].label;
+  return humanize(code);
+}
+
+/** A category the code does not know gets a neutral badge, never a wrong one. */
+export function costCategoryTone(code: string): BadgeTone {
+  return isSystemCostCategory(code) ? COST_CATEGORY_META[code].tone : 'neutral';
+}
 
 /**
  * Section 8.3's management dashboard, for one project.

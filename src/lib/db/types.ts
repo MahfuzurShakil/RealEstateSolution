@@ -78,6 +78,30 @@ export interface LookupValue extends BaseEntity {
   value: string;
   is_active: boolean;
   sort_order: number;
+  /**
+   * Addendum (Tier 3.3): the stable machine key a record stores, for the
+   * categories that key off one. Nullable and not indexed, so no Dexie version
+   * block was opened — same precedent as `towers.current_progress_pct` and
+   * `stock_transfers.request_id`.
+   *
+   * Most lookup lists store their *value* on the record (`facing: 'South'`),
+   * so a rename in Master Data rewrites the label everywhere at once, which is
+   * what you want for a typo. `cost_category` cannot work that way:
+   * `expenseRepository.landPaymentSummary` and the expense form's land picker
+   * both key off `land_payment`, and if that key were the label, renaming it
+   * would silently change what a land's balance means. So the label stays
+   * renameable and the key underneath it does not move.
+   */
+  code?: string | null;
+  /**
+   * Addendum (Tier 3.3): a seeded option the application's own code depends on.
+   *
+   * System options can be renamed and reordered but never retired — there is
+   * no delete in Master Data, and deactivating `land_payment` would leave no
+   * way to record money paid to a landowner while the land page carried on
+   * reporting a balance as if there were.
+   */
+  is_system?: boolean;
 }
 
 export interface CompanySettings extends BaseEntity {
@@ -995,6 +1019,15 @@ export interface Refund extends BaseEntity {
 /** Document types for entity_type = 'refund' (Section 8.2) */
 export const REFUND_DOCUMENT_TYPES = ['refund_voucher', 'other'] as const;
 
+/**
+ * The six categories the application's own code knows by name. §1.2 names
+ * `cost_category` as a `lookup_values` category, and since Tier 3.3 it is one —
+ * the list is editable in Master Data and an expense may carry a category that
+ * is not in this array. These six are kept because code depends on them:
+ * `land_payment` is what separates money paid to a landowner from the fees
+ * around it, and the two land codes below are what put a land picker on the
+ * expense form.
+ */
 export const COST_CATEGORIES = [
   'land_payment',
   'land_extra_cost',
@@ -1003,7 +1036,29 @@ export const COST_CATEGORIES = [
   'admin',
   'other',
 ] as const;
-export type CostCategory = (typeof COST_CATEGORIES)[number];
+
+/** A seeded category, distinct from the widened `CostCategory` below. */
+export type SystemCostCategory = (typeof COST_CATEGORIES)[number];
+
+/**
+ * What `expenses.cost_category` holds: one of the six above, or the `code` of a
+ * category added through Master Data. Widened the same way `LookupCategory` is,
+ * so the six keep autocompleting while an arbitrary code still type-checks.
+ */
+export type CostCategory = SystemCostCategory | (string & {});
+
+/** The two categories that mean "spent on a specific land" (Tier 3.3). */
+export const LAND_LINKED_COST_CATEGORIES = ['land_payment', 'land_extra_cost'] as const;
+
+/** Label and display order for the seeded categories, used to seed the list. */
+export const COST_CATEGORY_SEED: { code: SystemCostCategory; value: string }[] = [
+  { code: 'land_payment', value: 'Land Payment' },
+  { code: 'land_extra_cost', value: 'Land Extra Cost' },
+  { code: 'contractor_payment', value: 'Contractor Payment' },
+  { code: 'marketing', value: 'Marketing' },
+  { code: 'admin', value: 'Admin' },
+  { code: 'other', value: 'Other' },
+];
 
 /**
  * The generic cost ledger of Section 8.3 — land payments, contractor bills,

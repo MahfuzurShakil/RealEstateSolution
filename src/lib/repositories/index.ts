@@ -3,6 +3,8 @@ export { documentRepository } from './document.repository';
 export {
   lookupRepository,
   DuplicateLookupError,
+  SystemOptionError,
+  CODE_KEYED_LOOKUP_CATEGORIES,
   type LookupGroupKey,
 } from './lookup.repository';
 export { companySettingsRepository } from './settings.repository';

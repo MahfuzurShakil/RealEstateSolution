@@ -11,6 +11,7 @@ import {
   LAND_DOCUMENT_TYPES,
   LAND_SIZE_UNITS,
   LEAD_DOCUMENT_TYPES,
+  COST_CATEGORY_SEED,
   MATERIAL_UNIT_OPTIONS,
   PROJECT_DOCUMENT_TYPES,
   EXPENSE_DOCUMENT_TYPES,
@@ -54,6 +55,9 @@ async function runSeed(): Promise<void> {
   await ensureOptions('facing', null, [...FACING_OPTIONS]);
   await ensureOptions('amenity', null, [...AMENITY_OPTIONS]);
   await ensureOptions('material_unit', null, [...MATERIAL_UNIT_OPTIONS]);
+  // Tier 3.3: §1.2 always named `cost_category` a lookup list; it was an ENUM
+  // until now. Seeded with codes, because an expense stores the code.
+  await ensureSystemCostCategories();
 
   // Demo dataset: only on a truly fresh database, and never again once the
   // user has deliberately cleared it from the dashboard.
@@ -76,6 +80,34 @@ async function runSeed(): Promise<void> {
       notes: null,
     });
   }
+}
+
+/**
+ * Seeds the six categories the code knows by name (Tier 3.3).
+ *
+ * Separate from `ensureOptions` because these carry a `code` and the
+ * `is_system` flag, and because they are matched on the **code**, not the
+ * value: an install where "Admin" has already been renamed to "Office &
+ * Admin" must not have a second `admin` row added underneath it on the next
+ * load. Existing rows are left exactly as they are, rename included.
+ */
+async function ensureSystemCostCategories(): Promise<void> {
+  const existing = await lookupRepository.listAll('cost_category');
+  const known = new Set(existing.map((r) => r.code).filter(Boolean));
+  const missing = COST_CATEGORY_SEED.filter((c) => !known.has(c.code));
+  if (missing.length === 0) return;
+
+  await lookupRepository.bulkCreate(
+    missing.map((c, i) => ({
+      category: 'cost_category',
+      scope: null,
+      value: c.value,
+      is_active: true,
+      sort_order: existing.length + i + 1,
+      code: c.code,
+      is_system: true,
+    })),
+  );
 }
 
 /** Adds the options of one category that are not in the table yet. */
