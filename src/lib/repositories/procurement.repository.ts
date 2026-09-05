@@ -282,6 +282,8 @@ export interface PurchaseOrderWithRelations extends PurchaseOrder {
 
 export interface PurchaseOrderItemInput {
   id?: string;
+  /** Tier 3.1: the catalogue item. Null only for a line typed before it existed. */
+  item_id?: string | null;
   item_name: string;
   unit: string;
   quantity_ordered: number;
@@ -598,6 +600,7 @@ class PurchaseOrderItemRepository extends BaseRepository<PurchaseOrderItem> {
       const prior = item.id ? byId.get(item.id) : undefined;
       const payload = {
         po_id: poId,
+        item_id: item.item_id ?? null,
         item_name: item.item_name.trim(),
         unit: item.unit,
         quantity_ordered: qty(Number(item.quantity_ordered) || 0),
@@ -710,8 +713,7 @@ class GoodsReceiptRepository extends BaseRepository<GoodsReceipt> {
       if (stockable > 0) {
         await stockRepository.receive(
           order?.project_id ?? null,
-          poItem.item_name,
-          poItem.unit,
+          { item_id: poItem.item_id ?? null, item_name: poItem.item_name, unit: poItem.unit },
           stockable,
           poItem.unit_price,
           createdBy,
@@ -797,8 +799,7 @@ class GoodsReceiptRepository extends BaseRepository<GoodsReceipt> {
       if (stockable > 0 && poItem) {
         await stockRepository.withdraw(
           order?.project_id ?? null,
-          poItem.item_name,
-          poItem.unit,
+          { item_id: poItem.item_id ?? null, item_name: poItem.item_name, unit: poItem.unit },
           stockable,
         );
       }
@@ -838,51 +839,93 @@ export interface StockRowWithRelations extends StockRow {
   value: number;
 }
 
+/**
+ * How a stock row is addressed (Tier 3.1).
+ *
+ * `item_id` is the identity; `item_name` and `unit` are carried alongside so a
+ * new row can be written with them and so a pre-catalogue row can still be
+ * found. Both are needed at every call site, which is why they travel together
+ * rather than as three loose arguments.
+ */
+export interface StockKey {
+  item_id?: string | null;
+  item_name: string;
+  unit: string;
+}
+
 class StockRepository extends BaseRepository<StockRow> {
   constructor() {
     super(() => db.stock);
   }
 
   /**
-   * The Section 7.7 identity: one row per `(project_id, item_name, unit)`.
+   * The identity of a stock row: `(project_id, item_id)` since Tier 3.1.
    *
-   * IndexedDB cannot index `null`, so a central-store row would never be found
-   * through the compound index — the lookup goes through `item_name` (which is
-   * always present) and settles the other two in memory. The candidate set is
-   * one item's worth of rows, so this stays cheap.
+   * Section 7.7 originally made it `(project_id, item_name, unit)`, which meant
+   * a material split into as many rows as it had spellings — each with its own
+   * quantity and its own weighted-average cost. The catalogue item is now the
+   * identity, so renaming it moves nothing.
+   *
+   * The name lookup is kept as a **fallback**, not as an alternative: rows
+   * written before v13 that the back-fill did not reach have no `item_id`, and
+   * they still have to be found. Once a row is matched to an item, the item
+   * wins.
+   *
+   * IndexedDB cannot index `null`, so a central-store row (`project_id = null`)
+   * is never found through a compound index — the lookup narrows on the item
+   * and settles the project in memory. The candidate set is one item's worth of
+   * rows, so this stays cheap either way.
    */
   async findRow(
     projectId: string | null,
-    itemName: string,
-    unit: string,
+    key: StockKey,
   ): Promise<StockRow | undefined> {
-    const rows = await db.stock.where('item_name').equals(itemName).toArray();
-    return rows.find((r) => (r.project_id ?? null) === (projectId ?? null) && r.unit === unit);
+    const sameStore = (r: StockRow) => (r.project_id ?? null) === (projectId ?? null);
+
+    if (key.item_id) {
+      const byItem = await db.stock.where('item_id').equals(key.item_id).toArray();
+      const hit = byItem.find(sameStore);
+      if (hit) return hit;
+    }
+
+    // pre-catalogue rows, and anything the v13 back-fill could not match
+    const byName = await db.stock.where('item_name').equals(key.item_name).toArray();
+    return byName.find((r) => sameStore(r) && r.unit === key.unit && !r.item_id);
   }
 
   /** Adds received or transferred-in material, moving the weighted average. */
   async receive(
     projectId: string | null,
-    itemName: string,
-    unit: string,
+    key: StockKey,
     quantity: number,
     unitPrice: number,
     createdBy: string | null = null,
   ): Promise<StockRow> {
-    const existing = await this.findRow(projectId, itemName, unit);
+    const existing = await this.findRow(projectId, key);
     const incoming = qty(quantity);
 
     if (!existing) {
       return this.create(
         {
           project_id: projectId,
-          item_name: itemName,
-          unit,
+          item_id: key.item_id ?? null,
+          item_name: key.item_name,
+          unit: key.unit,
           quantity_available: incoming,
           average_unit_price: money(unitPrice),
         },
         createdBy,
       );
+    }
+
+    /*
+     * A pre-catalogue row that has now been reached by a catalogued receipt
+     * adopts the item, so the next lookup finds it by identity rather than by
+     * spelling. Quantity and average are untouched — this only records which
+     * item the row was always holding.
+     */
+    if (!existing.item_id && key.item_id) {
+      await this.update(existing.id, { item_id: key.item_id });
     }
 
     const average = weightedAverage(
@@ -905,19 +948,18 @@ class StockRepository extends BaseRepository<StockRow> {
    */
   async withdraw(
     projectId: string | null,
-    itemName: string,
-    unit: string,
+    key: StockKey,
     quantity: number,
   ): Promise<StockRow | undefined> {
-    const existing = await this.findRow(projectId, itemName, unit);
+    const existing = await this.findRow(projectId, key);
     if (!existing) return undefined;
     return this.update(existing.id, {
       quantity_available: qty(Math.max(0, existing.quantity_available - qty(quantity))),
     });
   }
 
-  async availableFor(projectId: string | null, itemName: string, unit: string): Promise<number> {
-    const row = await this.findRow(projectId, itemName, unit);
+  async availableFor(projectId: string | null, key: StockKey): Promise<number> {
+    const row = await this.findRow(projectId, key);
     return row?.quantity_available ?? 0;
   }
 
@@ -1019,7 +1061,8 @@ class StockIssueRepository extends BaseRepository<StockIssue> {
     createdBy: string | null = null,
   ): Promise<StockIssue> {
     const quantity = qty(Number(input.quantity_issued) || 0);
-    const row = await stockRepository.findRow(input.project_id, input.item_name, input.unit);
+    const key = { item_id: input.item_id ?? null, item_name: input.item_name, unit: input.unit };
+    const row = await stockRepository.findRow(input.project_id, key);
     const available = row?.quantity_available ?? 0;
 
     if (quantity <= 0) throw new Error('Issue a quantity greater than zero.');
@@ -1041,7 +1084,7 @@ class StockIssueRepository extends BaseRepository<StockIssue> {
       createdBy,
     );
 
-    await stockRepository.withdraw(input.project_id, input.item_name, input.unit, quantity);
+    await stockRepository.withdraw(input.project_id, key, quantity);
     return issue;
   }
 
@@ -1091,8 +1134,7 @@ class StockIssueRepository extends BaseRepository<StockIssue> {
     if (!issue) return;
     await stockRepository.receive(
       issue.project_id,
-      issue.item_name,
-      issue.unit,
+      { item_id: issue.item_id ?? null, item_name: issue.item_name, unit: issue.unit },
       issue.quantity_issued,
       issue.unit_cost_snapshot,
     );
@@ -1145,7 +1187,8 @@ class StockTransferRepository extends BaseRepository<StockTransfer> {
     if (quantity <= 0) throw new Error('Transfer a quantity greater than zero.');
     if (from === input.to_project_id) throw new Error('Source and destination are the same store.');
 
-    const source = await stockRepository.findRow(from, input.item_name, input.unit);
+    const key = { item_id: input.item_id ?? null, item_name: input.item_name, unit: input.unit };
+    const source = await stockRepository.findRow(from, key);
     const available = source?.quantity_available ?? 0;
     if (quantity > available) {
       throw new InsufficientStockError(input.item_name, available, quantity, input.unit);
@@ -1159,15 +1202,8 @@ class StockTransferRepository extends BaseRepository<StockTransfer> {
       createdBy,
     );
 
-    await stockRepository.withdraw(from, input.item_name, input.unit, quantity);
-    await stockRepository.receive(
-      input.to_project_id,
-      input.item_name,
-      input.unit,
-      quantity,
-      unitCost,
-      createdBy,
-    );
+    await stockRepository.withdraw(from, key, quantity);
+    await stockRepository.receive(input.to_project_id, key, quantity, unitCost, createdBy);
     await markRequestFulfilledByTransfer(transfer, createdBy);
     return transfer;
   }
@@ -1226,16 +1262,15 @@ class StockTransferRepository extends BaseRepository<StockTransfer> {
     // the material goes back before the request does, so a failure here leaves
     // the request open rather than closed against stock that has moved
     await reopenRequestClosedByTransfer(transfer);
-    await stockRepository.withdraw(
-      transfer.to_project_id,
-      transfer.item_name,
-      transfer.unit,
-      transfer.quantity,
-    );
+    const key = {
+      item_id: transfer.item_id ?? null,
+      item_name: transfer.item_name,
+      unit: transfer.unit,
+    };
+    await stockRepository.withdraw(transfer.to_project_id, key, transfer.quantity);
     await stockRepository.receive(
       transfer.from_project_id ?? null,
-      transfer.item_name,
-      transfer.unit,
+      key,
       transfer.quantity,
       transfer.unit_cost_snapshot,
     );

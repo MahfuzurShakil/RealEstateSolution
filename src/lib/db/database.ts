@@ -1,6 +1,7 @@
 'use client';
 
-import Dexie, { type EntityTable, type Transaction } from 'dexie';
+import Dexie, { type EntityTable } from 'dexie';
+import { backfillMaterialItems } from './backfill-material-items';
 import type {
   Booking,
   CompanySettings,
@@ -266,89 +267,7 @@ export class AppDatabase extends Dexie {
         stock_transfers:
           'id, &code, from_project_id, to_project_id, item_name, item_id, transfer_date',
       })
-      .upgrade(backfillMaterialItems);
-  }
-}
-
-/**
- * Builds the catalogue out of the item names already stored, then points every
- * existing row at its item (Tier 3.1).
- *
- * Done here rather than left to "progressive matching" because a half-migrated
- * table is the worst of both: `findRow` would have to key on the item for some
- * rows and the name for others *forever*, and the two spellings this feature
- * exists to merge would go on holding separate stock in the meantime. One pass
- * over a handful of rows settles it.
- *
- * The pass is additive — it inserts catalogue rows and fills a nullable column,
- * and touches no quantity or price. If it were to fail part-way, the rows it
- * did not reach keep working through the name fallback that stays in
- * `findRow`, which is why that fallback is not removed.
- *
- * `(name, unit)` is the seed key: a name stocked in two units was two stock
- * rows before this and becomes two catalogue items, which is the honest
- * reading. Merging them is a decision about weighted averages, deliberately
- * not made by a migration.
- */
-async function backfillMaterialItems(tx: Transaction): Promise<void> {
-  const items = tx.table('material_items');
-  const seen = new Map<string, string>(); // `${name}|${unit}` -> item id
-  let sequence = 0;
-
-  const keyOf = (name: string, unit: string) =>
-    `${name.trim().toLowerCase()}|${unit.trim().toLowerCase()}`;
-
-  const now = new Date().toISOString();
-  const ensure = async (rawName: string, rawUnit: string): Promise<string | null> => {
-    const name = (rawName ?? '').trim();
-    const unit = (rawUnit ?? '').trim();
-    if (!name) return null;
-
-    const key = keyOf(name, unit);
-    const known = seen.get(key);
-    if (known) return known;
-
-    sequence += 1;
-    const id = crypto.randomUUID();
-    await items.add({
-      id,
-      code: `ITM-${String(sequence).padStart(4, '0')}`,
-      name,
-      unit: unit || 'piece',
-      category: null,
-      is_active: true,
-      notes: null,
-      created_at: now,
-      updated_at: now,
-      created_by: null,
-    });
-    seen.set(key, id);
-    return id;
-  };
-
-  /*
-   * `stock` first, so the catalogue is seeded from the rows that actually hold
-   * quantity and cost. Everything else then matches into those items rather
-   * than creating near-duplicates in a different order.
-   */
-  for (const table of ['stock', 'stock_issues', 'stock_transfers', 'purchase_order_items']) {
-    const rows = await tx.table(table).toArray();
-    for (const row of rows) {
-      const id = await ensure(row.item_name, row.unit);
-      if (id) await tx.table(table).update(row.id, { item_id: id });
-    }
-  }
-
-  /*
-   * Requisitions last and, unlike the others, they never *create* an item: a
-   * request is a wish, and a line somebody typed and nobody ever ordered is
-   * not evidence that the material exists. It links only when the name already
-   * matches something the procurement side bought.
-   */
-  const requestLines = await tx.table('material_request_items').toArray();
-  for (const row of requestLines) {
-    const id = seen.get(keyOf(row.item_name ?? '', row.unit ?? ''));
-    if (id) await tx.table('material_request_items').update(row.id, { item_id: id });
+      .upgrade((tx) => backfillMaterialItems(tx));
   }
 }
 

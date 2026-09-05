@@ -396,6 +396,8 @@ export interface MaterialRequestWithRelations extends MaterialRequest {
 
 export interface MaterialRequestItemInput {
   id?: string;
+  /** Tier 3.1: the catalogue item this line asks for. */
+  item_id?: string | null;
   item_name: string;
   unit: string;
   quantity_requested: number;
@@ -643,6 +645,7 @@ class MaterialRequestItemRepository extends BaseRepository<MaterialRequestItem> 
       const prior = item.id ? byId.get(item.id) : undefined;
       const payload = {
         request_id: requestId,
+        item_id: item.item_id ?? null,
         item_name: item.item_name.trim(),
         unit: item.unit,
         quantity_requested: Number(item.quantity_requested) || 0,

@@ -37,6 +37,7 @@ import {
 } from '../repositories';
 import type { MaterialRequestStatus, ProjectStatus } from './types';
 import { getDb } from './database';
+import { backfillMaterialItems } from './backfill-material-items';
 import { DEMO_LANDS, DEMO_OWNERS } from './demo-data';
 import { DEMO_BOOKINGS, DEMO_CUSTOMERS, DEMO_DISCOUNT_RULES } from './demo-bookings';
 import { DEMO_LEADS, DEMO_USER_JOINED_DAYS_AGO, DEMO_USERS } from './demo-leads';
@@ -244,6 +245,14 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
   );
   const requestIds = await seedDemoSiteProgress(projectIds, userIds, createdBy);
   await seedDemoProcurement(projectIds, userIds, requestIds, createdBy);
+  /*
+   * The catalogue is derived from the procurement rows rather than listed
+   * separately, so the demo cannot drift from it (Tier 3.1). It runs here and
+   * not in the v13 upgrade because Dexie fires `.upgrade()` only when an
+   * existing database moves version — a database created fresh at v13 skips
+   * it, and this demo would otherwise load with an empty catalogue.
+   */
+  await backfillMaterialItems(getDb());
   await seedDemoFinance(projectIds, landIds, userIds, bookingIds, createdBy);
   await seedDemoUserAccess(projectIds, userIds, createdBy);
 
@@ -974,7 +983,10 @@ async function seedDemoProcurement(
      * A seed that half-loads and then aborts is worse than one that scales a
      * line down.
      */
-    const available = await stockRepository.availableFor(projectId, demo.item_name, demo.unit);
+    const available = await stockRepository.availableFor(projectId, {
+      item_name: demo.item_name,
+      unit: demo.unit,
+    });
     const quantity = Math.min(demo.quantity_issued, available);
     if (quantity <= 0) continue;
 
@@ -1160,6 +1172,9 @@ export async function clearDemoData(): Promise<void> {
     db.stock.clear(),
     db.stock_issues.clear(),
     db.stock_transfers.clear(),
+    /* The catalogue is derived from these rows, so it goes with them — leaving
+       it behind would offer items nothing in the database has ever bought. */
+    db.material_items.clear(),
     db.supplier_vouchers.clear(),
     db.payment_schedules.clear(),
     db.payment_installments.clear(),
