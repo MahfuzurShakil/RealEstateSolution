@@ -432,6 +432,8 @@ class BookingRepository extends BaseRepository<Booking> {
       reference_no?: string | null;
       notes?: string | null;
       received_by?: string | null;
+      /** Tier 3.5: the account this money landed in. */
+      account_id?: string | null;
     },
     createdBy: string | null = null,
   ): Promise<Booking | undefined> {
@@ -444,6 +446,7 @@ class BookingRepository extends BaseRepository<Booking> {
         amount: input.amount,
         payment_date: input.payment_date,
         payment_method: input.payment_method,
+        account_id: input.account_id ?? null,
         reference_no: input.reference_no,
         received_by: input.received_by ?? current.booked_by ?? null,
         notes: input.notes,

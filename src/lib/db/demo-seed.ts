@@ -32,6 +32,7 @@ import {
   supplierVoucherRepository,
   expenseRepository,
   paymentScheduleRepository,
+  bankAccountRepository,
   projectBudgetRepository,
   refundRepository,
   userProjectAssignmentRepository,
@@ -1088,6 +1089,76 @@ async function seedDemoFinance(
    * the expenses exist, so the allocation runs over real rows.
    */
   /*
+   * The accounts the demo's money moves through (Tier 3.5).
+   *
+   * Seeded before the movements are attributed below, and deliberately left
+   * with one gap: the refunds carry no account, so the Cash Position page
+   * demonstrates the unattributed bucket rather than a tidy set of balances
+   * that hides what the warning is for.
+   */
+  const accounts: Array<[string, 'bank' | 'mfs' | 'cash', number, string | null]> = [
+    /* Opening balances stand in for the equity and borrowing that bought the
+       land, none of which this prototype models. Without them the demo shows a
+       company tens of crore overdrawn, which reads as a broken figure rather
+       than as sample data. */
+    ['DBBL Current — Banani', 'bank', 155000000, 'Dutch-Bangla Bank'],
+    ['City Bank Escrow — Gulshan', 'bank', 18500000, 'City Bank'],
+    ['bKash Merchant', 'mfs', 850000, null],
+    ['Site petty cash', 'cash', 6500000, null],
+  ];
+  const accountIds = new Map<string, string>();
+  for (const [name, type, opening, bank] of accounts) {
+    const saved = await bankAccountRepository.createAccount(
+      {
+        name,
+        type,
+        bank_name: bank,
+        account_number: null,
+        branch: null,
+        opening_balance: opening,
+        // before every seeded movement, so none of them is excluded as history
+        opening_balance_date: '2024-01-01',
+        is_active: true,
+        notes: null,
+      },
+      createdBy,
+    );
+    accountIds.set(name, saved.id);
+  }
+
+  /*
+   * Attribute the money that has already been recorded. Receipts and petty
+   * costs go through the accounts they plausibly would; refunds are left
+   * deliberately unattributed (see above).
+   */
+  const main = accountIds.get('DBBL Current — Banani')!;
+  const escrow = accountIds.get('City Bank Escrow — Gulshan')!;
+  const petty = accountIds.get('Site petty cash')!;
+  const bkash = accountIds.get('bKash Merchant')!;
+
+  const pickAccount = (method: string, forMoneyIn: boolean) => {
+    if (method === 'cash') return petty;
+    if (method === 'mfs') return bkash;
+    return forMoneyIn ? escrow : main;
+  };
+
+  for (const payment of await db.payments.toArray()) {
+    await db.payments.update(payment.id, {
+      account_id: pickAccount(payment.payment_method, true),
+    });
+  }
+  for (const expense of await db.expenses.toArray()) {
+    await db.expenses.update(expense.id, {
+      account_id: pickAccount(expense.payment_method, false),
+    });
+  }
+  for (const voucher of await db.supplier_vouchers.toArray()) {
+    await db.supplier_vouchers.update(voucher.id, {
+      account_id: pickAccount(voucher.payment_method, false),
+    });
+  }
+
+  /*
    * A budget on two projects (Tier 3.2), written through the repository so the
    * upsert and the drop-a-zero-line rule are exercised by the demo rather than
    * bypassed by it.
@@ -1218,6 +1289,7 @@ export async function clearDemoData(): Promise<void> {
        it behind would offer items nothing in the database has ever bought. */
     db.material_items.clear(),
     db.project_budget_lines.clear(),
+    db.bank_accounts.clear(),
     db.supplier_vouchers.clear(),
     db.payment_schedules.clear(),
     db.payment_installments.clear(),

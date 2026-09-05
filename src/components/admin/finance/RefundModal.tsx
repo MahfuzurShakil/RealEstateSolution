@@ -5,6 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
+import { AccountPicker } from '@/components/admin/finance/AccountPicker';
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import {
@@ -64,6 +65,7 @@ function RefundDialog({
   const [reference, setReference] = useState('');
   const [processedBy, setProcessedBy] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
+  const [accountId, setAccountId] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -84,6 +86,7 @@ function RefundDialog({
           deduction: deductionValue,
           refund_date: refundDate,
           payment_method: method,
+          account_id: accountId || null,
           reference_no: reference.trim() || null,
           processed_by: processedBy || userId,
           notes: notes.trim() || null,
@@ -210,6 +213,9 @@ function RefundDialog({
                 ))}
               </SelectInput>
             </Field>
+
+            <AccountPicker value={accountId} onChange={setAccountId} label="Paid from" />
+
 
             <Field label="Notes" className="sm:col-span-2">
               <TextArea

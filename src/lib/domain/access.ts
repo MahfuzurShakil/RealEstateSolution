@@ -311,6 +311,7 @@ const ROUTE_MODULES: Array<[string, ModuleKey]> = [
   ['/admin/collections', 'finance_collection'],
   ['/admin/refunds', 'finance_collection'],
   ['/admin/expenses', 'finance_expense'],
+  ['/admin/cash', 'finance_expense'],
   ['/admin/finance', 'dashboard'],
   ['/admin/users', 'user_management'],
   ['/admin/master-data', 'master_data'],

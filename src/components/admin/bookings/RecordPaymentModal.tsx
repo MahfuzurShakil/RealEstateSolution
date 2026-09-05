@@ -5,6 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { CircleDollarSign } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
+import { AccountPicker } from '@/components/admin/finance/AccountPicker';
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { PAYMENT_METHODS, type Booking, type PaymentMethod } from '@/lib/db/types';
@@ -85,6 +86,7 @@ function PaymentDialog({
   const [method, setMethod] = useState<PaymentMethod>('bank');
   const [reference, setReference] = useState('');
   const [notes, setNotes] = useState('');
+  const [accountId, setAccountId] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -107,6 +109,7 @@ function PaymentDialog({
           amount: value,
           payment_date: date,
           payment_method: method,
+          account_id: accountId || null,
           reference_no: reference,
           notes,
           received_by: userId,
@@ -168,6 +171,8 @@ function PaymentDialog({
             placeholder="e.g. TRX8H2K91LM"
           />
         </Field>
+        <AccountPicker value={accountId} onChange={setAccountId} label="Received into" />
+
         <Field label="Notes" className="sm:col-span-2">
           <TextArea
             value={notes}

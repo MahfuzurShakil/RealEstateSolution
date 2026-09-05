@@ -5,6 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Receipt } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
+import { AccountPicker } from '@/components/admin/finance/AccountPicker';
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { SUPPLIER_PAYMENT_METHODS, type SupplierPaymentMethod } from '@/lib/db/types';
@@ -53,6 +54,9 @@ function VoucherDialog({
   const [reference, setReference] = useState('');
   const [paidBy, setPaidBy] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
+  const [accountId, setAccountId] = useState('');
+  const [vat, setVat] = useState('');
+  const [ait, setAit] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -77,6 +81,9 @@ function VoucherDialog({
           amount: value,
           payment_date: paymentDate,
           payment_method: method,
+          account_id: accountId || null,
+          vat_amount: Number(vat) || null,
+          ait_amount: Number(ait) || null,
           reference_no: reference.trim() || null,
           paid_by: paidBy || userId,
           notes: notes.trim() || null,
@@ -176,6 +183,31 @@ function VoucherDialog({
             ))}
           </SelectInput>
         </Field>
+
+        <AccountPicker value={accountId} onChange={setAccountId} label="Paid from" />
+
+
+        {/* Memo only — the amount above is what actually leaves the account. */}
+
+
+        <Field label="VAT withheld" hint="Optional, for the return">
+
+
+          <TextInput type="number" min={0} step="any" value={vat} onChange={(e) => setVat(e.target.value)} placeholder="0" />
+
+
+        </Field>
+
+
+        <Field label="AIT withheld" hint="Optional, for the return">
+
+
+          <TextInput type="number" min={0} step="any" value={ait} onChange={(e) => setAit(e.target.value)} placeholder="0" />
+
+
+        </Field>
+
+
 
         <Field label="Notes" className="sm:col-span-2">
           <TextArea

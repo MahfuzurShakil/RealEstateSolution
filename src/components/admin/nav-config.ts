@@ -124,6 +124,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Overview', href: '/admin/finance', module: 'dashboard' },
       { label: 'Collections', href: '/admin/collections', module: 'finance_collection' },
       { label: 'Expenses', href: '/admin/expenses', module: 'finance_expense' },
+      { label: 'Cash Position', href: '/admin/cash', module: 'finance_expense' },
       { label: 'Refunds', href: '/admin/refunds', module: 'finance_collection' },
     ],
   },

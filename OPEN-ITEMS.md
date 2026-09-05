@@ -3,7 +3,8 @@
 Known-open work that is **not** a blocker for what is already shipped. Add to
 this as modules land; delete an entry when it is done.
 
-Last reviewed: 2026-09-05, after Tier 3.2 — project budget (Section 0i),
+Last reviewed: 2026-09-05, after Tier 3.5 — cash position (Section 0j),
+Tier 3.2 — project budget (Section 0i),
 Tier 3.1 — material catalogue (Section 0h)
 and the land expense ↔ instalment feedback (Section 0g); before that 2026-09-04, after Tier 3.4 — land payment schedule (Section 0f),
 Tier 3.3 — cost categories (Section 0e) and
@@ -135,6 +136,81 @@ The other side — what was agreed to be paid, and when — is now the Payment p
 tab. `landPaymentSummary` still answers "how much has gone out"; the plan
 answers "how much should have, by now", and the two are computed by different
 code paths from the same ledger rows, so they cross-check each other.
+
+---
+
+## 0j. Tier 3.5 — bank accounts and cash position — done 2026-09-05
+
+**Dexie v15** — `bank_accounts`, plus an indexed `account_id` on the four
+tables that hold a money movement. **Tier 3 is complete.**
+
+**A stores() spec replaces a table's whole index set.** The first draft of the
+v15 `payments` line dropped `payment_method` and `received_by` without saying
+so. Every v15 spec is now checked to be a superset of the earlier one — worth
+repeating on any future version block.
+
+**The definition, which §4.0 rightly asked for first.** The four tables are
+*disjoint record sets* — a buyer receipt is never also a voucher — so adding
+receipts and subtracting expenses, vouchers and refunds counts each taka once.
+Not counted: `payment_installments` (what is owed, not what moved),
+`stock_issues` and `stock_transfers` (material already paid for by the voucher
+that bought it), budget lines (a plan). Refunds contribute `net_refund`, not
+`amount` — the deduction never left the account.
+
+**§4.0's predicted double count is real but is a data-entry duplicate.** A cost
+recorded both as an expense and as a voucher is two records of one payment, and
+no filter can distinguish it from two genuine payments of the same amount. It
+belongs to whoever enters them, not to the arithmetic.
+
+**The double count that can actually happen is a different one, and §4.0 does
+not mention it:** movements dated before an account's opening balance are
+already inside that balance, so counting both adds the same history twice.
+Movements are filtered from the opening date, and a test asserts the naive
+total differs.
+
+`opening_balance` is not in the plan's schema and earns its place: without it a
+"position" is only net movement since the software was installed, which
+reconciles against nothing.
+
+**Unattributed movement is reported separately and never folded into the
+balance** — the same rule as unbudgeted spend in 3.2. A total that silently
+absorbed rows with no account would reconcile against no bank statement, which
+is the one thing the page exists for.
+
+**The VAT/AIT rider is included, defined as memo fields.** `amount` stays what
+actually left the account, so the cash position is right whether or not they
+are filled in. Making `amount` gross and deriving the payment would have
+changed the meaning of a column every existing screen already reads.
+
+**Verified by reconciling against the database.** Every account balance,
+the company total (89,136,550) and the unattributed bucket (1 movement,
+1,280,000 out — the refund, left unattributed in the demo on purpose so the
+warning has something to show) were computed independently from IndexedDB and
+match the screen. The bKash statement adds up line by line: 850,000 opening +
+500,000 + 400,000 + 400,000 − 85,800 = 2,064,200. Eleven domain cases pass,
+including pre-opening exclusion, same-day inclusion and an idle account, with a
+control proving they can fail.
+
+Demo opening balances stand in for the equity and borrowing that bought the
+land, which this prototype does not model. Without them the demo showed a
+company tens of crore overdrawn — a figure that reads as broken rather than as
+sample data.
+
+### Still open from this
+
+**Cheque realisation.** A cheque paid is treated as cash out on its payment
+date. In practice it leaves the account when it clears, so a position taken
+between the two is optimistic. The printed receipt already says a cheque is
+subject to realisation; making the ledger agree needs a cleared-date column and
+a state, which is its own decision.
+
+**No transfers between accounts.** Moving money from the current account to
+petty cash cannot be recorded, so it would have to be entered as a cost and a
+receipt, which would overstate both. Needs its own table rather than a reuse of
+the four money tables.
+
+**VAT and AIT are recorded but not reported.** The columns and the form fields
+exist; there is no return or deduction summary yet.
 
 ---
 

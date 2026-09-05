@@ -5,6 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { ReceiptText } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
+import { AccountPicker } from './AccountPicker';
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import {
@@ -83,6 +84,9 @@ function ExpenseDialog({
     paid_to: expense?.paid_to ?? '',
     payment_method: (expense?.payment_method ?? 'bank') as SupplierPaymentMethod,
     reference_no: expense?.reference_no ?? '',
+    account_id: expense?.account_id ?? '',
+    vat_amount: expense?.vat_amount ? String(expense.vat_amount) : '',
+    ait_amount: expense?.ait_amount ? String(expense.ait_amount) : '',
     notes: expense?.notes ?? '',
   });
   const [errors, setErrors] = useState<{ amount?: string; cost_reason?: string; paid_to?: string }>({});
@@ -170,6 +174,9 @@ function ExpenseDialog({
         expense_date: form.expense_date,
         paid_to: form.paid_to,
         payment_method: form.payment_method,
+        account_id: form.account_id || null,
+        vat_amount: Number(form.vat_amount) || null,
+        ait_amount: Number(form.ait_amount) || null,
         reference_no: form.reference_no.trim() || null,
         paid_by: userId,
         notes: form.notes.trim() || null,
@@ -338,6 +345,65 @@ function ExpenseDialog({
             placeholder="e.g. 4471203 / TrxID BKX9F2K"
           />
         </Field>
+
+        <AccountPicker
+
+          value={form.account_id}
+
+          onChange={(v) => set('account_id', v)}
+
+        />
+
+
+        {/* Memo only: `amount` above is what actually left the account, so the
+
+            cash position is right whether or not these are filled in. VAT and
+
+            AIT are deducted from a contractor bill by law, and without somewhere
+
+            to record them the return is prepared by hand from the vouchers. */}
+
+        <Field label="VAT withheld" hint="Optional — for the return, not deducted from the amount">
+
+          <TextInput
+
+            type="number"
+
+            min={0}
+
+            step="any"
+
+            value={form.vat_amount}
+
+            onChange={(e) => set('vat_amount', e.target.value)}
+
+            placeholder="0"
+
+          />
+
+        </Field>
+
+
+        <Field label="AIT withheld" hint="Optional — for the return, not deducted from the amount">
+
+          <TextInput
+
+            type="number"
+
+            min={0}
+
+            step="any"
+
+            value={form.ait_amount}
+
+            onChange={(e) => set('ait_amount', e.target.value)}
+
+            placeholder="0"
+
+          />
+
+        </Field>
+
 
         <Field label="Notes" className="sm:col-span-2">
           <TextArea

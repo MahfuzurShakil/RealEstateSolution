@@ -18,6 +18,8 @@ export interface PaymentInput {
   reference_no?: string | null;
   received_by?: string | null;
   notes?: string | null;
+  /** Tier 3.5: the account this money landed in. */
+  account_id?: string | null;
 }
 
 /**
@@ -61,6 +63,7 @@ class PaymentRepository extends BaseRepository<Payment> {
         amount: input.amount,
         payment_date: input.payment_date,
         payment_method: input.payment_method,
+        account_id: input.account_id ?? null,
         reference_no: input.reference_no?.trim() || null,
         received_by: input.received_by ?? null,
         notes: input.notes?.trim() || null,
