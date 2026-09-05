@@ -3,6 +3,7 @@
 import Dexie, { type EntityTable } from 'dexie';
 import { backfillMaterialItems } from './backfill-material-items';
 import type {
+  BankAccount,
   Booking,
   CompanySettings,
   Customer,
@@ -96,6 +97,7 @@ export class AppDatabase extends Dexie {
   tower_work_items!: EntityTable<TowerWorkItem, 'id'>;
   site_progress_updates!: EntityTable<SiteProgressUpdate, 'id'>;
   material_requests!: EntityTable<MaterialRequest, 'id'>;
+  bank_accounts!: EntityTable<BankAccount, 'id'>;
   material_items!: EntityTable<MaterialItem, 'id'>;
   project_budget_lines!: EntityTable<ProjectBudgetLine, 'id'>;
   material_request_items!: EntityTable<MaterialRequestItem, 'id'>;
@@ -284,6 +286,33 @@ export class AppDatabase extends Dexie {
      */
     this.version(14).stores({
       project_budget_lines: 'id, project_id, cost_category, [project_id+cost_category]',
+    });
+
+    /*
+     * v15 — Module 7 addendum: bank accounts and the cash position (Tier 3.5).
+     *
+     * `account_id` is indexed on all four money tables because the account
+     * ledger reads one account's movements out of four tables at once, and an
+     * unindexed scan of every payment ever taken to draw one statement is the
+     * kind of thing that is fine in a demo and not in an office.
+     *
+     * `vat_amount` and `ait_amount` are added to `expenses` and
+     * `supplier_vouchers` as plain columns — non-indexed, so they need no
+     * declaration here at all. Noted rather than listed, so nobody later hunts
+     * for the version block that "should" have created them.
+     */
+    this.version(15).stores({
+      bank_accounts: 'id, &code, name, type, is_active',
+      // every index the earlier versions declared, plus account_id — a stores()
+      // spec replaces the table's whole index set, so anything omitted here
+      // would be silently dropped
+      payments:
+        'id, booking_id, installment_id, payment_date, payment_method, received_by, account_id',
+      expenses:
+        'id, &code, project_id, land_id, cost_category, expense_date, payment_method, paid_by, account_id',
+      supplier_vouchers:
+        'id, &code, po_id, supplier_id, project_id, payment_date, payment_method, paid_by, account_id',
+      refunds: 'id, &code, booking_id, refund_date, processed_by, account_id',
     });
   }
 }

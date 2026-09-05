@@ -10,6 +10,12 @@ export {
 export { companySettingsRepository } from './settings.repository';
 export { projectBudgetRepository } from './budget.repository';
 export {
+  bankAccountRepository,
+  BankAccountInUseError,
+  type AccountWithPosition,
+  type CashPosition,
+} from './bank.repository';
+export {
   materialItemRepository,
   DuplicateMaterialItemError,
   MaterialItemInUseError,

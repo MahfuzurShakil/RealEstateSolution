@@ -622,6 +622,8 @@ export const PAYMENT_METHODS = ['cash', 'bank', 'mfs', 'cheque', 'card', 'online
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 export interface Payment extends BaseEntity {
+  /** Tier 3.5: the account this money landed in. Null = not attributed yet. */
+  account_id?: UUID | null;
   /**
    * Addendum: null until Module 7 generates the instalment rows. A payment
    * reaches its booking through the instalment in Section 8.2; with no
@@ -988,6 +990,11 @@ export type SupplierPaymentMethod = (typeof SUPPLIER_PAYMENT_METHODS)[number];
 /** Section 7.9 — paid directly, no approval step. */
 export interface SupplierVoucher extends BaseEntity {
   code: string;                       // VCH-2026-001
+  /** Tier 3.5: the account this payment was made from. */
+  account_id?: UUID | null;
+  /** Tier 3.5 memo fields — see the note on `Expense`. `amount` stays net. */
+  vat_amount?: number | null;
+  ait_amount?: number | null;
   po_id: UUID;
   supplier_id: UUID;
   /** copied from the PO — null when it was a central-stock purchase */
@@ -1065,6 +1072,8 @@ export interface PaymentInstallment extends BaseEntity {
 /** Section 8.2 — money returned after a booking is cancelled. */
 export interface Refund extends BaseEntity {
   code: string;                       // REF-2026-001
+  /** Tier 3.5: the account the refund was paid out of. */
+  account_id?: UUID | null;
   booking_id: UUID;
   /** gross amount being returned out of what the buyer had paid */
   amount: number;
@@ -1131,6 +1140,18 @@ export const COST_CATEGORY_SEED: { code: SystemCostCategory; value: string }[] =
  */
 export interface Expense extends BaseEntity {
   code: string;                       // EXP-2026-001
+  /** Tier 3.5: the account this cost was paid from. */
+  account_id?: UUID | null;
+  /**
+   * Tier 3.5 — VAT and AIT withheld from this bill, recorded for the return.
+   *
+   * **Memo fields.** `amount` remains what actually left the account, so the
+   * cash position stays right without knowing about them. Making `amount`
+   * gross and deriving the payment would have changed the meaning of a column
+   * every existing screen already reads.
+   */
+  vat_amount?: number | null;
+  ait_amount?: number | null;
   /** null = a company-level cost, not chargeable to one project */
   project_id?: UUID | null;
   land_id?: UUID | null;
@@ -1144,6 +1165,39 @@ export interface Expense extends BaseEntity {
   payment_method: SupplierPaymentMethod;
   reference_no?: string | null;
   paid_by: UUID | null;
+  notes?: string | null;
+}
+
+export const BANK_ACCOUNT_TYPES = ['bank', 'mfs', 'cash'] as const;
+export type BankAccountType = (typeof BANK_ACCOUNT_TYPES)[number];
+
+/**
+ * Where the company's money actually sits (Tier 3.5).
+ *
+ * Money enters through `payments` and leaves through `expenses`,
+ * `supplier_vouchers` and `refunds`. Those four are disjoint record sets — an
+ * expense is never also a voucher — so a cash position that adds the first and
+ * subtracts the other three counts each taka once. What it could not do before
+ * this table is say *which* account the taka moved through, so nobody could
+ * answer "can I pay BSRM on Thursday".
+ *
+ * `opening_balance` matters as much as the movements: without it the "position"
+ * is only the net movement since the software was installed, which is not a
+ * balance anybody can act on. `opening_balance_date` says what the figure was
+ * true on, so movements before it are not double counted against it.
+ */
+export interface BankAccount extends BaseEntity {
+  code: string;                       // ACC-001
+  name: string;
+  type: BankAccountType;
+  bank_name?: string | null;
+  /** stored as entered; nothing here is used to move money */
+  account_number?: string | null;
+  branch?: string | null;
+  opening_balance: number;
+  /** the date `opening_balance` was true on */
+  opening_balance_date: ISODate;
+  is_active: boolean;
   notes?: string | null;
 }
 
