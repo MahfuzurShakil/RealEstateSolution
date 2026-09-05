@@ -1147,6 +1147,39 @@ export interface Expense extends BaseEntity {
   notes?: string | null;
 }
 
+/**
+ * The reserved budget head for material bought through purchase orders
+ * (Tier 3.2).
+ *
+ * A project's cost has two sources and only one of them is categorised: the
+ * expense ledger carries a `cost_category`, while procurement spend reaches the
+ * project through `supplier_vouchers`, which has none (Section 8.3 adds it at
+ * roll-up time). A budget that only covered categorised expenses would leave
+ * out the largest line on most projects — the materials — while looking
+ * complete.
+ *
+ * The leading underscore is load-bearing: `lookupRepository` slugifies a new
+ * cost category and strips leading underscores, so a category somebody names
+ * "Procurement" becomes `procurement` and can never collide with this. The
+ * reserved head needs no guard because it is unreachable.
+ */
+export const PROCUREMENT_BUDGET_HEAD = '_procurement';
+
+/**
+ * One budgeted line of a project's cost plan (Tier 3.2, Section 8.3).
+ *
+ * Flat and per category rather than a full bill of quantities: the actual side
+ * is only recorded per category, so budgeting any finer would produce variances
+ * that could never be computed. `cost_category` holds a category code from
+ * `lookup_values` or `PROCUREMENT_BUDGET_HEAD`.
+ */
+export interface ProjectBudgetLine extends BaseEntity {
+  project_id: UUID;
+  cost_category: string;
+  budgeted_amount: number;
+  notes?: string | null;
+}
+
 /** Document types for entity_type = 'expense' (Section 8.3) */
 export const EXPENSE_DOCUMENT_TYPES = ['receipt', 'voucher', 'invoice', 'other'] as const;
 

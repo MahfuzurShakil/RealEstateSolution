@@ -40,6 +40,7 @@ import type {
   SiteProgressUpdate,
   TowerWorkItem,
   Project,
+  ProjectBudgetLine,
   ProjectStatusEvent,
   Tower,
   Unit,
@@ -96,6 +97,7 @@ export class AppDatabase extends Dexie {
   site_progress_updates!: EntityTable<SiteProgressUpdate, 'id'>;
   material_requests!: EntityTable<MaterialRequest, 'id'>;
   material_items!: EntityTable<MaterialItem, 'id'>;
+  project_budget_lines!: EntityTable<ProjectBudgetLine, 'id'>;
   material_request_items!: EntityTable<MaterialRequestItem, 'id'>;
   material_request_status_history!: EntityTable<MaterialRequestStatusEvent, 'id'>;
 
@@ -268,6 +270,21 @@ export class AppDatabase extends Dexie {
           'id, &code, from_project_id, to_project_id, item_name, item_id, transfer_date',
       })
       .upgrade((tx) => backfillMaterialItems(tx));
+
+    /*
+     * v14 — Module 7 addendum: the project budget (Tier 3.2, Section 8.3).
+     *
+     * Indexed on `[project_id+cost_category]` because that pair is the identity
+     * of a budget line — a project budgets each head once, and the editor looks
+     * a line up by it rather than scanning.
+     *
+     * This was going to share v13 with the material catalogue. It did not,
+     * because declaring an empty table for a feature nobody had designed would
+     * have frozen indexes before the shape was known.
+     */
+    this.version(14).stores({
+      project_budget_lines: 'id, project_id, cost_category, [project_id+cost_category]',
+    });
   }
 }
 
