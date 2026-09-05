@@ -4,14 +4,7 @@ import Link from 'next/link';
 import { Suspense, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
-import {
-  ArrowLeftRight,
-  Building2,
-  PackageMinus,
-  Search,
-  Trash2,
-  Warehouse,
-} from 'lucide-react';
+import { ArrowLeftRight, Building2, PackageMinus, Trash2, Warehouse } from 'lucide-react';
 import { StockIssueModal } from '@/components/admin/procurement/StockIssueModal';
 import { StockTransferModal } from '@/components/admin/procurement/StockTransferModal';
 import { Badge } from '@/components/ui/Badge';
@@ -20,7 +13,8 @@ import { Card } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Checkbox, SelectInput, TextInput } from '@/components/ui/Field';
+import { Checkbox } from '@/components/ui/Field';
+import { FilterBar, FilterSelect } from '@/components/ui/FilterBar';
 import { PageHeader } from '@/components/ui/PageHeader';
 import type {
   StockIssueWithRelations,
@@ -370,21 +364,19 @@ function StockPage() {
       </div>
 
       <Card>
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <div className="relative min-w-0 flex-1 sm:max-w-xs">
-            <Search className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <TextInput
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Item, code, project…"
-              className="pr-9"
-            />
-          </div>
-          <SelectInput
+        <FilterBar
+          search={{ value: search, onChange: setSearch, placeholder: 'Item, code, project…' }}
+          isFiltered={Boolean(search || location) || (tab === 'on_hand' && !inStockOnly)}
+          onReset={() => {
+            setSearch('');
+            setLocation('');
+            setInStockOnly(true);
+          }}
+        >
+          <FilterSelect
+            label="Store"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
-            className="w-auto"
-            aria-label="Filter by store"
           >
             <option value="">All stores</option>
             {/* the central store has no project, so issues and transfers
@@ -395,15 +387,17 @@ function StockPage() {
                 {p.name}
               </option>
             ))}
-          </SelectInput>
+          </FilterSelect>
           {tab === 'on_hand' && (
-            <Checkbox
-              label="Hide empty rows"
-              checked={inStockOnly}
-              onChange={(e) => setInStockOnly(e.target.checked)}
-            />
+            <span className="pb-2.5">
+              <Checkbox
+                label="Hide empty rows"
+                checked={inStockOnly}
+                onChange={(e) => setInStockOnly(e.target.checked)}
+              />
+            </span>
           )}
-        </div>
+        </FilterBar>
 
         {tab === 'on_hand' && (
           <DataTable

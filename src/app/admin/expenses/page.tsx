@@ -4,14 +4,15 @@ import Link from 'next/link';
 import { Suspense, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Building2, Plus, ReceiptText, Search, Wallet, X } from 'lucide-react';
+import { Building2, Plus, ReceiptText, Wallet, X } from 'lucide-react';
 import { ExpenseFormModal } from '@/components/admin/finance/ExpenseFormModal';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Field, SelectInput, TextInput } from '@/components/ui/Field';
+import { SelectInput, TextInput } from '@/components/ui/Field';
+import { FilterBar, FilterField, FilterSelect } from '@/components/ui/FilterBar';
 import { ExportCsvButton } from '@/components/ui/ExportCsvButton';
 import { PageHeader } from '@/components/ui/PageHeader';
 import type { CostCategory } from '@/lib/db/types';
@@ -278,51 +279,54 @@ function ExpensesPage() {
       </div>
 
       <Card>
-        <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <Field label="Search" className="xl:col-span-2">
-            <div className="relative">
-              <Search className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-              <TextInput
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Reason, payee, reference…"
-                className="pr-9"
-              />
-            </div>
-          </Field>
-          <Field label="Project">
-            <SelectInput value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-              <option value="">All costs</option>
-              <option value="company">Company-level only</option>
-              {(projects ?? []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </SelectInput>
-          </Field>
-          <Field label="Category">
-            <SelectInput
-              value={category}
-              onChange={(e) => setCategory(e.target.value as CostCategory | 'all')}
-            >
-              <option value="all">All categories</option>
-              {activeCategories.map((c) => (
-                <option key={c.id} value={c.code ?? c.value}>
-                  {c.value}
-                </option>
-              ))}
-            </SelectInput>
-          </Field>
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="From">
-              <TextInput type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-            </Field>
-            <Field label="To">
-              <TextInput type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-            </Field>
-          </div>
-        </div>
+        <FilterBar
+          search={{ value: search, onChange: setSearch, placeholder: 'Reason, payee, reference…' }}
+          isFiltered={filtersActive}
+          onReset={resetFilters}
+          resultLabel={`${rows.length} cost${rows.length === 1 ? '' : 's'}`}
+        >
+          <FilterSelect
+            label="Project"
+            value={projectId}
+            onChange={(e) => setProjectId(e.target.value)}
+          >
+            <option value="">All costs</option>
+            <option value="company">Company-level only</option>
+            {(projects ?? []).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </FilterSelect>
+          <FilterSelect
+            label="Category"
+            value={category}
+            onChange={(e) => setCategory(e.target.value as CostCategory | 'all')}
+          >
+            <option value="all">All categories</option>
+            {activeCategories.map((c) => (
+              <option key={c.id} value={c.code ?? c.value}>
+                {c.value}
+              </option>
+            ))}
+          </FilterSelect>
+          <FilterField label="From">
+            <TextInput
+              type="date"
+              className="w-auto"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+            />
+          </FilterField>
+          <FilterField label="To">
+            <TextInput
+              type="date"
+              className="w-auto"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+            />
+          </FilterField>
+        </FilterBar>
 
         <div className="mb-4 flex flex-wrap items-center gap-3">
           {landId && (
@@ -336,11 +340,6 @@ function ExpensesPage() {
                 : 'Costs against one land record'}
               <X className="size-3.5" />
             </button>
-          )}
-          {filtersActive && (
-            <Button variant="outline" size="sm" onClick={resetFilters}>
-              Clear filters
-            </Button>
           )}
           <label className="ml-auto flex items-center gap-2 whitespace-nowrap text-xs text-ink-muted">
             Sort

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Package, Pencil, Plus, Search } from 'lucide-react';
+import { Package, Pencil, Plus } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -10,6 +10,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Field, SelectInput, TextInput } from '@/components/ui/Field';
+import { FilterBar, FilterSelect } from '@/components/ui/FilterBar';
 import { Modal } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useMockSession } from '@/lib/auth/mock-session';
@@ -166,38 +167,37 @@ export default function MaterialItemsPage() {
       />
 
       <Card>
-        <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <Field label="Search" className="xl:col-span-2">
-            <div className="relative">
-              <Search className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-              <TextInput
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Name, code, unit…"
-                className="pr-9"
-              />
-            </div>
-          </Field>
-          <Field label="Category">
-            <SelectInput value={category} onChange={(e) => setCategory(e.target.value)}>
-              <option value="">All categories</option>
-              {(categories ?? []).map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </SelectInput>
-          </Field>
-          <Field label="Show">
-            <SelectInput
-              value={status}
-              onChange={(e) => setStatus(e.target.value as 'active' | 'all')}
-            >
-              <option value="active">In use</option>
-              <option value="all">Including retired</option>
-            </SelectInput>
-          </Field>
-        </div>
+        <FilterBar
+          search={{ value: search, onChange: setSearch, placeholder: 'Name, code, unit…' }}
+          isFiltered={Boolean(search || category) || status !== 'active'}
+          onReset={() => {
+            setSearch('');
+            setCategory('');
+            setStatus('active');
+          }}
+          resultLabel={`${rows.length} item${rows.length === 1 ? '' : 's'}`}
+        >
+          <FilterSelect
+            label="Category"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+          >
+            <option value="">All categories</option>
+            {(categories ?? []).map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </FilterSelect>
+          <FilterSelect
+            label="Show"
+            value={status}
+            onChange={(e) => setStatus(e.target.value as 'active' | 'all')}
+          >
+            <option value="active">In use</option>
+            <option value="all">Including retired</option>
+          </FilterSelect>
+        </FilterBar>
 
         <DataTable
           rows={rows}

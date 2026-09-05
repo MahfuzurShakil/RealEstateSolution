@@ -3,13 +3,13 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Building2, Printer, Receipt, Search, Warehouse } from 'lucide-react';
+import { Building2, Printer, Receipt, Warehouse } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { SelectInput, TextInput } from '@/components/ui/Field';
+import { FilterBar, FilterSelect } from '@/components/ui/FilterBar';
 import { ExportCsvButton } from '@/components/ui/ExportCsvButton';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SUPPLIER_PAYMENT_METHODS } from '@/lib/db/types';
@@ -194,21 +194,30 @@ export default function SupplierVouchersPage() {
       />
 
       <Card>
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <div className="relative min-w-0 flex-1 sm:max-w-xs">
-            <Search className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <TextInput
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Code, reference, supplier…"
-              className="pr-9"
-            />
-          </div>
-          <SelectInput
+        <FilterBar
+          search={{ value: search, onChange: setSearch, placeholder: 'Code, reference, supplier…' }}
+          isFiltered={Boolean(search || supplierId || projectId) || method !== 'all'}
+          onReset={() => {
+            setSearch('');
+            setSupplierId('');
+            setProjectId('');
+            setMethod('all');
+          }}
+          resultLabel={
+            loading ? (
+              'Loading…'
+            ) : (
+              <>
+                {`${rows.length} voucher${rows.length === 1 ? '' : 's'} · `}
+                <span className="font-semibold text-ink">{formatBdt(paid)}</span>
+              </>
+            )
+          }
+        >
+          <FilterSelect
+            label="Supplier"
             value={supplierId}
             onChange={(e) => setSupplierId(e.target.value)}
-            className="w-auto"
-            aria-label="Filter by supplier"
           >
             <option value="">All suppliers</option>
             {(suppliers ?? []).map((s) => (
@@ -216,12 +225,11 @@ export default function SupplierVouchersPage() {
                 {s.name}
               </option>
             ))}
-          </SelectInput>
-          <SelectInput
+          </FilterSelect>
+          <FilterSelect
+            label="Booked to"
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
-            className="w-auto"
-            aria-label="Filter by project"
           >
             <option value="">All projects</option>
             <option value="central">Central stock</option>
@@ -230,25 +238,16 @@ export default function SupplierVouchersPage() {
                 {p.name}
               </option>
             ))}
-          </SelectInput>
-          <SelectInput
-            value={method}
-            onChange={(e) => setMethod(e.target.value)}
-            className="w-auto"
-            aria-label="Filter by method"
-          >
+          </FilterSelect>
+          <FilterSelect label="Method" value={method} onChange={(e) => setMethod(e.target.value)}>
             <option value="all">All methods</option>
             {SUPPLIER_PAYMENT_METHODS.map((m) => (
               <option key={m} value={m}>
                 {SUPPLIER_PAYMENT_METHOD_META[m]}
               </option>
             ))}
-          </SelectInput>
-          <p className="ml-auto text-sm text-ink-muted">
-            {loading ? 'Loading…' : `${rows.length} voucher${rows.length === 1 ? '' : 's'} · `}
-            {!loading && <span className="font-semibold text-ink">{formatBdt(paid)}</span>}
-          </p>
-        </div>
+          </FilterSelect>
+        </FilterBar>
 
         {loading ? (
           <div className="h-40 animate-pulse rounded-2xl bg-canvas" />

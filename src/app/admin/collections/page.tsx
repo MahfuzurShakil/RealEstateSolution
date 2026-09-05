@@ -9,7 +9,6 @@ import {
   Building2,
   CalendarClock,
   CircleDollarSign,
-  Search,
   Wallet,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
@@ -17,7 +16,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { SelectInput, TextInput } from '@/components/ui/Field';
+import { FilterBar, FilterSelect } from '@/components/ui/FilterBar';
 import { ExportCsvButton } from '@/components/ui/ExportCsvButton';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { INSTALLMENT_STATUS_META, daysOverdue } from '@/lib/domain/finance';
@@ -314,21 +313,25 @@ function CollectionsPage() {
       )}
 
       <Card>
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <div className="relative min-w-0 flex-1 sm:max-w-xs">
-            <Search className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <TextInput
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Customer, booking, unit…"
-              className="pr-9"
-            />
-          </div>
-          <SelectInput
+        <FilterBar
+          search={{
+            value: search,
+            onChange: setSearch,
+            placeholder: 'Customer, booking, unit…',
+          }}
+          isFiltered={Boolean(search || projectId) || status !== 'all' || !dueOnly}
+          onReset={() => {
+            setSearch('');
+            setProjectId('');
+            setStatus('all');
+            setDueOnly(true);
+          }}
+          resultLabel={loading ? 'Loading…' : `${list.length} instalment${list.length === 1 ? '' : 's'}`}
+        >
+          <FilterSelect
+            label="Project"
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
-            className="w-auto"
-            aria-label="Filter by project"
           >
             <option value="">All projects</option>
             {(projects ?? []).map((p) => (
@@ -336,28 +339,28 @@ function CollectionsPage() {
                 {p.name}
               </option>
             ))}
-          </SelectInput>
-          <SelectInput
+          </FilterSelect>
+          <FilterSelect
+            label="Status"
             value={status}
             onChange={(e) => setStatus(e.target.value as StatusFilter)}
-            className="w-auto"
-            aria-label="Filter by status"
           >
             <option value="all">All statuses</option>
             <option value="overdue">Overdue</option>
             <option value="pending">Pending</option>
             <option value="partially_paid">Partly paid</option>
             <option value="paid">Paid</option>
-          </SelectInput>
+          </FilterSelect>
           {status === 'all' && (
-            <Button size="sm" variant={dueOnly ? 'primary' : 'outline'} onClick={() => setDueOnly(!dueOnly)}>
+            <Button
+              variant={dueOnly ? 'primary' : 'outline'}
+              className="shrink-0"
+              onClick={() => setDueOnly(!dueOnly)}
+            >
               {dueOnly ? 'Hiding settled' : 'Show settled too'}
             </Button>
           )}
-          <p className="ml-auto text-sm text-ink-muted">
-            {loading ? 'Loading…' : `${list.length} instalment${list.length === 1 ? '' : 's'}`}
-          </p>
-        </div>
+        </FilterBar>
 
         {loading ? (
           <div className="h-40 animate-pulse rounded-2xl bg-canvas" />

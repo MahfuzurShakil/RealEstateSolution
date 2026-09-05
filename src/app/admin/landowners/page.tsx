@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Pencil, Plus, Search, Trash2, User, Users } from 'lucide-react';
+import { Pencil, Plus, Trash2, User, Users } from 'lucide-react';
 import { LandownerQuickAddModal } from '@/components/admin/lands/LandownerQuickAddModal';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -11,7 +11,7 @@ import { Card } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { TextInput } from '@/components/ui/Field';
+import { FilterBar } from '@/components/ui/FilterBar';
 import { PageHeader } from '@/components/ui/PageHeader';
 import type { Landowner } from '@/lib/db/types';
 import { landownerRepository } from '@/lib/repositories';
@@ -100,6 +100,9 @@ export default function LandownersPage() {
       cell: (owner) => (
         <span className="block truncate text-ink-muted">{owner.address || '—'}</span>
       ),
+      // blank addresses sort last rather than first, so the column opens on
+      // the rows that actually have one
+      sortValue: (owner) => owner.address || 'zzz',
     },
     {
       key: 'lands',
@@ -162,15 +165,17 @@ export default function LandownersPage() {
       />
 
       <Card className="mb-5">
-        <div className="relative max-w-md">
-          <Search className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-          <TextInput
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, phone or NID"
-            className="pr-9"
-          />
-        </div>
+        <FilterBar
+          className="mb-0"
+          search={{ value: search, onChange: setSearch, placeholder: 'Name, phone or NID' }}
+          isFiltered={Boolean(search)}
+          onReset={() => setSearch('')}
+          resultLabel={
+            owners === undefined
+              ? 'Loading…'
+              : `${owners.length} landowner${owners.length === 1 ? '' : 's'}`
+          }
+        />
       </Card>
 
       {owners === undefined ? (

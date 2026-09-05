@@ -2,15 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import {
-  Building2,
-  Pencil,
-  Plus,
-  Search,
-  ShieldCheck,
-  Trash2,
-  Users as UsersIcon,
-} from 'lucide-react';
+import { Building2, Pencil, Plus, ShieldCheck, Trash2, Users as UsersIcon } from 'lucide-react';
 import { UserFormModal } from '@/components/admin/users/UserFormModal';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -18,7 +10,7 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { SelectInput, TextInput } from '@/components/ui/Field';
+import { FilterBar, FilterSelect } from '@/components/ui/FilterBar';
 import { PageHeader } from '@/components/ui/PageHeader';
 import {
   USER_ROLES,
@@ -127,7 +119,13 @@ export default function UsersPage() {
           </span>
         );
       },
-      sortValue: (row) => (row.all_projects ? 'zzz' : String(row.assigned_projects.length)),
+      /*
+       * Numeric, not `String(count)` — as a string "10" sorted before "2", so
+       * the column was wrong for anybody with ten or more projects. "All
+       * projects" outranks every count.
+       */
+      sortValue: (row) =>
+        row.all_projects ? Number.MAX_SAFE_INTEGER : row.assigned_projects.length,
     },
     {
       key: 'status',
@@ -226,21 +224,20 @@ export default function UsersPage() {
 
       {tab === 'people' && (
         <Card>
-          <div className="mb-4 flex flex-wrap items-center gap-3">
-            <div className="relative min-w-0 flex-1 sm:max-w-xs">
-              <Search className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-              <TextInput
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Name, phone, email…"
-                className="pr-9"
-              />
-            </div>
-            <SelectInput
+          <FilterBar
+            search={{ value: search, onChange: setSearch, placeholder: 'Name, phone, email…' }}
+            isFiltered={Boolean(search) || role !== 'all' || status !== 'all'}
+            onReset={() => {
+              setSearch('');
+              setRole('all');
+              setStatus('all');
+            }}
+            resultLabel={loading ? 'Loading…' : `${rows.length} shown · ${activeCount} active`}
+          >
+            <FilterSelect
+              label="Role"
               value={role}
               onChange={(e) => setRole(e.target.value as UserRole | 'all')}
-              className="w-auto"
-              aria-label="Filter by role"
             >
               <option value="all">All roles</option>
               {USER_ROLES.map((r) => (
@@ -249,12 +246,11 @@ export default function UsersPage() {
                   {counts?.[r] ? ` (${counts[r]})` : ''}
                 </option>
               ))}
-            </SelectInput>
-            <SelectInput
+            </FilterSelect>
+            <FilterSelect
+              label="Status"
               value={status}
               onChange={(e) => setStatus(e.target.value as UserStatus | 'all')}
-              className="w-auto"
-              aria-label="Filter by status"
             >
               <option value="all">All statuses</option>
               {USER_STATUSES.map((st) => (
@@ -262,11 +258,8 @@ export default function UsersPage() {
                   {USER_STATUS_META[st].label}
                 </option>
               ))}
-            </SelectInput>
-            <p className="ml-auto text-sm text-ink-muted">
-              {loading ? 'Loading…' : `${rows.length} shown · ${activeCount} active`}
-            </p>
-          </div>
+            </FilterSelect>
+          </FilterBar>
 
           {loading ? (
             <div className="h-40 animate-pulse rounded-2xl bg-canvas" />

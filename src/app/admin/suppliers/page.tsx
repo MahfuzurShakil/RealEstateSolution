@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Pencil, Plus, Search, Trash2, Truck } from 'lucide-react';
+import { Pencil, Plus, Trash2, Truck } from 'lucide-react';
 import { SupplierFormModal } from '@/components/admin/procurement/SupplierFormModal';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -11,7 +11,7 @@ import { Card } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { SelectInput, TextInput } from '@/components/ui/Field';
+import { FilterBar, FilterSelect } from '@/components/ui/FilterBar';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SUPPLIER_TYPES, type Supplier, type SupplierType } from '@/lib/db/types';
 import { SUPPLIER_TYPE_META } from '@/lib/domain/procurement';
@@ -196,21 +196,19 @@ export default function SuppliersPage() {
       />
 
       <Card>
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <div className="relative min-w-0 flex-1 sm:max-w-xs">
-            <Search className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <TextInput
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Name, phone, contact person…"
-              className="pr-9"
-            />
-          </div>
-          <SelectInput
+        <FilterBar
+          search={{ value: search, onChange: setSearch, placeholder: 'Name, phone, contact person…' }}
+          isFiltered={Boolean(search) || type !== 'all'}
+          onReset={() => {
+            setSearch('');
+            setType('all');
+          }}
+          resultLabel={loading ? 'Loading…' : `${rows.length} supplier${rows.length === 1 ? '' : 's'}`}
+        >
+          <FilterSelect
+            label="Type"
             value={type}
             onChange={(e) => setType(e.target.value as SupplierType | 'all')}
-            className="w-auto"
-            aria-label="Filter by type"
           >
             <option value="all">All types</option>
             {SUPPLIER_TYPES.map((t) => (
@@ -218,11 +216,8 @@ export default function SuppliersPage() {
                 {SUPPLIER_TYPE_META[t].label}
               </option>
             ))}
-          </SelectInput>
-          <p className="ml-auto text-sm text-ink-muted">
-            {loading ? 'Loading…' : `${rows.length} supplier${rows.length === 1 ? '' : 's'}`}
-          </p>
-        </div>
+          </FilterSelect>
+        </FilterBar>
 
         {loading ? (
           <div className="h-40 animate-pulse rounded-2xl bg-canvas" />

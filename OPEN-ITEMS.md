@@ -3,7 +3,8 @@
 Known-open work that is **not** a blocker for what is already shipped. Add to
 this as modules land; delete an entry when it is done.
 
-Last reviewed: 2026-09-05, after Tier 3.5 — cash position (Section 0j),
+Last reviewed: 2026-09-05, after the list-filter consistency pass (Section 0k)
+and Tier 3.5 — cash position (Section 0j),
 Tier 3.2 — project budget (Section 0i),
 Tier 3.1 — material catalogue (Section 0h)
 and the land expense ↔ instalment feedback (Section 0g); before that 2026-09-04, after Tier 3.4 — land payment schedule (Section 0f),
@@ -136,6 +137,56 @@ The other side — what was agreed to be paid, and when — is now the Payment p
 tab. `landPaymentSummary` still answers "how much has gone out"; the plan
 answers "how much should have, by now", and the two are computed by different
 code paths from the same ledger rows, so they cross-check each other.
+
+---
+
+## 0k. List filters made consistent — 2026-09-05 (client feedback)
+
+Reported: filters differ page to page, no search or reset in places, sorting
+inconsistent, and some dropdowns stretch the full width.
+
+**The width complaint had a root cause worth more than the symptom.** `cn()`
+was `clsx` alone, which *concatenates* classes rather than resolving Tailwind
+conflicts. `SelectInput`'s base style carries `w-full`, so a caller passing
+`w-auto` produced `class="w-full w-auto"` and the browser picked whichever rule
+came later in the stylesheet — not the caller's. **Every `w-auto` override in
+the application was dead.** On collections two filter dropdowns measured
+**1079 px**. `cn` now runs `twMerge`, so the caller wins as every call site
+already assumed; the same two selects measure 243 px and 123 px.
+
+**One `FilterBar`, used by nine list pages** — collections, expenses,
+suppliers, users, stock, supplier vouchers, refunds, landowners, material
+items. Search on the left, labelled content-width filters beside it, a Reset
+that appears only when something is set, and the result count at the end.
+Filters are labelled because an unlabelled select reading "Nokshi Green
+Residence" gives no clue which field it filters — it is only self-explanatory
+while it still says "All".
+
+Reset renders only when a filter is active: a permanently visible Reset on an
+unfiltered list is a button that does nothing, and it teaches people to ignore
+it. Verified through the full cycle — hidden when clean, appears on filter,
+clears every control and hides again.
+
+**Two real sorting bugs, not just gaps.** `users.projects` sorted its count as
+a *string*, so ten projects sorted before two; it is numeric now, with "All
+projects" ranking above every count. `landowners.address` had no `sortValue` at
+all and now sorts, with blank addresses last so the column opens on rows that
+have one. Every other column that lacks sorting is an action column, which is
+correct.
+
+The expenses sort dropdown stays: that page renders `mobileCard`, and a card
+stack has no column headers to click.
+
+375 px re-measured on all eleven list pages — clean, except collections'
+long-standing 406/375 from a single SVG path, which does not scroll and
+predates this work.
+
+### Still open from this
+
+**`cn` now resolves conflicts app-wide.** That is the fix, but it means any
+component whose base class was silently beating a caller's override now defers
+to the caller. Nothing regressed in the sweep; worth remembering if something
+looks different somewhere not covered by it.
 
 ---
 

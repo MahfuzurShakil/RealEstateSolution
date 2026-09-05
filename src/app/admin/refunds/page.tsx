@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Building2, Search, Trash2, Undo2 } from 'lucide-react';
+import { Building2, Trash2, Undo2 } from 'lucide-react';
 import { RefundModal } from '@/components/admin/finance/RefundModal';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
@@ -12,7 +12,7 @@ import { Card } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { SelectInput, TextInput } from '@/components/ui/Field';
+import { FilterBar, FilterSelect } from '@/components/ui/FilterBar';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SUPPLIER_PAYMENT_METHOD_META } from '@/lib/domain/procurement';
 import type { RefundableBooking, RefundWithRelations } from '@/lib/repositories';
@@ -206,21 +206,19 @@ export default function RefundsPage() {
       </div>
 
       <Card>
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <div className="relative min-w-0 flex-1 sm:max-w-xs">
-            <Search className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <TextInput
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Code, customer, booking…"
-              className="pr-9"
-            />
-          </div>
-          <SelectInput
+        <FilterBar
+          search={{ value: search, onChange: setSearch, placeholder: 'Code, customer, booking…' }}
+          isFiltered={Boolean(search || projectId)}
+          onReset={() => {
+            setSearch('');
+            setProjectId('');
+          }}
+          resultLabel={loading ? 'Loading…' : `${rows.length} refund${rows.length === 1 ? '' : 's'}`}
+        >
+          <FilterSelect
+            label="Project"
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
-            className="w-auto"
-            aria-label="Filter by project"
           >
             <option value="">All projects</option>
             {(projects ?? []).map((p) => (
@@ -228,11 +226,8 @@ export default function RefundsPage() {
                 {p.name}
               </option>
             ))}
-          </SelectInput>
-          <p className="ml-auto text-sm text-ink-muted">
-            {loading ? 'Loading…' : `${rows.length} refund${rows.length === 1 ? '' : 's'}`}
-          </p>
-        </div>
+          </FilterSelect>
+        </FilterBar>
 
         {loading ? (
           <div className="h-40 animate-pulse rounded-2xl bg-canvas" />
