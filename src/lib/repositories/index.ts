@@ -9,6 +9,13 @@ export {
 } from './lookup.repository';
 export { companySettingsRepository } from './settings.repository';
 export {
+  materialItemRepository,
+  DuplicateMaterialItemError,
+  MaterialItemInUseError,
+  type MaterialItemFilters,
+  type MaterialItemWithUsage,
+} from './material-item.repository';
+export {
   printRepository,
   type ReceiptPrintData,
   type BookingFormPrintData,

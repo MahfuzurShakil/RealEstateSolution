@@ -735,9 +735,42 @@ export interface MaterialRequest extends BaseEntity {
   decision_note?: string | null;
 }
 
+/**
+ * The material catalogue (Tier 3.1, Section 6.6).
+ *
+ * Item names were free text in five tables — `material_request_items`,
+ * `purchase_order_items`, `stock`, `stock_issues`, `stock_transfers` — and
+ * §6.6 always called that temporary. Free text means "Cement (Fresh)" and
+ * "cement fresh" become two items holding separate quantities and separate
+ * weighted-average costs, and stock valuation quietly stops meaning anything.
+ *
+ * **The unit lives here, not on the line.** It is a property of the item —
+ * cement is stocked in bags — and putting it in the stock key alongside the
+ * name was the third way one material could split into several rows. Buying in
+ * a different unit is a conversion, which is out of scope; allowing two units
+ * for one item would rebuild the problem this table exists to remove.
+ */
+export interface MaterialItem extends BaseEntity {
+  code: string;                       // ITM-0001
+  name: string;
+  /** lookup_values (category='material_unit') — the one unit it is stocked in */
+  unit: string;
+  /** free text grouping — cement, rod, sand, electrical … */
+  category?: string | null;
+  is_active: boolean;
+  notes?: string | null;
+}
+
 export interface MaterialRequestItem extends BaseEntity {
   request_id: UUID;
-  /** free text for now; the Procurement module reconciles it with a catalog */
+  /** Tier 3.1: the catalogue item this line is for. */
+  item_id?: UUID | null;
+  /**
+   * The name as it was written on this requisition. Kept beside `item_id`
+   * rather than replaced by it: a requisition is a document, and renaming an
+   * item in the catalogue must not rewrite what a site engineer asked for last
+   * March. `item_id` is the identity; this is the record.
+   */
   item_name: string;
   /** lookup_values (category='material_unit') — bag / ton / piece … */
   unit: string;
@@ -844,6 +877,8 @@ export interface PurchaseOrder extends BaseEntity {
 
 export interface PurchaseOrderItem extends BaseEntity {
   po_id: UUID;
+  /** Tier 3.1: the catalogue item. `item_name` stays as ordered. */
+  item_id?: UUID | null;
   item_name: string;
   /** lookup_values (category='material_unit') — bag / ton / piece … */
   unit: string;
@@ -888,6 +923,15 @@ export interface GoodsReceiptItem extends BaseEntity {
  */
 export interface StockRow extends BaseEntity {
   project_id?: UUID | null;
+  /**
+   * Tier 3.1: the identity of a stock row, alongside `project_id`.
+   *
+   * `item_name` and `unit` are kept for display and for rows recorded before
+   * the catalogue existed, but they no longer decide which row is which — that
+   * is exactly how one material became three rows with three different
+   * weighted averages.
+   */
+  item_id?: UUID | null;
   item_name: string;
   unit: string;
   quantity_available: number;
@@ -899,6 +943,8 @@ export interface StockIssue extends BaseEntity {
   code: string;                       // ISSUE-2026-001
   project_id: UUID;
   work_item_id?: UUID | null;
+  /** Tier 3.1: the catalogue item issued. */
+  item_id?: UUID | null;
   item_name: string;
   unit: string;
   quantity_issued: number;
@@ -913,6 +959,8 @@ export interface StockIssue extends BaseEntity {
 /** Section 7.8a — central → project, or project → project. */
 export interface StockTransfer extends BaseEntity {
   code: string;                       // TRF-2026-001
+  /** Tier 3.1: the catalogue item moved. */
+  item_id?: UUID | null;
   item_name: string;
   unit: string;
   quantity: number;

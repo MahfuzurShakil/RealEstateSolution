@@ -1,6 +1,6 @@
 'use client';
 
-import Dexie, { type EntityTable } from 'dexie';
+import Dexie, { type EntityTable, type Transaction } from 'dexie';
 import type {
   Booking,
   CompanySettings,
@@ -18,6 +18,7 @@ import type {
   LeadActivity,
   LookupValue,
   MaterialRequest,
+  MaterialItem,
   MaterialRequestItem,
   MaterialRequestStatusEvent,
   Payment,
@@ -93,6 +94,7 @@ export class AppDatabase extends Dexie {
   tower_work_items!: EntityTable<TowerWorkItem, 'id'>;
   site_progress_updates!: EntityTable<SiteProgressUpdate, 'id'>;
   material_requests!: EntityTable<MaterialRequest, 'id'>;
+  material_items!: EntityTable<MaterialItem, 'id'>;
   material_request_items!: EntityTable<MaterialRequestItem, 'id'>;
   material_request_status_history!: EntityTable<MaterialRequestStatusEvent, 'id'>;
 
@@ -234,6 +236,119 @@ export class AppDatabase extends Dexie {
     this.version(12).stores({
       user_project_assignments: 'id, user_id, project_id, &[user_id+project_id]',
     });
+
+    /*
+     * v13 — Module 6 addendum: the material catalogue (Tier 3.1, Section 6.6).
+     *
+     * `material_items` gives an item an identity that survives being renamed.
+     * `stock` gains `[project_id+item_id]` and every line table gains a plain
+     * `item_id` index, so the five tables that carried free text can be read
+     * by item rather than by spelling.
+     *
+     * The old `[project_id+item_name+unit]` index is deliberately left in
+     * place. Rows written before this version have no `item_id`, and
+     * `stockRepository.findRow` still falls back to the name for them — an
+     * index that is no longer the identity but is still the only way to find
+     * pre-catalogue rows.
+     *
+     * `project_budget_lines` was going to share this block with Tier 3.2, but
+     * 3.2 is not built. Declaring an empty table for an unbuilt feature would
+     * freeze indexes nobody has designed yet, so 3.2 takes v14.
+     */
+    this.version(13)
+      .stores({
+        material_items: 'id, &code, name, unit, category, is_active',
+        material_request_items: 'id, request_id, item_id',
+        purchase_order_items: 'id, po_id, item_name, item_id',
+        stock: 'id, project_id, item_name, unit, item_id, [project_id+item_name+unit], [project_id+item_id]',
+        stock_issues:
+          'id, &code, project_id, work_item_id, item_name, item_id, issue_date, issued_by',
+        stock_transfers:
+          'id, &code, from_project_id, to_project_id, item_name, item_id, transfer_date',
+      })
+      .upgrade(backfillMaterialItems);
+  }
+}
+
+/**
+ * Builds the catalogue out of the item names already stored, then points every
+ * existing row at its item (Tier 3.1).
+ *
+ * Done here rather than left to "progressive matching" because a half-migrated
+ * table is the worst of both: `findRow` would have to key on the item for some
+ * rows and the name for others *forever*, and the two spellings this feature
+ * exists to merge would go on holding separate stock in the meantime. One pass
+ * over a handful of rows settles it.
+ *
+ * The pass is additive — it inserts catalogue rows and fills a nullable column,
+ * and touches no quantity or price. If it were to fail part-way, the rows it
+ * did not reach keep working through the name fallback that stays in
+ * `findRow`, which is why that fallback is not removed.
+ *
+ * `(name, unit)` is the seed key: a name stocked in two units was two stock
+ * rows before this and becomes two catalogue items, which is the honest
+ * reading. Merging them is a decision about weighted averages, deliberately
+ * not made by a migration.
+ */
+async function backfillMaterialItems(tx: Transaction): Promise<void> {
+  const items = tx.table('material_items');
+  const seen = new Map<string, string>(); // `${name}|${unit}` -> item id
+  let sequence = 0;
+
+  const keyOf = (name: string, unit: string) =>
+    `${name.trim().toLowerCase()}|${unit.trim().toLowerCase()}`;
+
+  const now = new Date().toISOString();
+  const ensure = async (rawName: string, rawUnit: string): Promise<string | null> => {
+    const name = (rawName ?? '').trim();
+    const unit = (rawUnit ?? '').trim();
+    if (!name) return null;
+
+    const key = keyOf(name, unit);
+    const known = seen.get(key);
+    if (known) return known;
+
+    sequence += 1;
+    const id = crypto.randomUUID();
+    await items.add({
+      id,
+      code: `ITM-${String(sequence).padStart(4, '0')}`,
+      name,
+      unit: unit || 'piece',
+      category: null,
+      is_active: true,
+      notes: null,
+      created_at: now,
+      updated_at: now,
+      created_by: null,
+    });
+    seen.set(key, id);
+    return id;
+  };
+
+  /*
+   * `stock` first, so the catalogue is seeded from the rows that actually hold
+   * quantity and cost. Everything else then matches into those items rather
+   * than creating near-duplicates in a different order.
+   */
+  for (const table of ['stock', 'stock_issues', 'stock_transfers', 'purchase_order_items']) {
+    const rows = await tx.table(table).toArray();
+    for (const row of rows) {
+      const id = await ensure(row.item_name, row.unit);
+      if (id) await tx.table(table).update(row.id, { item_id: id });
+    }
+  }
+
+  /*
+   * Requisitions last and, unlike the others, they never *create* an item: a
+   * request is a wish, and a line somebody typed and nobody ever ordered is
+   * not evidence that the material exists. It links only when the name already
+   * matches something the procurement side bought.
+   */
+  const requestLines = await tx.table('material_request_items').toArray();
+  for (const row of requestLines) {
+    const id = seen.get(keyOf(row.item_name ?? '', row.unit ?? ''));
+    if (id) await tx.table('material_request_items').update(row.id, { item_id: id });
   }
 }
 
