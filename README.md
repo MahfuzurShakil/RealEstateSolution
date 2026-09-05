@@ -1,5 +1,10 @@
 # Real Estate Developer Management Platform
 
+> **New here? Start with the [Platform Handbook](PLATFORM-HANDBOOK.md).**
+> What the eight modules do in business terms, how a record travels from a plot
+> of land to money in the bank, and the rules the software enforces on the way.
+> Written for a reader who does not know the code.
+
 Phase A prototype: Next.js (App Router) + TypeScript + Tailwind CSS v4, data in
 browser IndexedDB via Dexie.js.
 
