@@ -32,10 +32,12 @@ import {
   supplierVoucherRepository,
   expenseRepository,
   paymentScheduleRepository,
+  projectBudgetRepository,
   refundRepository,
   userProjectAssignmentRepository,
 } from '../repositories';
 import type { MaterialRequestStatus, ProjectStatus } from './types';
+import { PROCUREMENT_BUDGET_HEAD } from './types';
 import { getDb } from './database';
 import { backfillMaterialItems } from './backfill-material-items';
 import { DEMO_LANDS, DEMO_OWNERS } from './demo-data';
@@ -1085,6 +1087,46 @@ async function seedDemoFinance(
    * the registration money still to go. Generation is deliberately last, after
    * the expenses exist, so the allocation runs over real rows.
    */
+  /*
+   * A budget on two projects (Tier 3.2), written through the repository so the
+   * upsert and the drop-a-zero-line rule are exercised by the demo rather than
+   * bypassed by it.
+   *
+   * Dhanmondi is deliberately seeded **over** budget on contractor payment and
+   * with `land_extra_cost` left unbudgeted: a plan where everything is
+   * comfortably green demonstrates nothing, and the unbudgeted head is the case
+   * the screen exists to make visible.
+   */
+  const budgets: Array<[string, Array<[string, number]>]> = [
+    [
+      'Nokshi Dhanmondi Court',
+      [
+        [PROCUREMENT_BUDGET_HEAD, 2000000],
+        ['land_payment', 70000000],
+        ['contractor_payment', 6000000],
+        ['marketing', 500000],
+      ],
+    ],
+    [
+      'Nokshi Green Residence',
+      [
+        [PROCUREMENT_BUDGET_HEAD, 6000000],
+        ['contractor_payment', 12000000],
+        ['marketing', 800000],
+        ['admin', 400000],
+      ],
+    ],
+  ];
+  for (const [name, lines] of budgets) {
+    const projectId = projectIds.get(name);
+    if (!projectId) continue;
+    await projectBudgetRepository.replaceForProject(
+      projectId,
+      lines.map(([cost_category, budgeted_amount]) => ({ cost_category, budgeted_amount })),
+      createdBy,
+    );
+  }
+
   const dhanmondiLandId = landIds.get('Dhanmondi Road 27 plot');
   if (dhanmondiLandId) {
     await paymentScheduleRepository.generateForLand(
@@ -1175,6 +1217,7 @@ export async function clearDemoData(): Promise<void> {
     /* The catalogue is derived from these rows, so it goes with them — leaving
        it behind would offer items nothing in the database has ever bought. */
     db.material_items.clear(),
+    db.project_budget_lines.clear(),
     db.supplier_vouchers.clear(),
     db.payment_schedules.clear(),
     db.payment_installments.clear(),

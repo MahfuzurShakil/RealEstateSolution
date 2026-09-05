@@ -3,7 +3,8 @@
 Known-open work that is **not** a blocker for what is already shipped. Add to
 this as modules land; delete an entry when it is done.
 
-Last reviewed: 2026-09-05, after Tier 3.1 — material catalogue (Section 0h)
+Last reviewed: 2026-09-05, after Tier 3.2 — project budget (Section 0i),
+Tier 3.1 — material catalogue (Section 0h)
 and the land expense ↔ instalment feedback (Section 0g); before that 2026-09-04, after Tier 3.4 — land payment schedule (Section 0f),
 Tier 3.3 — cost categories (Section 0e) and
 Tier 3.6 — printed documents (Section 0d),
@@ -134,6 +135,71 @@ The other side — what was agreed to be paid, and when — is now the Payment p
 tab. `landPaymentSummary` still answers "how much has gone out"; the plan
 answers "how much should have, by now", and the two are computed by different
 code paths from the same ledger rows, so they cross-check each other.
+
+---
+
+## 0i. Tier 3.2 — project budget / BOQ — done 2026-09-05 (batches A–B)
+
+**Dexie v14** — `project_budget_lines`, keyed `[project_id+cost_category]`.
+(v13 was the material catalogue; the shared block the plan wanted did not
+happen, for the reason in 0h.)
+
+**The plan does not mention the problem that shapes the feature: procurement
+spend has no `cost_category`.** Project cost comes from two places — the
+expense ledger, which is categorised, and `supplier_vouchers`, which is not
+(§8.3 adds it at roll-up time). A budget covering only categorised expenses
+would omit the largest line on most projects, the materials, while looking
+complete.
+
+So there is one reserved head, `_procurement`. The leading underscore is
+load-bearing: `lookupRepository` slugifies a new cost category and strips
+leading underscores, so a category named "Procurement" becomes `procurement`
+and cannot collide. The head is unreachable by the generator, so it needs no
+guard — better than adding one.
+
+**`stock_issues` are deliberately not counted.** Material handed to a site was
+already paid for by the voucher that bought it; adding it again as it moves
+from store to tower is precisely the double count §8.3 warns about.
+
+**Unbudgeted spend is surfaced, not absorbed.** A head with spend and no budget
+line gets its own flagged row and a warning, and is still counted in Spent so
+the percentage stays honest. A budget that quietly swallows uncategorised spend
+reads as complete while money leaks — the one thing this screen must not hide.
+
+**What the budget makes answerable.** The overview card still says "estimated
+profit so far", which for a project mid-construction could only ever be a loss.
+The budget tab says **profit at completion** — sales value less *planned* cost.
+The two disagree on purpose and are labelled so.
+
+**Verified by reconciling against the database, not the screen.** For Nokshi
+Dhanmondi Court the panel's Spent (84,413,100) equals expenses by category
+(6,950,000 + 70,000,000 + 5,850,000 + 320,000) plus vouchers (1,293,100),
+summed independently from IndexedDB. Against a 78,500,000 budget it reports
+5,913,100 over at 107.53%, contractor payment 950,000 over at 115.83%, land
+payment at exactly 100%, and land extra cost flagged as the one unbudgeted
+head. Profit at completion (22,300,750) equals a sales value of 100,800,750
+computed independently from bookings, less the budget. The finance overview
+reaches the same variance by a different path (`budgetedByProject` against
+`byProject.total_cost`) and agrees.
+
+Fourteen domain cases pass — over budget, unspent, unbudgeted, no budget at
+all, zero-value heads not invented as rows, rows summing to their own totals —
+with a control proving they can fail. A demo reload produces 8 budget lines
+across two projects with no zero lines and no duplicate heads, which exercises
+the upsert.
+
+Demo budgets are deliberately seeded **over** on one head with another left
+unbudgeted: a plan where everything is comfortably green demonstrates nothing.
+
+### Still open from this
+
+**The budget is flat, not a bill of quantities.** One amount per cost head per
+project, because the actual side is only recorded per category — budgeting any
+finer would produce variances that could never be computed. A real BOQ with
+quantities and rates needs the actual side to carry the same structure first.
+
+**No budget revision history.** Editing a budget overwrites it, so "what did we
+originally plan" is not answerable. Same shape as the audit-log gap in 1.11.
 
 ---
 

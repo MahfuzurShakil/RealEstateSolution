@@ -12,6 +12,7 @@ import { ProjectStatusCard } from '@/components/admin/projects/ProjectStatusCard
 import { ProjectTimeline } from '@/components/admin/projects/ProjectTimeline';
 import { TowersUnitsPanel } from '@/components/admin/projects/TowersUnitsPanel';
 import { ProjectProcurementSummary } from '@/components/admin/procurement/ProjectProcurementSummary';
+import { ProjectBudgetPanel } from '@/components/admin/finance/ProjectBudgetPanel';
 import { ProjectProgressSummary } from '@/components/admin/site-progress/ProjectProgressSummary';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -30,6 +31,7 @@ type Tab =
   | 'towers'
   | 'progress'
   | 'procurement'
+  | 'budget'
   | 'allocation'
   | 'timeline'
   | 'documents';
@@ -71,6 +73,7 @@ export default function ProjectDetailPage() {
     { key: 'towers', label: `Towers & Units (${project.unit_total})` },
     { key: 'progress', label: 'Site Progress' },
     { key: 'procurement', label: 'Finance & Cost' },
+    { key: 'budget', label: 'Budget' },
     { key: 'allocation', label: 'JV Allocation' },
     { key: 'timeline', label: 'Timeline' },
     { key: 'documents', label: 'Documents' },
@@ -210,6 +213,9 @@ export default function ProjectDetailPage() {
 
           {/* Section 7.11 — the material cost chain, read for this project */}
           {tab === 'procurement' && <ProjectProcurementSummary projectId={project.id} />}
+
+          {/* Section 8.3 — what the project was planned to cost, against what it has */}
+          {tab === 'budget' && <ProjectBudgetPanel projectId={project.id} />}
 
           {tab === 'allocation' && <JvAllocationCard projectId={project.id} />}
 

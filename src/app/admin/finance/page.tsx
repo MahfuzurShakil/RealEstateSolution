@@ -20,7 +20,8 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import type { ProjectFinanceSummary } from '@/lib/domain/finance';
-import { financeDashboardRepository } from '@/lib/repositories';
+import { financeDashboardRepository,
+  projectBudgetRepository } from '@/lib/repositories';
 import { formatBdt, todayLocal } from '@/lib/utils/format';
 
 /**
@@ -35,6 +36,8 @@ import { formatBdt, todayLocal } from '@/lib/utils/format';
 export default function FinanceOverviewPage() {
   const today = todayLocal();
   const data = useLiveQuery(() => financeDashboardRepository.company(today), [today]);
+  /** Budgeted totals per project (Tier 3.2), for the variance column. */
+  const budgets = useLiveQuery(() => projectBudgetRepository.budgetedByProject(), []);
 
   if (data === undefined) return <p className="text-sm text-ink-muted">Loading…</p>;
 
@@ -145,6 +148,37 @@ export default function FinanceOverviewPage() {
         </span>
       ),
       sortValue: (row) => row.total_cost,
+    },
+    {
+      /*
+       * Against the plan, where there is one (Tier 3.2). A project with no
+       * budget says so rather than showing a variance against zero, which
+       * would read as every project being catastrophically over.
+       */
+      key: 'budget',
+      header: 'vs budget',
+      align: 'right',
+      cell: (row) => {
+        const budgeted = budgets?.[row.project_id] ?? 0;
+        if (budgeted <= 0) return <span className="text-xs text-ink-muted">no budget</span>;
+        const left = budgeted - row.total_cost;
+        const pct = Math.round((row.total_cost / budgeted) * 1000) / 10;
+        return (
+          <span className="text-sm">
+            <span className={left < 0 ? 'font-medium text-red-600' : 'text-ink'}>
+              {left < 0 ? `${formatBdt(Math.abs(left))} over` : `${formatBdt(left)} left`}
+            </span>
+            <span className="block text-xs text-ink-muted">
+              {pct}% of {formatBdt(budgeted)}
+            </span>
+          </span>
+        );
+      },
+      sortValue: (row) => {
+        const budgeted = budgets?.[row.project_id] ?? 0;
+        // unbudgeted projects sort last rather than mixing into the variances
+        return budgeted > 0 ? budgeted - row.total_cost : Number.POSITIVE_INFINITY;
+      },
     },
     {
       key: 'estimated_profit',
