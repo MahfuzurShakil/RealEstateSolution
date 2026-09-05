@@ -267,8 +267,7 @@ export function MaterialRequestStatusCard({
         open={transferOpen}
         defaults={{
           to_project_id: request.project_id,
-          item_name: request.items[0]?.item_name,
-          unit: request.items[0]?.unit,
+          item_id: request.items[0]?.item_id ?? null,
           request_id: request.id,
           request_code: request.code,
         }}

@@ -34,7 +34,7 @@ export function StockIssueModal({
   onSaved,
 }: {
   open: boolean;
-  defaults?: { project_id?: string; item_name?: string; unit?: string };
+  defaults?: { project_id?: string };
   onClose: () => void;
   onSaved?: () => void;
 }) {
@@ -47,7 +47,7 @@ function IssueDialog({
   onClose,
   onSaved,
 }: {
-  defaults?: { project_id?: string; item_name?: string; unit?: string };
+  defaults?: { project_id?: string };
   onClose: () => void;
   onSaved?: () => void;
 }) {
@@ -55,7 +55,7 @@ function IssueDialog({
 
   const [projectId, setProjectId] = useState(defaults?.project_id ?? '');
   const [stockKey, setStockKey] = useState(
-    defaults?.item_name && defaults?.unit ? `${defaults.item_name}|${defaults.unit}` : '',
+    '',
   );
   const [towerId, setTowerId] = useState('');
   const [workItemId, setWorkItemId] = useState('');
@@ -84,7 +84,13 @@ function IssueDialog({
     [],
   );
 
-  const selected = (available ?? []).find((r) => `${r.item_name}|${r.unit}` === stockKey);
+  /*
+   * Keyed on the stock row itself since Tier 3.1. It used to be
+   * `${item_name}|${unit}`, which was the same string identity that let one
+   * material be several rows — and two rows that agreed on both would have
+   * been indistinguishable here.
+   */
+  const selected = (available ?? []).find((r) => r.id === stockKey);
   const requested = Number(quantity) || 0;
   const cost = money(requested * (selected?.average_unit_price ?? 0));
   const tooMuch = Boolean(selected) && requested > (selected?.quantity_available ?? 0);
@@ -104,6 +110,7 @@ function IssueDialog({
         {
           project_id: projectId,
           work_item_id: workItemId || null,
+          item_id: selected.item_id ?? null,
           item_name: selected.item_name,
           unit: selected.unit,
           quantity_issued: requested,
@@ -177,8 +184,8 @@ function IssueDialog({
           >
             <option value="">Select…</option>
             {(available ?? []).map((row) => (
-              <option key={row.id} value={`${row.item_name}|${row.unit}`}>
-                {row.item_name} — {row.quantity_available} {row.unit} @{' '}
+              <option key={row.id} value={row.id}>
+                {row.display_name} — {row.quantity_available} {row.unit} @{' '}
                 {formatBdtRate(row.average_unit_price)}
               </option>
             ))}

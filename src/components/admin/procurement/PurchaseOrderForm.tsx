@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
+import { MaterialItemPicker } from './MaterialItemPicker';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { PurchaseOrderStatus } from '@/lib/db/types';
 import { lineTotal, money } from '@/lib/domain/procurement';
@@ -25,6 +26,7 @@ import { formatBdt, todayLocal } from '@/lib/utils/format';
 interface LineRow {
   /** existing row id, so the quantity already received survives an edit */
   id?: string;
+  item_id: string | null;
   item_name: string;
   unit: string;
   quantity_ordered: string;
@@ -32,6 +34,7 @@ interface LineRow {
 }
 
 const EMPTY_LINE = (): LineRow => ({
+  item_id: null,
   item_name: '',
   unit: '',
   quantity_ordered: '',
@@ -75,6 +78,7 @@ export function PurchaseOrderForm({
     order
       ? order.items.map((i) => ({
           id: i.id,
+          item_id: i.item_id ?? null,
           item_name: i.item_name,
           unit: i.unit,
           quantity_ordered: String(i.quantity_ordered),
@@ -124,6 +128,7 @@ export function PurchaseOrderForm({
 
     setProjectId(request.project_id);
     const copied: LineRow[] = request.items.map((item) => ({
+      item_id: item.item_id ?? null,
       item_name: item.item_name,
       unit: item.unit,
       quantity_ordered: String(item.quantity_approved ?? item.quantity_requested),
@@ -161,6 +166,7 @@ export function PurchaseOrderForm({
       };
       const items = filled.map((l) => ({
         id: l.id,
+        item_id: l.item_id,
         item_name: l.item_name,
         unit: l.unit || defaultUnit,
         quantity_ordered: Number(l.quantity_ordered),
@@ -303,13 +309,10 @@ export function PurchaseOrderForm({
                 // item name a few characters wide
                 className="grid gap-3 rounded-xl border border-hairline p-3 sm:grid-cols-[1fr_110px_120px_130px_auto] sm:items-end"
               >
-                <Field label="Item">
-                  <TextInput
-                    value={line.item_name}
-                    onChange={(e) => setLine(index, { item_name: e.target.value })}
-                    placeholder="e.g. Cement (Shah Special)"
-                  />
-                </Field>
+                <MaterialItemPicker
+                  value={{ item_id: line.item_id, item_name: line.item_name, unit: line.unit }}
+                  onChange={(picked) => setLine(index, picked)}
+                />
                 <Field label="Quantity">
                   <TextInput
                     type="number"
@@ -320,17 +323,9 @@ export function PurchaseOrderForm({
                     placeholder="0"
                   />
                 </Field>
+                {/* The unit belongs to the catalogue item — see the picker. */}
                 <Field label="Unit">
-                  <SelectInput
-                    value={line.unit || defaultUnit}
-                    onChange={(e) => setLine(index, { unit: e.target.value })}
-                  >
-                    {(units ?? []).map((u) => (
-                      <option key={u.id} value={u.value}>
-                        {u.value}
-                      </option>
-                    ))}
-                  </SelectInput>
+                  <TextInput value={line.unit || '—'} readOnly disabled />
                 </Field>
                 <Field label="Unit price (BDT)">
                   <TextInput

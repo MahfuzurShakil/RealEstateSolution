@@ -3,8 +3,8 @@
 Known-open work that is **not** a blocker for what is already shipped. Add to
 this as modules land; delete an entry when it is done.
 
-Last reviewed: 2026-09-05, after the land expense ↔ instalment feedback
-(Section 0g); before that 2026-09-04, after Tier 3.4 — land payment schedule (Section 0f),
+Last reviewed: 2026-09-05, after Tier 3.1 — material catalogue (Section 0h)
+and the land expense ↔ instalment feedback (Section 0g); before that 2026-09-04, after Tier 3.4 — land payment schedule (Section 0f),
 Tier 3.3 — cost categories (Section 0e) and
 Tier 3.6 — printed documents (Section 0d),
 the client review batches F1–F4 (Section 0b)
@@ -134,6 +134,83 @@ The other side — what was agreed to be paid, and when — is now the Payment p
 tab. `landPaymentSummary` still answers "how much has gone out"; the plan
 answers "how much should have, by now", and the two are computed by different
 code paths from the same ledger rows, so they cross-check each other.
+
+---
+
+## 0h. Tier 3.1 — material item catalogue — done 2026-09-05 (batches A–C)
+
+**Dexie v13.** `material_items` plus a nullable `item_id` on the tables that
+carried free-text item names.
+
+**Two decisions, both taken here rather than deferred.**
+
+*Stock identity moves from the spelling to the item, and the unit moves onto
+the item.* Section 7.7 keyed a stock row `(project_id, item_name, unit)`, so a
+material held as many rows as it had spellings, each with its own quantity and
+its own weighted-average cost. The key is now `(project_id, item_id)`. Unit is
+a property of the material — cement is stocked in bags — and having it in the
+key was the third way one material could split; it is the component that could
+be removed rather than merely improved. Buying in another unit is a conversion,
+which is out of scope, and allowing two units per item would rebuild the
+problem. Changing an item's unit is refused while it holds stock, because
+`average_unit_price` is per unit and switching bag to ton would revalue the
+store twentyfold.
+
+*The migration back-fills; it does not leave progressive matching.* §3.1
+proposed matching rows up over time. A half-migrated table is the worst of
+both: `findRow` would key on the item for some rows and on the spelling for
+others forever, and the two spellings this feature exists to merge would go on
+holding separate stock in the meantime. The pass seeds the catalogue from
+`stock` first — the rows that hold quantity and cost — then links issues,
+transfers and order lines. It is additive: it inserts rows and fills a nullable
+column, touching no quantity and no price. The name fallback stays in
+`findRow`, so anything the pass missed keeps working, and a pre-catalogue row
+reached by a catalogued receipt adopts the item from then on.
+
+**Current state reads the new name; documents keep the old one.** Renaming an
+item changes the stock page and the pickers, because stock says what is in the
+store *now*. A purchase order still shows the name it was ordered under,
+because it records what was ordered. That is why `item_name` stays on every
+line row beside `item_id`.
+
+**Duplicates are prevented, not merged.** Names are unique case-insensitively,
+as in `lookupRepository.addOption`. Merging two catalogue items is deliberately
+**not** built: it means combining two weighted averages, and Module 6 already
+settled that a running average is not reversible (a deleted GRN does not rewind
+it). A merge would have to invent a blended cost for material bought at neither
+price. Recorded as open below.
+
+**Three claims in the plan did not survive contact with the code.** §3.1 says
+item names are written into six tables — `goods_receipt_items` has none, it
+reaches its item through `po_item_id`, so it is five. "Item pickers on 5 forms"
+is two: `StockIssueModal` and `StockTransferModal` already picked from existing
+stock rows. And `project_budget_lines` was to share v13 with Tier 3.2;
+declaring an empty table for an unbuilt feature would freeze indexes nobody has
+designed, so **3.2 now takes v14 and 3.5 takes v15**.
+
+**Verified against the database, not the screen.** The v12→v13 upgrade produced
+21 catalogue items from exactly 21 distinct (name, unit) pairs, linked 67 of 68
+rows across the five tables, with no dangling ids, no name mismatches and no
+duplicate names; the name-match assertion was confirmed capable of failing. The
+one unlinked row is "Site Office Container" — requested once, never ordered,
+which is the rule working. Renaming "Cement (Shah Special)" left all three of
+its stock rows linked, 2,030 bags intact and the average at 528, with no fourth
+row created. A full demo reload reproduced the catalogue identically, which is
+the fresh-database path: Dexie fires `.upgrade()` only on a version change, so
+the back-fill also runs from the demo seed.
+
+### Still open from this
+
+**Merging two catalogue items.** Two rows that turn out to be the same material
+cannot be combined. It needs a decision about what happens to two weighted
+averages and to the stock rows under them — see the irreversibility note in the
+Module 6 decisions. Prevention (unique names) covers the common cause; this
+covers the case where two were created before anyone noticed.
+
+**Requisition lines can still name an item the catalogue never had.** Rows
+migrated from before v13 keep their free text and show as "(not in catalogue)"
+in the picker, so they read correctly and can be re-pointed by editing. Nothing
+forces that tidy-up.
 
 ---
 

@@ -306,6 +306,7 @@ const ROUTE_MODULES: Array<[string, ModuleKey]> = [
   ['/admin/purchase-orders', 'procurement'],
   ['/admin/suppliers', 'procurement'],
   ['/admin/stock', 'procurement'],
+  ['/admin/material-items', 'procurement'],
   ['/admin/supplier-vouchers', 'supplier_voucher'],
   ['/admin/collections', 'finance_collection'],
   ['/admin/refunds', 'finance_collection'],

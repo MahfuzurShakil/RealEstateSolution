@@ -837,6 +837,16 @@ export interface StockRowWithRelations extends StockRow {
   project?: Project;
   location_label: string;
   value: number;
+  /**
+   * The catalogue's current name for this item, falling back to the row's own.
+   *
+   * Stock is a *current state*, not a document: it says what is in the store
+   * now, so it should read by what the material is called now. A purchase
+   * order is the opposite — it records what was ordered, under the name it was
+   * ordered as — which is why `item_name` stays on the row and the documents
+   * keep using it.
+   */
+  display_name: string;
 }
 
 /**
@@ -964,15 +974,22 @@ class StockRepository extends BaseRepository<StockRow> {
   }
 
   async list(filters: StockFilters = {}): Promise<StockRowWithRelations[]> {
-    const [rows, projects] = await Promise.all([db.stock.toArray(), db.projects.toArray()]);
+    const [rows, projects, items] = await Promise.all([
+      db.stock.toArray(),
+      db.projects.toArray(),
+      db.material_items.toArray(),
+    ]);
     const projectById = new Map(projects.map((p) => [p.id, p]));
+    const itemById = new Map(items.map((i) => [i.id, i]));
 
     let out: StockRowWithRelations[] = rows.map((row) => {
       const project = row.project_id ? projectById.get(row.project_id) : undefined;
+      const item = row.item_id ? itemById.get(row.item_id) : undefined;
       return {
         ...row,
         project,
         location_label: project?.name ?? 'Central Store',
+        display_name: item?.name ?? row.item_name,
         value: stockValue(row),
       };
     });
@@ -987,21 +1004,39 @@ class StockRepository extends BaseRepository<StockRow> {
     if (filters.search?.trim()) {
       const q = filters.search.trim().toLowerCase();
       out = out.filter((r) =>
-        [r.item_name, r.unit, r.location_label].some((f) => String(f).toLowerCase().includes(q)),
+        [r.display_name, r.item_name, r.unit, r.location_label].some((f) =>
+          String(f).toLowerCase().includes(q),
+        ),
       );
     }
 
     return out.sort(
-      (a, b) => a.item_name.localeCompare(b.item_name) || a.location_label.localeCompare(b.location_label),
+      (a, b) =>
+        a.display_name.localeCompare(b.display_name) ||
+        a.location_label.localeCompare(b.location_label),
     );
   }
 
   /** Distinct items held at one location, for the issue/transfer pickers. */
-  async availableAt(projectId: string | null): Promise<StockRow[]> {
-    const rows = await db.stock.toArray();
+  /**
+   * What can be issued or moved out of one store right now.
+   *
+   * Carries `display_name` for the same reason `list` does: a picker is showing
+   * current stock, so it should name the material as the catalogue names it
+   * today rather than as it was spelled when the row was first written.
+   */
+  async availableAt(
+    projectId: string | null,
+  ): Promise<Array<StockRow & { display_name: string }>> {
+    const [rows, items] = await Promise.all([db.stock.toArray(), db.material_items.toArray()]);
+    const itemById = new Map(items.map((i) => [i.id, i]));
     return rows
       .filter((r) => (r.project_id ?? null) === (projectId ?? null) && r.quantity_available > 0)
-      .sort((a, b) => a.item_name.localeCompare(b.item_name));
+      .map((r) => ({
+        ...r,
+        display_name: (r.item_id ? itemById.get(r.item_id)?.name : undefined) ?? r.item_name,
+      }))
+      .sort((a, b) => a.display_name.localeCompare(b.display_name));
   }
 }
 

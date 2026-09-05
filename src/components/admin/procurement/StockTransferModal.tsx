@@ -22,8 +22,9 @@ const CENTRAL = '';
 export interface TransferDefaults {
   from_project_id?: string | null;
   to_project_id?: string;
-  item_name?: string;
-  unit?: string;
+  /* Tier 3.1: the catalogue item the request asked for, so the source row can
+     be preselected by identity rather than by matching a name string. */
+  item_id?: string | null;
   /**
    * Set when the transfer is answering an approved material request (Section
    * 7.8a route b). Recorded on the row, and it closes the request as fulfilled
@@ -69,9 +70,7 @@ function TransferDialog({
 
   const [fromId, setFromId] = useState(defaults?.from_project_id ?? CENTRAL);
   const [toId, setToId] = useState(defaults?.to_project_id ?? '');
-  const [stockKey, setStockKey] = useState(
-    defaults?.item_name && defaults?.unit ? `${defaults.item_name}|${defaults.unit}` : '',
-  );
+  const [stockKey, setStockKey] = useState('');
   const [quantity, setQuantity] = useState('');
   const [transferDate, setTransferDate] = useState(todayLocal());
   const [transferredBy, setTransferredBy] = useState<string | null>(null);
@@ -89,7 +88,28 @@ function TransferDialog({
     [],
   );
 
-  const selected = (available ?? []).find((r) => `${r.item_name}|${r.unit}` === stockKey);
+  /*
+   * Keyed on the stock row itself since Tier 3.1. It used to be
+   * `${item_name}|${unit}`, which was the same string identity that let one
+   * material be several rows — and two rows that agreed on both would have
+   * been indistinguishable here.
+   */
+  /*
+   * The source row, preselected from the request's item until somebody picks
+   * another. Derived rather than written into state by an effect: the stock
+   * list loads asynchronously, so an effect would have to fire after it
+   * arrives and then guard against overwriting a choice already made.
+   *
+   * Matching on `item_id` rather than on the requested name is the point of
+   * the catalogue — a request for "Cement (Shah Special)" finds the row
+   * holding that item whatever the row happens to be called.
+   */
+  const defaultItemId = defaults?.item_id ?? null;
+  const autoKey = defaultItemId
+    ? ((available ?? []).find((r) => r.item_id === defaultItemId)?.id ?? '')
+    : '';
+  const effectiveKey = stockKey || autoKey;
+  const selected = (available ?? []).find((r) => r.id === effectiveKey);
   const requested = Number(quantity) || 0;
   const tooMuch = Boolean(selected) && requested > (selected?.quantity_available ?? 0);
   const sameStore = Boolean(toId) && (fromId || null) === toId;
@@ -111,6 +131,7 @@ function TransferDialog({
     try {
       await stockTransferRepository.transfer(
         {
+          item_id: selected.item_id ?? null,
           item_name: selected.item_name,
           unit: selected.unit,
           quantity: requested,
@@ -194,14 +215,14 @@ function TransferDialog({
           }
         >
           <SelectInput
-            value={stockKey}
+            value={effectiveKey}
             onChange={(e) => setStockKey(e.target.value)}
             disabled={(available ?? []).length === 0}
           >
             <option value="">Select…</option>
             {(available ?? []).map((row) => (
-              <option key={row.id} value={`${row.item_name}|${row.unit}`}>
-                {row.item_name} — {row.quantity_available} {row.unit} @{' '}
+              <option key={row.id} value={row.id}>
+                {row.display_name} — {row.quantity_available} {row.unit} @{' '}
                 {formatBdtRate(row.average_unit_price)}
               </option>
             ))}

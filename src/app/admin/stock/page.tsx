@@ -91,8 +91,11 @@ function StockPage() {
     {
       key: 'item_name',
       header: 'Item',
-      cell: (row) => <span className="font-medium text-ink">{row.item_name}</span>,
-      sortValue: (row) => row.item_name,
+      /* Current state, so it reads by the item's current name (Tier 3.1).
+         The issues and transfers below deliberately keep the name they were
+         recorded under — those are records of something that happened. */
+      cell: (row) => <span className="font-medium text-ink">{row.display_name}</span>,
+      sortValue: (row) => row.display_name,
     },
     {
       key: 'location',

@@ -113,6 +113,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Purchase Orders', href: '/admin/purchase-orders', module: 'procurement' },
       { label: 'Suppliers', href: '/admin/suppliers', module: 'procurement' },
       { label: 'Stock', href: '/admin/stock', module: 'procurement' },
+      { label: 'Material Items', href: '/admin/material-items', module: 'procurement' },
       { label: 'Supplier Vouchers', href: '/admin/supplier-vouchers', module: 'supplier_voucher' },
     ],
   },

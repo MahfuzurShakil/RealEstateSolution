@@ -7,6 +7,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
+import { MaterialItemPicker } from '@/components/admin/procurement/MaterialItemPicker';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { MaterialRequestWithRelations } from '@/lib/repositories';
 import {
@@ -22,6 +23,7 @@ import { todayLocal } from '@/lib/utils/format';
 interface LineRow {
   /** existing row id, so an approved quantity survives an edit */
   id?: string;
+  item_id: string | null;
   item_name: string;
   unit: string;
   quantity_requested: string;
@@ -32,7 +34,7 @@ interface LineRow {
  * the default is applied at render and at save instead — which keeps the form
  * free of an effect that copies loaded data into state.
  */
-const EMPTY_LINE = (): LineRow => ({ item_name: '', unit: '', quantity_requested: '' });
+const EMPTY_LINE = (): LineRow => ({ item_id: null, item_name: '', unit: '', quantity_requested: '' });
 
 /**
  * Raise or edit a material request (Sections 6.5 / 6.6).
@@ -69,6 +71,7 @@ export function MaterialRequestForm({
     request
       ? request.items.map((i) => ({
           id: i.id,
+          item_id: i.item_id ?? null,
           item_name: i.item_name,
           unit: i.unit,
           quantity_requested: String(i.quantity_requested),
@@ -129,6 +132,7 @@ export function MaterialRequestForm({
       };
       const items = filled.map((l) => ({
         id: l.id,
+        item_id: l.item_id,
         item_name: l.item_name,
         unit: l.unit || defaultUnit,
         quantity_requested: Number(l.quantity_requested),
@@ -251,13 +255,10 @@ export function MaterialRequestForm({
               // 375px squeezes the item name down to nothing
               className="grid gap-3 rounded-xl border border-hairline p-3 sm:grid-cols-[1fr_120px_140px_auto] sm:items-end"
             >
-              <Field label="Item">
-                <TextInput
-                  value={line.item_name}
-                  onChange={(e) => setLine(index, { item_name: e.target.value })}
-                  placeholder="e.g. Cement (Shah Special)"
-                />
-              </Field>
+              <MaterialItemPicker
+                value={{ item_id: line.item_id, item_name: line.item_name, unit: line.unit }}
+                onChange={(picked) => setLine(index, picked)}
+              />
               <Field label="Quantity">
                 <TextInput
                   type="number"
@@ -268,17 +269,11 @@ export function MaterialRequestForm({
                   placeholder="0"
                 />
               </Field>
+              {/* Read-only: the unit belongs to the catalogue item, so choosing
+                  it separately is what let one material hold stock in two
+                  units under two rows. */}
               <Field label="Unit">
-                <SelectInput
-                  value={line.unit || defaultUnit}
-                  onChange={(e) => setLine(index, { unit: e.target.value })}
-                >
-                  {(units ?? []).map((u) => (
-                    <option key={u.id} value={u.value}>
-                      {u.value}
-                    </option>
-                  ))}
-                </SelectInput>
+                <TextInput value={line.unit || '—'} readOnly disabled />
               </Field>
               <Button
                 variant="ghost"
