@@ -177,33 +177,45 @@ into two half-rows, and a site balance reporting that nothing had been used.
 **Any future table holding `item_name` has to join that list in the same
 change that creates it.**
 
-### Still open from this
+### Closed since, in the same round
 
-**Paying a *chosen* instalment.** The expense form now lists the whole land
-plan and each open row offers its remainder as the amount, which is what the
-feedback asked for. What it cannot do is record "this payment is for
-instalment 3" while 2 is unpaid: the ledger allocates oldest-first and
-`recalculateForLand` re-derives it that way from the expense rows. Targeting
-needs `expenses.installment_id` and an allocator that honours it before
-falling back. The preview says truthfully where the money lands in the
-meantime, so nothing on screen is wrong — it is a missing capability, not a
-lie.
+**Paying a chosen instalment** — `expenses.installment_id` (v17) and
+`allocatePayments`, which settles targeted money against its own line before
+the oldest-first waterfall runs. Oldest-first is still the default.
+
+**Site ageing and write-off** — `stock_write_offs` (v18) is the third exit, and
+the site balance carries a FIFO age so material standing past a construction
+cycle is flagged. The identity is now four terms and still exact.
+
+**Consumption against a completed work item** — an item reported complete with
+nothing recorded against it says so on the progress panel.
+
+**The joint venture's commercials**, which the client raised after the first
+list: asking and negotiated price are purchase concepts and are no longer put
+to a JV, which is asked one money question — the cash payable to the owner.
+
+### Still open from this
 
 **Requests written before the lifecycle change keep `fulfilled`.** They
 completed under the old rule, where the goods receipt closed them. Re-labelling
 closed history would invent a site acknowledgement nobody gave. Nothing reads
 the difference, but a report counting "how long from request to site" will find
-those six rows have no `received` or `delivered` step.
+those rows have no `received` or `delivered` step.
 
-**Site stock has no ageing or write-off.** Material standing on a site is now
-visible and can be returned, but nothing says it has been there four months,
-and there is no way to write off what was spoiled or stolen — the only exits
-are "used" and "returned", and a bag of set cement is neither. Same shape as
-the re-order-level gap in 1.4.
+**Reversing a write-off has no screen.** `removeCascade` puts the quantity back
+on the site, and nothing calls it — the write-offs tab lists but does not
+delete. Deliberate for now: a write-off is the one movement that destroys value,
+and an undo button beside it invites exactly the entry it should be hard to
+make. Worth a supervisor-only action before go-live.
 
-**Consumption is not required before a work item completes.** A tower can be
-marked 100% with nothing recorded as used against it, so the two halves of
-Section 6 can disagree without anything noticing.
+**Ageing is a flag, not a policy.** Sixty days is a number this code chose, not
+one the client agreed, and nothing acts on it — no notification, no block, no
+provision. Confirm the threshold with them, and whether stale material should
+reach the finance side as a provision rather than sitting at full value.
+
+**A write-off is not approved, only recorded.** `approved_by` is whoever was
+acting, the same as every other actor field in Phase A. Real approval needs the
+auth that Section 0 says Phase A does not have (see 1.9).
 
 **No merge for a return that came from a since-renamed item.** Inherited from
 the catalogue merge gap in 0h; nothing new.
