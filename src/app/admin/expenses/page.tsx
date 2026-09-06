@@ -4,8 +4,9 @@ import Link from 'next/link';
 import { Suspense, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Building2, Plus, ReceiptText, Wallet, X } from 'lucide-react';
+import { Building2, Plus, ReceiptText, Truck, Wallet, X } from 'lucide-react';
 import { ExpenseFormModal } from '@/components/admin/finance/ExpenseFormModal';
+import { PaySupplierModal } from '@/components/admin/finance/PaySupplierModal';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -20,7 +21,12 @@ import { costCategoryLabel, costCategoryTone } from '@/lib/domain/finance';
 import { SUPPLIER_PAYMENT_METHOD_META } from '@/lib/domain/procurement';
 import type { ExpenseWithRelations } from '@/lib/repositories';
 import type { CsvColumn } from '@/lib/utils/csv';
-import { expenseRepository, lookupRepository, projectRepository } from '@/lib/repositories';
+import {
+  expenseRepository,
+  lookupRepository,
+  projectRepository,
+  supplierVoucherRepository,
+} from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
@@ -68,6 +74,7 @@ function ExpensesPage() {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
+  const [payOpen, setPayOpen] = useState(false);
 
   const expenses = useLiveQuery(
     () =>
@@ -82,6 +89,36 @@ function ExpensesPage() {
     [search, projectId, landId, category, fromDate, toDate],
   );
   const total = useLiveQuery(() => expenseRepository.count(), []);
+  /*
+   * Supplier payments are NOT expenses and are not merged into the table — the
+   * cash position treats the two as disjoint sets, and a row that appeared in
+   * both is a duplicate no arithmetic could detect. But leaving them off the
+   * cost screen entirely is why nobody could find where material money went:
+   * on most projects it is the largest line. They are reported beside the
+   * ledger, under the same project and date filters, and counted separately.
+   */
+  const vouchers = useLiveQuery(
+    () =>
+      supplierVoucherRepository.list(
+        // 'company' means company-level *expenses*; a voucher with no project is
+        // a central-stock purchase, which is not the same thing, so that filter
+        // simply excludes vouchers rather than pretending to translate
+        projectId && projectId !== 'company' ? { project_id: projectId } : {},
+      ),
+    [projectId],
+  );
+  // the date range is applied here rather than pushed into the filter type,
+  // which has no range and is shared with the Procurement screens
+  const voucherRows = useMemo(() => {
+    if (projectId === 'company') return [];
+    return (vouchers ?? []).filter(
+      (v) => (!fromDate || v.payment_date >= fromDate) && (!toDate || v.payment_date <= toDate),
+    );
+  }, [vouchers, projectId, fromDate, toDate]);
+  const voucherSum = useMemo(
+    () => voucherRows.reduce((acc, v) => acc + (Number(v.amount) || 0), 0),
+    [voucherRows],
+  );
   const projects = useLiveQuery(() => projectRepository.list(), []);
   /*
    * The category list is data now (Tier 3.3), so the dropdown, the badges and
@@ -219,6 +256,9 @@ function ExpensesPage() {
               columns={csvColumns}
               filenamePrefix="expenses"
             />
+            <Button variant="outline" onClick={() => setPayOpen(true)}>
+              <Truck className="size-4" /> Pay a Supplier
+            </Button>
             <Button onClick={() => setModalOpen(true)}>
               <Plus className="size-4" /> Record Cost
             </Button>
@@ -226,7 +266,7 @@ function ExpensesPage() {
         }
       />
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="flex items-center gap-3">
           <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-admin-50 text-admin-600">
             <Wallet className="size-5" />
@@ -240,7 +280,38 @@ function ExpensesPage() {
           </div>
         </Card>
 
-        <Card className="sm:col-span-1 xl:col-span-2">
+        {/*
+          Reported beside the ledger, never inside it. A supplier voucher is a
+          different record set — the cash position adds receipts and subtracts
+          expenses, vouchers and refunds without double counting precisely
+          because the four are disjoint. Folding vouchers into the table above
+          would make the page's own total wrong, and folding them in *somewhere*
+          is exactly the mistake this card exists to avoid: on most projects the
+          material bill is the largest line, and it used to be invisible here.
+        */}
+        <Card className="flex items-center gap-3">
+          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-amber-50 text-amber-600">
+            <Truck className="size-5" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-xs text-ink-muted">Supplier payments</p>
+            <p className="truncate text-lg font-semibold text-ink">{formatBdt(voucherSum)}</p>
+            <p className="truncate text-xs text-ink-muted">
+              {projectId === 'company' ? (
+                'Not company-level — a voucher belongs to an order'
+              ) : (
+                <>
+                  {voucherRows.length} voucher{voucherRows.length === 1 ? '' : 's'} ·{' '}
+                  <Link href="/admin/supplier-vouchers" className="text-admin-700 hover:underline">
+                    in Procurement
+                  </Link>
+                </>
+              )}
+            </p>
+          </div>
+        </Card>
+
+        <Card className="sm:col-span-2">
           <p className="mb-2 text-xs text-ink-muted">By category</p>
           {byCategory.length === 0 ? (
             <p className="text-sm text-ink-muted">Nothing to break down yet.</p>
@@ -430,6 +501,8 @@ function ExpensesPage() {
           counted twice.
         </p>
       </Card>
+
+      <PaySupplierModal open={payOpen} onClose={() => setPayOpen(false)} />
 
       <ExpenseFormModal
         open={modalOpen}
