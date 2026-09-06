@@ -708,11 +708,33 @@ export interface SiteProgressUpdate extends BaseEntity {
 /** Document types for entity_type = 'site_progress_update' (Section 6.4) */
 export const SITE_PROGRESS_DOCUMENT_TYPES = ['progress_photo', 'progress_video', 'other'] as const;
 
+/**
+ * Lifecycle of Section 6.5, with the two steps it was missing.
+ *
+ * `fulfilled` used to be written by the goods receipt that completed the
+ * purchase order — so a request was "fulfilled" the moment material landed in
+ * the *store*, which is not what the word means to the person who raised it.
+ * The site engineer who asked for 450 bags of cement is not fulfilled by cement
+ * sitting in a godown across town, and the queue said the job was done while
+ * the material had not moved.
+ *
+ * `received` is the store's answer — it is here, we have it. `delivered` is the
+ * store's other answer — it has gone out to the site. `fulfilled` is now the
+ * *site's* answer, and only the site can give it, which is the whole point:
+ * short deliveries and material that never arrived are caught by the person who
+ * would notice.
+ *
+ * Rows written before this change keep `fulfilled`. They completed under the
+ * old rule, and re-labelling closed history would be inventing an
+ * acknowledgement nobody gave.
+ */
 export const MATERIAL_REQUEST_STATUSES = [
   'pending',
   'approved',
   'rejected',
   'ordered',
+  'received',
+  'delivered',
   'fulfilled',
 ] as const;
 export type MaterialRequestStatus = (typeof MATERIAL_REQUEST_STATUSES)[number];
@@ -955,6 +977,16 @@ export interface StockIssue extends BaseEntity {
   total_cost: number;
   issue_date: ISODate;
   issued_by: UUID | null;
+  /**
+   * The material request this issue is meeting, when there is one.
+   *
+   * The link the lifecycle was missing: `stock_transfers` already carried it,
+   * so route (b) could move a request forward, but material issued from the
+   * project's own store — the ordinary case — moved nothing, and the request
+   * stayed wherever the goods receipt left it. Not indexed, so it needs no new
+   * Dexie version block (same as `stock_transfers.request_id`).
+   */
+  request_id?: UUID | null;
   notes?: string | null;
 }
 

@@ -469,21 +469,29 @@ class PurchaseOrderRepository extends BaseRepository<PurchaseOrder> {
     if (!order.request_id) return;
 
     /*
-     * Section 7.2 closes the request when the PO is fully received, and the
-     * transition has to survive the reverse too: deleting the GRN that
-     * completed the order puts the request back to `ordered`, otherwise the
-     * site is told material arrived that has just been un-received. Both moves
-     * go through the Module 5 repository so the decision trail records them.
+     * A fully received order puts the request in the *store*, not on the site.
+     *
+     * This used to write `fulfilled`, which said the site had its material at
+     * the moment the material reached a godown. Nothing else in the system ever
+     * corrected that, so a short delivery or a load that never left the store
+     * was indistinguishable from a job done. `received` is what a goods receipt
+     * actually knows; the site closes the request itself.
+     *
+     * The reverse still has to hold: deleting the GRN that completed the order
+     * puts the request back to `ordered`, or the site is told material arrived
+     * that has just been un-received. A request the site has already confirmed
+     * is left alone — the material is on site and un-receiving the paperwork
+     * does not take it back.
      */
     const request = await db.material_requests.get(order.request_id);
     if (!request) return;
 
-    if (next === 'received' && allowedNextRequestStatuses(request.status).includes('fulfilled')) {
-      await materialRequestRepository.setStatus(order.request_id, 'fulfilled', {
+    if (next === 'received' && allowedNextRequestStatuses(request.status).includes('received')) {
+      await materialRequestRepository.setStatus(order.request_id, 'received', {
         decided_by: actor,
-        decision_note: `Fully received against ${order.code}.`,
+        decision_note: `Fully received against ${order.code} — in store.`,
       });
-    } else if (next !== 'received' && request.status === 'fulfilled') {
+    } else if (next !== 'received' && request.status === 'received') {
       await materialRequestRepository.setStatus(order.request_id, 'ordered', {
         decided_by: actor,
         decision_note: `Reopened — a goods receipt on ${order.code} was removed, so the order is no longer complete.`,
@@ -521,7 +529,7 @@ class PurchaseOrderRepository extends BaseRepository<PurchaseOrder> {
  * a purchase order is Module 6's to finish, and a transfer topping it up
  * should not close it early.
  */
-async function markRequestFulfilledByTransfer(
+async function markRequestReceivedByTransfer(
   transfer: StockTransfer,
   actor: string | null,
 ): Promise<void> {
@@ -529,7 +537,7 @@ async function markRequestFulfilledByTransfer(
   const request = await db.material_requests.get(transfer.request_id);
   if (!request || request.status !== 'approved') return;
 
-  await materialRequestRepository.setStatus(transfer.request_id, 'fulfilled', {
+  await materialRequestRepository.setStatus(transfer.request_id, 'received', {
     decided_by: actor,
     decision_note: `Met from stock — transfer ${transfer.code}, no purchase needed.`,
   });
@@ -540,11 +548,53 @@ async function markRequestFulfilledByTransfer(
 async function reopenRequestClosedByTransfer(transfer: StockTransfer): Promise<void> {
   if (!transfer.request_id) return;
   const request = await db.material_requests.get(transfer.request_id);
-  if (!request || request.status !== 'fulfilled') return;
+  // as above: once the site has confirmed, deleting the paperwork does not
+  // take the material back off the site
+  if (!request || request.status !== 'received') return;
 
   await materialRequestRepository.setStatus(transfer.request_id, 'approved', {
     decided_by: request.created_by ?? null,
     decision_note: `Transfer ${transfer.code} was deleted — the material went back, so this is waiting again.`,
+  });
+}
+
+/**
+ * Issuing material against a request is what "sent to site" means.
+ *
+ * `stock_transfers` has carried `request_id` since Section 7.8a, so the
+ * central-store route could move a request forward. The ordinary route — the
+ * storekeeper handing out material from the project's own store — carried
+ * nothing, so a request sat at `received` however much of it had gone out.
+ *
+ * Only a request in the store is moved. One the site has already confirmed is
+ * finished, and one still on order has not arrived, so an issue against it is
+ * meeting it from stock that was there anyway rather than from this purchase.
+ */
+async function markRequestDeliveredByIssue(
+  issue: StockIssue,
+  actor: string | null,
+): Promise<void> {
+  if (!issue.request_id) return;
+  const request = await db.material_requests.get(issue.request_id);
+  if (!request || request.status !== 'received') return;
+
+  await materialRequestRepository.setStatus(issue.request_id, 'delivered', {
+    decided_by: actor,
+    decision_note: `Issued to site — ${issue.code}.`,
+  });
+}
+
+/** The other half: cancelling the issue puts the material back on the shelf,
+ *  so it has not been sent anywhere. A request the site already confirmed is
+ *  left alone, as everywhere else. */
+async function reopenRequestSentByIssue(issue: StockIssue): Promise<void> {
+  if (!issue.request_id) return;
+  const request = await db.material_requests.get(issue.request_id);
+  if (!request || request.status !== 'delivered') return;
+
+  await materialRequestRepository.setStatus(issue.request_id, 'received', {
+    decided_by: request.created_by ?? null,
+    decision_note: `Issue ${issue.code} was cancelled — the material went back to the store.`,
   });
 }
 
@@ -1120,6 +1170,7 @@ class StockIssueRepository extends BaseRepository<StockIssue> {
     );
 
     await stockRepository.withdraw(input.project_id, key, quantity);
+    await markRequestDeliveredByIssue(issue, createdBy);
     return issue;
   }
 
@@ -1167,6 +1218,7 @@ class StockIssueRepository extends BaseRepository<StockIssue> {
   async removeCascade(id: string): Promise<void> {
     const issue = await this.getById(id);
     if (!issue) return;
+    await reopenRequestSentByIssue(issue);
     await stockRepository.receive(
       issue.project_id,
       { item_id: issue.item_id ?? null, item_name: issue.item_name, unit: issue.unit },
@@ -1239,7 +1291,7 @@ class StockTransferRepository extends BaseRepository<StockTransfer> {
 
     await stockRepository.withdraw(from, key, quantity);
     await stockRepository.receive(input.to_project_id, key, quantity, unitCost, createdBy);
-    await markRequestFulfilledByTransfer(transfer, createdBy);
+    await markRequestReceivedByTransfer(transfer, createdBy);
     return transfer;
   }
 

@@ -9,6 +9,7 @@ import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { money } from '@/lib/domain/procurement';
 import {
+  materialRequestRepository,
   projectRepository,
   stockIssueRepository,
   stockRepository,
@@ -62,6 +63,7 @@ function IssueDialog({
   const [quantity, setQuantity] = useState('');
   const [issueDate, setIssueDate] = useState(todayLocal());
   const [issuedBy, setIssuedBy] = useState<string | null>(null);
+  const [requestId, setRequestId] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -82,6 +84,22 @@ function IssueDialog({
   const siteTeam = useLiveQuery(
     () => userRepository.listByRole(['site_manager', 'project_manager', 'procurement']),
     [],
+  );
+  /*
+   * Requests for this project whose material is in the store and has not gone
+   * out yet — the ones an issue could be meeting.
+   *
+   * Naming the request is what closes the loop: it moves the request to "sent
+   * to site", which is the state the site manager then confirms. Left blank the
+   * issue still works exactly as it did, because plenty of material leaves a
+   * store without a requisition behind it.
+   */
+  const openRequests = useLiveQuery(
+    () =>
+      projectId
+        ? materialRequestRepository.list({ project_id: projectId, status: 'received' })
+        : Promise.resolve([]),
+    [projectId],
   );
 
   /*
@@ -116,6 +134,7 @@ function IssueDialog({
           quantity_issued: requested,
           issue_date: issueDate,
           issued_by: issuedBy || userId,
+          request_id: requestId || null,
           notes: notes.trim() || null,
         },
         userId,
@@ -156,6 +175,9 @@ function IssueDialog({
               setStockKey('');
               setTowerId('');
               setWorkItemId('');
+              // a request belongs to one project; keeping it across a change
+              // would attach this issue to another site's requisition
+              setRequestId('');
             }}
           >
             <option value="">Select…</option>
@@ -166,6 +188,24 @@ function IssueDialog({
             ))}
           </SelectInput>
         </Field>
+
+        {(openRequests ?? []).length > 0 && (
+          <Field
+            label="Against a material request"
+            className="sm:col-span-2"
+            hint="Naming it moves the request to Sent to Site, for the site to confirm"
+          >
+            <SelectInput value={requestId} onChange={(e) => setRequestId(e.target.value)}>
+              <option value="">Not against a request</option>
+              {(openRequests ?? []).map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.code} · {r.items.length} line{r.items.length === 1 ? '' : 's'}
+                  {r.tower ? ` · ${r.tower.name}` : ''}
+                </option>
+              ))}
+            </SelectInput>
+          </Field>
+        )}
 
         <Field
           label="Item"

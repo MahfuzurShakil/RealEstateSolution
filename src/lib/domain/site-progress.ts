@@ -301,7 +301,9 @@ export const MATERIAL_REQUEST_STATUS_META: Record<
   approved: { label: 'Approved', tone: 'blue' },
   rejected: { label: 'Rejected', tone: 'red' },
   ordered: { label: 'Ordered', tone: 'teal' },
-  fulfilled: { label: 'Fulfilled', tone: 'green' },
+  received: { label: 'In Store', tone: 'teal' },
+  delivered: { label: 'Sent to Site', tone: 'blue' },
+  fulfilled: { label: 'Received at Site', tone: 'green' },
 };
 
 /** The happy path, for the step list on the status card. */
@@ -309,6 +311,8 @@ export const MATERIAL_REQUEST_PIPELINE: MaterialRequestStatus[] = [
   'pending',
   'approved',
   'ordered',
+  'received',
+  'delivered',
   'fulfilled',
 ];
 
@@ -325,15 +329,27 @@ export function allowedNextRequestStatuses(
       return ['approved', 'rejected'];
     case 'approved':
       /*
-       * `fulfilled` is reachable without passing through `ordered` because
+       * `received` is reachable without passing through `ordered` because
        * Section 7.8a gives Procurement two routes out of an approved request:
        * raise a purchase order, or — when the material is already sitting in
        * the central store — transfer it across, with nothing bought. Before
        * this, route (b) left the request stuck on `approved` for ever: the
        * site had its material and the queue still said it was waiting.
        */
-      return ['ordered', 'fulfilled'];
+      return ['ordered', 'received'];
     case 'ordered':
+      return ['received'];
+    case 'received':
+      /*
+       * `fulfilled` straight from `received` is deliberate, and it is not a
+       * shortcut worth closing. Material often goes to site on the same lorry
+       * that brought it, with no separate issue recorded; without this the
+       * request would sit in the store's queue for ever waiting for a
+       * paperwork step nobody performs. The site still has to say so, which is
+       * the check that matters.
+       */
+      return ['delivered', 'fulfilled'];
+    case 'delivered':
       return ['fulfilled'];
     default:
       return [];
@@ -343,18 +359,29 @@ export function allowedNextRequestStatuses(
 /**
  * What a person may click on the request itself.
  *
- * Module 6 owns everything after the approval decision: `ordered` is written
- * when a Purchase Order is raised, `fulfilled` when that order is fully
- * received (Section 7.2). Leaving the manual buttons in place alongside the
- * real workflow would let a request be marked fulfilled with nothing bought
- * and nothing delivered — the transitions are still legal (see
- * `allowedNextRequestStatuses`, which the procurement repository checks), they
- * are simply no longer anybody's to type in.
+ * Module 6 owns the middle of the lifecycle: `ordered` is written when a
+ * Purchase Order is raised, `received` when that order is fully received or the
+ * material is transferred in from central stock, `delivered` when it is issued
+ * to the site (Section 7.2). Leaving manual buttons alongside that would let a
+ * request be marked delivered with nothing bought and nothing moved — the
+ * transitions are still legal (see `allowedNextRequestStatuses`, which the
+ * procurement repository checks), they are simply not anybody's to type in.
+ *
+ * The last step is the exception, and deliberately so — see below.
  */
 export function manualNextRequestStatuses(
   current: MaterialRequestStatus,
 ): MaterialRequestStatus[] {
-  return current === 'pending' ? ['approved', 'rejected'] : [];
+  if (current === 'pending') return ['approved', 'rejected'];
+  /*
+   * The closing step is a person's, not a consequence of a document. Everything
+   * between approval and the store is driven by the purchase order, the goods
+   * receipt and the transfer — but "we have it on site, and it is the right
+   * amount" is a claim only the site can make, and the value of the step is
+   * exactly that nothing else can make it on their behalf.
+   */
+  if (current === 'received' || current === 'delivered') return ['fulfilled'];
+  return [];
 }
 
 /**
@@ -366,7 +393,9 @@ export const REQUEST_STEP_OWNER: Record<MaterialRequestStatus, string> = {
   approved: 'Procurement',
   rejected: 'Procurement',
   ordered: 'Procurement',
-  fulfilled: 'Procurement',
+  received: 'Store',
+  delivered: 'Store',
+  fulfilled: 'Site Manager',
 };
 
 export interface RequestStepConfig {
@@ -405,11 +434,27 @@ export const MATERIAL_REQUEST_STEP_CONFIG: Record<
     tone: 'default',
     needsNote: false,
   },
-  fulfilled: {
-    title: 'Mark as fulfilled',
+  received: {
+    title: 'Mark as in store',
     message:
-      'The material has reached the site and the request is closed. A Goods Receipt that completes the order does this on its own.',
-    confirmLabel: 'Mark fulfilled',
+      'The material has arrived and is in the store. A Goods Receipt that completes the order does this on its own, as does a transfer from central stock.',
+    confirmLabel: 'Mark in store',
+    tone: 'default',
+    needsNote: false,
+  },
+  delivered: {
+    title: 'Mark as sent to site',
+    message:
+      'The material has left the store for the site. Issuing it against this request does this on its own.',
+    confirmLabel: 'Mark sent to site',
+    tone: 'default',
+    needsNote: false,
+  },
+  fulfilled: {
+    title: 'Confirm it arrived at site',
+    message:
+      'The site has the material and the request is closed. Only the site can say this — if the quantity is short or something is missing, say so in the note rather than confirming.',
+    confirmLabel: 'Confirm receipt',
     tone: 'success',
     needsNote: false,
   },

@@ -2,7 +2,16 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeftRight, Ban, Check, PackageCheck, ShoppingCart, ThumbsUp } from 'lucide-react';
+import {
+  ArrowLeftRight,
+  Ban,
+  Check,
+  PackageCheck,
+  ShoppingCart,
+  ThumbsUp,
+  Truck,
+  Warehouse,
+} from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -27,6 +36,8 @@ const ICONS: Record<Exclude<MaterialRequestStatus, 'pending'>, typeof ThumbsUp> 
   approved: ThumbsUp,
   rejected: Ban,
   ordered: ShoppingCart,
+  received: Warehouse,
+  delivered: Truck,
   fulfilled: PackageCheck,
 };
 
@@ -200,7 +211,7 @@ export function MaterialRequestStatusCard({
           request.status === 'fulfilled' && (
             <p className="flex items-start gap-2 text-xs text-emerald-700">
               <PackageCheck className="mt-0.5 size-3.5 shrink-0" />
-              Fulfilled — the material reached the site and this request is closed.
+              The site confirmed it arrived. This request is closed.
             </p>
           )
         )}
