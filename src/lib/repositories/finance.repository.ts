@@ -28,7 +28,7 @@ import {
   type ScheduleSummary,
 } from '../domain/finance';
 import {
-  allocateOldestFirst,
+  allocatePayments,
   planLandInstallments,
   type LandPaymentTerms,
 } from '../domain/land-schedule';
@@ -707,10 +707,13 @@ class CollectionRepository {
  * fact disagree the first time somebody records the payment and forgets the
  * tick.
  *
- * Unlike the booking side nothing is written back to the source row. A payment
- * carries `installment_id` so a receipt can say which instalment it was for;
- * an expense has no such column, needs none, and adding one would be a schema
- * change for a line of provenance nobody prints.
+ * Nothing is written back to the source row — an expense records what left the
+ * account, and the plan is derived from it.
+ *
+ * Since v17 an expense may name the instalment it settles, and that is honoured
+ * before the waterfall runs (see `allocatePayments`). The default is still
+ * oldest-first, because that is what most payments are; naming a line is for
+ * the case where both sides agreed the money was for a particular milestone.
  */
 export async function recalculateForLand(
   landId: string,
@@ -724,9 +727,12 @@ export async function recalculateForLand(
   const paidRows = await landPaymentExpenses(landId);
 
   // one implementation of the waterfall, shared with the expense form's preview
-  const { filled } = allocateOldestFirst(
+  const { filled } = allocatePayments(
     installments,
-    paidRows.map((e) => Number(e.amount) || 0),
+    paidRows.map((e) => ({
+      amount: Number(e.amount) || 0,
+      installment_id: e.installment_id ?? null,
+    })),
   );
 
   for (const line of installments) {

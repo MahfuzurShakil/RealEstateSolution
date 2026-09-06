@@ -86,6 +86,7 @@ function ExpenseDialog({
     payment_method: (expense?.payment_method ?? 'bank') as SupplierPaymentMethod,
     reference_no: expense?.reference_no ?? '',
     account_id: expense?.account_id ?? '',
+    installment_id: expense?.installment_id ?? '',
     vat_amount: expense?.vat_amount ? String(expense.vat_amount) : '',
     ait_amount: expense?.ait_amount ? String(expense.ait_amount) : '',
     notes: expense?.notes ?? '',
@@ -160,6 +161,9 @@ function ExpenseDialog({
     setForm((f) => {
       const next = { ...f, [key]: value };
       if (key === 'cost_category' && !isLandCost(value)) next.land_id = '';
+      // the plan belongs to the plot: changing either one strands the choice
+      if (key === 'cost_category' && value !== 'land_payment') next.installment_id = '';
+      if (key === 'land_id') next.installment_id = '';
       return next;
     });
 
@@ -188,6 +192,9 @@ function ExpenseDialog({
         paid_to: form.paid_to,
         payment_method: form.payment_method,
         account_id: form.account_id || null,
+        // only a land payment can settle an instalment; anything else would be
+        // carrying a pointer no screen would ever read
+        installment_id: settlesPlan ? form.installment_id || null : null,
         vat_amount: Number(form.vat_amount) || null,
         ait_amount: Number(form.ait_amount) || null,
         reference_no: form.reference_no.trim() || null,
@@ -231,7 +238,14 @@ function ExpenseDialog({
         <LandPlanPanel
           due={due}
           amount={Number(form.amount) || 0}
-          onUseAmount={(v) => set('amount', String(v))}
+          installmentId={form.installment_id || null}
+          onPick={(line) => {
+            setForm((f) => ({
+              ...f,
+              amount: String(line.amount),
+              installment_id: line.id ?? '',
+            }));
+          }}
         />
       )}
 
@@ -465,15 +479,18 @@ type LandDue = NonNullable<Awaited<ReturnType<typeof paymentScheduleRepository.l
 function LandPlanPanel({
   due,
   amount,
-  onUseAmount,
+  installmentId,
+  onPick,
 }: {
   due: LandDue;
   amount: number;
-  onUseAmount: (value: number) => void;
+  installmentId: string | null;
+  /** `id: null` fills the amount without aiming it at a line */
+  onPick: (line: { amount: number; id: string | null }) => void;
 }) {
   const next = due.next_unsettled;
   const today = todayLocal();
-  const effect = amount > 0 ? previewLandPayment(due.lines, amount) : null;
+  const effect = amount > 0 ? previewLandPayment(due.lines, amount, installmentId) : null;
 
   return (
     <div className="mb-4 rounded-xl border border-admin-200 bg-admin-50/60 p-3">
@@ -493,7 +510,7 @@ function LandPlanPanel({
             type="button"
             size="sm"
             variant="outline"
-            onClick={() => onUseAmount(next.outstanding)}
+            onClick={() => onPick({ amount: next.outstanding, id: null })}
           >
             Use this amount
           </Button>
@@ -524,12 +541,15 @@ function LandPlanPanel({
         left on it, so a part-paid instalment offers its remainder rather than
         its original figure — which is the number that gets typed wrong.
 
-        Picking a row is a *calculator*, not an instruction: money is applied
-        oldest-first by the ledger (`allocateOldestFirst`), so choosing a later
-        row while an earlier one is open fills the amount but the preview
-        underneath still says, truthfully, where it will land. Recording a
-        payment *against a chosen* instalment needs the expense to carry the
-        instalment it settles, which the schema does not have yet.
+        Picking a row now aims the payment at it (v17): the expense carries
+        `installment_id`, and `allocatePayments` settles targeted money against
+        its own line before the oldest-first waterfall runs. A landowner will
+        accept a cheque against a named milestone while an earlier instalment
+        is short, and the plan should then read as arrears plus a settled
+        milestone rather than silently moving the money forward.
+
+        The default is still the waterfall — most payments are not aimed at
+        anything — and clicking the chosen row again lets go of it.
       */}
       {due.lines.length > 0 && (
         <div className="mt-3 max-h-44 overflow-auto rounded-lg border border-admin-200 bg-white">
@@ -568,12 +588,30 @@ function LandPlanPanel({
                     </td>
                     <td className="px-2 py-1.5 text-right">
                       {left > 0.009 ? (
+                        /*
+                          Picking a row now *aims* the payment at it, not only
+                          fills the amount. Clicking the chosen row again lets
+                          go of it and the money rejoins the waterfall, so the
+                          default is always one click away.
+                        */
                         <button
                           type="button"
-                          className="rounded-md px-1.5 py-0.5 text-admin-700 underline-offset-2 transition-colors hover:bg-admin-50 hover:underline"
-                          onClick={() => onUseAmount(left)}
+                          aria-pressed={installmentId === line.id}
+                          className={cn(
+                            'rounded-md px-1.5 py-0.5 underline-offset-2 transition-colors',
+                            installmentId === line.id
+                              ? 'bg-admin-600 text-white'
+                              : 'text-admin-700 hover:bg-admin-50 hover:underline',
+                          )}
+                          onClick={() =>
+                            onPick(
+                              installmentId === line.id
+                                ? { amount: left, id: null }
+                                : { amount: left, id: line.id },
+                            )
+                          }
                         >
-                          Use
+                          {installmentId === line.id ? 'Paying this' : 'Pay this'}
                         </button>
                       ) : (
                         <span className="text-emerald-700">Paid</span>
@@ -593,6 +631,16 @@ function LandPlanPanel({
         shortfall stays on that instalment rather than moving to the end of the
         plan, so it keeps reading as arrears.
       */}
+      {installmentId && (
+        <p className="mt-2 text-xs text-admin-700">
+          Recorded against{' '}
+          <span className="font-medium">
+            {due.lines.find((l) => l.id === installmentId)?.label ?? 'an instalment'}
+          </span>{' '}
+          — it settles that line first, whatever is still open before it.
+        </p>
+      )}
+
       {effect && (
         <p className="mt-2 border-t border-admin-200 pt-2 text-xs text-ink">
           {formatBdt(amount)} would{' '}

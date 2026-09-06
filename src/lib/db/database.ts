@@ -337,6 +337,22 @@ export class AppDatabase extends Dexie {
         'id, &code, project_id, work_item_id, item_id, used_date, [project_id+item_id]',
       stock_returns: 'id, &code, project_id, item_id, return_date, [project_id+item_id]',
     });
+
+    /*
+     * v17 — a land payment can name the instalment it settles (Section 8.2).
+     *
+     * `payments` has carried `installment_id` since the buyer side was built;
+     * the expense ledger, which is how money goes *out*, had no equivalent, so
+     * every payment to a landowner was forced through the oldest-first
+     * waterfall whatever both sides had agreed it was for.
+     *
+     * The whole v15 index set is repeated: a stores() spec replaces a table's
+     * indexes, so anything omitted here would be silently dropped.
+     */
+    this.version(17).stores({
+      expenses:
+        'id, &code, project_id, land_id, cost_category, expense_date, payment_method, paid_by, account_id, installment_id',
+    });
   }
 }
 

@@ -1254,6 +1254,21 @@ export interface Expense extends BaseEntity {
   /** null = a company-level cost, not chargeable to one project */
   project_id?: UUID | null;
   land_id?: UUID | null;
+  /**
+   * The instalment of the land's payment plan this settles, when the payment
+   * was made against a named one (v17).
+   *
+   * `null` is the ordinary case and the default: the money joins the
+   * oldest-first waterfall, which is what most payments are. Set, it is applied
+   * to that line first — a landowner will accept a cheque against a named
+   * milestone while an earlier instalment is still short, and the plan should
+   * then show the earlier line as arrears rather than silently moving the money
+   * forward and reporting the opposite of what both sides agreed.
+   *
+   * Only meaningful with `cost_category = 'land_payment'`; anything else
+   * ignores it, and the form only offers it there.
+   */
+  installment_id?: UUID | null;
   cost_category: CostCategory;
   /** short, plain label — the whole point of the ledger when category='other' */
   cost_reason: string;

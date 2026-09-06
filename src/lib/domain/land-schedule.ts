@@ -195,11 +195,70 @@ export function allocateOldestFirst(
   lines: AllocatableLine[],
   amounts: number[],
 ): AllocationResult {
+  return allocatePayments(
+    lines,
+    amounts.map((amount) => ({ amount, installment_id: null })),
+  );
+}
+
+/** A payment, and the instalment it was recorded against if it names one. */
+export interface AllocatablePayment {
+  amount: number;
+  /** `null` = not aimed at a line; it falls into the waterfall */
+  installment_id?: string | null;
+}
+
+/**
+ * The waterfall, with an exception for money that says where it is going.
+ *
+ * Oldest-first is the right default and the wrong absolute. A landowner will
+ * accept a payment against a named milestone — "this cheque is the
+ * registration money" — while an earlier instalment is still short, and the
+ * plan should then show that earlier line as arrears and the named one as
+ * settled. Forcing it forward would report the opposite of what both sides
+ * agreed, and no note anywhere could correct the figures.
+ *
+ * So: targeted payments are applied to their own line first, in the order they
+ * were paid, and only what will not fit there rejoins the waterfall — a
+ * payment aimed at a line that is already full is not lost, it flows on like
+ * any other money. Untargeted payments then fill the remaining room
+ * oldest-first, exactly as before.
+ *
+ * The pass order matters and is the reason targeting is honoured at all: if
+ * untargeted money ran first it would already have filled the line the
+ * targeted payment was for, and naming an instalment would change nothing.
+ */
+export function allocatePayments(
+  lines: AllocatableLine[],
+  payments: AllocatablePayment[],
+): AllocationResult {
   const filled = new Map<string, number>(lines.map((line) => [line.id, 0]));
-  let cursor = 0;
+  const byId = new Map(lines.map((line) => [line.id, line]));
   let unallocated = 0;
 
-  for (const amount of amounts) {
+  /** What a targeted payment could not fit onto its own line. */
+  const overflow: number[] = [];
+
+  for (const payment of payments) {
+    const id = payment.installment_id;
+    if (!id || !byId.has(id)) continue;
+    const line = byId.get(id)!;
+    let remaining = Number(payment.amount) || 0;
+    const room = (Number(line.amount_due) || 0) - (filled.get(line.id) ?? 0);
+    if (room > 0.005) {
+      const take = Math.min(remaining, room);
+      filled.set(line.id, money((filled.get(line.id) ?? 0) + take));
+      remaining = money(remaining - take);
+    }
+    if (remaining > 0.005) overflow.push(remaining);
+  }
+
+  const untargeted = payments
+    .filter((p) => !p.installment_id || !byId.has(p.installment_id))
+    .map((p) => Number(p.amount) || 0);
+
+  let cursor = 0;
+  for (const amount of [...untargeted, ...overflow]) {
     let remaining = Number(amount) || 0;
     while (remaining > 0.005 && cursor < lines.length) {
       const line = lines[cursor];
@@ -243,10 +302,25 @@ export interface PaymentEffect {
 export function previewLandPayment(
   lines: Array<AllocatableLine & { label: string; amount_paid: number }>,
   amount: number,
+  /** the instalment the payment is being recorded against, if it names one */
+  installmentId: string | null = null,
 ): PaymentEffect {
-  const paidAlready = lines.map((l) => Number(l.amount_paid) || 0);
-  const before = allocateOldestFirst(lines, paidAlready);
-  const after = allocateOldestFirst(lines, [...paidAlready, Number(amount) || 0]);
+  /*
+   * The already-paid figures are re-run untargeted, because the *result* of
+   * their own targeting is what `amount_paid` already holds — replaying them
+   * as a flat waterfall over the lines reproduces exactly the state on screen.
+   * Only the new payment carries an instalment, which is the difference this
+   * preview exists to show.
+   */
+  const paidAlready = lines.map((l) => ({
+    amount: Number(l.amount_paid) || 0,
+    installment_id: l.id,
+  }));
+  const before = allocatePayments(lines, paidAlready);
+  const after = allocatePayments(lines, [
+    ...paidAlready,
+    { amount: Number(amount) || 0, installment_id: installmentId },
+  ]);
 
   const settles: string[] = [];
   let partial: PaymentEffect['partial'] = null;
