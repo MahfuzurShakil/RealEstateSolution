@@ -153,8 +153,10 @@ export const DEMO_LANDS: DemoLand[] = [
     khatian_number: '88/3',
     land_size: 10,
     land_size_unit: 'katha',
-    asking_price: 48000000,
-    negotiated_price: 45000000,
+    // a joint venture has no asking price — the owner is paid in units
+    asking_price: 0,
+    // signing money agreed with the owner, on top of the unit share
+    final_agreed_amount: 6_000_000,
     gps_lat: 23.8203,
     gps_lng: 90.4359,
     nearby_facilities:
@@ -275,8 +277,8 @@ export const DEMO_LANDS: DemoLand[] = [
     khatian_number: '205/1',
     land_size: 1.5,
     land_size_unit: 'bigha',
-    asking_price: 62000000,
-    negotiated_price: 57000000,
+    // a joint venture has no asking price — the owner is paid in units
+    asking_price: 0,
     gps_lat: 23.8583,
     gps_lng: 90.2667,
     nearby_facilities: 'Savar Bazar 2km, Enam Medical College 3km, highway frontage 60ft',
@@ -442,7 +444,8 @@ export const DEMO_LANDS: DemoLand[] = [
     khatian_number: '19/2',
     land_size: 6,
     land_size_unit: 'katha',
-    asking_price: 33000000,
+    // a joint venture has no asking price — the owner is paid in units
+    asking_price: 0,
     nearby_facilities: 'Commercial hub, Sylhet MAG Osmani Medical 2km',
     acquisition_type: 'joint_venture',
     status: 'new',
@@ -505,7 +508,8 @@ export const DEMO_LANDS: DemoLand[] = [
     khatian_number: '340',
     land_size: 5,
     land_size_unit: 'katha',
-    asking_price: 29500000,
+    // a joint venture has no asking price — the owner is paid in units
+    asking_price: 0,
     gps_lat: 23.8223,
     gps_lng: 90.3654,
     nearby_facilities: 'DOHS gate 300m, Mirpur 12 metro 2km, school and mosque within 500m',
@@ -530,8 +534,10 @@ export const DEMO_LANDS: DemoLand[] = [
     khatian_number: '512',
     land_size: 14,
     land_size_unit: 'katha',
-    asking_price: 96000000,
-    negotiated_price: 91000000,
+    // a joint venture has no asking price — the owner is paid in units
+    asking_price: 0,
+    // signing money agreed with the owner, on top of the unit share
+    final_agreed_amount: 4_500_000,
     gps_lat: 22.3268,
     gps_lng: 91.8093,
     nearby_facilities: 'Agrabad commercial hub, Customs House 700m, port access 3km',

@@ -19,7 +19,13 @@ import {
   type Landowner,
 } from '@/lib/db/types';
 import { JV_SHARE_BASIS_LABEL } from '@/lib/domain/project';
-import { ACQUISITION_TYPE_LABEL, LAND_SIZE_UNIT_LABEL } from '@/lib/domain/land';
+import {
+  ACQUISITION_TYPE_LABEL,
+  LAND_SIZE_UNIT_LABEL,
+  finalAmountHint,
+  finalAmountLabel,
+  landUsesPurchasePricing,
+} from '@/lib/domain/land';
 import {
   landJvRepository,
   landOwnerMappingRepository,
@@ -155,6 +161,7 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
     setForm((f) => ({ ...f, [key]: value }));
 
   const isJv = form.acquisition_type === 'joint_venture';
+  const purchasePricing = landUsesPurchasePricing(form.acquisition_type);
 
   const ownerShareTotal = useMemo(
     () => owners.reduce((sum, o) => sum + (Number(o.ownership_share_pct) || 0), 0),
@@ -187,7 +194,12 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
     if (!form.location_area.trim()) next.location_area = 'Required';
     if (!form.land_size.trim() || Number(form.land_size) <= 0)
       next.land_size = 'Enter a size above 0';
-    if (!form.asking_price.trim() || Number(form.asking_price) < 0)
+    /*
+     * Only a purchase has an asking price. It used to be required on every
+     * land, so every joint venture in the system carries a price nobody asked
+     * and nobody agreed — and the list sorts on it.
+     */
+    if (purchasePricing && (!form.asking_price.trim() || Number(form.asking_price) < 0))
       next.asking_price = 'Enter an amount';
 
     if (owners.some((o) => !o.owner_id)) next.owners = 'Pick a landowner for every row';
@@ -389,33 +401,56 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
 
       <Card>
         <CardHeader title="Commercials (BDT)" />
+        {/*
+          Asking → negotiated → agreed is three stages of one number, and a
+          joint venture has none of them: the owner is not asking a price,
+          nothing is being haggled down, and what they receive is a share of the
+          building. Asking the questions anyway produced a purchase price on
+          every JV plot that nobody had agreed to pay.
+
+          The one money question a JV does have is the cash side, which is the
+          field below — and an existing figure is kept rather than cleared when
+          a plot switches, because a land that was being bought before the JV
+          was struck genuinely had an asking price.
+        */}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Field label="Asking Price" required error={errors.asking_price}>
-            <MoneyInput
-              value={form.asking_price}
-              placeholder="e.g. 45000000"
-              onChange={(e) => set('asking_price', e.target.value)}
-              invalid={Boolean(errors.asking_price)}
-            />
-          </Field>
-          <Field label="Negotiated Price">
-            <MoneyInput
-              value={form.negotiated_price}
-              placeholder="e.g. 42000000"
-              onChange={(e) => set('negotiated_price', e.target.value)}
-            />
-          </Field>
+          {purchasePricing && (
+            <>
+              <Field label="Asking Price" required error={errors.asking_price}>
+                <MoneyInput
+                  value={form.asking_price}
+                  placeholder="e.g. 45000000"
+                  onChange={(e) => set('asking_price', e.target.value)}
+                  invalid={Boolean(errors.asking_price)}
+                />
+              </Field>
+              <Field label="Negotiated Price">
+                <MoneyInput
+                  value={form.negotiated_price}
+                  placeholder="e.g. 42000000"
+                  onChange={(e) => set('negotiated_price', e.target.value)}
+                />
+              </Field>
+            </>
+          )}
           <Field
-            label="Final Agreed Amount"
-            hint="Reference only — payments are tracked in the Finance module"
+            label={finalAmountLabel(form.acquisition_type)}
+            hint={finalAmountHint(form.acquisition_type)}
+            className={purchasePricing ? undefined : 'md:col-span-2'}
           >
             <MoneyInput
               value={form.final_agreed_amount}
-              placeholder="e.g. 40000000"
+              placeholder={purchasePricing ? 'e.g. 40000000' : 'e.g. 5000000, or 0'}
               onChange={(e) => set('final_agreed_amount', e.target.value)}
             />
           </Field>
         </div>
+        {!purchasePricing && (
+          <p className="mt-3 text-xs text-ink-muted">
+            The unit split is below — that is what the owner is actually paid. This field is only
+            the cash alongside it.
+          </p>
+        )}
       </Card>
 
       <Card>

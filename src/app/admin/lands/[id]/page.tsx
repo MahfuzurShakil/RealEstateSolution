@@ -15,7 +15,13 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { ACQUISITION_TYPE_LABEL, LAND_SIZE_UNIT_LABEL } from '@/lib/domain/land';
+import {
+  ACQUISITION_TYPE_LABEL,
+  LAND_SIZE_UNIT_LABEL,
+  finalAmountLabel,
+  landHeadlineAmount,
+  landUsesPurchasePricing,
+} from '@/lib/domain/land';
 import { JV_SHARE_BASIS_LABEL } from '@/lib/domain/project';
 import { expenseRepository, landRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
@@ -58,6 +64,8 @@ export default function LandDetailPage() {
   }
 
   const isJv = land.acquisition_type === 'joint_venture';
+  const purchasePricing = landUsesPurchasePricing(land.acquisition_type);
+  const headline = landHeadlineAmount(land);
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { key: 'owners', label: `Owners (${land.owners.length})` },
@@ -144,9 +152,19 @@ export default function LandDetailPage() {
 
               <Card>
                 <CardHeader title="Commercials" />
-                <Row label="Asking price" value={formatBdt(land.asking_price)} />
-                <Row label="Negotiated price" value={formatBdt(land.negotiated_price)} />
-                <Row label="Final agreed amount" value={formatBdt(land.final_agreed_amount)} />
+                {/* asking → negotiated → agreed is a purchase; a JV has only
+                    the cash side, and showing the other two would report a
+                    price nobody agreed to pay */}
+                {purchasePricing && (
+                  <>
+                    <Row label="Asking price" value={formatBdt(land.asking_price)} />
+                    <Row label="Negotiated price" value={formatBdt(land.negotiated_price)} />
+                  </>
+                )}
+                <Row
+                  label={finalAmountLabel(land.acquisition_type)}
+                  value={formatBdt(land.final_agreed_amount)}
+                />
 
                 {/*
                   The page used to say payments were "tracked in the Finance
@@ -343,10 +361,7 @@ export default function LandDetailPage() {
               label="Size"
               value={`${land.land_size} ${LAND_SIZE_UNIT_LABEL[land.land_size_unit]}`}
             />
-            <Row
-              label="Price"
-              value={formatBdt(land.negotiated_price ?? land.asking_price )}
-            />
+            <Row label={headline.label} value={formatBdt(headline.amount)} />
             <Row label="Owners" value={land.owners.length} />
             <Row label="Created" value={formatDate(land.created_at)} />
             <Row label="Last updated" value={formatDate(land.updated_at)} />

@@ -18,6 +18,7 @@ import {
   ACQUISITION_TYPE_LABEL,
   LAND_SIZE_UNIT_LABEL,
   LAND_STATUS_META,
+  landHeadlineAmount,
 } from '@/lib/domain/land';
 import { landRepository } from '@/lib/repositories';
 import { formatBdt, formatDate } from '@/lib/utils/format';
@@ -231,7 +232,7 @@ export default function LandsListPage() {
                           </Badge>
                           <Badge>
                             <Wallet className="size-3.5" />
-                            {formatBdt(land.negotiated_price ?? land.asking_price )}
+                            {formatBdt(landHeadlineAmount(land).amount)}
                           </Badge>
                           <Badge
                             tone={land.acquisition_type === 'joint_venture' ? 'teal' : 'neutral'}

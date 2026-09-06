@@ -362,3 +362,61 @@ export function statusStepConfig(
 export function amountUpdatesFinalAgreed(status: LandStatus): boolean {
   return status === 'acquired' || status === 'jv_signed';
 }
+
+/* ------------------------------------------------------------------ *
+ * What a plot's money means, given how it is being acquired
+ * ------------------------------------------------------------------ */
+
+/**
+ * A purchase and a joint venture do not have the same commercials.
+ *
+ * A purchase has an asking price, a negotiated price and a final agreed
+ * amount — three stages of one number. A joint venture has none of them: the
+ * owner is not asking a price, nothing is being haggled down, and what they
+ * receive is a share of the building. Asking Price was nevertheless *required*
+ * on every land, so every JV plot in the system carries a purchase price that
+ * was never asked and never agreed, and the list sorts by it.
+ *
+ * What a JV does have is a cash side, and `final_agreed_amount` now holds it
+ * (see `amountUpdatesFinalAgreed`): signing money against the agreement, and
+ * often rent for the owner while the building goes up. That is the one money
+ * question worth asking, and the payment plan is built from it.
+ */
+export function landUsesPurchasePricing(acquisitionType: AcquisitionType): boolean {
+  return acquisitionType === 'direct_purchase';
+}
+
+/** Label for `final_agreed_amount`, which means different things on the two. */
+export function finalAmountLabel(acquisitionType: AcquisitionType): string {
+  return acquisitionType === 'joint_venture'
+    ? 'Cash payable to the landowner'
+    : 'Final Agreed Amount';
+}
+
+export function finalAmountHint(acquisitionType: AcquisitionType): string {
+  return acquisitionType === 'joint_venture'
+    ? 'Signing money, and any rent agreed for the owner during construction. Leave at 0 if the owner is paid only in units — the payment plan is built from this.'
+    : 'Reference only — payments are tracked in the Finance module';
+}
+
+/**
+ * The one figure worth putting on a card or a list row.
+ *
+ * For a purchase that is what it will cost; for a JV it is the cash side, and
+ * saying so is the point — a JV row showing "BDT 57,000,000" reads as the price
+ * of the land, which nobody has agreed to pay.
+ */
+export function landHeadlineAmount(land: {
+  acquisition_type: AcquisitionType;
+  asking_price: number;
+  negotiated_price?: number | null;
+  final_agreed_amount?: number | null;
+}): { label: string; amount: number } {
+  if (land.acquisition_type === 'joint_venture') {
+    return { label: 'Cash to owner', amount: Number(land.final_agreed_amount) || 0 };
+  }
+  return {
+    label: 'Price',
+    amount: Number(land.negotiated_price ?? land.asking_price) || 0,
+  };
+}
