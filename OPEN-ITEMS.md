@@ -3,7 +3,8 @@
 Known-open work that is **not** a blocker for what is already shipped. Add to
 this as modules land; delete an entry when it is done.
 
-Last reviewed: 2026-09-05, after the list-filter consistency pass (Section 0k)
+Last reviewed: 2026-09-06, after the second round of client feedback (Section 0l);
+before that 2026-09-05, after the list-filter consistency pass (Section 0k)
 and Tier 3.5 — cash position (Section 0j),
 Tier 3.2 — project budget (Section 0i),
 Tier 3.1 — material catalogue (Section 0h)
@@ -137,6 +138,75 @@ The other side — what was agreed to be paid, and when — is now the Payment p
 tab. `landPaymentSummary` still answers "how much has gone out"; the plan
 answers "how much should have, by now", and the two are computed by different
 code paths from the same ledger rows, so they cross-check each other.
+
+---
+
+## 0l. Client feedback round 2 — done 2026-09-06 (eight items, two phases)
+
+Reported against the whole build: the JV pipeline asking purchase questions, a
+material request called fulfilled at the godown, no record of what a site
+actually used, no search on the item picker, a purchase order that opened
+empty, and supplier payments unreachable from Finance.
+
+**Phase 1 changed no schema. Phase 2 took Dexie to v16.** That order was the
+point: the two items that alter what existing numbers *mean* went last, on top
+of six that could not break anything.
+
+**Two of the six were real bugs with one cause.** The purchase order form
+resolved its material request itself, so the first render had none — the order
+opened as a central-store purchase with no lines, and re-picking the request
+from the dropdown (the only way to fill it) stacked another copy of the
+requisition each time. The page resolves it now; lines carry the id of the
+request that copied them, so a re-pick is a no-op that preserves typed prices.
+
+**A JV can have a payment plan, and could not before.** `final_agreed_amount`
+was written at `acquired` only and `generateForLand` refused anything that was
+not a direct purchase, on the reading that a JV owner is paid in units. True of
+the unit side, silent about the cash side — signing money, and rent for the
+owner during construction. The gate is the amount now, not the type.
+
+**An issue is a movement, not a consumption.** `stock_consumptions` and
+`stock_returns` are new, the site balance is derived from the three tables rather than stored, and
+`issued value = used + returned + still at site` holds exactly.
+
+**The back-fill bug is the one worth remembering.** `backfillMaterialItems`
+runs at the end of the demo seed and links `item_id` onto the tables that
+carried free-text names. The two new tables were not in its list, so issues
+were keyed by catalogue item and consumption by spelling — one material split
+into two half-rows, and a site balance reporting that nothing had been used.
+**Any future table holding `item_name` has to join that list in the same
+change that creates it.**
+
+### Still open from this
+
+**Paying a *chosen* instalment.** The expense form now lists the whole land
+plan and each open row offers its remainder as the amount, which is what the
+feedback asked for. What it cannot do is record "this payment is for
+instalment 3" while 2 is unpaid: the ledger allocates oldest-first and
+`recalculateForLand` re-derives it that way from the expense rows. Targeting
+needs `expenses.installment_id` and an allocator that honours it before
+falling back. The preview says truthfully where the money lands in the
+meantime, so nothing on screen is wrong — it is a missing capability, not a
+lie.
+
+**Requests written before the lifecycle change keep `fulfilled`.** They
+completed under the old rule, where the goods receipt closed them. Re-labelling
+closed history would invent a site acknowledgement nobody gave. Nothing reads
+the difference, but a report counting "how long from request to site" will find
+those six rows have no `received` or `delivered` step.
+
+**Site stock has no ageing or write-off.** Material standing on a site is now
+visible and can be returned, but nothing says it has been there four months,
+and there is no way to write off what was spoiled or stolen — the only exits
+are "used" and "returned", and a bag of set cement is neither. Same shape as
+the re-order-level gap in 1.4.
+
+**Consumption is not required before a work item completes.** A tower can be
+marked 100% with nothing recorded as used against it, so the two halves of
+Section 6 can disagree without anything noticing.
+
+**No merge for a return that came from a since-renamed item.** Inherited from
+the catalogue merge gap in 0h; nothing new.
 
 ---
 
