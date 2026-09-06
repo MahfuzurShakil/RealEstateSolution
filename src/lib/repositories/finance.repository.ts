@@ -244,10 +244,22 @@ class PaymentScheduleRepository extends BaseRepository<PaymentSchedule> {
 
     const land = await db.lands.get(landId);
     if (!land) return undefined;
-    // A joint venture pays the owner in units, not taka (Section 2.4), so there
-    // is no purchase price to schedule.
-    if (land.acquisition_type !== 'direct_purchase') return undefined;
 
+    /*
+     * The gate is the agreed amount, not the acquisition type.
+     *
+     * A joint venture was refused outright, on the reading of Section 2.4 that
+     * the owner is paid in units rather than taka. That is true of the *unit*
+     * side and silent about the cash side, which a JV in this market normally
+     * has: signing money against the agreement, and often rent for the owner
+     * while the building goes up. That money moves on dates and somebody has to
+     * be chased for it — refusing to schedule it did not make it not exist, it
+     * made it untrackable. It is captured at the signing step and lands in
+     * `final_agreed_amount`, the same field a purchase fills.
+     *
+     * A JV with no cash side still gets no plan, because the check below is the
+     * one that matters: there is no total to divide.
+     */
     const total = Number(land.final_agreed_amount) || 0;
     if (!(total > 0)) return undefined;
 

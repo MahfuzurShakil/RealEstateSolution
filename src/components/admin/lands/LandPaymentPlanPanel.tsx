@@ -50,27 +50,42 @@ export function LandPaymentPlanPanel({ land }: { land: Land }) {
 
   if (!schedule) {
     /*
-     * Why there is no plan is more useful than an empty table. A joint venture
-     * pays the owner in units rather than taka (Section 2.4), so it is not that
-     * the plan is missing — there is nothing to schedule.
+     * A joint venture used to be told, flatly, that it has no payment plan:
+     * the owner is paid in units, so there is nothing to schedule.
+     *
+     * That is only half true, and the half it leaves out is money that really
+     * moves. A JV in this market routinely carries signing money against the
+     * agreement, and often rent for the owner for the duration of construction
+     * — real cash, on dates, that somebody has to be chased for. It is now
+     * captured at the signing step as "cash payable to the landowner" and lands
+     * in `final_agreed_amount`, the same field a purchase uses.
+     *
+     * So the rule is the figure, not the acquisition type: a JV with a cash
+     * side gets the same plan a purchase gets, and a JV with none is told why
+     * — which is the honest version of the old message.
      */
     const jv = land.acquisition_type !== 'direct_purchase';
+    const jvWithoutCash = jv && agreed <= 0;
     return (
       <>
         <Card>
           <CardHeader title="Payment plan" />
           <EmptyState
-            icon={jv ? Handshake : CalendarClock}
-            title={jv ? 'A joint venture has no payment plan' : 'No payment plan recorded'}
+            icon={jvWithoutCash ? Handshake : CalendarClock}
+            title={
+              jvWithoutCash ? 'This joint venture has no cash side' : 'No payment plan recorded'
+            }
             description={
-              jv
-                ? 'The owner is paid in units under the joint venture agreement, not in instalments, so there is no purchase price to schedule. The unit split is on the Joint Venture tab.'
+              jvWithoutCash
+                ? 'No cash was recorded as payable to the landowner, so there is nothing to schedule — the owner is paid in units, and the split is on the Joint Venture tab. If signing money or rent during construction was agreed, record it on the land as the cash payable and the plan can be built from it.'
                 : agreed > 0
-                  ? 'Record what was agreed with the owner — the advance, the monthly instalments and anything held back until registration. Payments already in the cost ledger settle against it straight away.'
+                  ? jv
+                    ? 'Schedule the cash side of the agreement — the signing money, and any rent payable to the owner during construction. Payments already in the cost ledger settle against it straight away.'
+                    : 'Record what was agreed with the owner — the advance, the monthly instalments and anything held back until registration. Payments already in the cost ledger settle against it straight away.'
                   : 'Set the final agreed amount on this land first — the plan is built from it, and without it there is no total to divide.'
             }
             action={
-              !jv && agreed > 0 ? (
+              agreed > 0 ? (
                 <Button onClick={() => setGenerating(true)}>Record the agreed plan</Button>
               ) : undefined
             }
@@ -419,8 +434,8 @@ function GeneratePlanModal({
 
       {failed && (
         <p className="mt-3 text-sm text-red-600">
-          The plan could not be recorded. Check that this land is a direct purchase with a final
-          agreed amount set.
+          The plan could not be recorded. Check that the land has a final agreed amount, and that
+          the advance, the instalments and the registration payment add up to it.
         </p>
       )}
     </Modal>
