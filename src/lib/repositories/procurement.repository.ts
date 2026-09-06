@@ -1691,6 +1691,31 @@ class StockConsumptionRepository extends BaseRepository<StockConsumption> {
     );
   }
 
+  /**
+   * What each work item has consumed, keyed by `work_item_id`.
+   *
+   * The other half of Section 6: a tower can be logged to 100% with nothing
+   * recorded as used against any of its lines, and the two halves of the module
+   * then disagree with nothing noticing. This is what lets the progress panel
+   * say so.
+   *
+   * Consumption with no work item is excluded rather than bucketed anywhere —
+   * site-wide material (safety gear, site office) is real and belongs to no
+   * line, and inventing a home for it would misreport whichever line got it.
+   */
+  async byWorkItem(): Promise<Map<string, { value: number; entries: number }>> {
+    const rows = await db.stock_consumptions.toArray();
+    const out = new Map<string, { value: number; entries: number }>();
+    for (const row of rows) {
+      if (!row.work_item_id) continue;
+      const at = out.get(row.work_item_id) ?? { value: 0, entries: 0 };
+      at.value = money(at.value + (Number(row.total_cost) || 0));
+      at.entries += 1;
+      out.set(row.work_item_id, at);
+    }
+    return out;
+  }
+
   /** Deleting it puts the quantity back on the site, not in the store. */
   async removeCascade(id: string): Promise<void> {
     await this.remove(id);

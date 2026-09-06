@@ -13,6 +13,7 @@ import {
   Plus,
   RotateCcw,
   Trash2,
+  TriangleAlert,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -35,13 +36,14 @@ import {
 } from '@/lib/domain/site-progress';
 import {
   siteProgressUpdateRepository,
+  stockConsumptionRepository,
   towerRepository,
   towerWorkItemRepository,
 } from '@/lib/repositories';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { canEdit } from '@/lib/domain/access';
 import { cn } from '@/lib/utils/cn';
-import { formatDate, todayLocal } from '@/lib/utils/format';
+import { formatBdt, formatDate, todayLocal } from '@/lib/utils/format';
 import { ProgressBar } from './ProgressBar';
 import { ProgressUpdateModal } from './ProgressUpdateModal';
 import { WorkItemFormModal } from './WorkItemFormModal';
@@ -73,6 +75,8 @@ export function TowerProgressPanel({
   const [resetTowerId, setResetTowerId] = useState<string | null>(null);
 
   const towers = useLiveQuery(() => towerRepository.listForProject(projectId), [projectId]);
+  /* keyed by work item, so each line can say what it has actually consumed */
+  const consumption = useLiveQuery(() => stockConsumptionRepository.byWorkItem(), []);
   const allItems = useLiveQuery(
     () => towerWorkItemRepository.listForProject(projectId),
     [projectId],
@@ -301,6 +305,41 @@ export function TowerProgressPanel({
                             {item.actual_progress_pct}%
                           </span>
                         </div>
+                        {/*
+                          What this line of work has actually consumed.
+
+                          Progress and material were tracked independently, so a
+                          work item could be logged to 100% with nothing ever
+                          recorded as used against it — the two halves of
+                          Section 6 disagreeing with nothing to notice. Neither
+                          number is authoritative over the other and nothing is
+                          blocked; the panel just stops letting them diverge
+                          silently.
+                        */}
+                        {(() => {
+                          const used = consumption?.get(item.id);
+                          if (used) {
+                            return (
+                              <p className="mt-1.5 text-[11px] text-ink-muted">
+                                {formatBdt(used.value)} of material used against this item, over{' '}
+                                {used.entries} entr{used.entries === 1 ? 'y' : 'ies'}.
+                              </p>
+                            );
+                          }
+                          if (item.status === 'completed' || item.actual_progress_pct >= 100) {
+                            return (
+                              <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-amber-700">
+                                <TriangleAlert className="mt-px size-3 shrink-0" />
+                                Reported complete, but no material has been recorded as used
+                                against it. Either it needed none, or the site&rsquo;s consumption
+                                has not been entered — the project&rsquo;s material cost is short
+                                by whatever it took.
+                              </p>
+                            );
+                          }
+                          return null;
+                        })()}
+
                         {planned != null ? (
                           <p className="mt-1.5 text-[11px] text-ink-muted">
                             Planned {planned.toFixed(0)}% by today
