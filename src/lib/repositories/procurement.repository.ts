@@ -1935,11 +1935,27 @@ class ProcurementCostRepository {
     const projectOrders = orders.filter((o) => o.project_id === projectId);
 
     let orderedValue = 0;
+    let draftValue = 0;
     let receivedValue = 0;
     let openPos = 0;
     for (const order of projectOrders) {
       if (order.status === 'cancelled') continue;
       const totals = poTotals(itemsByPo.get(order.id) ?? []);
+      /*
+       * A draft is a shopping list, not a commitment — the same rule the
+       * supplier stats and the procurement dashboard already applied, and the
+       * same words the purchase order form uses ("a draft commits nothing").
+       *
+       * This roll-up was the one place that disagreed, so a project whose only
+       * order was a draft reported millions "Ordered" beside "0 orders still
+       * open" — two numbers on one card contradicting each other. Drafts are
+       * reported separately instead of vanishing, because a buyer preparing an
+       * order still wants to see it.
+       */
+      if (order.status === 'draft') {
+        draftValue += totals.value;
+        continue;
+      }
       orderedValue += totals.value;
       receivedValue += totals.received_value;
       if (order.status === 'ordered' || order.status === 'partially_received') openPos += 1;
@@ -1947,6 +1963,7 @@ class ProcurementCostRepository {
 
     return {
       ordered_value: money(orderedValue),
+      draft_value: money(draftValue),
       received_value: money(receivedValue),
       paid_value: money(
         vouchers

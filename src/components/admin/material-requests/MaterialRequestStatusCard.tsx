@@ -250,20 +250,21 @@ export function MaterialRequestStatusCard({
               className="w-full"
               onClick={() => setTransferOpen(true)}
             >
-              <ArrowLeftRight className="size-4" /> Fulfil from central stock
+              <ArrowLeftRight className="size-4" /> Meet from central stock
             </Button>
             <p className="rounded-xl border border-hairline p-3 text-xs text-ink-muted">
-              The request moves to Ordered on its own when a purchase order is placed, and closes
-              as Fulfilled once that order has been fully received. Transferring the material from
-              a store that already holds it closes the request straight away — nothing is bought.
+              The request moves to Ordered on its own when a purchase order is placed, and to In
+              Store once that order has been fully received. Transferring the material from a store
+              that already holds it reaches In Store straight away — nothing is bought. The site
+              closes it from there.
             </p>
           </div>
         )}
 
         {request.status === 'ordered' && (
           <p className="mt-3 rounded-xl border border-hairline p-3 text-xs text-ink-muted">
-            Being bought now. It closes as Fulfilled by itself once the purchase order behind it is
-            fully received — nobody marks that by hand.
+            Being bought now. It reaches In Store by itself once the purchase order behind it is
+            fully received — nobody marks that by hand. Closing it is the site&rsquo;s own step.
           </p>
         )}
 

@@ -628,6 +628,17 @@ export interface Payment extends BaseEntity {
    * Addendum: null until Module 7 generates the instalment rows. A payment
    * reaches its booking through the instalment in Section 8.2; with no
    * instalments yet that link would be broken, hence `booking_id` below.
+   *
+   * **This is an output, not an input, and that is the opposite of
+   * `Expense.installment_id` — do not read the two the same way.**
+   * `recalculateForBooking` runs the waterfall and then *writes* this column
+   * with the first instalment the receipt happened to touch, as provenance for
+   * the printed receipt. Setting it before the recalculation changes nothing:
+   * the next run overwrites it.
+   *
+   * A land payment (v17) is the other direction — there the column says where
+   * the money is *meant* to go, and the allocator honours it. A buyer receipt
+   * cannot be aimed at an instalment; see the note in OPEN-ITEMS.
    */
   installment_id?: UUID | null;
   /** Addendum: the booking this money was taken against. */
@@ -1300,6 +1311,11 @@ export interface Expense extends BaseEntity {
    *
    * Only meaningful with `cost_category = 'land_payment'`; anything else
    * ignores it, and the form only offers it there.
+   *
+   * **An input, unlike `Payment.installment_id`, which the booking side writes
+   * back as provenance after its own waterfall has run.** Same column name,
+   * opposite direction; the asymmetry is recorded in OPEN-ITEMS rather than
+   * quietly assumed to be symmetry.
    */
   installment_id?: UUID | null;
   cost_category: CostCategory;

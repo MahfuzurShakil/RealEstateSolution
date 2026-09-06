@@ -14,11 +14,18 @@ import { BaseRepository } from './base.repository';
  * carries a `cost_category`, and `supplier_vouchers`, which does not and rolls
  * up under the reserved procurement head.
  *
- * `stock_issues` are deliberately **not** counted. Material handed to a site
- * was already paid for through the voucher that bought it, and Section 8.3 is
- * explicit that vouchers are added at roll-up time so nothing is counted twice.
- * Adding issues would charge the same taka to the project a second time as it
- * moved from the store to the tower.
+ * **Neither `stock_issues` nor `stock_consumptions` are counted, and neither
+ * should be.** Material was already paid for through the voucher that bought
+ * it, and Section 8.3 is explicit that vouchers are added at roll-up time so
+ * nothing is counted twice. Adding either would charge the same taka to the
+ * project a second time — once when it was bought and again as it moved to the
+ * tower or went into the slab.
+ *
+ * The second half of that is worth spelling out because `stock_consumptions` is
+ * documented as "the project's real material cost", which it is — of the
+ * *material*, from the store's side. This budget measures money leaving the
+ * company, and that already happened at the voucher. The two answer different
+ * questions and adding them would answer neither.
  */
 class ProjectBudgetRepository extends BaseRepository<ProjectBudgetLine> {
   constructor() {

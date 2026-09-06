@@ -36,10 +36,11 @@ import { formatBdt, formatBdtRate, formatDate } from '@/lib/utils/format';
  * Section 7.11 — the cost chain, read for one project.
  *
  * The chain is `material_requests → purchase_orders → stock → stock_issues →
- * supplier_vouchers`, with `stock_transfers` bridging the central-store route.
- * The panel walks it in that order deliberately: the interesting question on a
- * site is never one number but where the money currently sits — committed on
- * an order, standing in the store, or actually consumed.
+ * stock_consumptions → supplier_vouchers`, with `stock_transfers` bridging the
+ * central-store route. The panel walks it in that order deliberately: the
+ * interesting question on a site is never one number but where the money
+ * currently sits — committed on an order, standing in the store, standing on
+ * the site, or actually built into something.
  */
 export function ProjectProcurementSummary({ projectId }: { projectId: string }) {
   const [issueOpen, setIssueOpen] = useState(false);
@@ -60,6 +61,7 @@ export function ProjectProcurementSummary({ projectId }: { projectId: string }) 
 
   const nothingYet =
     summary.ordered_value === 0 &&
+    summary.draft_value === 0 &&
     summary.issued_value === 0 &&
     summary.consumed_value === 0 &&
     summary.transferred_in_value === 0 &&
@@ -69,7 +71,10 @@ export function ProjectProcurementSummary({ projectId }: { projectId: string }) 
     {
       label: 'Ordered',
       value: summary.ordered_value,
-      hint: `${summary.open_po_count} order${summary.open_po_count === 1 ? '' : 's'} still open`,
+      hint:
+        summary.draft_value > 0
+          ? `${summary.open_po_count} still open · ${formatBdt(summary.draft_value)} in drafts`
+          : `${summary.open_po_count} order${summary.open_po_count === 1 ? '' : 's'} still open`,
       icon: ShoppingCart,
     },
     {
@@ -343,8 +348,10 @@ export function ProjectProcurementSummary({ projectId }: { projectId: string }) 
         {(issues ?? []).length === 0 ? (
           <EmptyState
             icon={PackageMinus}
-            title="Nothing consumed yet"
-            description="Issuing material is what turns stock into project cost (Section 7.8)."
+            title="Nothing issued yet"
+            /* issuing moves material out of the store; what makes it project
+               cost is recording it as used on site (7.8b) */
+            description="Issuing moves material from the store to the site. It becomes project cost when the site records it as used."
           />
         ) : (
           <ul className="space-y-2">

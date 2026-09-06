@@ -263,8 +263,10 @@ export function paymentSummary(poValue: number, vouchers: Array<{ amount: number
  * ------------------------------------------------------------------ */
 
 export interface ProjectCostSummary {
-  /** ordered against this project (central purchases are not attributed here) */
+  /** placed with a supplier against this project (drafts excluded — see below) */
   ordered_value: number;
+  /** prepared but not placed: a shopping list, committing nothing */
+  draft_value: number;
   /** what has physically arrived, at PO prices */
   received_value: number;
   /** what has been paid to suppliers on those orders */

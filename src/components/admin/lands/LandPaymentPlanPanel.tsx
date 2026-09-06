@@ -29,7 +29,8 @@ import { formatBdt, formatDate, todayLocal } from '@/lib/utils/format';
  *
  * The mirror image of the buyer's schedule: the same table, the opposite
  * direction of money. The lines are what we owe, and they are settled from the
- * cost ledger — land-payment expenses allocated oldest-first — so nothing here
+ * cost ledger — land-payment expenses, applied to the instalment they name and
+ * otherwise oldest-first (v17) — so nothing here
  * is typed in twice. Recording the payment in Finance is what moves this panel.
  */
 export function LandPaymentPlanPanel({ land }: { land: Land }) {
@@ -239,9 +240,10 @@ export function LandPaymentPlanPanel({ land }: { land: Land }) {
         />
 
         <p className="mt-4 text-xs text-ink-muted">
-          Paid comes from the cost ledger — land-payment costs booked against this land, applied to
-          the oldest instalment first. Record a payment in Finance and it lands here; nothing on
-          this table is ticked off by hand.
+          Paid comes from the cost ledger — land-payment costs booked against this land. A cost
+          recorded against a named instalment settles that one; everything else fills the oldest
+          open line first. Record a payment in Finance and it lands here; nothing on this table is
+          ticked off by hand.
         </p>
       </Card>
 

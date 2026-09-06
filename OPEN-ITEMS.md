@@ -194,7 +194,49 @@ nothing recorded against it says so on the progress panel.
 list: asking and negotiated price are purchase concepts and are no longer put
 to a JV, which is asked one money question — the cash payable to the owner.
 
+### Consistency sweep — 2026-09-06
+
+A pass over the whole app for the class of defect the JV pricing turned up: one
+fact, two answers. Found and fixed —
+
+**A project's only order was a draft, and the card said "Ordered BDT 4,672,800"
+beside "0 orders still open".** `procurementCostRepository.forProject` counted
+drafts in `ordered_value`. The supplier stats and the procurement dashboard
+both already excluded them, with a comment saying a draft is a shopping list
+and is kept out of every figure that reads as money ordered — this roll-up was
+the only one that disagreed. Drafts are now reported beside the figure rather
+than inside it.
+
+**Copy that still described the old material-request lifecycle** in four places
+— the list subtitle, the purchase order page, and two notes on the status card
+— all saying a request closes as Fulfilled when the order is received. It
+reaches In Store; the site closes it. The transfer button said "Fulfil from
+central stock" and now says "Meet from".
+
+**Copy that still treated an issue as consumption** — the issue modal asked
+which work "consumed" it, and the project panel's empty state said issuing is
+what turns stock into project cost. Issuing moves it; recording use costs it.
+
+**The land plan panel said money is applied "to the oldest instalment first"**,
+full stop, while the expense form now offers to aim it at a named instalment.
+
+**The budget's double-count warning named only `stock_issues`.** Now that
+`stock_consumptions` is documented as the project's real material cost, the
+next reader would have added it and charged the same taka twice. Both are named
+and the reason is spelled out.
+
 ### Still open from this
+
+**`installment_id` means opposite things on the two sides, deliberately.** On
+`payments` it is an *output* — `recalculateForBooking` runs the waterfall and
+writes back the first instalment the receipt touched, as provenance for the
+printed receipt; setting it beforehand changes nothing. On `expenses` (v17) it
+is an *input* the allocator honours. Both are documented at the type now, but
+the consequence is a real asymmetry in what the business can do: a landowner
+payment can be recorded against a named instalment and a buyer receipt cannot.
+Same shape of transaction, two behaviours. Making receipts targetable is the
+obvious symmetry and was not built, because nobody has asked for it and it
+touches the collections flow; raise it with the client rather than assuming.
 
 **Requests written before the lifecycle change keep `fulfilled`.** They
 completed under the old rule, where the goods receipt closed them. Re-labelling

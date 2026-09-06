@@ -144,7 +144,7 @@ function MaterialRequestsPage() {
     <>
       <PageHeader
         title="Material Requests"
-        subtitle="What the site has asked for — raised here, decided by Procurement, closed when the stock arrives."
+        subtitle="What the site has asked for — raised here, decided by Procurement, closed when the site confirms it arrived."
         action={
           mayRaise ? (
             <Link href="/admin/material-requests/new">

@@ -274,7 +274,9 @@ function IssueDialog({
           </SelectInput>
         </Field>
 
-        <Field label="Work item" hint="Which work consumed it">
+        {/* which work it is *for*: an issue is material leaving the store, and
+            what the work actually consumed is recorded separately (7.8b) */}
+        <Field label="Work item" hint="Which work it is for">
           <SelectInput
             value={workItemId}
             onChange={(e) => setWorkItemId(e.target.value)}

@@ -591,7 +591,8 @@ export default function PurchaseOrderDetailPage() {
                 </div>
               </Link>
               <p className="mt-3 text-xs text-ink-muted">
-                The request closes as Fulfilled on its own once this order is fully received.
+                Fully receiving this order moves the request to In Store on its own. The site
+                closes it themselves once the material has reached them.
               </p>
             </Card>
           )}
