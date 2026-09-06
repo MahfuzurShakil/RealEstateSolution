@@ -15,7 +15,7 @@ import {
   type Expense,
   type SupplierPaymentMethod,
 } from '@/lib/db/types';
-import { costCategoryLabel } from '@/lib/domain/finance';
+import { costCategoryLabel, installmentStatus, outstandingOn } from '@/lib/domain/finance';
 import { previewLandPayment } from '@/lib/domain/land-schedule';
 import { SUPPLIER_PAYMENT_METHOD_META } from '@/lib/domain/procurement';
 import {
@@ -26,6 +26,7 @@ import {
   projectRepository,
   userRepository,
 } from '@/lib/repositories';
+import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate, todayLocal } from '@/lib/utils/format';
 
 /**
@@ -444,6 +445,7 @@ function LandPlanPanel({
   onUseAmount: (value: number) => void;
 }) {
   const next = due.next_unsettled;
+  const today = todayLocal();
   const effect = amount > 0 ? previewLandPayment(due.lines, amount) : null;
 
   return (
@@ -484,6 +486,78 @@ function LandPlanPanel({
           {formatBdt(due.outstanding)} still owed on the plan
           {due.overdue_count > 0 && ` · ${due.overdue_count} instalment${due.overdue_count === 1 ? '' : 's'} overdue`}
         </p>
+      )}
+
+      {/*
+        The whole plan, not only the next line.
+        
+        "Which instalment am I paying" is the question somebody has in front of
+        them when they open this form, and it was answerable only by leaving it
+        and opening the land's plan tab. Each row fills the amount with what is
+        left on it, so a part-paid instalment offers its remainder rather than
+        its original figure — which is the number that gets typed wrong.
+
+        Picking a row is a *calculator*, not an instruction: money is applied
+        oldest-first by the ledger (`allocateOldestFirst`), so choosing a later
+        row while an earlier one is open fills the amount but the preview
+        underneath still says, truthfully, where it will land. Recording a
+        payment *against a chosen* instalment needs the expense to carry the
+        instalment it settles, which the schema does not have yet.
+      */}
+      {due.lines.length > 0 && (
+        <div className="mt-3 max-h-44 overflow-auto rounded-lg border border-admin-200 bg-white">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-slate-50 text-ink-muted">
+              <tr>
+                <th className="px-2 py-1.5 text-left font-medium">Instalment</th>
+                <th className="px-2 py-1.5 text-left font-medium">Due</th>
+                <th className="hidden px-2 py-1.5 text-right font-medium sm:table-cell">Amount</th>
+                <th className="px-2 py-1.5 text-right font-medium">Left</th>
+                <th className="px-2 py-1.5" />
+              </tr>
+            </thead>
+            <tbody>
+              {due.lines.map((line) => {
+                const left = outstandingOn(line);
+                const state = installmentStatus(line, today);
+                return (
+                  <tr key={line.id} className="border-t border-hairline">
+                    <td className="px-2 py-1.5 text-ink">{line.label}</td>
+                    <td className="px-2 py-1.5 text-ink-muted">
+                      {line.due_date ? formatDate(line.due_date) : '—'}
+                    </td>
+                    {/* the agreed figure is the least useful of the four when
+                        space is short — what is left is what the decision needs */}
+                    <td className="hidden px-2 py-1.5 text-right text-ink-muted sm:table-cell">
+                      {formatBdt(line.amount_due)}
+                    </td>
+                    <td
+                      className={cn(
+                        'px-2 py-1.5 text-right font-medium',
+                        state === 'overdue' ? 'text-red-600' : 'text-ink',
+                      )}
+                    >
+                      {left > 0.009 ? formatBdt(left) : '—'}
+                    </td>
+                    <td className="px-2 py-1.5 text-right">
+                      {left > 0.009 ? (
+                        <button
+                          type="button"
+                          className="rounded-md px-1.5 py-0.5 text-admin-700 underline-offset-2 transition-colors hover:bg-admin-50 hover:underline"
+                          onClick={() => onUseAmount(left)}
+                        >
+                          Use
+                        </button>
+                      ) : (
+                        <span className="text-emerald-700">Paid</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {/*
