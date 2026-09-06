@@ -1,6 +1,7 @@
 'use client';
 
 import { db } from '../db/database';
+import { todayLocal } from '../utils/format';
 import type {
   GoodsReceipt,
   GoodsReceiptItem,
@@ -13,6 +14,7 @@ import type {
   StockConsumption,
   StockIssue,
   StockReturn,
+  StockWriteOff,
   StockRow,
   StockTransfer,
   Supplier,
@@ -27,6 +29,7 @@ import {
   paymentSummary,
   poTotals,
   siteBalance,
+  isStaleOnSite,
   qty,
   statusFromReceipts,
   stockValue,
@@ -1532,7 +1535,7 @@ export class InsufficientSiteStockError extends Error {
  * the balance is computed in exactly one place.
  */
 async function siteMovementsFor(projectId: string | undefined) {
-  const [issues, used, returned] = await Promise.all([
+  const [issues, used, returned, writtenOff] = await Promise.all([
     projectId
       ? db.stock_issues.where('project_id').equals(projectId).toArray()
       : db.stock_issues.toArray(),
@@ -1542,19 +1545,35 @@ async function siteMovementsFor(projectId: string | undefined) {
     projectId
       ? db.stock_returns.where('project_id').equals(projectId).toArray()
       : db.stock_returns.toArray(),
+    projectId
+      ? db.stock_write_offs.where('project_id').equals(projectId).toArray()
+      : db.stock_write_offs.toArray(),
   ]);
   return {
     issues,
     used,
     returned,
+    writtenOff,
     balance: siteBalance(
-      issues.map((i) => ({ ...i, quantity: i.quantity_issued, unit_cost: i.unit_cost_snapshot })),
+      issues.map((i) => ({
+        ...i,
+        quantity: i.quantity_issued,
+        unit_cost: i.unit_cost_snapshot,
+        // the ageing clock starts when the material reached the site
+        date: i.issue_date,
+      })),
       used.map((u) => ({ ...u, quantity: u.quantity_used, unit_cost: u.unit_cost_snapshot })),
       returned.map((r) => ({
         ...r,
         quantity: r.quantity_returned,
         unit_cost: r.unit_cost_snapshot,
       })),
+      writtenOff.map((w) => ({
+        ...w,
+        quantity: w.quantity_written_off,
+        unit_cost: w.unit_cost_snapshot,
+      })),
+      todayLocal(),
     ),
   };
 }
@@ -1566,6 +1585,12 @@ class SiteStockRepository {
     if (!filters.search?.trim()) return balance;
     const q = filters.search.trim().toLowerCase();
     return balance.filter((r) => r.item_name.toLowerCase().includes(q));
+  }
+
+  /** Rows that have been standing longer than `SITE_AGEING_DAYS`. */
+  async stale(filters: SiteStockFilters = {}): Promise<SiteBalanceRow[]> {
+    const rows = await this.balance(filters);
+    return rows.filter((r) => r.at_site_quantity > 0.0005 && isStaleOnSite(r));
   }
 
   /** One item's balance, for the forms that have to check before they write. */
@@ -1667,6 +1692,103 @@ class StockConsumptionRepository extends BaseRepository<StockConsumption> {
   }
 
   /** Deleting it puts the quantity back on the site, not in the store. */
+  async removeCascade(id: string): Promise<void> {
+    await this.remove(id);
+  }
+}
+
+export interface StockWriteOffWithRelations extends StockWriteOff {
+  project?: Project;
+  approved_by_name?: string | null;
+}
+
+class StockWriteOffRepository extends BaseRepository<StockWriteOff> {
+  constructor() {
+    super(() => db.stock_write_offs);
+  }
+
+  async generateCode(): Promise<string> {
+    const codes = (await db.stock_write_offs.toArray()).map((r) => r.code);
+    return nextCode('WO', codes);
+  }
+
+  /**
+   * Writes material off a site (Section 7.8b).
+   *
+   * Neither the store nor the work gets it: it is gone. The cost stays with the
+   * project — the money was spent — but it is reported apart from consumption,
+   * because "what the building consumed" is what a bill of quantities is
+   * checked against and spoilage is not part of it.
+   *
+   * A reason is required by the type and a note by the form. A write-off is the
+   * one movement here that destroys value without producing anything, and one
+   * with no explanation is indistinguishable from a mistake or a cover.
+   */
+  async writeOff(
+    input: Omit<NewRecord<StockWriteOff>, 'code' | 'unit_cost_snapshot' | 'total_cost'> & {
+      code?: string;
+    },
+    createdBy: string | null = null,
+  ): Promise<StockWriteOff> {
+    const quantity = qty(Number(input.quantity_written_off) || 0);
+    if (quantity <= 0) throw new Error('Write off a quantity greater than zero.');
+    if (!input.notes?.trim()) throw new Error('Say what happened to it.');
+
+    const key = { item_id: input.item_id ?? null, item_name: input.item_name, unit: input.unit };
+    const row = await siteStockRepository.rowFor(input.project_id, key);
+    const atSite = row?.at_site_quantity ?? 0;
+    if (quantity > atSite) {
+      throw new InsufficientSiteStockError(input.item_name, atSite, quantity, input.unit);
+    }
+
+    const unitCost = money(row?.average_unit_price ?? 0);
+    const code = input.code?.trim() ? input.code : await this.generateCode();
+
+    return this.create(
+      {
+        ...input,
+        code,
+        quantity_written_off: quantity,
+        unit_cost_snapshot: unitCost,
+        total_cost: money(quantity * unitCost),
+      },
+      createdBy,
+    );
+  }
+
+  async list(filters: SiteStockFilters = {}): Promise<StockWriteOffWithRelations[]> {
+    const [rows, projects, users] = await Promise.all([
+      db.stock_write_offs.toArray(),
+      db.projects.toArray(),
+      db.users.toArray(),
+    ]);
+    const projectById = new Map(projects.map((p) => [p.id, p]));
+    const userById = new Map(users.map((u) => [u.id, u]));
+
+    let out: StockWriteOffWithRelations[] = rows.map((row) => ({
+      ...row,
+      project: projectById.get(row.project_id),
+      approved_by_name: row.approved_by ? (userById.get(row.approved_by)?.name ?? null) : null,
+    }));
+
+    if (filters.project_id) out = out.filter((r) => r.project_id === filters.project_id);
+    if (filters.search?.trim()) {
+      const q = filters.search.trim().toLowerCase();
+      out = out.filter((r) =>
+        [r.code, r.item_name, r.notes, r.reason, r.project?.name, r.approved_by_name]
+          .filter(Boolean)
+          .some((f) => String(f).toLowerCase().includes(q)),
+      );
+    }
+
+    return out.sort(
+      (a, b) =>
+        b.write_off_date.localeCompare(a.write_off_date) ||
+        b.created_at.localeCompare(a.created_at),
+    );
+  }
+
+  /** Reversing it puts the quantity back on the site, where it came from. */
   async removeCascade(id: string): Promise<void> {
     await this.remove(id);
   }
@@ -1826,6 +1948,11 @@ class ProcurementCostRepository {
       consumed_value: money(
         site.used.reduce((sum, u) => sum + (Number(u.total_cost) || 0), 0),
       ),
+      // spent, and it built nothing — kept out of `consumed_value` so that
+      // figure stays comparable with a bill of quantities
+      written_off_value: money(
+        site.writtenOff.reduce((sum, w) => sum + (Number(w.total_cost) || 0), 0),
+      ),
       at_site_value: money(site.balance.reduce((sum, r) => sum + r.at_site_value, 0)),
       transferred_in_value: money(
         transfers
@@ -1932,6 +2059,7 @@ export const stockIssueRepository = new StockIssueRepository();
 export const siteStockRepository = new SiteStockRepository();
 export const stockConsumptionRepository = new StockConsumptionRepository();
 export const stockReturnRepository = new StockReturnRepository();
+export const stockWriteOffRepository = new StockWriteOffRepository();
 export const stockTransferRepository = new StockTransferRepository();
 export const supplierVoucherRepository = new SupplierVoucherRepository();
 export const procurementCostRepository = new ProcurementCostRepository();

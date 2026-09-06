@@ -600,6 +600,10 @@ export interface DemoIssue {
    */
   used_quantity?: number;
   returned_quantity?: number;
+  /** written off the site — spoiled, lost, stolen; the cost stays, the material is gone */
+  written_off_quantity?: number;
+  write_off_reason?: 'damaged' | 'expired' | 'lost' | 'theft' | 'other';
+  write_off_note?: string;
 }
 
 export const DEMO_STOCK_ISSUES: DemoIssue[] = [
@@ -674,6 +678,11 @@ export const DEMO_STOCK_ISSUES: DemoIssue[] = [
     issued_by_key: 'jahangir',
     notes: 'Given to the painting contractor for the external faces.',
     used_quantity: 600,
+    // the rest sat through the monsoon; part of it set in the tin, and the
+    // remainder is still standing and now well past the ageing threshold
+    written_off_quantity: 20,
+    write_off_reason: 'expired',
+    write_off_note: 'Two drums set solid after the monsoon — unusable on the finish coat.',
   },
   {
     project_name: 'Nokshi Dhanmondi Court',

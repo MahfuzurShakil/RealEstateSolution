@@ -31,6 +31,7 @@ import type {
   StockConsumption,
   StockIssue,
   StockReturn,
+  StockWriteOff,
   StockRow,
   StockTransfer,
   Supplier,
@@ -115,6 +116,7 @@ export class AppDatabase extends Dexie {
   stock_issues!: EntityTable<StockIssue, 'id'>;
   stock_consumptions!: EntityTable<StockConsumption, 'id'>;
   stock_returns!: EntityTable<StockReturn, 'id'>;
+  stock_write_offs!: EntityTable<StockWriteOff, 'id'>;
   stock_transfers!: EntityTable<StockTransfer, 'id'>;
   supplier_vouchers!: EntityTable<SupplierVoucher, 'id'>;
 
@@ -352,6 +354,19 @@ export class AppDatabase extends Dexie {
     this.version(17).stores({
       expenses:
         'id, &code, project_id, land_id, cost_category, expense_date, payment_method, paid_by, account_id, installment_id',
+    });
+
+    /*
+     * v18 — the third way material leaves a site (Section 7.8b).
+     *
+     * One new table, nothing altered. A site with only "used" and "returned"
+     * has no truthful entry for a bag of set cement, so it stayed on the
+     * balance for ever — which is exactly the kind of unaccountable quantity
+     * the site balance exists to remove.
+     */
+    this.version(18).stores({
+      stock_write_offs:
+        'id, &code, project_id, item_id, write_off_date, reason, [project_id+item_id]',
     });
   }
 }

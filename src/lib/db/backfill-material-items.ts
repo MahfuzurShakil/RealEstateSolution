@@ -98,6 +98,7 @@ export async function backfillMaterialItems(scope: TableScope): Promise<number> 
     // quantity in one and the used quantity in the other, both wrong.
     'stock_consumptions',
     'stock_returns',
+    'stock_write_offs',
     'stock_transfers',
     'purchase_order_items',
   ]) {

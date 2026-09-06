@@ -2,35 +2,47 @@
 
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { HardHat, Undo2 } from 'lucide-react';
+import { HardHat, TriangleAlert, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { money } from '@/lib/domain/procurement';
+import { WRITE_OFF_REASONS, type WriteOffReason } from '@/lib/db/types';
 import {
   projectRepository,
   siteStockRepository,
   stockConsumptionRepository,
   stockReturnRepository,
+  stockWriteOffRepository,
   towerRepository,
   towerWorkItemRepository,
   userRepository,
 } from '@/lib/repositories';
 import { formatBdt, formatBdtRate, todayLocal } from '@/lib/utils/format';
 
+export type SiteStockMode = 'use' | 'return' | 'write_off';
+
+export const WRITE_OFF_REASON_LABEL: Record<WriteOffReason, string> = {
+  damaged: 'Damaged',
+  expired: 'Expired / set',
+  lost: 'Lost',
+  theft: 'Theft',
+  other: 'Other',
+};
+
 /**
- * Recording what a site used, and sending back what it did not (Section 7.8b).
+ * Recording what a site used, sent back, and wrote off (Section 7.8b).
  *
- * One dialog for both because they are the same question — "of the material
- * standing on this site, how much of this item, and where is it going" — and
- * the only difference is the destination: into the work, or back to the store.
- * Two near-identical forms would drift.
+ * One dialog for all three because they are the same question — "of the
+ * material standing on this site, how much of this item, and where is it
+ * going" — and only the destination differs: into the work, back to the store,
+ * or gone. Three near-identical forms would drift.
  *
- * Both read the *site* balance rather than the store's. That balance is issues
- * minus what has been used minus what has gone back, so neither can account for
- * more than is actually there.
+ * All three read the *site* balance rather than the store's. That balance is
+ * issues minus used minus returned minus written off, so none of them can
+ * account for more than is actually there.
  */
 export function SiteStockModal({
   open,
@@ -40,7 +52,7 @@ export function SiteStockModal({
   onSaved,
 }: {
   open: boolean;
-  mode: 'use' | 'return';
+  mode: SiteStockMode;
   defaults?: { project_id?: string; item_id?: string | null };
   onClose: () => void;
   onSaved?: () => void;
@@ -55,13 +67,14 @@ function SiteStockDialog({
   onClose,
   onSaved,
 }: {
-  mode: 'use' | 'return';
+  mode: SiteStockMode;
   defaults?: { project_id?: string; item_id?: string | null };
   onClose: () => void;
   onSaved?: () => void;
 }) {
   const { userId } = useMockSession();
   const using = mode === 'use';
+  const writingOff = mode === 'write_off';
 
   const [projectId, setProjectId] = useState(defaults?.project_id ?? '');
   const [rowKey, setRowKey] = useState<string | null>(null);
@@ -71,6 +84,7 @@ function SiteStockDialog({
   const [date, setDate] = useState(todayLocal());
   const [actor, setActor] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
+  const [reason, setReason] = useState<WriteOffReason>('damaged');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -122,6 +136,12 @@ function SiteStockDialog({
       setError('Pick an item standing on this site');
       return;
     }
+    // the one movement that destroys value without producing anything; an
+    // unexplained one is indistinguishable from a mistake or a cover
+    if (writingOff && !notes.trim()) {
+      setError('Say what happened to it');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -140,6 +160,19 @@ function SiteStockDialog({
             used_date: date,
             recorded_by: actor || userId,
             notes: notes.trim() || null,
+          },
+          userId,
+        );
+      } else if (writingOff) {
+        await stockWriteOffRepository.writeOff(
+          {
+            project_id: projectId,
+            ...key,
+            quantity_written_off: wanted,
+            reason,
+            notes: notes.trim(),
+            write_off_date: date,
+            approved_by: actor || userId,
           },
           userId,
         );
@@ -168,13 +201,21 @@ function SiteStockDialog({
   return (
     <Modal
       open
-      title={using ? 'Record Material Used' : 'Return Material to Store'}
+      title={
+        using
+          ? 'Record Material Used'
+          : writingOff
+            ? 'Write Material Off'
+            : 'Return Material to Store'
+      }
       subtitle={
         using
           ? 'What the site actually consumed — this is the project cost'
-          : 'Unused material goes back on the shelf, ready to transfer'
+          : writingOff
+            ? 'Damaged, expired, lost or stolen — the cost stays, the material is gone'
+            : 'Unused material goes back on the shelf, ready to transfer'
       }
-      icon={using ? HardHat : Undo2}
+      icon={using ? HardHat : writingOff ? TriangleAlert : Undo2}
       onClose={onClose}
       footer={
         <>
@@ -182,7 +223,7 @@ function SiteStockDialog({
             Cancel
           </Button>
           <Button onClick={save} disabled={busy || tooMuch}>
-            {busy ? 'Saving…' : using ? 'Record use' : 'Return to store'}
+            {busy ? 'Saving…' : using ? 'Record use' : writingOff ? 'Write off' : 'Return to store'}
           </Button>
         </>
       }
@@ -244,7 +285,7 @@ function SiteStockDialog({
           />
         </Field>
 
-        <Field label={using ? 'Used on' : 'Returned on'} required>
+        <Field label={using ? 'Used on' : writingOff ? 'Written off on' : 'Returned on'} required>
           <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
 
@@ -290,7 +331,25 @@ function SiteStockDialog({
           </>
         )}
 
-        <Field label={using ? 'Recorded by' : 'Returned by'} className={using ? undefined : 'sm:col-span-2'}>
+        {writingOff && (
+          <Field label="Reason" required>
+            <SelectInput
+              value={reason}
+              onChange={(e) => setReason(e.target.value as WriteOffReason)}
+            >
+              {WRITE_OFF_REASONS.map((r) => (
+                <option key={r} value={r}>
+                  {WRITE_OFF_REASON_LABEL[r]}
+                </option>
+              ))}
+            </SelectInput>
+          </Field>
+        )}
+
+        <Field
+          label={using ? 'Recorded by' : writingOff ? 'Approved by' : 'Returned by'}
+          className={using || writingOff ? undefined : 'sm:col-span-2'}
+        >
           <SelectInput value={actor ?? userId ?? ''} onChange={(e) => setActor(e.target.value)}>
             {(siteTeam ?? []).map((u) => (
               <option key={u.id} value={u.id}>
@@ -300,14 +359,21 @@ function SiteStockDialog({
           </SelectInput>
         </Field>
 
-        <Field label="Notes" className="sm:col-span-2">
+        <Field
+          label="Notes"
+          required={writingOff}
+          className="sm:col-span-2"
+          hint={writingOff ? 'Required — this is the only record of what happened' : undefined}
+        >
           <TextArea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder={
               using
                 ? 'Which slab, which floor, anything worth remembering'
-                : 'Why it is going back — over-issued, wrong item, work cancelled'
+                : writingOff
+                  ? 'Set in the bag after the monsoon; 12 bags unusable'
+                  : 'Why it is going back — over-issued, wrong item, work cancelled'
             }
           />
         </Field>
@@ -320,7 +386,9 @@ function SiteStockDialog({
           <span className="mt-1 block text-xs text-ink-muted">
             {using
               ? 'Charged to the project as material cost, at the rate it was issued at.'
-              : 'Goes back to this project’s store at the rate it left with, so the store’s average is undisturbed.'}
+              : writingOff
+                ? 'Stays as project cost — the money was spent — but is reported apart from consumption, so “what the building used” stays comparable with the bill of quantities.'
+                : 'Goes back to this project’s store at the rate it left with, so the store’s average is undisturbed.'}
           </span>
         </p>
       )}

@@ -28,6 +28,7 @@ import {
   stockConsumptionRepository,
   stockIssueRepository,
   stockReturnRepository,
+  stockWriteOffRepository,
   stockRepository,
   stockTransferRepository,
   supplierRepository,
@@ -1022,8 +1023,11 @@ async function seedDemoProcurement(
      */
     const scale = quantity / demo.quantity_issued;
     const returned = qtyOf(demo.returned_quantity, scale);
+    const writtenOff = qtyOf(demo.written_off_quantity, scale);
     const used =
-      demo.used_quantity === undefined ? quantity - returned : qtyOf(demo.used_quantity, scale);
+      demo.used_quantity === undefined
+        ? quantity - returned - writtenOff
+        : qtyOf(demo.used_quantity, scale);
 
     if (returned > 0) {
       const returnedAt = daysFromToday(-Math.max(0, demo.days_ago - 2));
@@ -1040,6 +1044,24 @@ async function seedDemoProcurement(
         createdBy,
       );
       await db.stock_returns.update(back.id, { created_at: returnedAt, updated_at: returnedAt });
+    }
+
+    if (writtenOff > 0) {
+      const wroteAt = daysFromToday(-Math.max(0, demo.days_ago - 30));
+      const off = await stockWriteOffRepository.writeOff(
+        {
+          project_id: projectId,
+          item_name: demo.item_name,
+          unit: demo.unit,
+          quantity_written_off: writtenOff,
+          reason: demo.write_off_reason ?? 'damaged',
+          notes: demo.write_off_note ?? 'Spoiled on site.',
+          write_off_date: wroteAt.slice(0, 10),
+          approved_by: userIds.get('monir') ?? null,
+        },
+        createdBy,
+      );
+      await db.stock_write_offs.update(off.id, { created_at: wroteAt, updated_at: wroteAt });
     }
 
     if (used > 0) {
@@ -1350,6 +1372,7 @@ export async function clearDemoData(): Promise<void> {
     db.material_items.clear(),
     db.stock_consumptions.clear(),
     db.stock_returns.clear(),
+    db.stock_write_offs.clear(),
     db.project_budget_lines.clear(),
     db.bank_accounts.clear(),
     db.supplier_vouchers.clear(),

@@ -275,6 +275,8 @@ export interface ProjectCostSummary {
   issued_value: number;
   /** actually used on site (7.8b) — the project's real material cost */
   consumed_value: number;
+  /** spent and built nothing — spoilage, loss, theft (7.8b) */
+  written_off_value: number;
   /** issued but neither used nor returned: material standing on the site */
   at_site_value: number;
   /** value brought in from the central store or another project (7.8a) */
@@ -287,6 +289,21 @@ export interface ProjectCostSummary {
 /* ------------------------------------------------------------------ *
  * What is standing on a site (Section 7.8b addendum)
  * ------------------------------------------------------------------ */
+
+/**
+ * How long material may stand on a site before it is worth asking about.
+ *
+ * Not in the scope document and not a rule the software enforces — nothing is
+ * blocked, and a site can hold material for a year if that is the plan. It is
+ * the line at which the stock screen stops treating a balance as an ordinary
+ * buffer and starts flagging it, so somebody looks. Sixty days is roughly a
+ * construction cycle: material that has outlived the work it was issued for.
+ */
+export const SITE_AGEING_DAYS = 60;
+
+export function isStaleOnSite(row: { days_on_site: number }): boolean {
+  return row.days_on_site >= SITE_AGEING_DAYS;
+}
 
 export interface SiteBalanceRow {
   /**
@@ -305,14 +322,27 @@ export interface SiteBalanceRow {
   issued_quantity: number;
   used_quantity: number;
   returned_quantity: number;
-  /** issued − used − returned: material sitting on the site, unaccounted for */
+  written_off_quantity: number;
+  /** issued − used − returned − written off: material still standing on site */
   at_site_quantity: number;
+  /**
+   * The issue date of the oldest material still standing, and how long ago it
+   * was — FIFO, so what is left is assumed to be the most recent deliveries.
+   *
+   * Quantity alone does not say whether a site is over-supplied or hoarding:
+   * 40 bags issued yesterday is a normal buffer and 40 bags issued five months
+   * ago is money sitting in a corner going hard. `null` when nothing is
+   * standing.
+   */
+  oldest_unused_date: string | null;
+  days_on_site: number;
   /** issued value ÷ issued quantity, the rate everything at this site carries */
   average_unit_price: number;
   at_site_value: number;
   issued_value: number;
   used_value: number;
   returned_value: number;
+  written_off_value: number;
 }
 
 interface SiteMovement {
@@ -322,6 +352,8 @@ interface SiteMovement {
   unit: string;
   quantity: number;
   unit_cost: number;
+  /** issues only — what the ageing is measured from */
+  date?: string;
 }
 
 /**
@@ -364,6 +396,8 @@ export function siteBalance(
   issues: SiteMovement[],
   used: SiteMovement[],
   returned: SiteMovement[],
+  writtenOff: SiteMovement[] = [],
+  today: string = new Date().toISOString().slice(0, 10),
 ): SiteBalanceRow[] {
   // keyed on the catalogue item since Tier 3.1, falling back to the spelling
   // for rows recorded before it — the same key `stockRepository.findRow` uses
@@ -383,12 +417,16 @@ export function siteBalance(
         issued_quantity: 0,
         used_quantity: 0,
         returned_quantity: 0,
+        written_off_quantity: 0,
         at_site_quantity: 0,
+        oldest_unused_date: null,
+        days_on_site: 0,
         average_unit_price: 0,
         at_site_value: 0,
         issued_value: 0,
         used_value: 0,
         returned_value: 0,
+        written_off_value: 0,
       };
       rows.set(k, row);
     }
@@ -410,15 +448,63 @@ export function siteBalance(
     row.returned_quantity = qty(row.returned_quantity + m.quantity);
     row.returned_value = money(row.returned_value + m.quantity * m.unit_cost);
   }
+  for (const m of writtenOff) {
+    const row = seed(m);
+    row.written_off_quantity = qty(row.written_off_quantity + m.quantity);
+    row.written_off_value = money(row.written_off_value + m.quantity * m.unit_cost);
+  }
 
-  for (const row of rows.values()) {
-    row.at_site_quantity = qty(row.issued_quantity - row.used_quantity - row.returned_quantity);
+  /*
+   * Ageing is FIFO over the issues: material accounted for is taken off the
+   * oldest deliveries first, so what is left is the newest, and its earliest
+   * issue date is how long the site has been sitting on it.
+   *
+   * FIFO is an assumption, not a fact — nobody labels a bag — but it is the
+   * conservative one here: it reports the *youngest* possible age for what is
+   * standing, so an ageing warning that fires is never crying wolf.
+   */
+  const issuesByRow = new Map<string, SiteMovement[]>();
+  for (const m of issues) {
+    const list = issuesByRow.get(key(m)) ?? [];
+    list.push(m);
+    issuesByRow.set(key(m), list);
+  }
+
+  for (const [k, row] of rows.entries()) {
+    row.at_site_quantity = qty(
+      row.issued_quantity - row.used_quantity - row.returned_quantity - row.written_off_quantity,
+    );
     row.average_unit_price =
       row.issued_quantity > 0 ? money(row.issued_value / row.issued_quantity) : 0;
     row.at_site_value = money(row.at_site_quantity * row.average_unit_price);
+
+    if (row.at_site_quantity > 0.0005) {
+      let accountedFor = row.used_quantity + row.returned_quantity + row.written_off_quantity;
+      const batches = (issuesByRow.get(k) ?? [])
+        .filter((m) => m.date)
+        .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''));
+      for (const batch of batches) {
+        if (accountedFor >= batch.quantity - 0.0005) {
+          accountedFor -= batch.quantity;
+          continue;
+        }
+        row.oldest_unused_date = batch.date ?? null;
+        break;
+      }
+      if (row.oldest_unused_date) {
+        const from = Date.parse(row.oldest_unused_date);
+        const now = Date.parse(today);
+        row.days_on_site =
+          Number.isFinite(from) && Number.isFinite(now)
+            ? Math.max(0, Math.round((now - from) / 86_400_000))
+            : 0;
+      }
+    }
   }
 
   return [...rows.values()]
-    .filter((r) => Math.abs(r.at_site_quantity) > 0.0005 || r.used_quantity > 0)
+    .filter(
+      (r) => Math.abs(r.at_site_quantity) > 0.0005 || r.used_quantity > 0 || r.written_off_quantity > 0,
+    )
     .sort((a, b) => b.at_site_value - a.at_site_value || a.item_name.localeCompare(b.item_name));
 }

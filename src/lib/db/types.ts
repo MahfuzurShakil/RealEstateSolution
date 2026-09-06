@@ -1057,6 +1057,39 @@ export interface StockReturn extends BaseEntity {
   notes?: string | null;
 }
 
+/**
+ * Section 7.8b — material that left the site as neither work nor stock.
+ *
+ * The third exit, and the one that decides whether the other two can be
+ * trusted. With only "used" and "returned", a site holding cement that has set
+ * in the bag has no truthful entry to make: recording it as used inflates the
+ * slab it never went into, and returning it puts unusable material back on a
+ * shelf for another project to be issued. So it stays on the balance for ever
+ * and the site ages forward carrying a quantity nobody can account for.
+ *
+ * It is still project cost — the money was spent — but it is reported apart
+ * from consumption, because "what the building consumed" is the number a bill
+ * of quantities is checked against and spoilage is not part of it.
+ */
+export const WRITE_OFF_REASONS = ['damaged', 'expired', 'lost', 'theft', 'other'] as const;
+export type WriteOffReason = (typeof WRITE_OFF_REASONS)[number];
+
+export interface StockWriteOff extends BaseEntity {
+  code: string;                       // WO-2026-001
+  project_id: UUID;
+  item_id?: UUID | null;
+  item_name: string;
+  unit: string;
+  quantity_written_off: number;
+  unit_cost_snapshot: number;
+  total_cost: number;
+  reason: WriteOffReason;
+  /** required by the form — a write-off with no explanation is a hole */
+  notes: string;
+  write_off_date: ISODate;
+  approved_by: UUID | null;
+}
+
 /** Section 7.8a — central → project, or project → project. */
 export interface StockTransfer extends BaseEntity {
   code: string;                       // TRF-2026-001

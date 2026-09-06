@@ -10,10 +10,15 @@ import {
   HardHat,
   PackageMinus,
   Trash2,
+  TriangleAlert,
   Undo2,
   Warehouse,
 } from 'lucide-react';
-import { SiteStockModal } from '@/components/admin/procurement/SiteStockModal';
+import {
+  SiteStockModal,
+  WRITE_OFF_REASON_LABEL,
+  type SiteStockMode,
+} from '@/components/admin/procurement/SiteStockModal';
 import { StockIssueModal } from '@/components/admin/procurement/StockIssueModal';
 import { StockTransferModal } from '@/components/admin/procurement/StockTransferModal';
 import { Badge } from '@/components/ui/Badge';
@@ -30,6 +35,7 @@ import type {
   StockIssueWithRelations,
   StockReturnWithRelations,
   StockRowWithRelations,
+  StockWriteOffWithRelations,
   StockTransferWithRelations,
 } from '@/lib/repositories';
 import {
@@ -40,14 +46,23 @@ import {
   stockRepository,
   stockReturnRepository,
   stockTransferRepository,
+  stockWriteOffRepository,
 } from '@/lib/repositories';
-import type { SiteBalanceRow } from '@/lib/domain/procurement';
+import { SITE_AGEING_DAYS, isStaleOnSite, type SiteBalanceRow } from '@/lib/domain/procurement';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatBdtRate, formatDate } from '@/lib/utils/format';
 
-type Tab = 'on_hand' | 'at_site' | 'issues' | 'used' | 'returns' | 'transfers';
+type Tab = 'on_hand' | 'at_site' | 'issues' | 'used' | 'returns' | 'write_offs' | 'transfers';
 
-const TAB_KEYS: Tab[] = ['on_hand', 'at_site', 'issues', 'used', 'returns', 'transfers'];
+const TAB_KEYS: Tab[] = [
+  'on_hand',
+  'at_site',
+  'issues',
+  'used',
+  'returns',
+  'write_offs',
+  'transfers',
+];
 
 function StockPage() {
   const params = useSearchParams();
@@ -62,7 +77,7 @@ function StockPage() {
   const [inStockOnly, setInStockOnly] = useState(true);
   const [issueOpen, setIssueOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
-  const [siteMode, setSiteMode] = useState<'use' | 'return' | null>(null);
+  const [siteMode, setSiteMode] = useState<SiteStockMode | null>(null);
   const [deleteIssue, setDeleteIssue] = useState<StockIssueWithRelations | null>(null);
   const [deleteTransfer, setDeleteTransfer] = useState<StockTransferWithRelations | null>(null);
 
@@ -116,6 +131,14 @@ function StockPage() {
       }),
     [search, location],
   );
+  const writeOffs = useLiveQuery(
+    () =>
+      stockWriteOffRepository.list({
+        search,
+        project_id: location && location !== 'central' ? location : undefined,
+      }),
+    [search, location],
+  );
 
   const totals = useMemo(() => {
     const rows = stock ?? [];
@@ -134,6 +157,14 @@ function StockPage() {
    */
   const consumed = (used ?? []).reduce((sum, u) => sum + u.total_cost, 0);
   const atSiteValue = (atSite ?? []).reduce((sum, r) => sum + r.at_site_value, 0);
+  /*
+   * Material that has been standing longer than a construction cycle. Not an
+   * error and nothing is blocked — a site may hold stock for months on purpose
+   * — but a quantity nobody has touched since before the work it was issued for
+   * is worth somebody looking at, which is the only thing this says.
+   */
+  const stale = (atSite ?? []).filter((r) => r.at_site_quantity > 0.0005 && isStaleOnSite(r));
+  const staleValue = stale.reduce((sum, r) => sum + r.at_site_value, 0);
 
   const stockColumns: Column<StockRowWithRelations>[] = [
     {
@@ -328,6 +359,23 @@ function StockPage() {
       sortValue: (row) => row.returned_quantity,
     },
     {
+      key: 'written_off_quantity',
+      header: 'Written off',
+      align: 'right',
+      /*
+       * Shown even though it is usually a dash. Without it the row does not add
+       * up — 720 issued less 600 used reading as 100 on site looks like an
+       * arithmetic error rather than 20 litres that spoiled, and a table the
+       * reader cannot check is a table they stop trusting.
+       */
+      cell: (row) => (
+        <span className={cn('text-ink-muted', row.written_off_quantity > 0 && 'text-amber-700')}>
+          {row.written_off_quantity > 0 ? `${row.written_off_quantity} ${row.unit}` : '—'}
+        </span>
+      ),
+      sortValue: (row) => row.written_off_quantity,
+    },
+    {
       key: 'at_site_quantity',
       header: 'On site',
       align: 'right',
@@ -339,11 +387,87 @@ function StockPage() {
       sortValue: (row) => row.at_site_quantity,
     },
     {
+      key: 'days_on_site',
+      header: 'Standing',
+      align: 'right',
+      /*
+       * Quantity alone does not say whether a site is buffered or hoarding: 40
+       * bags issued yesterday is normal and 40 bags issued five months ago is
+       * money going hard in a corner. FIFO, so this is the *youngest* age the
+       * remaining quantity can have — a flag that fires is never crying wolf.
+       */
+      cell: (row) => (
+        <span className={cn('text-ink-muted', isStaleOnSite(row) && 'font-medium text-amber-700')}>
+          {row.oldest_unused_date ? `${row.days_on_site}d` : '—'}
+        </span>
+      ),
+      sortValue: (row) => row.days_on_site,
+    },
+    {
       key: 'at_site_value',
       header: 'Value',
       align: 'right',
       cell: (row) => <span className="text-ink">{formatBdt(row.at_site_value)}</span>,
       sortValue: (row) => row.at_site_value,
+    },
+  ];
+
+  const writeOffColumns: Column<StockWriteOffWithRelations>[] = [
+    {
+      key: 'code',
+      header: 'Write-off',
+      cell: (row) => (
+        <span>
+          <span className="font-medium text-ink">{row.code}</span>
+          <span className="block text-xs text-ink-muted">{row.item_name}</span>
+        </span>
+      ),
+      sortValue: (row) => row.code,
+    },
+    {
+      key: 'project',
+      header: 'From site',
+      cell: (row) => <span className="text-ink">{row.project?.name ?? 'Project removed'}</span>,
+      sortValue: (row) => row.project?.name ?? '',
+    },
+    {
+      key: 'reason',
+      header: 'Reason',
+      cell: (row) => (
+        <span>
+          <Badge tone={row.reason === 'theft' ? 'red' : 'amber'}>
+            {WRITE_OFF_REASON_LABEL[row.reason]}
+          </Badge>
+          <span className="mt-0.5 block max-w-[28ch] truncate text-xs text-ink-muted">
+            {row.notes}
+          </span>
+        </span>
+      ),
+      sortValue: (row) => row.reason,
+    },
+    {
+      key: 'quantity_written_off',
+      header: 'Quantity',
+      align: 'right',
+      cell: (row) => (
+        <span className="text-ink">
+          {row.quantity_written_off} {row.unit}
+        </span>
+      ),
+      sortValue: (row) => row.quantity_written_off,
+    },
+    {
+      key: 'write_off_date',
+      header: 'Date',
+      cell: (row) => <span className="text-ink-muted">{formatDate(row.write_off_date)}</span>,
+      sortValue: (row) => row.write_off_date,
+    },
+    {
+      key: 'total_cost',
+      header: 'Cost',
+      align: 'right',
+      cell: (row) => <span className="font-medium text-ink">{formatBdt(row.total_cost)}</span>,
+      sortValue: (row) => row.total_cost,
     },
   ];
 
@@ -533,6 +657,7 @@ function StockPage() {
     issues: `Issued to Site (${issues?.length ?? 0})`,
     used: `Used (${used?.length ?? 0})`,
     returns: `Returned (${returns?.length ?? 0})`,
+    write_offs: `Written Off (${writeOffs?.length ?? 0})`,
     transfers: `Transfers (${transfers?.length ?? 0})`,
   };
 
@@ -545,6 +670,9 @@ function StockPage() {
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => setTransferOpen(true)}>
               <ArrowLeftRight className="size-4" /> Transfer
+            </Button>
+            <Button variant="outline" onClick={() => setSiteMode('write_off')}>
+              <TriangleAlert className="size-4" /> Write Off
             </Button>
             <Button variant="outline" onClick={() => setSiteMode('return')}>
               <Undo2 className="size-4" /> Return from Site
@@ -598,6 +726,26 @@ function StockPage() {
           </Card>
         ))}
       </div>
+
+      {stale.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setTab('at_site')}
+          className="mb-5 flex w-full items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-left transition-colors hover:bg-amber-100"
+        >
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
+          <span className="text-sm text-amber-900">
+            <span className="font-medium">
+              {stale.length} item{stale.length === 1 ? '' : 's'} worth {formatBdt(staleValue)}
+            </span>{' '}
+            standing on site for more than {SITE_AGEING_DAYS} days.
+            <span className="mt-0.5 block text-xs text-amber-800">
+              Nothing is wrong with holding stock on a site — but material nobody has touched since
+              before the work it was issued for is either going to spoil or was never needed.
+            </span>
+          </span>
+        </button>
+      )}
 
       <div className="mb-5 flex flex-wrap gap-2 border-b border-hairline">
         {TAB_KEYS.map((key) => (
@@ -736,6 +884,23 @@ function StockPage() {
                 title="Nothing returned yet"
                 description="Unused material goes back to the store at the rate it left with, and from there a transfer can take it to whichever project needs it."
                 action={<Button onClick={() => setSiteMode('return')}>Return from site</Button>}
+              />
+            }
+          />
+        )}
+
+        {tab === 'write_offs' && (
+          <DataTable
+            rows={writeOffs ?? []}
+            columns={writeOffColumns}
+            initialSort={{ key: 'write_off_date', direction: 'desc' }}
+            label="write-offs"
+            emptyState={
+              <EmptyState
+                icon={TriangleAlert}
+                title="Nothing written off"
+                description="Material that was damaged, expired, lost or stolen. The cost stays with the project — the money was spent — but it is kept out of consumption, so what the building used stays comparable with the bill of quantities."
+                action={<Button onClick={() => setSiteMode('write_off')}>Write material off</Button>}
               />
             }
           />

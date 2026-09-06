@@ -10,6 +10,7 @@ import {
   PackageMinus,
   Receipt,
   ShoppingCart,
+  TriangleAlert,
   Truck,
   Warehouse,
 } from 'lucide-react';
@@ -103,6 +104,18 @@ export function ProjectProcurementSummary({ projectId }: { projectId: string }) 
       hint: 'the real material cost',
       icon: PackageMinus,
     },
+    /* Only when there is any — a zero write-off tile on every project would
+       teach people to stop reading the row. */
+    ...(summary.written_off_value > 0
+      ? [
+          {
+            label: 'Written off',
+            value: summary.written_off_value,
+            hint: 'spoiled, lost or stolen',
+            icon: TriangleAlert,
+          },
+        ]
+      : []),
     {
       label: 'Paid out',
       value: summary.paid_value,
