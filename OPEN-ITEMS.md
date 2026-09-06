@@ -227,16 +227,24 @@ and the reason is spelled out.
 
 ### Still open from this
 
-**`installment_id` means opposite things on the two sides, deliberately.** On
-`payments` it is an *output* — `recalculateForBooking` runs the waterfall and
-writes back the first instalment the receipt touched, as provenance for the
-printed receipt; setting it beforehand changes nothing. On `expenses` (v17) it
-is an *input* the allocator honours. Both are documented at the type now, but
-the consequence is a real asymmetry in what the business can do: a landowner
-payment can be recorded against a named instalment and a buyer receipt cannot.
-Same shape of transaction, two behaviours. Making receipts targetable is the
-obvious symmetry and was not built, because nobody has asked for it and it
-touches the collections flow; raise it with the client rather than assuming.
+**Aiming a buyer receipt at an instalment — deferred by the client,
+2026-09-06.** Raised, discussed and explicitly postponed; not an oversight.
+
+`installment_id` means opposite things on the two sides. On `payments` it is an
+*output* — `recalculateForBooking` runs the waterfall and writes back the first
+instalment the receipt touched, as provenance for the printed receipt; setting
+it beforehand changes nothing, because the next run overwrites it. On
+`expenses` (v17) it is an *input* the allocator honours. Both are documented at
+the type.
+
+The consequence is that a landowner payment can be recorded against a named
+instalment and a buyer receipt cannot — the same shape of transaction behaving
+two ways. When it is picked up, the work is: honour `payments.installment_id`
+as an input in `recalculateForBooking` (it already has the shape
+`allocatePayments` takes), stop overwriting it, decide what happens to the
+provenance the printed receipt currently relies on, and add the picker to
+`RecordPaymentModal` the way `ExpenseFormModal` has one. The allocator itself
+needs no change — `allocatePayments` is already generic.
 
 **Requests written before the lifecycle change keep `fulfilled`.** They
 completed under the old rule, where the goods receipt closed them. Re-labelling
