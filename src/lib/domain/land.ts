@@ -405,18 +405,26 @@ export function finalAmountHint(acquisitionType: AcquisitionType): string {
  * For a purchase that is what it will cost; for a JV it is the cash side, and
  * saying so is the point — a JV row showing "BDT 57,000,000" reads as the price
  * of the land, which nobody has agreed to pay.
+ *
+ * `null` means there is no figure yet, and is not the same as zero. A joint
+ * venture still in the pipeline has agreed no cash, and rendering that as
+ * "BDT 0" reads as a broken record rather than a deal not yet struck — which
+ * is also what put two different answers on one page, the commercials row
+ * showing "—" beside a summary showing zero.
  */
 export function landHeadlineAmount(land: {
   acquisition_type: AcquisitionType;
   asking_price: number;
   negotiated_price?: number | null;
   final_agreed_amount?: number | null;
-}): { label: string; amount: number } {
-  if (land.acquisition_type === 'joint_venture') {
-    return { label: 'Cash to owner', amount: Number(land.final_agreed_amount) || 0 };
-  }
+}): { label: string; amount: number | null } {
+  const value =
+    land.acquisition_type === 'joint_venture'
+      ? land.final_agreed_amount
+      : (land.negotiated_price ?? land.asking_price);
+  const amount = Number(value);
   return {
-    label: 'Price',
-    amount: Number(land.negotiated_price ?? land.asking_price) || 0,
+    label: land.acquisition_type === 'joint_venture' ? 'Cash to owner' : 'Price',
+    amount: value == null || Number.isNaN(amount) ? null : amount,
   };
 }

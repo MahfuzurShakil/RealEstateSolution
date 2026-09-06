@@ -50,10 +50,19 @@ export default function LandsListPage() {
     switch (sort) {
       case 'oldest':
         return list.sort((a, b) => a.created_at.localeCompare(b.created_at));
+      /*
+       * Sorted on the figure the row actually shows, not on `asking_price`.
+       * A JV has no asking price, so sorting by it silently ranked every joint
+       * venture at zero — a list ordered by a number the reader cannot see.
+       */
       case 'price_high':
-        return list.sort((a, b) => b.asking_price - a.asking_price);
+        return list.sort(
+          (a, b) => (landHeadlineAmount(b).amount ?? 0) - (landHeadlineAmount(a).amount ?? 0),
+        );
       case 'price_low':
-        return list.sort((a, b) => a.asking_price - b.asking_price);
+        return list.sort(
+          (a, b) => (landHeadlineAmount(a).amount ?? 0) - (landHeadlineAmount(b).amount ?? 0),
+        );
       case 'size_high':
         return list.sort((a, b) => b.land_size - a.land_size);
       default:
@@ -168,8 +177,10 @@ export default function LandsListPage() {
               >
                 <option value="newest">Newest first</option>
                 <option value="oldest">Oldest first</option>
-                <option value="price_high">Price: high to low</option>
-                <option value="price_low">Price: low to high</option>
+                {/* "Value" rather than "Price": for a JV the figure is the
+                    cash payable to the owner, not a price */}
+                <option value="price_high">Value: high to low</option>
+                <option value="price_low">Value: low to high</option>
                 <option value="size_high">Largest size</option>
               </SelectInput>
             </div>
@@ -230,10 +241,20 @@ export default function LandsListPage() {
                             <Ruler className="size-3.5" />
                             {land.land_size} {LAND_SIZE_UNIT_LABEL[land.land_size_unit]}
                           </Badge>
-                          <Badge>
-                            <Wallet className="size-3.5" />
-                            {formatBdt(landHeadlineAmount(land).amount)}
-                          </Badge>
+                          {/*
+                            No badge rather than "BDT 0". A joint venture still
+                            in the pipeline has no cash figure yet, and printing
+                            zero beside it reads as a broken record instead of
+                            an agreement that has not been struck — the Joint
+                            Venture badge beside it already says how the plot is
+                            being acquired.
+                          */}
+                          {(landHeadlineAmount(land).amount ?? 0) > 0 && (
+                            <Badge>
+                              <Wallet className="size-3.5" />
+                              {formatBdt(landHeadlineAmount(land).amount)}
+                            </Badge>
+                          )}
                           <Badge
                             tone={land.acquisition_type === 'joint_venture' ? 'teal' : 'neutral'}
                           >
