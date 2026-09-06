@@ -90,8 +90,17 @@ function ExpenseDialog({
     ait_amount: expense?.ait_amount ? String(expense.ait_amount) : '',
     notes: expense?.notes ?? '',
   });
-  const [errors, setErrors] = useState<{ amount?: string; cost_reason?: string; paid_to?: string }>({});
+  const [errors, setErrors] = useState<{
+    amount?: string;
+    cost_reason?: string;
+    paid_to?: string;
+    land_id?: string;
+  }>({});
   const [saving, setSaving] = useState(false);
+  /* open from the start when the cost already withholds something */
+  const [taxOpen, setTaxOpen] = useState(
+    Boolean(expense?.vat_amount || expense?.ait_amount),
+  );
 
   const projects = useLiveQuery(() => projectRepository.list(), []);
   const lands = useLiveQuery(() => landRepository.list(), []);
@@ -161,6 +170,9 @@ function ExpenseDialog({
     if (!(Number(form.amount) > 0)) next.amount = 'Enter an amount greater than zero';
     if (!form.cost_reason.trim()) next.cost_reason = 'Say what the cost was for';
     if (!form.paid_to.trim()) next.paid_to = 'Who was paid?';
+    // see the note on the Land field: a land cost with no plot is money that
+    // the plot's own plan can never account for
+    if (landLinked && !form.land_id) next.land_id = 'Pick the plot this is against';
     setErrors(next);
     if (Object.keys(next).length > 0) return;
 
@@ -287,27 +299,39 @@ function ExpenseDialog({
           </SelectInput>
         </Field>
 
-        <Field
-          label="Land"
-          hint={
-            landLinked
-              ? 'Which plot this payment is against'
-              : 'Only Land Payment and Land Extra Cost attach to a plot'
-          }
-        >
-          <SelectInput
-            value={form.land_id}
-            disabled={!landLinked}
-            onChange={(e) => set('land_id', e.target.value)}
+        {/*
+          Shown only where it applies, rather than always shown and disabled.
+          A permanently visible control reading "—" is a field the eye has to
+          skip on every cost, and this form is used far more often for a
+          contractor bill than for a plot.
+
+          It is also *required* here now. A land payment saved without a plot is
+          a cost that no plot's payment plan can ever see: `landPaymentSummary`
+          and the schedule both find their money through `land_id`, so the
+          money is recorded, counted in the company total, and invisible on the
+          one screen anybody would look for it on.
+        */}
+        {landLinked && (
+          <Field
+            label="Land"
+            required
+            error={errors.land_id}
+            hint="Which plot this payment is against"
           >
-            <option value="">{landLinked ? 'Not land-related' : '—'}</option>
-            {(lands ?? []).map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.code} — {l.name}
-              </option>
-            ))}
-          </SelectInput>
-        </Field>
+            <SelectInput
+              value={form.land_id}
+              invalid={Boolean(errors.land_id)}
+              onChange={(e) => set('land_id', e.target.value)}
+            >
+              <option value="">Select the plot…</option>
+              {(lands ?? []).map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.code} — {l.name}
+                </option>
+              ))}
+            </SelectInput>
+          </Field>
+        )}
 
         <Field label="Paid to" required error={errors.paid_to}>
           <TextInput
@@ -356,55 +380,58 @@ function ExpenseDialog({
         />
 
 
-        {/* Memo only: `amount` above is what actually left the account, so the
+        {/*
+          Memo only: `amount` above is what actually left the account, so the
+          cash position is right whether or not these are filled in. VAT and AIT
+          are deducted from a contractor bill by law, and without somewhere to
+          record them the return is prepared by hand from the vouchers.
 
-            cash position is right whether or not these are filled in. VAT and
-
-            AIT are deducted from a contractor bill by law, and without somewhere
-
-            to record them the return is prepared by hand from the vouchers. */}
-
-        <Field label="VAT withheld" hint="Optional — for the return, not deducted from the amount">
-
-          <TextInput
-
-            type="number"
-
-            min={0}
-
-            step="any"
-
-            value={form.vat_amount}
-
-            onChange={(e) => set('vat_amount', e.target.value)}
-
-            placeholder="0"
-
-          />
-
-        </Field>
-
-
-        <Field label="AIT withheld" hint="Optional — for the return, not deducted from the amount">
-
-          <TextInput
-
-            type="number"
-
-            min={0}
-
-            step="any"
-
-            value={form.ait_amount}
-
-            onChange={(e) => set('ait_amount', e.target.value)}
-
-            placeholder="0"
-
-          />
-
-        </Field>
-
+          Behind a toggle because they apply to a minority of costs — a salary
+          or a plot payment withholds neither — and two number boxes that are
+          blank on most entries train people to scroll past the fields that are
+          not. It opens by itself when the cost being edited already carries a
+          figure, so nothing saved can hide.
+        */}
+        <div className="sm:col-span-2">
+          {taxOpen ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field
+                label="VAT withheld"
+                hint="For the return — not deducted from the amount above"
+              >
+                <TextInput
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={form.vat_amount}
+                  onChange={(e) => set('vat_amount', e.target.value)}
+                  placeholder="0"
+                />
+              </Field>
+              <Field
+                label="AIT withheld"
+                hint="For the return — not deducted from the amount above"
+              >
+                <TextInput
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={form.ait_amount}
+                  onChange={(e) => set('ait_amount', e.target.value)}
+                  placeholder="0"
+                />
+              </Field>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setTaxOpen(true)}
+              className="text-sm text-admin-700 underline-offset-2 hover:underline"
+            >
+              + Add VAT / AIT withheld
+            </button>
+          )}
+        </div>
 
         <Field label="Notes" className="sm:col-span-2">
           <TextArea
