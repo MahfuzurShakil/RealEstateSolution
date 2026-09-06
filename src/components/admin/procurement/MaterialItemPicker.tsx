@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Package, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { Field, SelectInput, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
@@ -13,6 +14,14 @@ import {
   lookupRepository,
   materialItemRepository,
 } from '@/lib/repositories';
+
+/**
+ * Sentinel id for a line recorded before the catalogue existed, or against an
+ * item since retired. It keeps its own name as a row so the control cannot fall
+ * back to something else and quietly re-point a requisition at a material
+ * nobody asked for.
+ */
+const UNLISTED = '__unlisted__';
 
 export interface PickedItem {
   item_id: string | null;
@@ -53,29 +62,46 @@ export function MaterialItemPicker({
   const unlisted =
     value.item_name && !options.some((i) => i.id === value.item_id) ? value.item_name : null;
 
+  /*
+   * The unit is the hint rather than part of the name, so it is visible without
+   * competing with the name when the list is long. `notes` is the free grouping
+   * ("cement", "rod") — searchable so typing a group finds its members, but not
+   * shown, because repeating "cement" down every row is noise.
+   */
+  const comboOptions: ComboboxOption[] = [
+    ...(unlisted
+      ? [{ id: UNLISTED, label: unlisted, hint: 'Not in the catalogue — recorded before it existed' }]
+      : []),
+    ...options.map((item) => ({
+      id: item.id,
+      label: item.name,
+      hint: item.unit,
+      keywords: item.notes ?? '',
+    })),
+  ];
+
   return (
     <>
       <Field
         label={label}
-        hint={value.unit ? `Stocked in ${value.unit}` : 'The unit comes with the item'}
+        hint={value.unit ? `Stocked in ${value.unit}` : 'Type to search the catalogue'}
       >
         <div className="flex gap-2">
-          <SelectInput
-            value={value.item_id ?? (unlisted ? `unlisted:${unlisted}` : '')}
-            onChange={(e) => {
-              const picked = options.find((i) => i.id === e.target.value);
+          <Combobox
+            className="min-w-0 flex-1"
+            placeholder="Type to search…"
+            emptyLabel="No material matches — add it with the + button"
+            value={value.item_id ?? (unlisted ? UNLISTED : null)}
+            unlistedLabel={unlisted ? `${unlisted} (not in catalogue)` : null}
+            options={comboOptions}
+            onChange={(id) => {
+              const picked = options.find((i) => i.id === id);
               if (picked) onChange({ item_id: picked.id, item_name: picked.name, unit: picked.unit });
-              else if (!e.target.value) onChange({ item_id: null, item_name: '', unit: '' });
+              // clearing, or the unlisted row being re-picked — the latter is
+              // already the value, so only a genuine clear reaches here
+              else if (!id) onChange({ item_id: null, item_name: '', unit: '' });
             }}
-          >
-            <option value="">Choose an item…</option>
-            {unlisted && <option value={`unlisted:${unlisted}`}>{unlisted} (not in catalogue)</option>}
-            {options.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name} ({item.unit})
-              </option>
-            ))}
-          </SelectInput>
+          />
           {allowCreate && (
             <Button
               variant="outline"

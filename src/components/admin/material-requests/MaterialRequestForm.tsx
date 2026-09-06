@@ -288,8 +288,8 @@ export function MaterialRequestForm({
         </div>
 
         <p className="mt-3 text-xs text-ink-muted">
-          Item names are free text for now — the Procurement module reconciles them against a
-          standard catalog (Section 6.6).
+          Items come from the shared catalogue (Section 6.6) — type to search it, or add a
+          material it does not have yet with the + button.
         </p>
       </Card>
 

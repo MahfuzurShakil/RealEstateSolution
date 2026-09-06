@@ -13,7 +13,7 @@ import { MaterialItemPicker } from './MaterialItemPicker';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { PurchaseOrderStatus } from '@/lib/db/types';
 import { lineTotal, money } from '@/lib/domain/procurement';
-import type { PurchaseOrderWithRelations } from '@/lib/repositories';
+import type { MaterialRequestWithRelations, PurchaseOrderWithRelations } from '@/lib/repositories';
 import {
   lookupRepository,
   materialRequestRepository,
@@ -31,6 +31,21 @@ interface LineRow {
   unit: string;
   quantity_ordered: string;
   unit_price: string;
+  /**
+   * Which material request copied this line in, or `null` when the buyer typed
+   * it themselves.
+   *
+   * It has to be the request's id rather than a "copied / typed" flag. The two
+   * used to be told apart by "does it have an item name", which every
+   * already-copied line also satisfies, so re-picking a request stacked the
+   * requisition on top of itself once per pick. A flag fixes that but not the
+   * next case: the moment a copied line is cleared or re-picked it has to be
+   * decided whether it is still the request's, and either answer is wrong for
+   * one of the two paths. The id answers it — a line already belonging to the
+   * request being picked is *already there*, so it is left exactly as it is,
+   * unit price and all.
+   */
+  from_request: string | null;
 }
 
 const EMPTY_LINE = (): LineRow => ({
@@ -39,7 +54,57 @@ const EMPTY_LINE = (): LineRow => ({
   unit: '',
   quantity_ordered: '',
   unit_price: '',
+  from_request: null,
 });
+
+/**
+ * Bring the lines of `request` onto the order.
+ *
+ * Three kinds of row, three answers:
+ *   - the buyer's own lines are never touched;
+ *   - lines already belonging to `request` stay exactly as they are, so a
+ *     re-pick is a no-op and typed unit prices survive it;
+ *   - lines from a *different* request are dropped, because they are the
+ *     previous pick's output and keeping them is what duplicated the
+ *     requisition.
+ *
+ * Kept outside the component so both entry points — the dropdown and the
+ * arrive-from-a-request effect — run exactly the same code.
+ */
+function applyRequestLines(
+  rows: LineRow[],
+  request: {
+    id: string;
+    items: {
+      item_id?: string | null;
+      item_name: string;
+      unit: string;
+      quantity_requested: number;
+      quantity_approved?: number | null;
+    }[];
+  },
+): LineRow[] {
+  const kept = rows.filter(
+    (r) =>
+      r.from_request === request.id ||
+      // a typed line only survives if there is something on it; the blank line
+      // the form opens with is not work worth keeping
+      (r.from_request === null && (r.item_name.trim() !== '' || Number(r.quantity_ordered) > 0)),
+  );
+  if (kept.some((r) => r.from_request === request.id)) return kept;
+
+  const copied: LineRow[] = request.items.map((item) => ({
+    item_id: item.item_id ?? null,
+    item_name: item.item_name,
+    unit: item.unit,
+    // what Procurement approved, not what the site asked for
+    quantity_ordered: String(item.quantity_approved ?? item.quantity_requested),
+    unit_price: '',
+    from_request: request.id,
+  }));
+  if (copied.length === 0) return rows;
+  return [...copied, ...kept];
+}
 
 /**
  * Raise or edit a purchase order (Sections 7.4 / 7.5).
@@ -56,8 +121,13 @@ export function PurchaseOrderForm({
 }: {
   /** omit to create */
   order?: PurchaseOrderWithRelations;
-  /** prefilled from the material request's "Raise Purchase Order" button */
-  defaults?: { request_id?: string; project_id?: string };
+  /**
+   * Prefilled from the material request's "Raise Purchase Order" button. The
+   * request arrives already resolved (see the page) so the lines below can be
+   * seeded synchronously — a form that has to wait for it renders once as a
+   * central-store purchase with nothing on it.
+   */
+  defaults?: { request?: MaterialRequestWithRelations; project_id?: string };
 }) {
   const router = useRouter();
   const { userId } = useMockSession();
@@ -65,8 +135,10 @@ export function PurchaseOrderForm({
   const units = useLiveQuery(() => lookupRepository.options('material_unit', null), []);
   const defaultUnit = units?.[0]?.value ?? 'bag';
 
-  const [requestId, setRequestId] = useState(order?.request_id ?? defaults?.request_id ?? '');
-  const [projectId, setProjectId] = useState(order?.project_id ?? defaults?.project_id ?? '');
+  const [requestId, setRequestId] = useState(order?.request_id ?? defaults?.request?.id ?? '');
+  const [projectId, setProjectId] = useState(
+    order?.project_id ?? defaults?.request?.project_id ?? defaults?.project_id ?? '',
+  );
   const [supplierId, setSupplierId] = useState(order?.supplier_id ?? '');
   const [orderDate, setOrderDate] = useState(order?.order_date ?? todayLocal());
   const [status, setStatus] = useState<PurchaseOrderStatus>(order?.status ?? 'draft');
@@ -83,8 +155,13 @@ export function PurchaseOrderForm({
           unit: i.unit,
           quantity_ordered: String(i.quantity_ordered),
           unit_price: String(i.unit_price),
+          // a saved line belongs to the order now, whatever put it there
+          from_request: null,
         }))
-      : [EMPTY_LINE()],
+      : // arriving from a request: its approved quantities, ready to be priced
+        defaults?.request
+        ? applyRequestLines([], defaults.request)
+        : [EMPTY_LINE()],
   );
 
   const suppliers = useLiveQuery(() => supplierRepository.list(), []);
@@ -117,9 +194,12 @@ export function PurchaseOrderForm({
 
   /**
    * Pulling a request in copies its approved quantities onto the order and
-   * takes its project with it. Existing typed lines are kept below the copied
-   * ones rather than thrown away — losing typed work to a dropdown is worse
-   * than a duplicate line the buyer can delete.
+   * takes its project with it.
+   *
+   * Clearing the dropdown leaves the lines alone rather than deleting them —
+   * losing a filled-in order to a mis-click is worse than a line the buyer can
+   * delete — and they keep their `from_request` tag, so picking the request
+   * again recognises them instead of copying a second set.
    */
   function applyRequest(id: string) {
     setRequestId(id);
@@ -127,17 +207,7 @@ export function PurchaseOrderForm({
     if (!request) return;
 
     setProjectId(request.project_id);
-    const copied: LineRow[] = request.items.map((item) => ({
-      item_id: item.item_id ?? null,
-      item_name: item.item_name,
-      unit: item.unit,
-      quantity_ordered: String(item.quantity_approved ?? item.quantity_requested),
-      unit_price: '',
-    }));
-    setLines((rows) => {
-      const typed = rows.filter((r) => r.item_name.trim() || Number(r.quantity_ordered) > 0);
-      return copied.length > 0 ? [...copied, ...typed] : rows;
-    });
+    setLines((rows) => applyRequestLines(rows, request));
   }
 
   async function save() {
