@@ -10,7 +10,9 @@ import type {
   PurchaseOrderItem,
   PurchaseOrderStatus,
   QualityCheck,
+  StockConsumption,
   StockIssue,
+  StockReturn,
   StockRow,
   StockTransfer,
   Supplier,
@@ -24,9 +26,11 @@ import {
   outstanding,
   paymentSummary,
   poTotals,
+  siteBalance,
   qty,
   statusFromReceipts,
   stockValue,
+  type SiteBalanceRow,
   stockableQuantity,
   weightedAverage,
   type PoTotals,
@@ -1493,6 +1497,271 @@ class SupplierVoucherRepository extends BaseRepository<SupplierVoucher> {
 }
 
 /* ------------------------------------------------------------------ *
+ * What a site used, and what it sent back (Section 7.8b addendum)
+ * ------------------------------------------------------------------ */
+
+export interface SiteStockFilters {
+  search?: string;
+  project_id?: string;
+}
+
+export interface StockConsumptionWithRelations extends StockConsumption {
+  project?: Project;
+  work_item?: TowerWorkItem;
+  tower?: Tower;
+  recorded_by_name?: string | null;
+}
+
+export interface StockReturnWithRelations extends StockReturn {
+  project?: Project;
+  returned_by_name?: string | null;
+}
+
+export class InsufficientSiteStockError extends Error {
+  constructor(itemName: string, atSite: number, wanted: number, unit: string) {
+    super(
+      `Only ${atSite} ${unit} of ${itemName} is standing on this site, so ${wanted} ${unit} cannot be accounted for. Issue more from the store first.`,
+    );
+    this.name = 'InsufficientSiteStockError';
+  }
+}
+
+/**
+ * Issues, consumption and returns for one project, as movements the domain
+ * helper can net off. Shared by both repositories and by the cost roll-up, so
+ * the balance is computed in exactly one place.
+ */
+async function siteMovementsFor(projectId: string | undefined) {
+  const [issues, used, returned] = await Promise.all([
+    projectId
+      ? db.stock_issues.where('project_id').equals(projectId).toArray()
+      : db.stock_issues.toArray(),
+    projectId
+      ? db.stock_consumptions.where('project_id').equals(projectId).toArray()
+      : db.stock_consumptions.toArray(),
+    projectId
+      ? db.stock_returns.where('project_id').equals(projectId).toArray()
+      : db.stock_returns.toArray(),
+  ]);
+  return {
+    issues,
+    used,
+    returned,
+    balance: siteBalance(
+      issues.map((i) => ({ ...i, quantity: i.quantity_issued, unit_cost: i.unit_cost_snapshot })),
+      used.map((u) => ({ ...u, quantity: u.quantity_used, unit_cost: u.unit_cost_snapshot })),
+      returned.map((r) => ({
+        ...r,
+        quantity: r.quantity_returned,
+        unit_cost: r.unit_cost_snapshot,
+      })),
+    ),
+  };
+}
+
+class SiteStockRepository {
+  /** What is standing on a site right now, by item. */
+  async balance(filters: SiteStockFilters = {}): Promise<SiteBalanceRow[]> {
+    const { balance } = await siteMovementsFor(filters.project_id);
+    if (!filters.search?.trim()) return balance;
+    const q = filters.search.trim().toLowerCase();
+    return balance.filter((r) => r.item_name.toLowerCase().includes(q));
+  }
+
+  /** One item's balance, for the forms that have to check before they write. */
+  async rowFor(projectId: string, key: StockKey): Promise<SiteBalanceRow | undefined> {
+    const { balance } = await siteMovementsFor(projectId);
+    return balance.find((r) =>
+      key.item_id
+        ? r.item_id === key.item_id
+        : r.item_id === null && r.item_name === key.item_name && r.unit === key.unit,
+    );
+  }
+}
+
+class StockConsumptionRepository extends BaseRepository<StockConsumption> {
+  constructor() {
+    super(() => db.stock_consumptions);
+  }
+
+  async generateCode(): Promise<string> {
+    const codes = (await db.stock_consumptions.toArray()).map((r) => r.code);
+    return nextCode('USE', codes);
+  }
+
+  /**
+   * Records material actually used on site (Section 7.8b).
+   *
+   * The store is not touched: the material left it when it was issued. What
+   * this changes is the site balance, and it is the row Module 7 rolls up as
+   * the project's real material cost.
+   */
+  async use(
+    input: Omit<NewRecord<StockConsumption>, 'code' | 'unit_cost_snapshot' | 'total_cost'> & {
+      code?: string;
+    },
+    createdBy: string | null = null,
+  ): Promise<StockConsumption> {
+    const quantity = qty(Number(input.quantity_used) || 0);
+    if (quantity <= 0) throw new Error('Record a quantity greater than zero.');
+
+    const key = { item_id: input.item_id ?? null, item_name: input.item_name, unit: input.unit };
+    const row = await siteStockRepository.rowFor(input.project_id, key);
+    const atSite = row?.at_site_quantity ?? 0;
+    if (quantity > atSite) {
+      throw new InsufficientSiteStockError(input.item_name, atSite, quantity, input.unit);
+    }
+
+    const unitCost = money(row?.average_unit_price ?? 0);
+    const code = input.code?.trim() ? input.code : await this.generateCode();
+
+    return this.create(
+      {
+        ...input,
+        code,
+        quantity_used: quantity,
+        unit_cost_snapshot: unitCost,
+        total_cost: money(quantity * unitCost),
+      },
+      createdBy,
+    );
+  }
+
+  async list(filters: SiteStockFilters = {}): Promise<StockConsumptionWithRelations[]> {
+    const [rows, projects, workItems, towers, users] = await Promise.all([
+      db.stock_consumptions.toArray(),
+      db.projects.toArray(),
+      db.tower_work_items.toArray(),
+      db.towers.toArray(),
+      db.users.toArray(),
+    ]);
+    const projectById = new Map(projects.map((p) => [p.id, p]));
+    const workItemById = new Map(workItems.map((w) => [w.id, w]));
+    const towerById = new Map(towers.map((t) => [t.id, t]));
+    const userById = new Map(users.map((u) => [u.id, u]));
+
+    let out: StockConsumptionWithRelations[] = rows.map((row) => {
+      const workItem = row.work_item_id ? workItemById.get(row.work_item_id) : undefined;
+      return {
+        ...row,
+        project: projectById.get(row.project_id),
+        work_item: workItem,
+        tower: workItem ? towerById.get(workItem.tower_id) : undefined,
+        recorded_by_name: row.recorded_by ? (userById.get(row.recorded_by)?.name ?? null) : null,
+      };
+    });
+
+    if (filters.project_id) out = out.filter((r) => r.project_id === filters.project_id);
+    if (filters.search?.trim()) {
+      const q = filters.search.trim().toLowerCase();
+      out = out.filter((r) =>
+        [r.code, r.item_name, r.notes, r.project?.name, r.work_item?.name, r.recorded_by_name]
+          .filter(Boolean)
+          .some((f) => String(f).toLowerCase().includes(q)),
+      );
+    }
+
+    return out.sort(
+      (a, b) => b.used_date.localeCompare(a.used_date) || b.created_at.localeCompare(a.created_at),
+    );
+  }
+
+  /** Deleting it puts the quantity back on the site, not in the store. */
+  async removeCascade(id: string): Promise<void> {
+    await this.remove(id);
+  }
+}
+
+class StockReturnRepository extends BaseRepository<StockReturn> {
+  constructor() {
+    super(() => db.stock_returns);
+  }
+
+  async generateCode(): Promise<string> {
+    const codes = (await db.stock_returns.toArray()).map((r) => r.code);
+    return nextCode('RET', codes);
+  }
+
+  /**
+   * Sends material back from the site to that project's store (Section 7.8b).
+   *
+   * It goes back at the rate it left with, so the store's weighted average is
+   * not disturbed by material it already holds at that rate, and issued value
+   * still equals used + returned + still at site. From the store the existing
+   * transfer (7.8a) can move it to whichever project needs it, which is the
+   * whole reason this exists: before it, the only way to record material
+   * leaving a site was to pretend it had been consumed.
+   */
+  async send(
+    input: Omit<NewRecord<StockReturn>, 'code' | 'unit_cost_snapshot'> & { code?: string },
+    createdBy: string | null = null,
+  ): Promise<StockReturn> {
+    const quantity = qty(Number(input.quantity_returned) || 0);
+    if (quantity <= 0) throw new Error('Return a quantity greater than zero.');
+
+    const key = { item_id: input.item_id ?? null, item_name: input.item_name, unit: input.unit };
+    const row = await siteStockRepository.rowFor(input.project_id, key);
+    const atSite = row?.at_site_quantity ?? 0;
+    if (quantity > atSite) {
+      throw new InsufficientSiteStockError(input.item_name, atSite, quantity, input.unit);
+    }
+
+    const unitCost = money(row?.average_unit_price ?? 0);
+    const code = input.code?.trim() ? input.code : await this.generateCode();
+
+    const saved = await this.create(
+      { ...input, code, quantity_returned: quantity, unit_cost_snapshot: unitCost },
+      createdBy,
+    );
+    await stockRepository.receive(input.project_id, key, quantity, unitCost);
+    return saved;
+  }
+
+  async list(filters: SiteStockFilters = {}): Promise<StockReturnWithRelations[]> {
+    const [rows, projects, users] = await Promise.all([
+      db.stock_returns.toArray(),
+      db.projects.toArray(),
+      db.users.toArray(),
+    ]);
+    const projectById = new Map(projects.map((p) => [p.id, p]));
+    const userById = new Map(users.map((u) => [u.id, u]));
+
+    let out: StockReturnWithRelations[] = rows.map((row) => ({
+      ...row,
+      project: projectById.get(row.project_id),
+      returned_by_name: row.returned_by ? (userById.get(row.returned_by)?.name ?? null) : null,
+    }));
+
+    if (filters.project_id) out = out.filter((r) => r.project_id === filters.project_id);
+    if (filters.search?.trim()) {
+      const q = filters.search.trim().toLowerCase();
+      out = out.filter((r) =>
+        [r.code, r.item_name, r.notes, r.project?.name, r.returned_by_name]
+          .filter(Boolean)
+          .some((f) => String(f).toLowerCase().includes(q)),
+      );
+    }
+
+    return out.sort(
+      (a, b) =>
+        b.return_date.localeCompare(a.return_date) || b.created_at.localeCompare(a.created_at),
+    );
+  }
+
+  /** Cancelling it takes the material back off the store's shelf. */
+  async removeCascade(id: string): Promise<void> {
+    const row = await this.getById(id);
+    if (!row) return;
+    await stockRepository.withdraw(
+      row.project_id,
+      { item_id: row.item_id ?? null, item_name: row.item_name, unit: row.unit },
+      row.quantity_returned,
+    );
+    await this.remove(id);
+  }
+}
+
+/* ------------------------------------------------------------------ *
  * Project cost traceability (Section 7.11)
  * ------------------------------------------------------------------ */
 
@@ -1505,10 +1774,10 @@ class ProcurementCostRepository {
    * carries `project_id`.
    */
   async forProject(projectId: string): Promise<ProjectCostSummary> {
-    const [orders, items, issues, transfers, vouchers, stock, requests] = await Promise.all([
+    const [orders, items, site, transfers, vouchers, stock, requests] = await Promise.all([
       db.purchase_orders.toArray(),
       db.purchase_order_items.toArray(),
-      db.stock_issues.where('project_id').equals(projectId).toArray(),
+      siteMovementsFor(projectId),
       db.stock_transfers.toArray(),
       db.supplier_vouchers.toArray(),
       db.stock.toArray(),
@@ -1540,7 +1809,24 @@ class ProcurementCostRepository {
       stock_on_hand_value: money(
         stock.filter((s) => s.project_id === projectId).reduce((sum, s) => sum + stockValue(s), 0),
       ),
-      issued_value: money(issues.reduce((sum, i) => sum + (Number(i.total_cost) || 0), 0)),
+      /*
+       * Three numbers where there was one, because the one was two things at
+       * once. `issued_value` was labelled "consumed on site — the real material
+       * cost", and it is neither: it is what left the store. A delivery of 500
+       * bags became project cost the day it was unloaded, and the 120 bags
+       * still standing on the site were charged and invisible.
+       *
+       * `consumed_value` is the cost now. `at_site_value` is the rest, which
+       * has a home for the first time — it can be reported, and it can be sent
+       * back to the store and moved to a project that needs it.
+       */
+      issued_value: money(
+        site.issues.reduce((sum, i) => sum + (Number(i.total_cost) || 0), 0),
+      ),
+      consumed_value: money(
+        site.used.reduce((sum, u) => sum + (Number(u.total_cost) || 0), 0),
+      ),
+      at_site_value: money(site.balance.reduce((sum, r) => sum + r.at_site_value, 0)),
       transferred_in_value: money(
         transfers
           .filter((t) => t.to_project_id === projectId)
@@ -1643,6 +1929,9 @@ export const goodsReceiptRepository = new GoodsReceiptRepository();
 export const goodsReceiptItemRepository = new GoodsReceiptItemRepository();
 export const stockRepository = new StockRepository();
 export const stockIssueRepository = new StockIssueRepository();
+export const siteStockRepository = new SiteStockRepository();
+export const stockConsumptionRepository = new StockConsumptionRepository();
+export const stockReturnRepository = new StockReturnRepository();
 export const stockTransferRepository = new StockTransferRepository();
 export const supplierVoucherRepository = new SupplierVoucherRepository();
 export const procurementCostRepository = new ProcurementCostRepository();

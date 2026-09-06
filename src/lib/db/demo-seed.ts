@@ -25,7 +25,9 @@ import {
   goodsReceiptRepository,
   purchaseOrderItemRepository,
   purchaseOrderRepository,
+  stockConsumptionRepository,
   stockIssueRepository,
+  stockReturnRepository,
   stockRepository,
   stockTransferRepository,
   supplierRepository,
@@ -1008,7 +1010,65 @@ async function seedDemoProcurement(
     );
     const issuedAt = daysFromToday(-demo.days_ago);
     await db.stock_issues.update(saved.id, { created_at: issuedAt, updated_at: issuedAt });
+
+    /*
+     * Section 7.8b: what the site did with it.
+     *
+     * Scaled to whatever the issue actually managed above, so a trimmed issue
+     * cannot be over-consumed. Left unstated, an issue is fully used a few days
+     * later — the ordinary case. Three lines deliberately say otherwise, so the
+     * demo shows material standing on a site and material sent back, which is
+     * the whole point of splitting a movement from a consumption.
+     */
+    const scale = quantity / demo.quantity_issued;
+    const returned = qtyOf(demo.returned_quantity, scale);
+    const used =
+      demo.used_quantity === undefined ? quantity - returned : qtyOf(demo.used_quantity, scale);
+
+    if (returned > 0) {
+      const returnedAt = daysFromToday(-Math.max(0, demo.days_ago - 2));
+      const back = await stockReturnRepository.send(
+        {
+          project_id: projectId,
+          item_name: demo.item_name,
+          unit: demo.unit,
+          quantity_returned: returned,
+          return_date: returnedAt.slice(0, 10),
+          returned_by: userIds.get(demo.issued_by_key) ?? null,
+          notes: 'Over-issued — surplus sent back to the store.',
+        },
+        createdBy,
+      );
+      await db.stock_returns.update(back.id, { created_at: returnedAt, updated_at: returnedAt });
+    }
+
+    if (used > 0) {
+      const usedAt = daysFromToday(-Math.max(0, demo.days_ago - 3));
+      const consumption = await stockConsumptionRepository.use(
+        {
+          project_id: projectId,
+          work_item_id: workItem?.id ?? null,
+          item_name: demo.item_name,
+          unit: demo.unit,
+          quantity_used: used,
+          used_date: usedAt.slice(0, 10),
+          recorded_by: userIds.get(demo.issued_by_key) ?? null,
+          notes: null,
+        },
+        createdBy,
+      );
+      await db.stock_consumptions.update(consumption.id, {
+        created_at: usedAt,
+        updated_at: usedAt,
+      });
+    }
   }
+}
+
+/** Scales a demo quantity to what the issue above could actually manage. */
+function qtyOf(value: number | undefined, scale: number): number {
+  if (!value) return 0;
+  return Math.round(value * scale * 1000) / 1000;
 }
 
 /**
@@ -1288,6 +1348,8 @@ export async function clearDemoData(): Promise<void> {
     /* The catalogue is derived from these rows, so it goes with them — leaving
        it behind would offer items nothing in the database has ever bought. */
     db.material_items.clear(),
+    db.stock_consumptions.clear(),
+    db.stock_returns.clear(),
     db.project_budget_lines.clear(),
     db.bank_accounts.clear(),
     db.supplier_vouchers.clear(),

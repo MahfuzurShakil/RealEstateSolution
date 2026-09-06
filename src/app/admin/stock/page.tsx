@@ -4,7 +4,16 @@ import Link from 'next/link';
 import { Suspense, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeftRight, Building2, PackageMinus, Trash2, Warehouse } from 'lucide-react';
+import {
+  ArrowLeftRight,
+  Building2,
+  HardHat,
+  PackageMinus,
+  Trash2,
+  Undo2,
+  Warehouse,
+} from 'lucide-react';
+import { SiteStockModal } from '@/components/admin/procurement/SiteStockModal';
 import { StockIssueModal } from '@/components/admin/procurement/StockIssueModal';
 import { StockTransferModal } from '@/components/admin/procurement/StockTransferModal';
 import { Badge } from '@/components/ui/Badge';
@@ -17,34 +26,43 @@ import { Checkbox } from '@/components/ui/Field';
 import { FilterBar, FilterSelect } from '@/components/ui/FilterBar';
 import { PageHeader } from '@/components/ui/PageHeader';
 import type {
+  StockConsumptionWithRelations,
   StockIssueWithRelations,
+  StockReturnWithRelations,
   StockRowWithRelations,
   StockTransferWithRelations,
 } from '@/lib/repositories';
 import {
   projectRepository,
+  siteStockRepository,
+  stockConsumptionRepository,
   stockIssueRepository,
   stockRepository,
+  stockReturnRepository,
   stockTransferRepository,
 } from '@/lib/repositories';
+import type { SiteBalanceRow } from '@/lib/domain/procurement';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatBdtRate, formatDate } from '@/lib/utils/format';
 
-type Tab = 'on_hand' | 'issues' | 'transfers';
+type Tab = 'on_hand' | 'at_site' | 'issues' | 'used' | 'returns' | 'transfers';
 
-const TAB_KEYS: Tab[] = ['on_hand', 'issues', 'transfers'];
+const TAB_KEYS: Tab[] = ['on_hand', 'at_site', 'issues', 'used', 'returns', 'transfers'];
 
 function StockPage() {
   const params = useSearchParams();
   const initialTab = params.get('tab');
   const [tab, setTab] = useState<Tab>(
-    initialTab === 'issues' || initialTab === 'transfers' ? initialTab : 'on_hand',
+    // checked against the tab list rather than a hand-written pair, so a tab
+    // added later is linkable without anyone remembering to widen this
+    TAB_KEYS.includes(initialTab as Tab) ? (initialTab as Tab) : 'on_hand',
   );
   const [search, setSearch] = useState('');
   const [location, setLocation] = useState(params.get('project') ?? '');
   const [inStockOnly, setInStockOnly] = useState(true);
   const [issueOpen, setIssueOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [siteMode, setSiteMode] = useState<'use' | 'return' | null>(null);
   const [deleteIssue, setDeleteIssue] = useState<StockIssueWithRelations | null>(null);
   const [deleteTransfer, setDeleteTransfer] = useState<StockTransferWithRelations | null>(null);
 
@@ -69,6 +87,35 @@ function StockPage() {
       }),
     [search, location],
   );
+  /*
+   * The three views of Section 7.8b. `atSite` is derived — issues minus what
+   * was used minus what went back — rather than a stored quantity, so it can
+   * never disagree with the three tables it is computed from.
+   */
+  const atSite = useLiveQuery(
+    () =>
+      siteStockRepository.balance({
+        search,
+        project_id: location && location !== 'central' ? location : undefined,
+      }),
+    [search, location],
+  );
+  const used = useLiveQuery(
+    () =>
+      stockConsumptionRepository.list({
+        search,
+        project_id: location && location !== 'central' ? location : undefined,
+      }),
+    [search, location],
+  );
+  const returns = useLiveQuery(
+    () =>
+      stockReturnRepository.list({
+        search,
+        project_id: location && location !== 'central' ? location : undefined,
+      }),
+    [search, location],
+  );
 
   const totals = useMemo(() => {
     const rows = stock ?? [];
@@ -79,7 +126,14 @@ function StockPage() {
     };
   }, [stock]);
 
-  const consumed = (issues ?? []).reduce((sum, i) => sum + i.total_cost, 0);
+  /*
+   * Consumed is what the site used, not what left the store. The tile read
+   * `issues` and was labelled "consumed on site", which charged a project for
+   * a whole delivery the day it was unloaded — the bags still standing on the
+   * site were counted as cost and appeared nowhere.
+   */
+  const consumed = (used ?? []).reduce((sum, u) => sum + u.total_cost, 0);
+  const atSiteValue = (atSite ?? []).reduce((sum, r) => sum + r.at_site_value, 0);
 
   const stockColumns: Column<StockRowWithRelations>[] = [
     {
@@ -217,6 +271,191 @@ function StockPage() {
     },
   ];
 
+  /*
+   * What is standing on a site. Quantity first and value beside it, because
+   * the question this table answers is "have we got any left", not "what is it
+   * worth" — the value is there to make the write-off visible at handover.
+   */
+  const atSiteColumns: Column<SiteBalanceRow>[] = [
+    {
+      key: 'item_name',
+      header: 'Item',
+      cell: (row) => <span className="font-medium text-ink">{row.item_name}</span>,
+      sortValue: (row) => row.item_name,
+    },
+    {
+      key: 'project',
+      header: 'Site',
+      cell: (row) => (
+        <Link href={`/admin/projects/${row.project_id}`} className="text-admin-700 hover:underline">
+          {(projects ?? []).find((p) => p.id === row.project_id)?.name ?? 'Project removed'}
+        </Link>
+      ),
+      sortValue: (row) =>
+        (projects ?? []).find((p) => p.id === row.project_id)?.name ?? '',
+    },
+    {
+      key: 'issued_quantity',
+      header: 'Issued',
+      align: 'right',
+      cell: (row) => (
+        <span className="text-ink-muted">
+          {row.issued_quantity} {row.unit}
+        </span>
+      ),
+      sortValue: (row) => row.issued_quantity,
+    },
+    {
+      key: 'used_quantity',
+      header: 'Used',
+      align: 'right',
+      cell: (row) => (
+        <span className="text-ink-muted">
+          {row.used_quantity} {row.unit}
+        </span>
+      ),
+      sortValue: (row) => row.used_quantity,
+    },
+    {
+      key: 'returned_quantity',
+      header: 'Returned',
+      align: 'right',
+      cell: (row) => (
+        <span className="text-ink-muted">
+          {row.returned_quantity > 0 ? `${row.returned_quantity} ${row.unit}` : '—'}
+        </span>
+      ),
+      sortValue: (row) => row.returned_quantity,
+    },
+    {
+      key: 'at_site_quantity',
+      header: 'On site',
+      align: 'right',
+      cell: (row) => (
+        <span className="font-semibold text-ink">
+          {row.at_site_quantity} {row.unit}
+        </span>
+      ),
+      sortValue: (row) => row.at_site_quantity,
+    },
+    {
+      key: 'at_site_value',
+      header: 'Value',
+      align: 'right',
+      cell: (row) => <span className="text-ink">{formatBdt(row.at_site_value)}</span>,
+      sortValue: (row) => row.at_site_value,
+    },
+  ];
+
+  const usedColumns: Column<StockConsumptionWithRelations>[] = [
+    {
+      key: 'code',
+      header: 'Entry',
+      cell: (row) => (
+        <span>
+          <span className="font-medium text-ink">{row.code}</span>
+          <span className="block text-xs text-ink-muted">{row.item_name}</span>
+        </span>
+      ),
+      sortValue: (row) => row.code,
+    },
+    {
+      key: 'project',
+      header: 'Where',
+      cell: (row) => (
+        <span>
+          <span className="text-ink">{row.project?.name ?? 'Project removed'}</span>
+          {row.work_item && (
+            <span className="block text-xs text-ink-muted">
+              {row.work_item.name}
+              {row.tower ? ` · ${row.tower.name}` : ''}
+            </span>
+          )}
+        </span>
+      ),
+      sortValue: (row) => row.project?.name ?? '',
+    },
+    {
+      key: 'quantity_used',
+      header: 'Used',
+      align: 'right',
+      cell: (row) => (
+        <span className="text-ink">
+          {row.quantity_used} {row.unit}
+        </span>
+      ),
+      sortValue: (row) => row.quantity_used,
+    },
+    {
+      key: 'used_date',
+      header: 'Date',
+      cell: (row) => <span className="text-ink-muted">{formatDate(row.used_date)}</span>,
+      sortValue: (row) => row.used_date,
+    },
+    {
+      key: 'total_cost',
+      header: 'Cost',
+      align: 'right',
+      cell: (row) => (
+        <span>
+          <span className="font-medium text-ink">{formatBdt(row.total_cost)}</span>
+          <span className="block text-xs text-ink-muted">
+            @ {formatBdtRate(row.unit_cost_snapshot)}
+          </span>
+        </span>
+      ),
+      sortValue: (row) => row.total_cost,
+    },
+  ];
+
+  const returnColumns: Column<StockReturnWithRelations>[] = [
+    {
+      key: 'code',
+      header: 'Return',
+      cell: (row) => (
+        <span>
+          <span className="font-medium text-ink">{row.code}</span>
+          <span className="block text-xs text-ink-muted">{row.item_name}</span>
+        </span>
+      ),
+      sortValue: (row) => row.code,
+    },
+    {
+      key: 'project',
+      header: 'From site',
+      cell: (row) => <span className="text-ink">{row.project?.name ?? 'Project removed'}</span>,
+      sortValue: (row) => row.project?.name ?? '',
+    },
+    {
+      key: 'quantity_returned',
+      header: 'Quantity',
+      align: 'right',
+      cell: (row) => (
+        <span className="text-ink">
+          {row.quantity_returned} {row.unit}
+        </span>
+      ),
+      sortValue: (row) => row.quantity_returned,
+    },
+    {
+      key: 'return_date',
+      header: 'Date',
+      cell: (row) => <span className="text-ink-muted">{formatDate(row.return_date)}</span>,
+      sortValue: (row) => row.return_date,
+    },
+    {
+      key: 'value',
+      header: 'Value',
+      align: 'right',
+      cell: (row) => (
+        <span className="text-ink">
+          {formatBdt(row.quantity_returned * row.unit_cost_snapshot)}
+        </span>
+      ),
+      sortValue: (row) => row.quantity_returned * row.unit_cost_snapshot,
+    },
+  ];
+
   const transferColumns: Column<StockTransferWithRelations>[] = [
     {
       key: 'code',
@@ -289,8 +528,11 @@ function StockPage() {
   ];
 
   const TAB_LABELS: Record<Tab, string> = {
-    on_hand: `On Hand (${stock?.length ?? 0})`,
-    issues: `Issues to Site (${issues?.length ?? 0})`,
+    on_hand: `In Store (${stock?.length ?? 0})`,
+    at_site: `At Site (${atSite?.filter((r) => r.at_site_quantity > 0.0005).length ?? 0})`,
+    issues: `Issued to Site (${issues?.length ?? 0})`,
+    used: `Used (${used?.length ?? 0})`,
+    returns: `Returned (${returns?.length ?? 0})`,
     transfers: `Transfers (${transfers?.length ?? 0})`,
   };
 
@@ -298,11 +540,17 @@ function StockPage() {
     <>
       <PageHeader
         title="Stock"
-        subtitle="What each store holds, what the site consumed, and what moved between them."
+        subtitle="What each store holds, what is standing on the sites, what was used, and what moved between them."
         action={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => setTransferOpen(true)}>
               <ArrowLeftRight className="size-4" /> Transfer
+            </Button>
+            <Button variant="outline" onClick={() => setSiteMode('return')}>
+              <Undo2 className="size-4" /> Return from Site
+            </Button>
+            <Button variant="outline" onClick={() => setSiteMode('use')}>
+              <HardHat className="size-4" /> Record Use
             </Button>
             <Button onClick={() => setIssueOpen(true)}>
               <PackageMinus className="size-4" /> Issue to Site
@@ -311,7 +559,7 @@ function StockPage() {
         }
       />
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-3">
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
           {
             label: 'Stock value',
@@ -326,9 +574,15 @@ function StockPage() {
             icon: Building2,
           },
           {
-            label: 'Consumed on site',
-            value: formatBdt(consumed ),
-            hint: `${issues?.length ?? 0} issue${(issues?.length ?? 0) === 1 ? '' : 's'}`,
+            label: 'Standing on sites',
+            value: formatBdt(atSiteValue),
+            hint: 'issued, not used or returned yet',
+            icon: HardHat,
+          },
+          {
+            label: 'Used on site',
+            value: formatBdt(consumed),
+            hint: `${used?.length ?? 0} entr${(used?.length ?? 0) === 1 ? 'y' : 'ies'}`,
             icon: PackageMinus,
           },
         ].map((tile) => (
@@ -437,6 +691,56 @@ function StockPage() {
           />
         )}
 
+        {tab === 'at_site' && (
+          <DataTable
+            rows={(atSite ?? []).filter((r) => r.at_site_quantity > 0.0005)}
+            columns={atSiteColumns}
+            initialSort={{ key: 'at_site_value', direction: 'desc' }}
+            label="site balances"
+            emptyState={
+              <EmptyState
+                icon={HardHat}
+                title="Nothing standing on a site"
+                description="Every issue has been used or sent back. Material shows here between leaving the store and being laid — which is where over-ordering becomes visible."
+              />
+            }
+          />
+        )}
+
+        {tab === 'used' && (
+          <DataTable
+            rows={used ?? []}
+            columns={usedColumns}
+            initialSort={{ key: 'used_date', direction: 'desc' }}
+            label="consumption entries"
+            emptyState={
+              <EmptyState
+                icon={PackageMinus}
+                title="Nothing recorded as used"
+                description="This is the project's real material cost — what the site laid, not what the store handed over."
+                action={<Button onClick={() => setSiteMode('use')}>Record use</Button>}
+              />
+            }
+          />
+        )}
+
+        {tab === 'returns' && (
+          <DataTable
+            rows={returns ?? []}
+            columns={returnColumns}
+            initialSort={{ key: 'return_date', direction: 'desc' }}
+            label="returns"
+            emptyState={
+              <EmptyState
+                icon={Undo2}
+                title="Nothing returned yet"
+                description="Unused material goes back to the store at the rate it left with, and from there a transfer can take it to whichever project needs it."
+                action={<Button onClick={() => setSiteMode('return')}>Return from site</Button>}
+              />
+            }
+          />
+        )}
+
         {tab === 'transfers' && (
           <DataTable
             rows={transfers ?? []}
@@ -465,6 +769,11 @@ function StockPage() {
         onClose={() => setIssueOpen(false)}
       />
       <StockTransferModal open={transferOpen} onClose={() => setTransferOpen(false)} />
+      <SiteStockModal
+        open={siteMode !== null}
+        mode={siteMode ?? 'use'}
+        onClose={() => setSiteMode(null)}
+      />
 
       <ConfirmDialog
         open={deleteIssue !== null}

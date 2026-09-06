@@ -962,7 +962,13 @@ export interface StockRow extends BaseEntity {
   average_unit_price: number;
 }
 
-/** Section 7.8 — material handed to the site; this is the consumption cost. */
+/**
+ * Section 7.8 — material handed out of the store to the site.
+ *
+ * **This is a movement, not a consumption.** It used to be both, which charged
+ * a project for a whole delivery on the day it was unloaded and left anything
+ * unused invisible — see `StockConsumption`, which is the consumption now.
+ */
 export interface StockIssue extends BaseEntity {
   code: string;                       // ISSUE-2026-001
   project_id: UUID;
@@ -987,6 +993,67 @@ export interface StockIssue extends BaseEntity {
    * Dexie version block (same as `stock_transfers.request_id`).
    */
   request_id?: UUID | null;
+  notes?: string | null;
+}
+
+/**
+ * Section 7.8b (addendum, decided with the user): material actually used on
+ * site.
+ *
+ * `stock_issues` used to be the consumption record — the comment on it said so
+ * — which meant the whole of a delivery became project cost the day the
+ * storekeeper handed it over. That is not what happens. 500 bags go to the
+ * tower, 380 get laid, and 120 sit on the site: the project was charged for
+ * 500 on day one, the store shows nothing left, and the 120 bags exist in no
+ * record at all. They cannot be counted, cannot be moved to the tower that
+ * needs them, and at handover nobody can say what is standing on the site.
+ *
+ * So an issue is now a *movement* — store to site — and this is the
+ * consumption. Project material cost is the sum of these, not of the issues.
+ *
+ * `unit_cost_snapshot` is frozen at the site's issued average (see
+ * `siteAverageCost`), not re-read later, for the same reason an issue freezes
+ * the store's: a purchase next month at a different rate must not restate what
+ * last month's slab cost.
+ */
+export interface StockConsumption extends BaseEntity {
+  code: string;                       // USE-2026-001
+  project_id: UUID;
+  /** which part of the work it went into — the point of recording it */
+  work_item_id?: UUID | null;
+  item_id?: UUID | null;
+  item_name: string;
+  unit: string;
+  quantity_used: number;
+  /** the site's issued average at this moment, frozen */
+  unit_cost_snapshot: number;
+  total_cost: number;
+  used_date: ISODate;
+  recorded_by: UUID | null;
+  notes?: string | null;
+}
+
+/**
+ * Section 7.8b — material going back from the site to the store.
+ *
+ * The other half of the problem above. Once the 120 unused bags are visible,
+ * they have to be able to move: back to the store, where the existing transfer
+ * (7.8a) can take them to whichever project needs them. Without this the only
+ * way to record material leaving a site was to pretend it had been consumed.
+ *
+ * It puts the quantity back on the store's shelf at the cost it left with, so
+ * issued value = consumed + returned + still at site, exactly.
+ */
+export interface StockReturn extends BaseEntity {
+  code: string;                       // RET-2026-001
+  project_id: UUID;
+  item_id?: UUID | null;
+  item_name: string;
+  unit: string;
+  quantity_returned: number;
+  unit_cost_snapshot: number;
+  return_date: ISODate;
+  returned_by: UUID | null;
   notes?: string | null;
 }
 

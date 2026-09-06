@@ -88,7 +88,19 @@ export async function backfillMaterialItems(scope: TableScope): Promise<number> 
    * than creating near-duplicates in whatever order the tables happen to be
    * read in.
    */
-  for (const name of ['stock', 'stock_issues', 'stock_transfers', 'purchase_order_items']) {
+  for (const name of [
+    'stock',
+    'stock_issues',
+    // v16 (Section 7.8b). These have to be linked with the issues, not after
+    // them: the site balance nets issues against consumption and returns by
+    // this key, so one table carrying `item_id` while another still carries
+    // only a spelling splits one material into two half-rows — the issued
+    // quantity in one and the used quantity in the other, both wrong.
+    'stock_consumptions',
+    'stock_returns',
+    'stock_transfers',
+    'purchase_order_items',
+  ]) {
     const table = scope.table(name);
     for (const row of await table.toArray()) {
       if (row.item_id) continue;

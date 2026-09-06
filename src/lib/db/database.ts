@@ -28,7 +28,9 @@ import type {
   GoodsReceiptItem,
   PurchaseOrder,
   PurchaseOrderItem,
+  StockConsumption,
   StockIssue,
+  StockReturn,
   StockRow,
   StockTransfer,
   Supplier,
@@ -111,6 +113,8 @@ export class AppDatabase extends Dexie {
   goods_receipt_items!: EntityTable<GoodsReceiptItem, 'id'>;
   stock!: EntityTable<StockRow, 'id'>;
   stock_issues!: EntityTable<StockIssue, 'id'>;
+  stock_consumptions!: EntityTable<StockConsumption, 'id'>;
+  stock_returns!: EntityTable<StockReturn, 'id'>;
   stock_transfers!: EntityTable<StockTransfer, 'id'>;
   supplier_vouchers!: EntityTable<SupplierVoucher, 'id'>;
 
@@ -313,6 +317,25 @@ export class AppDatabase extends Dexie {
       supplier_vouchers:
         'id, &code, po_id, supplier_id, project_id, payment_date, payment_method, paid_by, account_id',
       refunds: 'id, &code, booking_id, refund_date, processed_by, account_id',
+    });
+
+    /*
+     * v16 — Section 7.8b: what a site actually used, and what it sent back.
+     *
+     * Two new tables and nothing altered, so no existing index set is at risk
+     * of being dropped by an incomplete stores() spec (the v15 trap). Existing
+     * `stock_issues` are untouched and stay exactly what they were — a record
+     * of material leaving the store — they simply stop being read as
+     * consumption.
+     *
+     * Both are indexed on `project_id` and on `[project_id+item_id]`: the site
+     * balance for one project is issues minus these two, grouped by item, and
+     * it is computed on every stock screen.
+     */
+    this.version(16).stores({
+      stock_consumptions:
+        'id, &code, project_id, work_item_id, item_id, used_date, [project_id+item_id]',
+      stock_returns: 'id, &code, project_id, item_id, return_date, [project_id+item_id]',
     });
   }
 }

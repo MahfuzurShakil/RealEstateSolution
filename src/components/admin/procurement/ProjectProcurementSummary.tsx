@@ -10,6 +10,7 @@ import {
   PackageMinus,
   Receipt,
   ShoppingCart,
+  Truck,
   Warehouse,
 } from 'lucide-react';
 import { ProjectFinanceCard } from '@/components/admin/finance/ProjectFinanceCard';
@@ -59,6 +60,7 @@ export function ProjectProcurementSummary({ projectId }: { projectId: string }) 
   const nothingYet =
     summary.ordered_value === 0 &&
     summary.issued_value === 0 &&
+    summary.consumed_value === 0 &&
     summary.transferred_in_value === 0 &&
     summary.stock_on_hand_value === 0;
 
@@ -78,12 +80,26 @@ export function ProjectProcurementSummary({ projectId }: { projectId: string }) 
     {
       label: 'In store',
       value: summary.stock_on_hand_value,
-      hint: 'not consumed yet',
+      hint: 'not issued yet',
       icon: Warehouse,
+    },
+    /*
+     * "Issued" and "Consumed" were one tile reading `issued_value`, labelled
+     * the real material cost. Material leaving the store is not material used:
+     * a delivery became project cost the day it was unloaded, and whatever the
+     * site had not laid yet was charged and invisible. The two are separate
+     * now, and the gap between them is the third tile — which is the number
+     * this whole change exists to make visible.
+     */
+    {
+      label: 'At site',
+      value: summary.at_site_value,
+      hint: 'issued, not used yet',
+      icon: Truck,
     },
     {
       label: 'Consumed',
-      value: summary.issued_value,
+      value: summary.consumed_value,
       hint: 'the real material cost',
       icon: PackageMinus,
     },

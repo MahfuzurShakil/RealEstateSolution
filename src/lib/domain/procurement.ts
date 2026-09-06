@@ -271,11 +271,154 @@ export interface ProjectCostSummary {
   paid_value: number;
   /** stock sitting on this project's site, at weighted average cost */
   stock_on_hand_value: number;
-  /** consumed on site — the real material cost of the project (7.8) */
+  /** handed out of the store to the site (7.8) — a movement, not a cost */
   issued_value: number;
+  /** actually used on site (7.8b) — the project's real material cost */
+  consumed_value: number;
+  /** issued but neither used nor returned: material standing on the site */
+  at_site_value: number;
   /** value brought in from the central store or another project (7.8a) */
   transferred_in_value: number;
   transferred_out_value: number;
   open_po_count: number;
   request_count: number;
+}
+
+/* ------------------------------------------------------------------ *
+ * What is standing on a site (Section 7.8b addendum)
+ * ------------------------------------------------------------------ */
+
+export interface SiteBalanceRow {
+  /**
+   * `project|item` — the key the row was grouped under.
+   *
+   * A derived row has no record to take an id from, and the tables that render
+   * it need a stable one. The grouping key is exactly that: unique by
+   * construction, and the same across re-computations for the same site and
+   * item, so React does not tear the list down whenever a quantity changes.
+   */
+  id: string;
+  project_id: string;
+  item_id: string | null;
+  item_name: string;
+  unit: string;
+  issued_quantity: number;
+  used_quantity: number;
+  returned_quantity: number;
+  /** issued − used − returned: material sitting on the site, unaccounted for */
+  at_site_quantity: number;
+  /** issued value ÷ issued quantity, the rate everything at this site carries */
+  average_unit_price: number;
+  at_site_value: number;
+  issued_value: number;
+  used_value: number;
+  returned_value: number;
+}
+
+interface SiteMovement {
+  project_id: string;
+  item_id?: string | null;
+  item_name: string;
+  unit: string;
+  quantity: number;
+  unit_cost: number;
+}
+
+/**
+ * The rate material at a site carries.
+ *
+ * Everything on a site arrived through an issue, so the issued average is what
+ * it cost — total issued value over total issued quantity. Consumption and
+ * returns are both valued at it, which is what makes the identity hold:
+ *
+ *     issued value = used + returned + still at site
+ *
+ * A per-batch cost would be more precise and is not available: material is
+ * poured from a heap, not drawn from a labelled pallet, and Module 6 already
+ * settled that a running average is not reversible. One rate per site per item,
+ * frozen onto each consumption and return as it is recorded, is the version of
+ * this that can be reconciled.
+ */
+export function siteAverageCost(issued: Array<{ quantity: number; unit_cost: number }>): number {
+  let value = 0;
+  let quantity = 0;
+  for (const row of issued) {
+    quantity += Number(row.quantity) || 0;
+    value += (Number(row.quantity) || 0) * (Number(row.unit_cost) || 0);
+  }
+  return quantity > 0 ? money(value / quantity) : 0;
+}
+
+/**
+ * Issues minus consumption minus returns, per (project, item).
+ *
+ * Derived rather than stored, deliberately. A fourth quantity column would be a
+ * fourth thing to keep in step with three tables that already say everything —
+ * the same reasoning that keeps `overdue` off `payment_installments`. These
+ * tables are small and are only ever read a project at a time.
+ *
+ * Rows that net to nothing are dropped: a site that used exactly what it was
+ * given has no balance, and listing it as zero buries the ones that do.
+ */
+export function siteBalance(
+  issues: SiteMovement[],
+  used: SiteMovement[],
+  returned: SiteMovement[],
+): SiteBalanceRow[] {
+  // keyed on the catalogue item since Tier 3.1, falling back to the spelling
+  // for rows recorded before it — the same key `stockRepository.findRow` uses
+  const key = (m: SiteMovement) => `${m.project_id}|${m.item_id ?? `name:${m.item_name}|${m.unit}`}`;
+  const rows = new Map<string, SiteBalanceRow>();
+
+  const seed = (m: SiteMovement): SiteBalanceRow => {
+    const k = key(m);
+    let row = rows.get(k);
+    if (!row) {
+      row = {
+        id: k,
+        project_id: m.project_id,
+        item_id: m.item_id ?? null,
+        item_name: m.item_name,
+        unit: m.unit,
+        issued_quantity: 0,
+        used_quantity: 0,
+        returned_quantity: 0,
+        at_site_quantity: 0,
+        average_unit_price: 0,
+        at_site_value: 0,
+        issued_value: 0,
+        used_value: 0,
+        returned_value: 0,
+      };
+      rows.set(k, row);
+    }
+    return row;
+  };
+
+  for (const m of issues) {
+    const row = seed(m);
+    row.issued_quantity = qty(row.issued_quantity + m.quantity);
+    row.issued_value = money(row.issued_value + m.quantity * m.unit_cost);
+  }
+  for (const m of used) {
+    const row = seed(m);
+    row.used_quantity = qty(row.used_quantity + m.quantity);
+    row.used_value = money(row.used_value + m.quantity * m.unit_cost);
+  }
+  for (const m of returned) {
+    const row = seed(m);
+    row.returned_quantity = qty(row.returned_quantity + m.quantity);
+    row.returned_value = money(row.returned_value + m.quantity * m.unit_cost);
+  }
+
+  for (const row of rows.values()) {
+    row.at_site_quantity = qty(row.issued_quantity - row.used_quantity - row.returned_quantity);
+    row.average_unit_price =
+      row.issued_quantity > 0 ? money(row.issued_value / row.issued_quantity) : 0;
+    row.at_site_value = money(row.at_site_quantity * row.average_unit_price);
+  }
+
+  return [...rows.values()]
+    .filter((r) => Math.abs(r.at_site_quantity) > 0.0005 || r.used_quantity > 0)
+    .sort((a, b) => b.at_site_value - a.at_site_value || a.item_name.localeCompare(b.item_name));
 }

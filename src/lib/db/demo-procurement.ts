@@ -581,7 +581,7 @@ export const DEMO_STOCK_TRANSFERS: DemoTransfer[] = [
 
 export interface DemoIssue {
   project_name: string;
-  /** the WBS line it was consumed on — optional detail per Section 7.8 */
+  /** the WBS line it went to — optional detail per Section 7.8 */
   tower_name?: string;
   work_item_name?: string;
   item_name: string;
@@ -590,6 +590,16 @@ export interface DemoIssue {
   days_ago: number;
   issued_by_key: string;
   notes?: string;
+  /**
+   * Section 7.8b. How much of this issue the site actually laid, and how much
+   * it sent back — seeded so the demo shows the gap the split exists for.
+   *
+   * Left undefined, the issue is fully consumed a few days later, which is the
+   * ordinary case. A number smaller than the issue leaves the remainder
+   * standing on the site, which is the case that used to be invisible.
+   */
+  used_quantity?: number;
+  returned_quantity?: number;
 }
 
 export const DEMO_STOCK_ISSUES: DemoIssue[] = [
@@ -614,6 +624,9 @@ export const DEMO_STOCK_ISSUES: DemoIssue[] = [
     days_ago: 18,
     issued_by_key: 'jahangir',
     notes: '7th floor slab and column casting.',
+    // 40 bags never got laid and are still stacked by the lift core — the
+    // exact case that used to be charged to the project and shown nowhere
+    used_quantity: 280,
   },
   {
     project_name: 'Nokshi Green Residence',
@@ -635,6 +648,10 @@ export const DEMO_STOCK_ISSUES: DemoIssue[] = [
     days_ago: 15,
     issued_by_key: 'jahangir',
     notes: 'Cast into the 7th floor slab.',
+    // over-issued: the surplus went back to the store, where a transfer can
+    // now take it to whichever tower needs it
+    used_quantity: 240,
+    returned_quantity: 40,
   },
   {
     project_name: 'Nokshi Green Residence',
@@ -656,6 +673,7 @@ export const DEMO_STOCK_ISSUES: DemoIssue[] = [
     days_ago: 80,
     issued_by_key: 'jahangir',
     notes: 'Given to the painting contractor for the external faces.',
+    used_quantity: 600,
   },
   {
     project_name: 'Nokshi Dhanmondi Court',
