@@ -29,7 +29,19 @@ export const LAND_STATUS_META: Record<LandStatus, { label: string; tone: BadgeTo
   linked_to_project: { label: 'Linked to Project', tone: 'teal' },
 };
 
-/** Statuses a user may move to from `current`, given the acquisition type. */
+/**
+ * Statuses a user may move to *by hand* from `current` (L7 — one way in).
+ *
+ * Only the five real-world events are here: Acquired and JV Signed (a deed or
+ * an agreement is signed), Rejected and Disposed (a decision), and Reopen. The
+ * four middle steps are not, because they are consequences of work the system
+ * already records — see `nextAutomaticStep`. Asking a user to confirm "site
+ * visit done" beside a site visit they have just saved was two records of one
+ * afternoon, and nothing reconciled them.
+ *
+ * A land that is simply in the wrong place is fixed with a correction
+ * (`correctableStatuses`), which is deliberately not a transition.
+ */
 export function allowedNextStatuses(
   current: LandStatus,
   acquisitionType: AcquisitionType,
@@ -37,10 +49,10 @@ export function allowedNextStatuses(
   const outcome: LandStatus = acquisitionType === 'joint_venture' ? 'jv_signed' : 'acquired';
 
   const map: Record<LandStatus, LandStatus[]> = {
-    sourced: ['under_review', 'rejected'],
-    under_review: ['dd_in_progress', 'rejected'],
-    dd_in_progress: ['negotiation', 'rejected'],
-    negotiation: ['agreed', 'rejected'],
+    sourced: ['rejected'],
+    under_review: ['rejected'],
+    dd_in_progress: ['rejected'],
+    negotiation: ['rejected'],
     agreed: [outcome, 'rejected'],
     /*
      * A land we own can be sold on (BRD LAND-004 DISPOSED). It is not offered
@@ -56,6 +68,151 @@ export function allowedNextStatuses(
     linked_to_project: [],
   };
   return map[current];
+}
+
+/* ------------------------------------------------------------------ *
+ * L7 — the work moves the pipeline (LAND-UX-REVIEW.md section 4)
+ * ------------------------------------------------------------------ */
+
+/** The four steps that follow the work, keyed by the status they leave. */
+export const AUTOMATIC_TRANSITIONS: Partial<Record<LandStatus, LandStatus>> = {
+  sourced: 'under_review',
+  under_review: 'dd_in_progress',
+  dd_in_progress: 'negotiation',
+  negotiation: 'agreed',
+};
+
+/**
+ * What the records on a land say has happened — the input to
+ * `nextAutomaticStep`. Read by `landPipelineRepository`, kept plain here so
+ * the rule can be read without a database.
+ */
+export interface LandWorkFacts {
+  /** the earliest visit — the one that put the land under review */
+  firstVisit?: { visit_date: string; visited_by?: string | null };
+  /** the highest version, whatever its status */
+  currentStudy?: { version_no: number; status: FeasibilityStatus };
+  /** the newest approved version */
+  latestApproved?: {
+    version_no: number;
+    recommendation: FeasibilityRecommendation;
+    decided_at?: string | null;
+  };
+  /** the lowest-numbered round — negotiation started when it was made */
+  firstRound?: { round_no: number; offer_date: string; amount: number; party: 'us' | 'owner' };
+  acceptedRound?: { round_no: number; amount: number; accepted_on: string };
+}
+
+export interface AutomaticStep {
+  to: LandStatus;
+  event_date: string;
+  performed_by: string | null;
+  amount: number | null;
+  /** says what moved the land, so the change is never a silent one */
+  remarks: string;
+}
+
+const dateOnly = (iso: string | null | undefined) => (iso ?? '').slice(0, 10);
+
+/**
+ * The next status the work on this land has earned, or `null` when it has
+ * earned nothing more.
+ *
+ * One step at a time, so a caller that loops (`syncFromWork`) writes one
+ * history row per step — a round accepted on a plot still marked Due
+ * Diligence records both "negotiation started" and "agreed", each with its
+ * own cause and date, rather than one jump that explains neither.
+ *
+ * The feasibility step reuses gate G1's rule verbatim: an approved study that
+ * recommends hold or reject does not move a land, because approving the
+ * paperwork is not approving the deal.
+ */
+export function nextAutomaticStep(
+  status: LandStatus,
+  facts: LandWorkFacts,
+  acquisitionType: AcquisitionType,
+): AutomaticStep | null {
+  const to = AUTOMATIC_TRANSITIONS[status];
+  if (!to) return null;
+
+  switch (status) {
+    case 'sourced': {
+      const v = facts.firstVisit;
+      if (!v) return null;
+      return {
+        to,
+        event_date: v.visit_date,
+        performed_by: v.visited_by ?? null,
+        amount: null,
+        // the date is the event's own, so the sentence does not repeat it
+        remarks: v.visited_by ? `Site visit recorded, led by ${v.visited_by}.` : 'Site visit recorded.',
+      };
+    }
+    case 'under_review': {
+      const approved = facts.latestApproved;
+      if (
+        !approved ||
+        feasibilityGateBlockReason({ current: facts.currentStudy, latestApproved: approved }) !== null
+      ) {
+        return null;
+      }
+      return {
+        to,
+        event_date: dateOnly(approved.decided_at) || new Date().toISOString().slice(0, 10),
+        performed_by: null,
+        amount: null,
+        remarks: `Feasibility study version ${approved.version_no} approved, recommending Proceed.`,
+      };
+    }
+    case 'dd_in_progress': {
+      const r = facts.firstRound;
+      if (!r) return null;
+      const who = r.party === 'us' ? 'our offer' : 'the owner’s ask';
+      return {
+        to,
+        event_date: r.offer_date,
+        performed_by: null,
+        amount: r.amount,
+        remarks: `Negotiation round ${r.round_no} recorded — ${who}.`,
+      };
+    }
+    case 'negotiation': {
+      const r = facts.acceptedRound;
+      if (!r) return null;
+      return {
+        to,
+        event_date: r.accepted_on,
+        performed_by: null,
+        amount: r.amount,
+        remarks:
+          acquisitionType === 'joint_venture'
+            ? `Round ${r.round_no} accepted — signing money agreed.`
+            : `Round ${r.round_no} accepted — this amount is now the agreed price.`,
+      };
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Where a correction may put a land (review section 7, question 2).
+ *
+ * Anywhere except where it is, and never `linked_to_project` — that one belongs
+ * to Module 2, which knows *which* project, and a land page claiming a link
+ * with no project behind it is a broken record. A linked land is not corrected
+ * here for the same reason: the project has to let go of it first.
+ */
+export function correctableStatuses(
+  current: LandStatus,
+  acquisitionType: AcquisitionType,
+): LandStatus[] {
+  if (current === 'linked_to_project') return [];
+  // a joint venture is never "acquired", and a purchase never "JV signed"
+  const wrongOutcome: LandStatus = acquisitionType === 'joint_venture' ? 'acquired' : 'jv_signed';
+  return (Object.keys(LAND_STATUS_META) as LandStatus[]).filter(
+    (s) => s !== current && s !== 'linked_to_project' && s !== wrongOutcome,
+  );
 }
 
 /* ------------------------------------------------------------------ *
@@ -115,11 +272,6 @@ export function feasibilityGateBlockReason({
   }
   // rejected
   return `Version ${current.version_no} was rejected. Record a new version before this land goes to due diligence.`;
-}
-
-/** Which transition G1 guards. Only this one — see the plan's section 5.3. */
-export function transitionNeedsFeasibility(from: LandStatus, to: LandStatus): boolean {
-  return from === 'under_review' && to === 'dd_in_progress';
 }
 
 /**
@@ -220,9 +372,9 @@ export function isTerminalStatus(status: LandStatus): boolean {
 }
 
 /**
- * What each pipeline step asks for before it is confirmed (feedback #6).
+ * What each manual pipeline step asks for before it is confirmed (feedback #6).
  * A wrong click should never move a land forward silently, and the details
- * captured here become the audit trail shown on the Timeline tab.
+ * captured here become the audit trail shown on the Lifecycle feed.
  */
 /** Keys that land on the `land_status_history` row for this step. */
 export type StatusEventFieldKey =
@@ -297,21 +449,27 @@ export interface StatusStepAttachment {
   prompt: string;
 }
 
-const ATTACHMENTS: Record<LandStatus, StatusStepAttachment> = {
+/*
+ * Only the statuses a person still confirms have an entry. The four that
+ * follow the work (L7) collect their evidence where the work is recorded — a
+ * site visit carries its own photos, a DD item its own search report.
+ */
+const ATTACHMENTS: Partial<Record<LandStatus, StatusStepAttachment>> = {
   sourced: { documentType: 'other', customName: 'Reopening note', prompt: 'Anything supporting the decision to reconsider this land' },
-  under_review: { documentType: 'site_photo', prompt: 'Site photos, boundary shots, road access — attach as many as you took' },
-  dd_in_progress: { documentType: 'khatian_copy', prompt: 'Khatian copy, search report, encumbrance certificate' },
-  negotiation: { documentType: 'other', customName: 'Negotiation record', prompt: 'Written offer, owner’s counter, broker note' },
-  agreed: { documentType: 'other', customName: 'Decision note', prompt: 'Board minutes or the approval note' },
   acquired: { documentType: 'dolil_deed', prompt: 'Registered deed, mutation papers, registration receipt' },
   jv_signed: { documentType: 'jv_agreement', prompt: 'Signed JV agreement, power of attorney' },
   rejected: { documentType: 'other', customName: 'Rejection note', prompt: 'Anything that records why this was dropped' },
   disposed: { documentType: 'other', customName: 'Disposal record', prompt: 'Transfer deed, sale agreement, board approval' },
-  linked_to_project: { documentType: 'other', customName: 'Project link note', prompt: 'Supporting paperwork' },
+};
+
+const NO_ATTACHMENT: StatusStepAttachment = {
+  documentType: 'other',
+  customName: 'Status note',
+  prompt: 'Anything supporting this change',
 };
 
 export function statusStepAttachment(status: LandStatus): StatusStepAttachment {
-  return ATTACHMENTS[status];
+  return ATTACHMENTS[status] ?? NO_ATTACHMENT;
 }
 
 const REMARKS = (required = false, placeholder = 'Anything worth remembering about this step'): StatusStepField => ({
@@ -322,7 +480,13 @@ const REMARKS = (required = false, placeholder = 'Anything worth remembering abo
   required,
 });
 
-const BASE_STATUS_STEP_CONFIG: Record<LandStatus, StatusStepConfig> = {
+/*
+ * L7 removed four entries from here — "Confirm site visit", "Confirm legal
+ * verification", "Move to negotiation" and "Move to decision". Each asked for
+ * a thin summary of work a tab now records in full, and the status follows that
+ * work instead (`nextAutomaticStep`). What is left is the real-world events.
+ */
+const BASE_STATUS_STEP_CONFIG: Partial<Record<LandStatus, StatusStepConfig>> = {
   sourced: {
     title: 'Reopen this land',
     question: 'Move the land back to the start of the pipeline?',
@@ -331,52 +495,6 @@ const BASE_STATUS_STEP_CONFIG: Record<LandStatus, StatusStepConfig> = {
     fields: [
       { key: 'event_date', label: 'Reopened on', placeholder: '', type: 'date', required: true },
       REMARKS(true, 'Why is this land being reconsidered?'),
-    ],
-  },
-  under_review: {
-    title: 'Confirm site visit',
-    question: 'Record that the site visit has been completed.',
-    confirmLabel: 'Confirm visit',
-    tone: 'default',
-    fields: [
-      { key: 'event_date', label: 'Visited on', placeholder: '', type: 'date', required: true },
-      { key: 'performed_by', label: 'Visited by', placeholder: 'e.g. Kamal Hossain (Land Team)', type: 'text' },
-      REMARKS(false, 'Road access, soil condition, boundary issues…'),
-    ],
-  },
-  dd_in_progress: {
-    title: 'Confirm legal verification',
-    question: 'Record that the documents have been legally verified.',
-    confirmLabel: 'Confirm verification',
-    tone: 'default',
-    fields: [
-      { key: 'event_date', label: 'Verified on', placeholder: '', type: 'date', required: true },
-      { key: 'performed_by', label: 'Verified by', placeholder: 'e.g. Adv. Nusrat Jahan', type: 'text' },
-      { key: 'reference_no', label: 'Case / file reference', placeholder: 'e.g. LV-2026-014', type: 'text' },
-      REMARKS(false, 'Title chain findings, encumbrance, pending mutation…'),
-    ],
-  },
-  negotiation: {
-    title: 'Move to negotiation',
-    question: 'Record that price negotiation has started.',
-    confirmLabel: 'Start negotiation',
-    tone: 'default',
-    fields: [
-      { key: 'event_date', label: 'Negotiation started on', placeholder: '', type: 'date', required: true },
-      { key: 'amount', label: 'Offered amount (BDT)', placeholder: 'e.g. 42000000', type: 'number' },
-      { key: 'performed_by', label: 'Negotiated by', placeholder: 'e.g. Rifat Ahmed', type: 'text' },
-      REMARKS(false, 'Owner expectation, payment terms discussed…'),
-    ],
-  },
-  agreed: {
-    title: 'Move to decision',
-    question: 'Record that the land is now awaiting a final decision.',
-    confirmLabel: 'Move to decision',
-    tone: 'default',
-    fields: [
-      { key: 'event_date', label: 'Decision meeting on', placeholder: '', type: 'date', required: true },
-      { key: 'amount', label: 'Amount on the table (BDT)', placeholder: 'e.g. 40000000', type: 'number' },
-      REMARKS(false, 'Board notes, conditions attached…'),
     ],
   },
   acquired: {
@@ -436,31 +554,19 @@ const BASE_STATUS_STEP_CONFIG: Record<LandStatus, StatusStepConfig> = {
       REMARKS(true, 'Why was this land disposed of, and to whom?'),
     ],
   },
-  linked_to_project: {
-    title: 'Linked to project',
-    question: 'This status is set automatically when the land is mapped to a project.',
-    confirmLabel: 'Confirm',
-    tone: 'default',
-    fields: [{ key: 'event_date', label: 'Linked on', placeholder: '', type: 'date', required: true }],
-  },
 };
 
 /**
- * What the middle of the pipeline asks for on a *joint venture*.
+ * What signing asks for on a *joint venture*.
  *
- * The steps are the same five — a JV plot is still visited, verified,
- * negotiated and decided — so the pipeline is not forked. What differs is what
- * is being settled at each one, and the form asked the purchase question of
- * both: "Offered amount (BDT)" at negotiation and "Amount on the table" at
- * decision are the price of land, and in a JV there is no price. What is
- * negotiated is the *share split*, and what money there is is the signing
- * money — the advance paid to the owner against the agreement.
+ * A JV has no price, so the purchase question does not fit it. What is agreed
+ * is the *share split*, and what money there is is the signing money — the
+ * advance paid to the owner against the agreement.
  *
- * The share itself lands in `land_jv_details` rather than on the status event,
- * because a share is a term of the deal and not a thing that happened on a
- * date. Capturing it here is the point: it was reachable only through the Edit
- * Land form, which is a strange place to record the outcome of the meeting the
- * pipeline is asking you to confirm.
+ * The share lands in `land_jv_details` rather than on the status event, because
+ * a share is a term of the deal and not a thing that happened on a date.
+ * Negotiation and decision used to ask for it too; since L7 those steps follow
+ * the negotiation ladder, so signing is the one place the split is confirmed.
  */
 const SHARE_FIELDS: StatusStepField[] = [
   {
@@ -491,41 +597,6 @@ const SHARE_FIELDS: StatusStepField[] = [
 ];
 
 const JV_STATUS_STEP_CONFIG: Partial<Record<LandStatus, StatusStepConfig>> = {
-  negotiation: {
-    title: 'Move to negotiation',
-    question: 'Record that the joint venture terms are being negotiated.',
-    confirmLabel: 'Start negotiation',
-    tone: 'default',
-    fields: [
-      { key: 'event_date', label: 'Negotiation started on', placeholder: '', type: 'date', required: true },
-      ...SHARE_FIELDS.map((f) => ({ ...f, required: false })),
-      {
-        key: 'amount',
-        label: 'Signing money discussed (BDT)',
-        placeholder: 'e.g. 5000000',
-        type: 'number',
-      },
-      { key: 'performed_by', label: 'Negotiated by', placeholder: 'e.g. Rifat Ahmed', type: 'text' },
-      REMARKS(false, 'Owner expectation, rent during construction, extra demands…'),
-    ],
-  },
-  agreed: {
-    title: 'Move to decision',
-    question: 'Record that the joint venture is awaiting a final decision.',
-    confirmLabel: 'Move to decision',
-    tone: 'default',
-    fields: [
-      { key: 'event_date', label: 'Decision meeting on', placeholder: '', type: 'date', required: true },
-      ...SHARE_FIELDS.map((f) => ({ ...f, required: false })),
-      {
-        key: 'amount',
-        label: 'Signing money on the table (BDT)',
-        placeholder: 'e.g. 5000000',
-        type: 'number',
-      },
-      REMARKS(false, 'Board notes, conditions attached…'),
-    ],
-  },
   jv_signed: {
     title: 'Mark JV as signed',
     question: 'Confirm the joint venture agreement has been signed.',
@@ -556,11 +627,11 @@ const JV_STATUS_STEP_CONFIG: Partial<Record<LandStatus, StatusStepConfig>> = {
 export function statusStepConfig(
   status: LandStatus,
   acquisitionType: AcquisitionType,
-): StatusStepConfig {
-  if (acquisitionType === 'joint_venture') {
-    return JV_STATUS_STEP_CONFIG[status] ?? BASE_STATUS_STEP_CONFIG[status];
+): StatusStepConfig | null {
+  if (acquisitionType === 'joint_venture' && JV_STATUS_STEP_CONFIG[status]) {
+    return JV_STATUS_STEP_CONFIG[status];
   }
-  return BASE_STATUS_STEP_CONFIG[status];
+  return BASE_STATUS_STEP_CONFIG[status] ?? null;
 }
 
 /**

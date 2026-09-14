@@ -22,7 +22,7 @@ import { Modal } from '@/components/ui/Modal';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { Land, SiteVisit } from '@/lib/db/types';
-import { siteVisitRepository } from '@/lib/repositories';
+import { landPipelineRepository, siteVisitRepository } from '@/lib/repositories';
 import { formatDate, todayLocal } from '@/lib/utils/format';
 
 /**
@@ -293,7 +293,8 @@ function VisitDialog({
       };
 
       if (visit) await siteVisitRepository.update(visit.id, payload);
-      else await siteVisitRepository.create(payload, userId);
+      // a first visit puts a sourced land under review (L7)
+      else await landPipelineRepository.recordSiteVisit(payload, userId);
       onClose();
     } finally {
       setSaving(false);

@@ -9,39 +9,48 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
 import { StepAttachments } from '@/components/admin/documents/StepAttachments';
+import { CorrectStatusDialog } from '@/components/admin/lands/CorrectStatusDialog';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { JvShareBasis, Land, LandStatus } from '@/lib/db/types';
 import {
+  AUTOMATIC_TRANSITIONS,
   LAND_PIPELINE_STEPS,
   LAND_STATUS_META,
   allowedNextStatuses,
   amountUpdatesFinalAgreed,
   isJvTermsField,
   isTerminalStatus,
+  correctableStatuses,
   ddGateBlockReason,
-  feasibilityGateBlockReason,
   statusStepAttachment,
   statusStepConfig,
   transitionNeedsDueDiligence,
-  transitionNeedsFeasibility,
   type StatusStepField,
 } from '@/lib/domain/land';
 import {
   companySettingsRepository,
   documentRepository,
   landDdRepository,
-  landFeasibilityRepository,
   landJvRepository,
   landRepository,
 } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { todayLocal } from '@/lib/utils/format';
 
+const AUTOMATIC_CAUSE: Partial<Record<LandStatus, string>> = {
+  sourced: 'the first site visit is recorded',
+  under_review: 'a feasibility study recommending Proceed is approved',
+  dd_in_progress: 'the first negotiation round is recorded',
+  negotiation: 'a negotiation round is accepted',
+};
+
 /**
- * Pipeline trail + the transitions valid from the current status (Section 2.2).
- * Every move opens a confirmation dialog that also captures the step details,
- * so a stray click cannot advance a land. `linked_to_project` is set by
- * Module 2, not by hand.
+ * Pipeline trail + the manual transitions valid from the current status.
+ *
+ * Since L7 only the real-world events are buttons here (Acquired, JV Signed,
+ * Rejected, Disposed, Reopen). The four middle steps follow the work recorded
+ * on the tabs — see `landPipelineRepository`. `linked_to_project` is set by
+ * Module 2. A land in the wrong place is fixed with "Correct this status".
  */
 export function LandStatusCard({ land }: { land: Land }) {
   const { userId } = useMockSession();
@@ -51,25 +60,11 @@ export function LandStatusCard({ land }: { land: Land }) {
   const [fileError, setFileError] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [correcting, setCorrecting] = useState(false);
 
   const nextStatuses = allowedNextStatuses(land.status, land.acquisition_type);
   const currentIndex = LAND_PIPELINE_STEPS.indexOf(land.status);
   const config = target ? statusStepConfig(target, land.acquisition_type) : null;
-
-  /*
-   * Gate G1 (BRD SITE-003). Both reads are live, so approving a study on the
-   * Feasibility tab unlocks the button here without a reload — the two tabs
-   * are on the same page and a user who has just approved something expects
-   * the pipeline to know.
-   */
-  const gateOn = useLiveQuery(
-    async () => (await companySettingsRepository.get())?.require_feasibility_approval ?? false,
-    [],
-  );
-  const feasibility = useLiveQuery(async () => {
-    const rows = await landFeasibilityRepository.listForLand(land.id);
-    return { current: rows[0], latestApproved: rows.find((r) => r.status === 'approved') };
-  }, [land.id]);
 
   const ddProgress = useLiveQuery(() => landDdRepository.progressForLand(land.id), [land.id]);
   const ddGateOn = useLiveQuery(
@@ -79,9 +74,6 @@ export function LandStatusCard({ land }: { land: Land }) {
 
   /** The reason a given move is blocked, or null when it is allowed. */
   function blockedReason(to: LandStatus): string | null {
-    if (gateOn && transitionNeedsFeasibility(land.status, to)) {
-      return feasibilityGateBlockReason(feasibility ?? {});
-    }
     if (ddGateOn && transitionNeedsDueDiligence(land.status, to)) {
       return ddGateBlockReason(ddProgress);
     }
@@ -295,6 +287,12 @@ export function LandStatusCard({ land }: { land: Land }) {
         </ol>
 
         <div className="mt-5 border-t border-hairline pt-4">
+          {AUTOMATIC_TRANSITIONS[land.status] && (
+            <p className="mb-3 text-xs text-ink-muted">
+              Moves to {LAND_STATUS_META[AUTOMATIC_TRANSITIONS[land.status]!].label} by itself when{' '}
+              {AUTOMATIC_CAUSE[land.status]}.
+            </p>
+          )}
           {nextStatuses.length === 0 ? (
             <p className="text-xs text-ink-muted">
               {land.status === 'linked_to_project'
@@ -335,8 +333,20 @@ export function LandStatusCard({ land }: { land: Land }) {
               )}
             </>
           )}
+
+          {correctableStatuses(land.status, land.acquisition_type).length > 0 && (
+            <button
+              type="button"
+              onClick={() => setCorrecting(true)}
+              className="mt-4 text-xs font-medium text-ink-muted underline-offset-2 hover:text-admin-700 hover:underline"
+            >
+              Correct this status
+            </button>
+          )}
         </div>
       </Card>
+
+      {correcting && <CorrectStatusDialog land={land} onClose={() => setCorrecting(false)} />}
 
       {config && target && (
         <ConfirmDialog

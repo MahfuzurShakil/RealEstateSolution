@@ -38,6 +38,7 @@ export {
   type LandWithRelations,
 } from './land.repository';
 export { siteVisitRepository, landFeasibilityRepository } from './site-visit.repository';
+export { landPipelineRepository } from './land-pipeline.repository';
 export {
   ddChecklistRepository,
   landDdRepository,

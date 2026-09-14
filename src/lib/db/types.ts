@@ -352,7 +352,20 @@ export interface LandStatusEvent extends BaseEntity {
   /** deed no., case no., agreement ref. */
   reference_no?: string | null;
   remarks?: string | null;
+  /**
+   * L7 — what moved the land (LAND-UX-REVIEW.md section 4).
+   *
+   * Four steps now follow the work instead of being typed in beside it, and an
+   * automatic change that does not say it was automatic is a silent change.
+   * Not indexed, so no Dexie version: nothing queries on it, the Lifecycle
+   * feed only reads it. Absent on rows written before L7, which were all
+   * confirmed by hand — read a missing value as `manual`.
+   */
+  source?: LandStatusEventSource | null;
 }
+
+export const LAND_STATUS_EVENT_SOURCES = ['manual', 'automatic', 'correction'] as const;
+export type LandStatusEventSource = (typeof LAND_STATUS_EVENT_SOURCES)[number];
 
 /* ------------------------------------------------------------------ *
  * Module 1 / batch L2 — Site Visit & Feasibility (BRD section 8)

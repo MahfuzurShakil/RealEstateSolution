@@ -225,21 +225,33 @@ function SettingsForm({
         <Card>
           <CardHeader title="Pipeline gates" />
           <p className="mb-3 text-xs text-ink-muted">
-            Each gate stops a land moving on until something is actually done. All three are off
-            unless switched on: land recorded before this system existed has no feasibility study,
-            no checklist and no development record, and turning a gate on for it would strand it
-            mid-pipeline.
+            Each gate stops a land moving on until something is actually done. G2 and G3 are off
+            unless switched on: land recorded before this system existed has no checklist and no
+            development record, and turning a gate on for it would strand it mid-pipeline.
           </p>
           <div className="space-y-2">
-            <GateToggle
-              label="G1 · Require an approved feasibility study before due diligence"
-              detail="A land cannot move from Under Review to Due Diligence until its latest feasibility study is approved and recommends proceeding. The lawyers are the expensive part of sourcing a plot, and this stops the firm paying for a title search on land it was never going to buy."
-              checked={gates.require_feasibility_approval}
-              onChange={(v) => {
-                setGates((g) => ({ ...g, require_feasibility_approval: v }));
-                setSaved(false);
-              }}
-            />
+            {/*
+              G1 stopped being a switch in L7. Under Review → Due Diligence now
+              happens only when a study recommending Proceed is approved, so the
+              rule holds on every land whatever this was set to. Land recorded
+              before the system existed goes through "Correct this status",
+              which records a reason — the stranding this switch protected
+              against no longer happens.
+            */}
+            <div className="flex items-start gap-3 rounded-xl border border-hairline bg-slate-50/60 p-3">
+              <Check className="mt-0.5 size-4 shrink-0 text-admin-600" />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-ink">
+                  G1 · An approved feasibility study before due diligence — always on
+                </span>
+                <span className="mt-0.5 block text-xs text-ink-muted">
+                  A land moves from Under Review to Due Diligence only when a feasibility study
+                  recommending Proceed is approved. That approval is what moves it, so there is
+                  nothing to switch off. A land entered after the fact is put in the right place
+                  with “Correct this status”, which records why.
+                </span>
+              </span>
+            </div>
             <GateToggle
               label="G2 · Require mandatory due diligence before acquisition"
               detail="A land cannot be marked Acquired or JV Signed while a mandatory checklist item is unfinished or failed, unless it carries an authorised waiver with a reason. Registration is the point of no return, and an encumbrance found afterwards is not a problem anybody can fix."
