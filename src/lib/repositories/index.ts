@@ -52,6 +52,13 @@ export {
   type AcquisitionCostSheet,
 } from './negotiation.repository';
 export {
+  ownerSettlementRepository,
+  recalculateForOwner,
+  recalculateOwnersForLand,
+  type OwnerSettlement,
+  type LandSettlementPosition,
+} from './owner-settlement.repository';
+export {
   projectRepository,
   projectStatusEventRepository,
   landProjectMappingRepository,

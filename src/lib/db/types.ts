@@ -1776,7 +1776,7 @@ export const SUPPLIER_VOUCHER_DOCUMENT_TYPES = ['payment_receipt', 'cheque_copy'
  * these tables therefore has to say which kind it means — a land instalment is
  * not something the collections desk chases a buyer for.
  */
-export const SCHEDULE_ENTITY_TYPES = ['booking', 'land'] as const;
+export const SCHEDULE_ENTITY_TYPES = ['booking', 'land', 'land_owner'] as const;
 export type ScheduleEntityType = (typeof SCHEDULE_ENTITY_TYPES)[number];
 
 export interface PaymentSchedule extends BaseEntity {
@@ -1900,6 +1900,22 @@ export interface Expense extends BaseEntity {
   /** null = a company-level cost, not chargeable to one project */
   project_id?: UUID | null;
   land_id?: UUID | null;
+  /**
+   * Which landowner this money was paid to (BRD ACQ-003, BR-003).
+   *
+   * A `land_owner_mapping.id`, not a `landowners.id`: the same person can own
+   * two plots, and what is being settled is their share of *this* land.
+   *
+   * Nullable and not indexed — a land's expenses are a handful of rows, so the
+   * per-owner position is filtered in memory. `null` means the payment was
+   * against the land as a whole, which is the ordinary case on a single-owner
+   * plot and the honest answer for money recorded before anybody split it.
+   *
+   * Only meaningful with `cost_category = 'land_payment'`, and the form only
+   * offers it there: registration and legal fees are paid to an office, not to
+   * an owner.
+   */
+  owner_mapping_id?: UUID | null;
   /**
    * The instalment of the land's payment plan this settles, when the payment
    * was made against a named one (v17).

@@ -22,6 +22,7 @@ import {
   expenseRepository,
   landRepository,
   lookupRepository,
+  ownerSettlementRepository,
   paymentScheduleRepository,
   projectRepository,
   userRepository,
@@ -87,6 +88,7 @@ function ExpenseDialog({
     reference_no: expense?.reference_no ?? '',
     account_id: expense?.account_id ?? '',
     installment_id: expense?.installment_id ?? '',
+    owner_mapping_id: expense?.owner_mapping_id ?? '',
     vat_amount: expense?.vat_amount ? String(expense.vat_amount) : '',
     ait_amount: expense?.ait_amount ? String(expense.ait_amount) : '',
     notes: expense?.notes ?? '',
@@ -137,6 +139,15 @@ function ExpenseDialog({
       settlesPlan && form.land_id
         ? paymentScheduleRepository.landDueSummary(form.land_id)
         : Promise.resolve(null),
+    [settlesPlan, form.land_id],
+  );
+
+  /* BRD BR-003 — who this plot is owed to, for the owner picker below */
+  const landOwners = useLiveQuery(
+    async () =>
+      settlesPlan && form.land_id
+        ? (await ownerSettlementRepository.positionForLand(form.land_id)).owners
+        : null,
     [settlesPlan, form.land_id],
   );
 
@@ -195,6 +206,8 @@ function ExpenseDialog({
         // only a land payment can settle an instalment; anything else would be
         // carrying a pointer no screen would ever read
         installment_id: settlesPlan ? form.installment_id || null : null,
+        // BRD BR-003 — an owner settlement names the owner it settles
+        owner_mapping_id: settlesPlan ? form.owner_mapping_id || null : null,
         vat_amount: Number(form.vat_amount) || null,
         ait_amount: Number(form.ait_amount) || null,
         reference_no: form.reference_no.trim() || null,
@@ -341,6 +354,35 @@ function ExpenseDialog({
               {(lands ?? []).map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.code} — {l.name}
+                </option>
+              ))}
+            </SelectInput>
+          </Field>
+        )}
+
+        {/*
+          BRD BR-003 — an owner settlement references its owner.
+
+          Offered only for a land payment on a plot that has more than one
+          owner. On a single-owner plot there is nothing to choose, and a fee
+          paid to the sub-registry is not paid to an owner at all.
+        */}
+        {settlesPlan && form.land_id && (landOwners?.length ?? 0) > 1 && (
+          <Field
+            label="Paid to which owner"
+            hint="Leave blank when the payment is against the plot as a whole"
+          >
+            <SelectInput
+              value={form.owner_mapping_id}
+              onChange={(e) => set('owner_mapping_id', e.target.value)}
+            >
+              <option value="">The plot as a whole</option>
+              {(landOwners ?? []).map((o) => (
+                <option key={o.mapping.id} value={o.mapping.id}>
+                  {o.owner?.name ?? 'Unknown owner'}
+                  {o.agreed > 0
+                    ? ` — ${formatBdt(o.outstanding)} outstanding of ${formatBdt(o.agreed)}`
+                    : ' — no amount agreed yet'}
                 </option>
               ))}
             </SelectInput>

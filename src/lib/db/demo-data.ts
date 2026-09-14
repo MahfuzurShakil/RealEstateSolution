@@ -313,8 +313,8 @@ export const DEMO_LANDS: DemoLand[] = [
     remarks: 'Two siblings inherited the land; both must sign.',
     created_at: '2026-02-03T07:10:00.000Z',
     owners: [
-      { key: 'abdul', share: 60, primary: true, area: 0.9 },
-      { key: 'shahida', share: 40, area: 0.6 },
+      { key: 'abdul', share: 60, primary: true, area: 0.9, amount: 3_000_000 },
+      { key: 'shahida', share: 40, area: 0.6, amount: 2_000_000 },
     ],
     jv: {
       developer_share_pct: 50,

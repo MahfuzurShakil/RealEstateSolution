@@ -319,6 +319,56 @@ async function seedDemoNegotiation(
   }
 }
 
+/**
+ * Batch L5 — one owner's settlement, part-paid (BRD ACQ-003, BR-003).
+ *
+ * The Savar plot is the multi-owner case: two heirs, agreed at 3,000,000 and
+ * 2,000,000. The elder has taken his bayna and the younger has not, so the
+ * Settlement by owner panel opens on a real split position rather than two
+ * identical zeroes.
+ *
+ * The expense carries `owner_mapping_id`, which is the whole point of the
+ * batch — the payment names the owner it settles, so it counts against his
+ * balance and not against his sister's.
+ */
+async function seedDemoOwnerSettlement(
+  landIds: Map<string, string>,
+  ownerIds: Map<string, string>,
+  createdBy: string | null,
+): Promise<void> {
+  const landId = landIds.get('Savar highway-side land');
+  const ownerId = ownerIds.get('abdul');
+  if (!landId || !ownerId) return;
+
+  const mapping = (await landOwnerMappingRepository.listForLand(landId)).find(
+    (m) => m.owner_id === ownerId,
+  );
+  if (!mapping) return;
+
+  await expenseRepository.create(
+    {
+      code: '',
+      project_id: null,
+      land_id: landId,
+      owner_mapping_id: mapping.id,
+      cost_category: 'land_payment',
+      cost_reason: 'Bayna against the joint venture agreement — elder brother’s share',
+      amount: 1_500_000,
+      expense_date: '2026-06-22',
+      paid_to: 'Abdul Karim Bhuiyan',
+      payment_method: 'bank',
+      account_id: null,
+      installment_id: null,
+      vat_amount: null,
+      ait_amount: null,
+      reference_no: 'CHQ-884213',
+      paid_by: createdBy,
+      notes: 'Signing money. The younger sister has not been paid yet.',
+    },
+    createdBy,
+  );
+}
+
 export async function seedDemoData(createdBy: string | null = null): Promise<void> {
   // owners first — lands reference them
   const ownerIds = new Map<string, string>();
@@ -472,6 +522,7 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
   await seedDemoSiteVisits(landIds, createdBy);
   await seedDemoDueDiligence(landIds, createdBy);
   await seedDemoNegotiation(landIds, createdBy);
+  await seedDemoOwnerSettlement(landIds, ownerIds, createdBy);
 
   const { projectIds, unitIds } = await seedDemoProjects(landIds, ownerIds, createdBy);
   const { userIds, leadIdByPhone } = await seedDemoLeads(projectIds, unitIds, createdBy);

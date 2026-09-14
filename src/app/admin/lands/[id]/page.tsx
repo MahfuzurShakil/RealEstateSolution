@@ -12,6 +12,7 @@ import { FeasibilityPanel } from '@/components/admin/lands/FeasibilityPanel';
 import { DueDiligencePanel } from '@/components/admin/lands/DueDiligencePanel';
 import { NegotiationPanel } from '@/components/admin/lands/NegotiationPanel';
 import { AcquisitionCostPanel } from '@/components/admin/lands/AcquisitionCostPanel';
+import { OwnerSettlementPanel } from '@/components/admin/lands/OwnerSettlementPanel';
 import { LocationCard } from '@/components/ui/map/LocationCard';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { LandStatusCard } from '@/components/admin/lands/LandStatusCard';
@@ -33,6 +34,7 @@ import {
   landRepository,
   landDdRepository,
   landNegotiationRepository,
+  ownerSettlementRepository,
   siteVisitRepository,
   type LandWithRelations,
 } from '@/lib/repositories';
@@ -149,6 +151,8 @@ export default function LandDetailPage() {
   const visitCount = useLiveQuery(() => siteVisitRepository.countForLand(id), [id]);
   // the tab badge counts what BLOCKS, not what is done — see the panel
   const ddProgress = useLiveQuery(() => landDdRepository.progressForLand(id), [id]);
+  // BRD LAND-002 / ACQ-003 — what each owner is owed and what has gone to them
+  const settlement = useLiveQuery(() => ownerSettlementRepository.positionForLand(id), [id]);
   const roundCount = useLiveQuery(
     async () => (await landNegotiationRepository.listForLand(id)).length,
     [id],
@@ -413,7 +417,7 @@ export default function LandDetailPage() {
                         </p>
                       </div>
                       {row.is_primary_contact && <Badge tone="teal">Primary</Badge>}
-                      {/* BRD LAND-002 — share, area and price, per owner */}
+                      {/* BRD LAND-002 — share, area, price, paid and due per owner */}
                       <div className="shrink-0 text-right">
                         <p className="text-sm font-medium text-ink tabular-nums">
                           {row.ownership_share_pct}%
@@ -424,11 +428,29 @@ export default function LandDetailPage() {
                             </span>
                           )}
                         </p>
-                        <p className="text-xs text-ink-muted tabular-nums">
-                          {row.agreed_amount != null
-                            ? formatBdt(row.agreed_amount)
-                            : 'No amount agreed'}
-                        </p>
+                        {(() => {
+                          const s = settlement?.owners.find((o) => o.mapping.id === row.id);
+                          if (!s || s.agreed <= 0) {
+                            return (
+                              <p className="text-xs text-ink-muted">No amount agreed</p>
+                            );
+                          }
+                          return (
+                            <p className="text-xs tabular-nums">
+                              <span className="text-ink-muted">{formatBdt(s.agreed)}</span>
+                              {' · '}
+                              <span
+                                className={
+                                  s.outstanding > 0 ? 'text-amber-700' : 'text-emerald-700'
+                                }
+                              >
+                                {s.outstanding > 0
+                                  ? `${formatBdt(s.outstanding)} due`
+                                  : 'settled in full'}
+                              </span>
+                            </p>
+                          );
+                        })()}
                       </div>
                     </li>
                   ))}
@@ -515,7 +537,13 @@ export default function LandDetailPage() {
             </Card>
           )}
 
-          {tab === 'payments' && <LandPaymentPlanPanel land={land} />}
+          {tab === 'payments' && (
+            <>
+              <LandPaymentPlanPanel land={land} />
+              {/* BRD ACQ-003 — renders nothing at all on a single-owner plot */}
+              <OwnerSettlementPanel land={land} />
+            </>
+          )}
 
           {tab === 'timeline' && (
             <Card>

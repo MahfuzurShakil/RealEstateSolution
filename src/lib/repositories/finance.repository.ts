@@ -36,6 +36,7 @@ import { nextCode } from '../utils/id';
 import { todayLocal } from '../utils/format';
 import { BaseRepository, type NewRecord, type UpdateRecord } from './base.repository';
 import { documentRepository } from './document.repository';
+import { recalculateOwnersForLand } from './owner-settlement.repository';
 import { paymentRepository } from './payment.repository';
 
 /*
@@ -1017,6 +1018,8 @@ class ExpenseRepository extends BaseRepository<Expense> {
     );
     // a payment to the owner settles the next instalment on the agreed plan
     await recalculateForLand(created.land_id ?? '');
+    // batch L5 — an owner's own plan moves on the same event
+    if (created.land_id) await recalculateOwnersForLand(created.land_id);
     return created;
   }
 
@@ -1052,7 +1055,10 @@ class ExpenseRepository extends BaseRepository<Expense> {
     const affected = new Set(
       [before?.land_id, updated?.land_id].filter((v): v is string => Boolean(v)),
     );
-    for (const landId of affected) await recalculateForLand(landId, createdBy);
+    for (const landId of affected) {
+      await recalculateForLand(landId, createdBy);
+      await recalculateOwnersForLand(landId);
+    }
     return updated;
   }
 
@@ -1160,7 +1166,10 @@ class ExpenseRepository extends BaseRepository<Expense> {
     await documentRepository.removeForEntity('expense', id);
     await this.remove(id);
     // deleting the payment un-settles the instalment it was covering
-    if (before?.land_id) await recalculateForLand(before.land_id);
+    if (before?.land_id) {
+      await recalculateForLand(before.land_id);
+      await recalculateOwnersForLand(before.land_id);
+    }
   }
 }
 
