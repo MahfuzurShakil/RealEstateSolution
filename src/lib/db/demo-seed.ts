@@ -195,7 +195,9 @@ async function seedDemoSiteVisits(
     if (!landId) continue;
 
     const decided = demo.status === 'approved' || demo.status === 'rejected';
-    await landFeasibilityRepository.create(
+    // noon UTC, so the day is the same day in Dhaka
+    const noon = (d?: string) => (d ? `${d}T06:00:00.000Z` : null);
+    const study = await landFeasibilityRepository.create(
       {
         land_id: landId,
         version_no: demo.version_no,
@@ -208,14 +210,19 @@ async function seedDemoSiteVisits(
         recommendation: demo.recommendation,
         status: demo.status,
         prepared_by: demo.prepared_by ?? null,
-        submitted_at: demo.status === 'draft' ? null : new Date().toISOString(),
+        submitted_at: demo.status === 'draft' ? null : noon(demo.submitted_on ?? demo.prepared_on),
         decided_by: decided ? createdBy : null,
-        decided_at: decided ? new Date().toISOString() : null,
+        decided_at: decided ? noon(demo.decided_on ?? demo.submitted_on ?? demo.prepared_on) : null,
         decision_note: demo.decision_note ?? null,
         remarks: null,
       },
       createdBy,
     );
+    // the Lifecycle feed dates a study by its own days, not by the moment of seeding
+    await getDb().land_feasibility.update(study.id, {
+      created_at: `${demo.prepared_on}T05:00:00.000Z`,
+      updated_at: noon(demo.decided_on ?? demo.submitted_on) ?? `${demo.prepared_on}T05:00:00.000Z`,
+    });
   }
 }
 
@@ -237,7 +244,27 @@ async function seedDemoDueDiligence(
 
   const master = await ddChecklistRepository.allItems();
   const byCode = new Map(master.map((m) => [m.code, m.id]));
-  const now = new Date().toISOString();
+
+  /*
+   * Findings are dated from the day the land went to due diligence, a batch
+   * every week — how a lawyer actually reports back. They used to carry the
+   * moment of seeding, which put a land's whole legal history on one day in
+   * the Lifecycle feed, months after it was registered.
+   */
+  const ddStart = new Map(
+    DEMO_LANDS.map((l) => [
+      l.name,
+      l.history.find((h) => h.to_status === 'dd_in_progress')?.event_date ?? l.created_at.slice(0, 10),
+    ]),
+  );
+  const seen = new Map<string, number>();
+  const findingAt = (landName: string) => {
+    const n = seen.get(landName) ?? 0;
+    seen.set(landName, n + 1);
+    const d = new Date(`${ddStart.get(landName)}T06:00:00.000Z`);
+    d.setUTCDate(d.getUTCDate() + 2 + Math.floor(n / 5) * 7);
+    return d.toISOString();
+  };
 
   for (const demo of DEMO_DD_FINDINGS) {
     const landId = landIds.get(demo.land);
@@ -250,6 +277,7 @@ async function seedDemoDueDiligence(
 
     const settled =
       demo.status === 'passed' || demo.status === 'waived' || demo.status === 'not_applicable';
+    const now = findingAt(demo.land);
     await landDdRepository.update(row.id, {
       status: demo.status,
       finding: demo.finding ?? null,
@@ -304,8 +332,12 @@ async function seedDemoNegotiation(
       createdBy,
     );
     // the round carries the date it happened, not the moment of seeding
+    const accepted = new Date(`${demo.offer_date}T10:00:00.000Z`);
+    // an accepted round was accepted two days after it was made — what L7 reads as the day of agreement
+    if (demo.status === 'accepted') accepted.setUTCDate(accepted.getUTCDate() + 2);
     await getDb().land_negotiations.update(saved.id, {
       created_at: `${demo.offer_date}T10:00:00.000Z`,
+      updated_at: accepted.toISOString(),
     });
   }
 
@@ -551,12 +583,14 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
           amount: event.amount ?? null,
           reference_no: event.reference_no ?? null,
           remarks: event.remarks ?? null,
+          source: event.source ?? null,
         },
         createdBy,
       );
       // log entries carry the date of the step, not the moment of seeding
       await db.land_status_history.update(saved.id, {
-        created_at: `${event.event_date}T09:00:00.000Z`,
+        // after the visit, study or round of the same day — a status follows its cause
+        created_at: `${event.event_date}T12:00:00.000Z`,
       });
       previous = event.to_status;
     }

@@ -1,12 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { Calculator, Check, Plus, Send, ShieldCheck, X } from 'lucide-react';
+import { Calculator, Check, Send, ShieldCheck, X } from 'lucide-react';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { Field, MoneyInput, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
@@ -43,198 +41,149 @@ function totals(f: LandFeasibility) {
 }
 
 /**
- * Feasibility studies for one land (BRD SITE-002, SITE-003).
+ * One feasibility study version, as it opens on the Lifecycle feed
+ * (BRD SITE-002, SITE-003).
  *
  * Versioned rather than edited in place: the numbers move when the site visit
  * turns up two feet of fill, and the version the board approved has to stay
  * readable afterwards. Only a draft is editable; anything submitted or decided
- * is superseded by a new version instead.
+ * is superseded by a new version instead. Since L7 each version is an entry in
+ * the land's feed, and this is what the entry shows when opened.
  *
  * Total cost and margin are computed on read and never stored. A stored total
  * is a second answer to a question the three cost fields already answer, and
  * the two drift the first time someone edits one without the other.
  */
-export function FeasibilityPanel({ land }: { land: Land }) {
+export function FeasibilityStudyDetails({
+  land,
+  study,
+  isCurrent,
+}: {
+  land: Land;
+  study: LandFeasibility;
+  /** only the highest version can be edited or decided */
+  isCurrent: boolean;
+}) {
   const { userId } = useMockSession();
-  const [editing, setEditing] = useState<LandFeasibility | 'new' | null>(null);
-  const [deciding, setDeciding] = useState<{ row: LandFeasibility; approve: boolean } | null>(null);
-  const [submitId, setSubmitId] = useState<string | null>(null);
-
-  const studies = useLiveQuery(() => landFeasibilityRepository.listForLand(land.id), [land.id]);
-  const current = studies?.[0];
+  const [editing, setEditing] = useState(false);
+  const [deciding, setDeciding] = useState<boolean | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const t = totals(study);
 
   return (
     <>
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-ink-muted">
-          {studies?.length ?? 0} version{studies?.length === 1 ? '' : 's'} · the highest is the
-          current study
-        </p>
-        <Button size="sm" className="w-full sm:w-auto" onClick={() => setEditing('new')}>
-          <Plus className="size-4" />
-          {studies?.length ? 'New version' : 'Add a study'}
-        </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone={STATUS_META[study.status].tone}>{STATUS_META[study.status].label}</Badge>
+        <Badge tone={RECOMMENDATION_META[study.recommendation].tone}>
+          Recommends {RECOMMENDATION_META[study.recommendation].label.toLowerCase()}
+        </Badge>
+        {isCurrent ? <Badge tone="teal">Current</Badge> : <Badge>Superseded</Badge>}
+        <span className="ml-auto text-xs text-ink-muted">
+          {study.prepared_by ? `Prepared by ${study.prepared_by} · ` : ''}
+          started {formatDate(study.created_at)}
+          {study.submitted_at ? ` · submitted ${formatDate(study.submitted_at)}` : ''}
+        </span>
       </div>
 
-      {studies && studies.length === 0 ? (
-        <EmptyState
-          icon={Calculator}
-          title="No feasibility study yet"
-          description="Estimate what this land will cost to acquire and develop, what it should return, and what could go wrong. An approved study recommending Proceed is what lets the land move on to due diligence."
-          action={
-            <Button onClick={() => setEditing('new')}>
-              <Plus className="size-4" /> Add a study
-            </Button>
+      <div className="mt-3 grid gap-px overflow-hidden rounded-xl border border-hairline bg-hairline sm:grid-cols-2 lg:grid-cols-4">
+        <Figure label="Acquisition" value={study.est_acquisition_cost} />
+        <Figure label="Development" value={study.est_development_cost} />
+        <Figure label="Other costs" value={study.est_other_cost} />
+        <Figure label="Expected revenue" value={study.expected_revenue} />
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-baseline justify-between gap-3">
+        <span className="text-sm text-ink-muted">
+          Total cost <strong className="text-ink tabular-nums">{formatBdt(t.cost)}</strong>
+        </span>
+        <span
+          className={
+            t.margin >= 0
+              ? 'text-sm font-medium text-emerald-700 tabular-nums'
+              : 'text-sm font-medium text-red-700 tabular-nums'
           }
-        />
-      ) : (
-        <ul className="space-y-3">
-          {studies?.map((study) => {
-            const t = totals(study);
-            const isCurrent = study.id === current?.id;
-            return (
-              <li
-                key={study.id}
-                className={
-                  isCurrent
-                    ? 'rounded-xl border-2 border-admin-200 bg-white'
-                    : 'rounded-xl border border-hairline bg-white opacity-90'
-                }
-              >
-                <div className="flex flex-wrap items-center gap-2 border-b border-hairline p-4">
-                  <span className="text-sm font-medium text-ink">Version {study.version_no}</span>
-                  <Badge tone={STATUS_META[study.status].tone}>
-                    {STATUS_META[study.status].label}
-                  </Badge>
-                  <Badge tone={RECOMMENDATION_META[study.recommendation].tone}>
-                    {RECOMMENDATION_META[study.recommendation].label}
-                  </Badge>
-                  {isCurrent && <Badge tone="teal">Current</Badge>}
-                  <span className="ml-auto text-xs text-ink-muted">
-                    {study.prepared_by ? `${study.prepared_by} · ` : ''}
-                    {formatDate(study.created_at)}
-                  </span>
-                </div>
+        >
+          Margin {formatBdt(t.margin)}
+          {t.pct != null && ` · ${t.pct.toFixed(1)}%`}
+        </span>
+      </div>
 
-                <div className="grid gap-px bg-hairline sm:grid-cols-2 lg:grid-cols-4">
-                  <Figure label="Acquisition" value={study.est_acquisition_cost} />
-                  <Figure label="Development" value={study.est_development_cost} />
-                  <Figure label="Other costs" value={study.est_other_cost} />
-                  <Figure label="Expected revenue" value={study.expected_revenue} />
-                </div>
-
-                <div className="flex flex-wrap items-baseline justify-between gap-3 border-t border-hairline px-4 py-3">
-                  <span className="text-sm text-ink-muted">
-                    Total cost <strong className="text-ink tabular-nums">{formatBdt(t.cost)}</strong>
-                  </span>
-                  <span
-                    className={
-                      t.margin >= 0
-                        ? 'text-sm font-medium text-emerald-700 tabular-nums'
-                        : 'text-sm font-medium text-red-700 tabular-nums'
-                    }
-                  >
-                    Margin {formatBdt(t.margin)}
-                    {t.pct != null && ` · ${t.pct.toFixed(1)}%`}
-                  </span>
-                </div>
-
-                {(study.assumptions || study.risks || study.decision_note) && (
-                  <dl className="grid gap-3 border-t border-hairline px-4 py-3 sm:grid-cols-2">
-                    {study.assumptions && (
-                      <div>
-                        <dt className="text-xs text-ink-muted">Assumptions</dt>
-                        <dd className="whitespace-pre-wrap text-sm text-ink">{study.assumptions}</dd>
-                      </div>
-                    )}
-                    {study.risks && (
-                      <div>
-                        <dt className="text-xs text-ink-muted">Risks</dt>
-                        <dd className="whitespace-pre-wrap text-sm text-ink">{study.risks}</dd>
-                      </div>
-                    )}
-                    {study.decision_note && (
-                      <div className="sm:col-span-2">
-                        <dt className="text-xs text-ink-muted">
-                          Decision {study.decided_at ? `· ${formatDate(study.decided_at)}` : ''}
-                        </dt>
-                        <dd className="whitespace-pre-wrap text-sm text-ink">
-                          {study.decision_note}
-                        </dd>
-                      </div>
-                    )}
-                  </dl>
-                )}
-
-                {/*
-                  Actions only on the current version. Deciding a superseded
-                  study would approve numbers nobody is working from.
-                */}
-                {isCurrent && study.status !== 'approved' && study.status !== 'rejected' && (
-                  <div className="flex flex-wrap gap-2 border-t border-hairline px-4 py-3">
-                    {study.status === 'draft' && (
-                      <>
-                        <Button size="sm" variant="outline" onClick={() => setEditing(study)}>
-                          Edit draft
-                        </Button>
-                        <Button size="sm" onClick={() => setSubmitId(study.id)}>
-                          <Send className="size-4" /> Submit for approval
-                        </Button>
-                      </>
-                    )}
-                    {study.status === 'submitted' && (
-                      <>
-                        <Button size="sm" onClick={() => setDeciding({ row: study, approve: true })}>
-                          <Check className="size-4" /> Approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setDeciding({ row: study, approve: false })}
-                        >
-                          <X className="size-4" /> Reject
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+      {(study.assumptions || study.risks || study.decision_note) && (
+        <dl className="mt-3 grid gap-3 border-t border-hairline pt-3 sm:grid-cols-2">
+          {study.assumptions && (
+            <div>
+              <dt className="text-xs text-ink-muted">Assumptions</dt>
+              <dd className="whitespace-pre-wrap text-sm text-ink">{study.assumptions}</dd>
+            </div>
+          )}
+          {study.risks && (
+            <div>
+              <dt className="text-xs text-ink-muted">Risks</dt>
+              <dd className="whitespace-pre-wrap text-sm text-ink">{study.risks}</dd>
+            </div>
+          )}
+          {study.decision_note && (
+            <div className="sm:col-span-2">
+              <dt className="text-xs text-ink-muted">
+                Decision {study.decided_at ? `· ${formatDate(study.decided_at)}` : ''}
+              </dt>
+              <dd className="whitespace-pre-wrap text-sm text-ink">{study.decision_note}</dd>
+            </div>
+          )}
+        </dl>
       )}
 
-      {editing && (
-        <StudyDialog
-          land={land}
-          study={editing === 'new' ? undefined : editing}
-          previous={editing === 'new' ? current : undefined}
-          onClose={() => setEditing(null)}
-        />
+      {/*
+        Actions only on the current version. Deciding a superseded study would
+        approve numbers nobody is working from.
+      */}
+      {isCurrent && (study.status === 'draft' || study.status === 'submitted') && (
+        <div className="mt-3 flex flex-wrap gap-2 border-t border-hairline pt-3">
+          {study.status === 'draft' && (
+            <>
+              <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+                Edit draft
+              </Button>
+              <Button size="sm" onClick={() => setSubmitting(true)}>
+                <Send className="size-4" /> Submit for approval
+              </Button>
+            </>
+          )}
+          {study.status === 'submitted' && (
+            <>
+              <Button size="sm" onClick={() => setDeciding(true)}>
+                <Check className="size-4" /> Approve
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setDeciding(false)}>
+                <X className="size-4" /> Reject
+              </Button>
+            </>
+          )}
+        </div>
       )}
+
+      {editing && <StudyDialog land={land} study={study} onClose={() => setEditing(false)} />}
 
       <ConfirmDialog
-        open={submitId !== null}
+        open={submitting}
         title="Submit for approval"
         message="The study is locked from editing once submitted. A change after this means a new version."
         confirmLabel="Submit"
         icon={Send}
-        onCancel={() => setSubmitId(null)}
+        onCancel={() => setSubmitting(false)}
         onConfirm={async () => {
-          if (submitId) {
-            await landFeasibilityRepository.update(submitId, {
-              status: 'submitted',
-              submitted_at: new Date().toISOString(),
-            });
-          }
-          setSubmitId(null);
+          await landFeasibilityRepository.update(study.id, {
+            status: 'submitted',
+            submitted_at: new Date().toISOString(),
+          });
+          setSubmitting(false);
         }}
       />
 
-      {deciding && (
+      {deciding !== null && (
         <DecisionDialog
-          study={deciding.row}
-          approve={deciding.approve}
+          study={study}
+          approve={deciding}
           userId={userId}
           onClose={() => setDeciding(null)}
         />
@@ -351,7 +300,7 @@ function DecisionDialog({
   );
 }
 
-function StudyDialog({
+export function StudyDialog({
   land,
   study,
   previous,

@@ -40,6 +40,11 @@ export {
 export { siteVisitRepository, landFeasibilityRepository } from './site-visit.repository';
 export { landPipelineRepository } from './land-pipeline.repository';
 export {
+  landLifecycleRepository,
+  type LifecycleEntry,
+  type LifecycleKind,
+} from './land-lifecycle.repository';
+export {
   ddChecklistRepository,
   landDdRepository,
   isSettled,

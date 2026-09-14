@@ -5,7 +5,7 @@ import type {
   FeasibilityStatus,
   LandStatus,
 } from '@/lib/db/types';
-import { formatBdt } from '@/lib/utils/format';
+import { formatBdt, localDay, todayLocal } from '@/lib/utils/format';
 
 /**
  * Module 1 status pipeline, in the BRD's vocabulary (BRD v2.0 LAND-004):
@@ -113,8 +113,6 @@ export interface AutomaticStep {
   remarks: string;
 }
 
-const dateOnly = (iso: string | null | undefined) => (iso ?? '').slice(0, 10);
-
 /**
  * The next status the work on this land has earned, or `null` when it has
  * earned nothing more.
@@ -159,7 +157,7 @@ export function nextAutomaticStep(
       }
       return {
         to,
-        event_date: dateOnly(approved.decided_at) || new Date().toISOString().slice(0, 10),
+        event_date: localDay(approved.decided_at) || todayLocal(),
         performed_by: null,
         amount: null,
         remarks: `Feasibility study version ${approved.version_no} approved, recommending Proceed.`,

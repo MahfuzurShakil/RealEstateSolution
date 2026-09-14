@@ -18,14 +18,14 @@ import {
 } from '@/lib/repositories';
 import { formatBdt, formatDate, todayLocal } from '@/lib/utils/format';
 
-const STATUS_META: Record<NegotiationRoundStatus, { label: string; tone: BadgeTone }> = {
+export const STATUS_META: Record<NegotiationRoundStatus, { label: string; tone: BadgeTone }> = {
   open: { label: 'On the table', tone: 'amber' },
   accepted: { label: 'Accepted', tone: 'green' },
   rejected: { label: 'Rejected', tone: 'red' },
   superseded: { label: 'Superseded', tone: 'neutral' },
 };
 
-const PARTY_LABEL: Record<NegotiationParty, string> = {
+export const PARTY_LABEL: Record<NegotiationParty, string> = {
   us: 'Our offer',
   owner: 'Owner’s counter',
 };
@@ -260,7 +260,7 @@ function AcceptDialog({
   );
 }
 
-function RoundDialog({
+export function RoundDialog({
   land,
   previous,
   userId,

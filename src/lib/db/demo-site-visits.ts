@@ -49,6 +49,10 @@ export interface DemoFeasibility {
   status: FeasibilityStatus;
   prepared_by?: string;
   decision_note?: string;
+  /** L7 — the Lifecycle feed dates a study by these, so they are real days, not load time */
+  prepared_on: string;
+  submitted_on?: string;
+  decided_on?: string;
 }
 
 export const DEMO_SITE_VISITS: DemoSiteVisit[] = [
@@ -183,6 +187,9 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     status: 'approved',
     prepared_by: 'Rifat Ahmed (Land Team)',
     decision_note: 'Board approved 2026-04-02. Proceed on the 55:45 basis.',
+    prepared_on: '2026-03-24',
+    submitted_on: '2026-03-28',
+    decided_on: '2026-04-02',
   },
   {
     land: 'Uttara Sector 13 residential plot',
@@ -196,7 +203,10 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     recommendation: 'hold',
     status: 'rejected',
     prepared_by: 'Rifat Ahmed (Land Team)',
-    decision_note: 'Margin under 30% at the asking price. Re-study after negotiating.',
+    decision_note: 'Margin under 30% at the asking price. Re-study at a lower land price.',
+    prepared_on: '2026-01-14',
+    submitted_on: '2026-01-15',
+    decided_on: '2026-01-17',
   },
   {
     land: 'Uttara Sector 13 residential plot',
@@ -205,12 +215,15 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     est_development_cost: 2_000_000,
     est_other_cost: 6_500_000,
     expected_revenue: 78_000_000,
-    assumptions: 'Purchase at 36,000,000 after negotiation, 7 floors, BDT 9,800/sqft',
+    assumptions: 'Purchase capped at 36,000,000 — the owner has signalled room below asking. 7 floors, BDT 9,800/sqft',
     risks: 'No gas connection in the block — buyers will ask, and the answer costs something',
     recommendation: 'proceed',
     status: 'approved',
     prepared_by: 'Rifat Ahmed (Land Team)',
-    decision_note: 'Approved at the negotiated land price. Proceed to registration.',
+    decision_note: 'Approved with the land price capped at 36,000,000. Proceed to legal checks and negotiation.',
+    prepared_on: '2026-01-22',
+    submitted_on: '2026-01-24',
+    decided_on: '2026-01-27',
   },
   {
     land: 'Narayanganj Fatullah plot',
@@ -225,6 +238,8 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     recommendation: 'proceed',
     status: 'submitted',
     prepared_by: 'Shafiq Rahman (Land Team)',
+    prepared_on: '2026-05-30',
+    submitted_on: '2026-06-03',
   },
   {
     land: 'Chattogram Khulshi hillside plot',
@@ -240,6 +255,7 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     recommendation: 'hold',
     status: 'draft',
     prepared_by: 'Jashim Uddin (Chattogram office)',
+    prepared_on: '2026-04-20',
   },
   {
     land: 'Keraniganj riverside land',
@@ -255,5 +271,8 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     prepared_by: 'Shafiq Rahman (Land Team)',
     decision_note:
       'Board agreed 2026-06-20 — the development cost is not recoverable at Keraniganj rates. Land rejected.',
+    prepared_on: '2026-06-12',
+    submitted_on: '2026-06-15',
+    decided_on: '2026-06-20',
   },
 ];
