@@ -581,7 +581,14 @@ export default function LandDetailPage() {
         </div>
 
         <aside className="min-w-0 space-y-5 lg:order-2">
-          <LandStatusCard land={land} />
+          <LandStatusCard
+            land={land}
+            onOpen={(area) => {
+              setTab(area === 'payments' && costSheetRelevant && !isJv ? 'acqcost' : area);
+              // the card sits beside the tabs on desktop and under them on a phone
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          />
 
           <LocationCard
             lat={land.gps_lat}

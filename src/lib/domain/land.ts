@@ -5,6 +5,7 @@ import type {
   FeasibilityStatus,
   LandStatus,
 } from '@/lib/db/types';
+import { formatBdt } from '@/lib/utils/format';
 
 /**
  * Module 1 status pipeline, in the BRD's vocabulary (BRD v2.0 LAND-004):
@@ -344,6 +345,232 @@ export function developmentGateBlockReason(
     return `${land.name} has ${readiness.outstanding} development ${readiness.outstanding === 1 ? 'activity' : 'activities'} still unfinished${held}.`;
   }
   return null;
+}
+
+/* ------------------------------------------------------------------ *
+ * L7 — the Pipeline card as a read-out (LAND-UX-REVIEW.md section 4)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Where on the land page a piece of work lives. Named by the work, not by the
+ * tab, so the tab regroup can move things without this list changing.
+ */
+export type LandWorkArea =
+  | 'visits'
+  | 'feasibility'
+  | 'dd'
+  | 'negotiation'
+  | 'development'
+  | 'payments';
+
+export interface ReadoutAction {
+  area: LandWorkArea;
+  label: string;
+}
+
+export interface ReadoutNote {
+  text: string;
+  /** `warn` when a switched-on gate will actually stop the next step */
+  tone: 'info' | 'warn';
+  action?: ReadoutAction;
+}
+
+export interface LandReadout {
+  /** finishes the sentence "Waiting on …"; null when the land waits on nothing */
+  waitingOn: string | null;
+  /** said instead when there is nothing to wait on */
+  settled?: string;
+  action?: ReadoutAction;
+  notes: ReadoutNote[];
+}
+
+export interface LandReadoutInput {
+  status: LandStatus;
+  acquisitionType: AcquisitionType;
+  feasibility: FeasibilityGateInput;
+  /** the round still on the table, if any */
+  openRound?: { round_no: number; party: 'us' | 'owner'; amount: number };
+  roundCount: number;
+  dd?: { mandatoryTotal: number; mandatoryOutstanding: number; mandatoryFailed: number };
+  ddGateOn: boolean;
+  development?: { total: number; outstanding: number; onHold: number };
+  noDevelopmentRequired: boolean;
+  developmentGateOn: boolean;
+  projectNames: string[];
+}
+
+/**
+ * Why this land is where it is, and what unblocks it (review section 4).
+ *
+ * The gates already computed most of this sentence, but only showed it when a
+ * button was disabled — so the card answered "what can I click" and left "what
+ * is this land waiting for" to be worked out from four tabs. Now it is the
+ * card's normal content, and the buttons are the exception.
+ *
+ * Due diligence and development are *notes*, not the headline, because they run
+ * alongside the pipeline rather than being a step of it: a land team opens
+ * negotiation while the lawyer is still searching (review section 7, Q1), and
+ * a plot is filled after it is bought.
+ */
+export function landReadout(input: LandReadoutInput): LandReadout {
+  const notes: ReadoutNote[] = [];
+  const isJv = input.acquisitionType === 'joint_venture';
+
+  const ddNote = (blocksNext: boolean) => {
+    const dd = input.dd;
+    if (!dd) return;
+    if (dd.mandatoryTotal === 0) {
+      notes.push({
+        text: 'Due diligence has not started — no checklist on this land yet.',
+        tone: blocksNext ? 'warn' : 'info',
+        action: { area: 'dd', label: 'Open due diligence' },
+      });
+      return;
+    }
+    if (dd.mandatoryFailed > 0) {
+      notes.push({
+        text: `Due diligence: ${dd.mandatoryFailed} mandatory ${dd.mandatoryFailed === 1 ? 'check has' : 'checks have'} failed.`,
+        tone: 'warn',
+        action: { area: 'dd', label: 'Review findings' },
+      });
+      return;
+    }
+    if (dd.mandatoryOutstanding > 0) {
+      notes.push({
+        text: `Due diligence: ${dd.mandatoryOutstanding} of ${dd.mandatoryTotal} mandatory checks still outstanding${blocksNext ? ' — this blocks registration' : ''}.`,
+        tone: blocksNext ? 'warn' : 'info',
+        action: { area: 'dd', label: 'Open due diligence' },
+      });
+      return;
+    }
+    notes.push({ text: 'Due diligence: every mandatory check is settled.', tone: 'info' });
+  };
+
+  switch (input.status) {
+    case 'sourced':
+      return {
+        waitingOn: 'the first site visit.',
+        action: { area: 'visits', label: 'Record a visit' },
+        notes,
+      };
+
+    case 'under_review': {
+      const { current, latestApproved } = input.feasibility;
+      const open = { area: 'feasibility' as const, label: 'Open feasibility' };
+      if (latestApproved && latestApproved.recommendation !== 'proceed') {
+        return {
+          waitingOn: `a decision to proceed. Version ${latestApproved.version_no} was approved recommending ${latestApproved.recommendation}.`,
+          action: { area: 'feasibility', label: 'Add a new version' },
+          notes,
+        };
+      }
+      if (latestApproved) {
+        // only legacy data reaches this: an approval before L7 moved nothing
+        return {
+          waitingOn: null,
+          settled: `Version ${latestApproved.version_no} is approved to proceed. If this land is already in due diligence, correct its status.`,
+          notes,
+        };
+      }
+      if (!current) {
+        return {
+          waitingOn: 'a feasibility study. None has been recorded yet.',
+          action: { area: 'feasibility', label: 'Add a study' },
+          notes,
+        };
+      }
+      const byStatus: Record<FeasibilityStatus, string> = {
+        draft: `feasibility study version ${current.version_no} to be submitted. It is still a draft.`,
+        submitted: `approval of feasibility study version ${current.version_no}, which is submitted and not yet decided.`,
+        rejected: `a new feasibility study. Version ${current.version_no} was rejected.`,
+        approved: '',
+      };
+      return { waitingOn: byStatus[current.status], action: open, notes };
+    }
+
+    case 'dd_in_progress':
+      ddNote(false);
+      return {
+        waitingOn: 'the first negotiation round.',
+        action: { area: 'negotiation', label: 'Record a round' },
+        notes,
+      };
+
+    case 'negotiation': {
+      ddNote(false);
+      const r = input.openRound;
+      if (r) {
+        const whose = r.party === 'us' ? 'our offer' : 'the owner’s ask';
+        return {
+          waitingOn: `a reply to round ${r.round_no} — ${whose} of ${formatBdt(r.amount)}. Accepting a round makes this land Agreed.`,
+          action: { area: 'negotiation', label: 'Open negotiation' },
+          notes,
+        };
+      }
+      return {
+        waitingOn: `a new round. None of the ${input.roundCount} on record is still open.`,
+        action: { area: 'negotiation', label: 'Record a round' },
+        notes,
+      };
+    }
+
+    case 'agreed':
+      ddNote(input.ddGateOn);
+      return {
+        waitingOn: isJv
+          ? 'the joint venture agreement to be signed. Mark it JV Signed below once it is.'
+          : 'registration. Mark the land Acquired below once the deed is registered.',
+        action: { area: 'payments', label: isJv ? 'Open payment plan' : 'Open cost & payments' },
+        notes,
+      };
+
+    case 'acquired':
+    case 'jv_signed': {
+      const dev = input.development;
+      if (!input.noDevelopmentRequired && dev) {
+        const gate = input.developmentGateOn;
+        if (dev.total === 0) {
+          notes.push({
+            text: `No land-development record${gate ? ' — a project cannot be linked until there is one' : ''}.`,
+            tone: gate ? 'warn' : 'info',
+            action: { area: 'development', label: 'Plan development' },
+          });
+        } else if (dev.outstanding > 0) {
+          const held = dev.onHold > 0 ? ` (${dev.onHold} on hold)` : '';
+          notes.push({
+            text: `Development: ${dev.outstanding} ${dev.outstanding === 1 ? 'activity' : 'activities'} unfinished${held}${gate ? ' — this blocks a project' : ''}.`,
+            tone: gate ? 'warn' : 'info',
+            action: { area: 'development', label: 'Open development' },
+          });
+        } else {
+          notes.push({ text: 'Development: every activity is complete.', tone: 'info' });
+        }
+      }
+      return {
+        waitingOn: 'a project. It is linked from the project, in Projects.',
+        notes,
+      };
+    }
+
+    case 'linked_to_project':
+      return {
+        waitingOn: null,
+        settled: input.projectNames.length
+          ? `Being built on as ${input.projectNames.join(', ')}.`
+          : 'Linked to a project.',
+        notes,
+      };
+
+    case 'rejected':
+      return {
+        waitingOn: null,
+        settled: 'Nothing — this land was dropped. Reopen it if it is being reconsidered.',
+        notes,
+      };
+
+    case 'disposed':
+      return { waitingOn: null, settled: 'Nothing — this land has been sold on.', notes };
+  }
 }
 
 /** Pipeline order used by the detail-page progress trail. */
