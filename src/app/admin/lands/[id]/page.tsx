@@ -28,6 +28,7 @@ import {
   finalAmountLabel,
   landHeadlineAmount,
   landUsesPurchasePricing,
+  type LandWorkArea,
 } from '@/lib/domain/land';
 import { JV_SHARE_BASIS_LABEL } from '@/lib/domain/project';
 import {
@@ -37,25 +38,27 @@ import {
   landNegotiationRepository,
   ownerSettlementRepository,
   landDevelopmentRepository,
-  siteVisitRepository,
   type LandWithRelations,
 } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
-type Tab =
-  | 'overview'
-  | 'owners'
-  | 'visits'
-  | 'feasibility'
-  | 'dd'
-  | 'negotiation'
-  | 'acqcost'
-  | 'development'
-  | 'jv'
-  | 'payments'
-  | 'documents'
-  | 'timeline';
+/**
+ * Six tabs, grouped by what a person is doing rather than by which batch built
+ * them (LAND-UX-REVIEW.md section 5). Eleven tabs was a filing cabinet: each one
+ * justified on its own, and together a screen nobody could find anything on.
+ */
+type Tab = 'overview' | 'lifecycle' | 'legal' | 'commercials' | 'development' | 'documents';
+
+/** Where each piece of work lives now — the Pipeline card links by work, not by tab. */
+const TAB_FOR_AREA: Record<LandWorkArea, Tab> = {
+  visits: 'lifecycle',
+  feasibility: 'lifecycle',
+  dd: 'legal',
+  negotiation: 'commercials',
+  payments: 'commercials',
+  development: 'development',
+};
 
 /**
  * What the owners add up to, against what the land says (BRD LAND-002, BR-002).
@@ -151,7 +154,6 @@ export default function LandDetailPage() {
   const land = useLiveQuery(() => landRepository.getWithRelations(id), [id]);
   /** what has actually been paid against this land, from the cost ledger (L-1) */
   const landCosts = useLiveQuery(() => expenseRepository.landPaymentSummary(id), [id]);
-  const visitCount = useLiveQuery(() => siteVisitRepository.countForLand(id), [id]);
   // the tab badge counts what BLOCKS, not what is done — see the panel
   const ddProgress = useLiveQuery(() => landDdRepository.progressForLand(id), [id]);
   // BRD LAND-002 / ACQ-003 — what each owner is owed and what has gone to them
@@ -187,35 +189,18 @@ export default function LandDetailPage() {
   );
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
-    { key: 'owners', label: `Owners (${land.owners.length})` },
-    { key: 'visits', label: visitCount ? `Site Visits (${visitCount})` : 'Site Visits' },
-    { key: 'feasibility', label: 'Feasibility' },
+    { key: 'lifecycle', label: 'Lifecycle' },
+    // the badge counts what BLOCKS, not what is done
     {
-      key: 'dd',
-      label: ddProgress?.mandatoryOutstanding
-        ? `Due Diligence (${ddProgress.mandatoryOutstanding})`
-        : 'Due Diligence',
+      key: 'legal',
+      label: ddProgress?.mandatoryOutstanding ? `Legal (${ddProgress.mandatoryOutstanding})` : 'Legal',
     },
-    { key: 'negotiation', label: roundCount ? `Negotiation (${roundCount})` : 'Negotiation' },
-    /*
-     * The cost sheet is only offered once there is a deal to cost. A land
-     * nobody has agreed on has no acquisition to build up, and an empty sheet
-     * of nine zeroes on every sourced plot is a tab that teaches people to
-     * ignore tabs.
-     */
-    ...(costSheetRelevant ? [{ key: 'acqcost' as Tab, label: 'Acquisition Cost' }] : []),
+    { key: 'commercials', label: roundCount ? `Commercials (${roundCount})` : 'Commercials' },
     {
       key: 'development',
-      label: devReadiness?.outstanding
-        ? `Development (${devReadiness.outstanding})`
-        : 'Development',
+      label: devReadiness?.outstanding ? `Development (${devReadiness.outstanding})` : 'Development',
     },
-    ...(isJv ? [{ key: 'jv' as Tab, label: 'Joint Venture' }] : []),
-    // shown for a JV too: the tab explains why there is no plan, which is more
-    // use than the tab simply not being there
-    { key: 'payments', label: 'Payment plan' },
     { key: 'documents', label: 'Documents' },
-    { key: 'timeline', label: 'Timeline' },
   ];
 
   return (
@@ -296,7 +281,152 @@ export default function LandDetailPage() {
               </Card>
 
               <Card>
-                <CardHeader title="Commercials" />
+                <CardHeader
+                  title="Landowners"
+                  action={
+                    <Link href={`/admin/lands/${land.id}/edit`}>
+                      <Button variant="outline" size="sm">
+                        <Pencil className="size-4" /> Manage
+                      </Button>
+                    </Link>
+                  }
+                />
+                {land.owners.length === 0 ? (
+                  <p className="text-sm text-ink-muted">No landowner linked to this land yet.</p>
+                ) : (
+                  <ul className="space-y-3">
+                    {land.owners.map((row) => (
+                      <li
+                        key={row.id}
+                        className="flex items-center gap-3 rounded-xl border border-hairline p-3"
+                      >
+                        <span className="grid size-10 shrink-0 place-items-center rounded-full bg-admin-50 text-admin-600">
+                          <User className="size-5" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-ink">
+                            {row.owner?.name ?? 'Unknown owner'}
+                          </p>
+                          <p className="text-xs text-ink-muted">
+                            {[row.owner?.phone, row.owner?.nid && `NID ${row.owner.nid}`]
+                              .filter(Boolean)
+                              .join(' · ') || 'No contact details'}
+                          </p>
+                        </div>
+                        {row.is_primary_contact && <Badge tone="teal">Primary</Badge>}
+                        {/* BRD LAND-002 — share, area, price, paid and due per owner */}
+                        <div className="shrink-0 text-right">
+                          <p className="text-sm font-medium text-ink tabular-nums">
+                            {row.ownership_share_pct}%
+                            {row.ownership_area != null && (
+                              <span className="text-ink-muted">
+                                {' · '}
+                                {row.ownership_area} {LAND_SIZE_UNIT_LABEL[land.land_size_unit]}
+                              </span>
+                            )}
+                          </p>
+                          {(() => {
+                            const s = settlement?.owners.find((o) => o.mapping.id === row.id);
+                            if (!s || s.agreed <= 0) {
+                              return (
+                                <p className="text-xs text-ink-muted">No amount agreed</p>
+                              );
+                            }
+                            return (
+                              <p className="text-xs tabular-nums">
+                                <span className="text-ink-muted">{formatBdt(s.agreed)}</span>
+                                {' · '}
+                                <span
+                                  className={
+                                    s.outstanding > 0 ? 'text-amber-700' : 'text-emerald-700'
+                                  }
+                                >
+                                  {s.outstanding > 0
+                                    ? `${formatBdt(s.outstanding)} due`
+                                    : 'settled in full'}
+                                </span>
+                              </p>
+                            );
+                          })()}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {/*
+                  BR-002: ownership percentages must be valid and reconciled.
+                  The form already refuses to save shares that do not total 100,
+                  so that line is a confirmation. Area and money are not
+                  enforced — an owner's area is what the deed says and the
+                  agreed amounts are settled one at a time — so a mismatch is
+                  reported rather than blocked, which is the point: it has to be
+                  visible before anybody is paid.
+                */}
+                {land.owners.length > 0 && <OwnerReconciliation land={land} />}
+              </Card>
+
+              {(land.nearby_facilities || land.remarks) && (
+                <Card>
+                  <CardHeader title="Notes" />
+                  {land.nearby_facilities && (
+                    <div className="mb-4">
+                      <p className="mb-1 text-sm font-medium text-ink">Nearby facilities</p>
+                      <p className="whitespace-pre-wrap text-sm text-ink-muted">
+                        {land.nearby_facilities}
+                      </p>
+                    </div>
+                  )}
+                  {land.remarks && (
+                    <div>
+                      <p className="mb-1 text-sm font-medium text-ink">Remarks</p>
+                      <p className="whitespace-pre-wrap text-sm text-ink-muted">{land.remarks}</p>
+                    </div>
+                  )}
+                </Card>
+              )}
+            </div>
+          )}
+
+          {/*
+            Lifecycle — what has happened to this land. Part 4 of L7 merges
+            these into one date-ordered feed; until then they sit together here
+            rather than on three tabs.
+          */}
+          {tab === 'lifecycle' && (
+            <div className="space-y-5">
+              <Card>
+                <CardHeader title="Pipeline history" />
+                <LandTimeline landId={land.id} />
+              </Card>
+              <Card>
+                <CardHeader title="Site Visits" />
+                <SiteVisitPanel land={land} />
+              </Card>
+              <Card>
+                <CardHeader title="Feasibility" />
+                <FeasibilityPanel land={land} />
+              </Card>
+            </div>
+          )}
+
+          {tab === 'legal' && (
+            <Card>
+              <CardHeader title="Legal Due Diligence" />
+              <DueDiligencePanel land={land} />
+            </Card>
+          )}
+
+          {/*
+            Commercials — the money side of the deal, in the order a deal is
+            made: what it costs and what has gone out, how the price was
+            reached, what the JV settled, what the acquisition costs in full,
+            and what is owed to whom and when.
+          */}
+          {tab === 'commercials' && (
+            <div className="space-y-5">
+              <Card>
+                <CardHeader title="Price & payments" />
                 {/* asking → negotiated → agreed is a purchase; a JV has only
                     the cash side, and showing the other two would report a
                     price nobody agreed to pay */}
@@ -345,7 +475,11 @@ export default function LandDetailPage() {
                       fees do not reduce what the owner is still owed.{' '}
                       <button
                         type="button"
-                        onClick={() => setTab('payments')}
+                        onClick={() =>
+                          document
+                            .getElementById('land-payment-plan')
+                            ?.scrollIntoView({ behavior: 'smooth' })
+                        }
                         className="font-medium text-admin-700 hover:underline"
                       >
                         See the agreed plan
@@ -373,202 +507,67 @@ export default function LandDetailPage() {
                 </p>
               </Card>
 
-              {(land.nearby_facilities || land.remarks) && (
+              <Card>
+                <CardHeader title="Negotiation" />
+                <NegotiationPanel land={land} />
+              </Card>
+
+              {isJv && (
                 <Card>
-                  <CardHeader title="Notes" />
-                  {land.nearby_facilities && (
-                    <div className="mb-4">
-                      <p className="mb-1 text-sm font-medium text-ink">Nearby facilities</p>
-                      <p className="whitespace-pre-wrap text-sm text-ink-muted">
-                        {land.nearby_facilities}
-                      </p>
-                    </div>
-                  )}
-                  {land.remarks && (
-                    <div>
-                      <p className="mb-1 text-sm font-medium text-ink">Remarks</p>
-                      <p className="whitespace-pre-wrap text-sm text-ink-muted">{land.remarks}</p>
-                    </div>
+                  <CardHeader title="Joint Venture Details" />
+                  {!land.jv ? (
+                    <p className="text-sm text-ink-muted">
+                      No JV terms recorded yet — add them from the edit form.
+                    </p>
+                  ) : (
+                    <>
+                      <Row label="Developer share" value={`${land.jv.developer_share_pct}%`} />
+                      <Row label="Landowner share" value={`${land.jv.landowner_share_pct}%`} />
+                      <Row
+                        label="Share basis"
+                        value={JV_SHARE_BASIS_LABEL[land.jv.jv_share_basis ?? 'flat_count']}
+                      />
+                      <Row label="Agreement date" value={formatDate(land.jv.agreement_date)} />
+                      <Row
+                        label="Power of attorney"
+                        value={
+                          land.jv.power_of_attorney ? (
+                            <Badge tone="green">Signed</Badge>
+                          ) : (
+                            <Badge tone="amber">Not signed</Badge>
+                          )
+                        }
+                      />
+                      <Row label="POA reference" value={land.jv.poa_reference} />
+                    </>
                   )}
                 </Card>
               )}
-            </div>
-          )}
-
-          {tab === 'owners' && (
-            <Card>
-              <CardHeader
-                title="Landowners"
-                action={
-                  <Link href={`/admin/lands/${land.id}/edit`}>
-                    <Button variant="outline" size="sm">
-                      <Pencil className="size-4" /> Manage
-                    </Button>
-                  </Link>
-                }
-              />
-              {land.owners.length === 0 ? (
-                <p className="text-sm text-ink-muted">No landowner linked to this land yet.</p>
-              ) : (
-                <ul className="space-y-3">
-                  {land.owners.map((row) => (
-                    <li
-                      key={row.id}
-                      className="flex items-center gap-3 rounded-xl border border-hairline p-3"
-                    >
-                      <span className="grid size-10 shrink-0 place-items-center rounded-full bg-admin-50 text-admin-600">
-                        <User className="size-5" />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-ink">
-                          {row.owner?.name ?? 'Unknown owner'}
-                        </p>
-                        <p className="text-xs text-ink-muted">
-                          {[row.owner?.phone, row.owner?.nid && `NID ${row.owner.nid}`]
-                            .filter(Boolean)
-                            .join(' · ') || 'No contact details'}
-                        </p>
-                      </div>
-                      {row.is_primary_contact && <Badge tone="teal">Primary</Badge>}
-                      {/* BRD LAND-002 — share, area, price, paid and due per owner */}
-                      <div className="shrink-0 text-right">
-                        <p className="text-sm font-medium text-ink tabular-nums">
-                          {row.ownership_share_pct}%
-                          {row.ownership_area != null && (
-                            <span className="text-ink-muted">
-                              {' · '}
-                              {row.ownership_area} {LAND_SIZE_UNIT_LABEL[land.land_size_unit]}
-                            </span>
-                          )}
-                        </p>
-                        {(() => {
-                          const s = settlement?.owners.find((o) => o.mapping.id === row.id);
-                          if (!s || s.agreed <= 0) {
-                            return (
-                              <p className="text-xs text-ink-muted">No amount agreed</p>
-                            );
-                          }
-                          return (
-                            <p className="text-xs tabular-nums">
-                              <span className="text-ink-muted">{formatBdt(s.agreed)}</span>
-                              {' · '}
-                              <span
-                                className={
-                                  s.outstanding > 0 ? 'text-amber-700' : 'text-emerald-700'
-                                }
-                              >
-                                {s.outstanding > 0
-                                  ? `${formatBdt(s.outstanding)} due`
-                                  : 'settled in full'}
-                              </span>
-                            </p>
-                          );
-                        })()}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
 
               {/*
-                BR-002: ownership percentages must be valid and reconciled.
-                The form already refuses to save shares that do not total 100,
-                so that line is a confirmation. Area and money are not
-                enforced — an owner's area is what the deed says and the
-                agreed amounts are settled one at a time — so a mismatch is
-                reported rather than blocked, which is the point: it has to be
-                visible before anybody is paid.
+                The cost sheet is only offered once there is a deal to cost. An
+                empty sheet of nine zeroes on every sourced plot teaches people
+                to ignore it.
               */}
-              {land.owners.length > 0 && <OwnerReconciliation land={land} />}
-            </Card>
-          )}
-
-          {tab === 'jv' && (
-            <Card>
-              <CardHeader title="Joint Venture Details" />
-              {!land.jv ? (
-                <p className="text-sm text-ink-muted">
-                  No JV terms recorded yet — add them from the edit form.
-                </p>
-              ) : (
-                <>
-                  <Row label="Developer share" value={`${land.jv.developer_share_pct}%`} />
-                  <Row label="Landowner share" value={`${land.jv.landowner_share_pct}%`} />
-                  <Row
-                    label="Share basis"
-                    value={JV_SHARE_BASIS_LABEL[land.jv.jv_share_basis ?? 'flat_count']}
-                  />
-                  <Row label="Agreement date" value={formatDate(land.jv.agreement_date)} />
-                  <Row
-                    label="Power of attorney"
-                    value={
-                      land.jv.power_of_attorney ? (
-                        <Badge tone="green">Signed</Badge>
-                      ) : (
-                        <Badge tone="amber">Not signed</Badge>
-                      )
-                    }
-                  />
-                  <Row label="POA reference" value={land.jv.poa_reference} />
-                </>
+              {costSheetRelevant && (
+                <Card>
+                  <CardHeader title="Acquisition Cost" />
+                  <AcquisitionCostPanel land={land} />
+                </Card>
               )}
-            </Card>
-          )}
 
-          {tab === 'visits' && (
-            <Card>
-              <CardHeader title="Site Visits" />
-              <SiteVisitPanel land={land} />
-            </Card>
-          )}
-
-          {tab === 'feasibility' && (
-            <Card>
-              <CardHeader title="Feasibility" />
-              <FeasibilityPanel land={land} />
-            </Card>
-          )}
-
-          {tab === 'dd' && (
-            <Card>
-              <CardHeader title="Legal Due Diligence" />
-              <DueDiligencePanel land={land} />
-            </Card>
-          )}
-
-          {tab === 'negotiation' && (
-            <Card>
-              <CardHeader title="Negotiation" />
-              <NegotiationPanel land={land} />
-            </Card>
-          )}
-
-          {tab === 'acqcost' && (
-            <Card>
-              <CardHeader title="Acquisition Cost" />
-              <AcquisitionCostPanel land={land} />
-            </Card>
+              <div id="land-payment-plan" className="scroll-mt-4">
+                <LandPaymentPlanPanel land={land} />
+              </div>
+              {/* BRD ACQ-003 — renders nothing at all on a single-owner plot */}
+              <OwnerSettlementPanel land={land} />
+            </div>
           )}
 
           {tab === 'development' && (
             <Card>
               <CardHeader title="Land Development" />
               <DevelopmentPanel land={land} />
-            </Card>
-          )}
-
-          {tab === 'payments' && (
-            <>
-              <LandPaymentPlanPanel land={land} />
-              {/* BRD ACQ-003 — renders nothing at all on a single-owner plot */}
-              <OwnerSettlementPanel land={land} />
-            </>
-          )}
-
-          {tab === 'timeline' && (
-            <Card>
-              <CardHeader title="Pipeline history" />
-              <LandTimeline landId={land.id} />
             </Card>
           )}
 
@@ -584,7 +583,7 @@ export default function LandDetailPage() {
           <LandStatusCard
             land={land}
             onOpen={(area) => {
-              setTab(area === 'payments' && costSheetRelevant && !isJv ? 'acqcost' : area);
+              setTab(TAB_FOR_AREA[area]);
               // the card sits beside the tabs on desktop and under them on a phone
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
