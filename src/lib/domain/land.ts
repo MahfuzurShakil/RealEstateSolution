@@ -1,5 +1,10 @@
 import type { BadgeTone } from '@/components/ui/Badge';
-import type { AcquisitionType, LandStatus } from '@/lib/db/types';
+import type {
+  AcquisitionType,
+  FeasibilityRecommendation,
+  FeasibilityStatus,
+  LandStatus,
+} from '@/lib/db/types';
 
 /**
  * Module 1 status pipeline, in the BRD's vocabulary (BRD v2.0 LAND-004):
@@ -51,6 +56,70 @@ export function allowedNextStatuses(
     linked_to_project: [],
   };
   return map[current];
+}
+
+/* ------------------------------------------------------------------ *
+ * Pipeline gates (BRD-ALIGNMENT-PLAN.md section 5.3)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Gate G1 (BRD SITE-003) — no due diligence until the numbers are approved.
+ *
+ * The lawyers are the expensive part of sourcing a plot, and the point of a
+ * feasibility study is to decide whether to spend that money. Sending land to
+ * due diligence with no approved study is how a firm pays for a title search
+ * on a plot it was never going to buy.
+ *
+ * Returns the reason it is shut, or `null` when it is open. A sentence rather
+ * than a boolean because the dialog has to say *what is missing* — "blocked"
+ * on its own sends the user hunting.
+ */
+export interface FeasibilityGateInput {
+  /** the highest version, whatever its status — what the land is working from */
+  current?: { version_no: number; status: FeasibilityStatus } | undefined;
+  /** the newest approved version, which is the only one that opens the gate */
+  latestApproved?:
+    | { version_no: number; recommendation: FeasibilityRecommendation }
+    | undefined;
+}
+
+export function feasibilityGateBlockReason({
+  current,
+  latestApproved,
+}: FeasibilityGateInput): string | null {
+  /*
+   * An approved study that says hold or reject is a decision, not a
+   * formality — approving the paperwork is not approving the deal, and the
+   * gate would be pointless if it let a "reject" through. Checked first
+   * because it is the case where a study *exists and was approved*, which is
+   * the most confusing one to be blocked by.
+   */
+  if (latestApproved && latestApproved.recommendation !== 'proceed') {
+    return `Version ${latestApproved.version_no} was approved but recommends "${latestApproved.recommendation}", not proceeding. Record a new version recommending Proceed if the decision has changed.`;
+  }
+  if (latestApproved) return null;
+
+  /*
+   * Nothing approved. The message names what the land *does* have, because
+   * "no approved study" sends someone to create a second one when the first
+   * is sitting in front of an approver.
+   */
+  if (!current) {
+    return 'No feasibility study has been recorded for this land. Add one on the Feasibility tab and get it approved before due diligence starts.';
+  }
+  if (current.status === 'submitted') {
+    return `Version ${current.version_no} has been submitted and is waiting for approval. Approve it on the Feasibility tab to move this land on.`;
+  }
+  if (current.status === 'draft') {
+    return `Version ${current.version_no} is still a draft. Submit it and have it approved before this land goes to due diligence.`;
+  }
+  // rejected
+  return `Version ${current.version_no} was rejected. Record a new version before this land goes to due diligence.`;
+}
+
+/** Which transition G1 guards. Only this one — see the plan's section 5.3. */
+export function transitionNeedsFeasibility(from: LandStatus, to: LandStatus): boolean {
+  return from === 'under_review' && to === 'dd_in_progress';
 }
 
 /** Pipeline order used by the detail-page progress trail. */

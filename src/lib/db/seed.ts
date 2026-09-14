@@ -21,6 +21,7 @@ import {
   REFUND_DOCUMENT_TYPES,
   SUPPLIER_VOUCHER_DOCUMENT_TYPES,
   SITE_PROGRESS_DOCUMENT_TYPES,
+  SITE_VISIT_DOCUMENT_TYPES,
   UNIT_TYPE_OPTIONS,
 } from './types';
 
@@ -42,6 +43,7 @@ async function runSeed(): Promise<void> {
   // Master data is topped up per category, not seeded once: an install from
   // Module 1 already has rows, and Module 2's option-lists still need adding.
   await ensureOptions('document_type', 'land', [...LAND_DOCUMENT_TYPES]);
+  await ensureOptions('document_type', 'site_visit', [...SITE_VISIT_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'project', [...PROJECT_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'lead', [...LEAD_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'customer', [...CUSTOMER_DOCUMENT_TYPES]);

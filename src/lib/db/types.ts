@@ -22,6 +22,7 @@ export interface BaseEntity {
 
 export type EntityType =
   | 'land'
+  | 'site_visit'
   | 'project'
   | 'unit'
   | 'customer'
@@ -133,6 +134,16 @@ export interface CompanySettings extends BaseEntity {
   tax_id?: string | null;
   default_currency: string;
   notes?: string | null;
+  /**
+   * Gate G1 (BRD SITE-003): block the move from Under Review to Due Diligence
+   * until an approved feasibility recommends proceeding.
+   *
+   * Configurable because the BRD says configurable, and off unless switched on
+   * because a land bought before this system existed has no feasibility study
+   * and still has to be recordable — turning a gate on for data that predates
+   * it strands lands mid-pipeline on the day it ships.
+   */
+  require_feasibility_approval?: boolean | null;
 }
 
 /* ------------------------------------------------------------------ *
@@ -308,6 +319,108 @@ export interface LandStatusEvent extends BaseEntity {
   reference_no?: string | null;
   remarks?: string | null;
 }
+
+/* ------------------------------------------------------------------ *
+ * Module 1 / batch L2 — Site Visit & Feasibility (BRD section 8)
+ * ------------------------------------------------------------------ */
+
+/**
+ * One visit to a plot (BRD SITE-001).
+ *
+ * Many per land on purpose. A plot worth buying is visited more than once —
+ * the first look, the one with the engineer, the one after the rains — and
+ * what changes between them is the whole value of keeping them. Until now the
+ * pipeline recorded exactly one "site visit done" with a free-text remark, so
+ * the second visit had nowhere to go.
+ *
+ * Photos and video are not fields here: they are `documents` rows with
+ * `entity_type = 'site_visit'`, like every other file in the system.
+ */
+export interface SiteVisit extends BaseEntity {
+  land_id: UUID;
+  visit_date: ISODate;
+  /** who led the visit */
+  visited_by?: string | null;
+  /** everyone else who went — engineer, lawyer, the owner's son */
+  participants?: string | null;
+  /** how the team actually got there on the day */
+  access_note?: string | null;
+  /** measured, unlike the land-level `road_access` which is a description */
+  road_width_ft?: number | null;
+  /*
+   * BRD says "utilities" as one item. Captured as four flags plus a note
+   * rather than one text blob: whether a plot has gas is the sort of thing
+   * that decides a project, and a sentence cannot be filtered on later.
+   * `null` means nobody checked, which is not the same as "no".
+   */
+  has_electricity?: boolean | null;
+  has_gas?: boolean | null;
+  has_water?: boolean | null;
+  has_sewerage?: boolean | null;
+  utilities_note?: string | null;
+  drainage?: string | null;
+  soil_condition?: string | null;
+  /** lowland needing fill is the single biggest hidden cost on a BD plot */
+  is_lowland?: boolean | null;
+  filling_required_ft?: number | null;
+  surroundings?: string | null;
+  /** what neighbours say land is going for — not a valuation */
+  price_observation?: string | null;
+  gps_lat?: number | null;
+  gps_lng?: number | null;
+  remarks?: string | null;
+}
+
+/**
+ * What the numbers have to say before the land goes to the lawyers
+ * (BRD SITE-002).
+ */
+export const FEASIBILITY_RECOMMENDATIONS = ['proceed', 'hold', 'reject'] as const;
+export type FeasibilityRecommendation = (typeof FEASIBILITY_RECOMMENDATIONS)[number];
+
+export const FEASIBILITY_STATUSES = ['draft', 'submitted', 'approved', 'rejected'] as const;
+export type FeasibilityStatus = (typeof FEASIBILITY_STATUSES)[number];
+
+/**
+ * A feasibility study for a land (BRD SITE-002, SITE-003).
+ *
+ * Versioned rather than edited in place: the numbers change when the site
+ * visit turns up two feet of fill, and the version that the board approved has
+ * to stay readable afterwards. `version_no` counts up per land and the highest
+ * one is the current study.
+ *
+ * An approved study carrying `recommendation = 'proceed'` is what opens gate
+ * G1 (SITE-003) — see `feasibilityOpensGate` in `domain/land.ts`.
+ */
+export interface LandFeasibility extends BaseEntity {
+  land_id: UUID;
+  version_no: number;
+  est_acquisition_cost: number;
+  est_development_cost: number;
+  /** registration, legal, marketing — anything not in the two above */
+  est_other_cost: number;
+  expected_revenue: number;
+  assumptions?: string | null;
+  risks?: string | null;
+  recommendation: FeasibilityRecommendation;
+  status: FeasibilityStatus;
+  prepared_by?: string | null;
+  submitted_at?: ISODateTime | null;
+  /** who approved or rejected it, and what they said */
+  decided_by?: UUID | null;
+  decided_at?: ISODateTime | null;
+  decision_note?: string | null;
+  remarks?: string | null;
+}
+
+/** Document types for entity_type = 'site_visit' (BRD SITE-001) */
+export const SITE_VISIT_DOCUMENT_TYPES = [
+  'site_photo',
+  'site_video',
+  'sketch_map',
+  'survey_note',
+  'other',
+] as const;
 
 /**
  * BRD LAND-001 — how a plot is classified in the land record.

@@ -54,6 +54,15 @@ function SettingsForm({
     logo_url: settings?.logo_url ?? '',
     notes: settings?.notes ?? '',
   });
+  /*
+   * Gate G1 (BRD SITE-003). Kept out of `form` because that state is all
+   * strings and this is a boolean — threading a checkbox through a `set(key,
+   * value: string)` helper is how a "false" ends up stored as the string
+   * "false" and reads as true ever after.
+   */
+  const [requireFeasibility, setRequireFeasibility] = useState(
+    settings?.require_feasibility_approval ?? false,
+  );
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -83,6 +92,7 @@ function SettingsForm({
         default_currency: form.default_currency.trim() || 'BDT',
         logo_url: form.logo_url.trim() || null,
         notes: form.notes.trim() || null,
+        require_feasibility_approval: requireFeasibility,
       });
       setSaved(true);
     } finally {
@@ -202,6 +212,42 @@ function SettingsForm({
               />
             </Field>
           </div>
+        </Card>
+
+        {/*
+          Pipeline gates (BRD-ALIGNMENT-PLAN.md section 5.3). One switch today;
+          the due-diligence and land-development gates join it when their
+          batches land. Listed as a card of its own rather than tucked into the
+          company profile, because these change what the pipeline *does*.
+        */}
+        <Card>
+          <CardHeader title="Pipeline gates" />
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-hairline p-3 transition-colors hover:bg-admin-50/40">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-4 accent-admin-600"
+              checked={requireFeasibility}
+              onChange={(e) => {
+                setRequireFeasibility(e.target.checked);
+                setSaved(false);
+              }}
+            />
+            <span>
+              <span className="block text-sm font-medium text-ink">
+                Require an approved feasibility study before due diligence
+              </span>
+              <span className="mt-0.5 block text-xs text-ink-muted">
+                A land cannot move from Under Review to Due Diligence until its latest feasibility
+                study is approved and recommends proceeding. The lawyers are the expensive part of
+                sourcing a plot, and this is the switch that stops the firm paying for a title
+                search on land it was never going to buy.
+              </span>
+              <span className="mt-1.5 block text-xs text-ink-muted">
+                Off by default — land recorded before this system existed has no study, and
+                switching the gate on strands it mid-pipeline.
+              </span>
+            </span>
+          </label>
         </Card>
 
         <div className="flex flex-wrap items-center gap-3">

@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, GitBranch } from 'lucide-react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { Check, GitBranch, Lock } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -17,11 +18,19 @@ import {
   amountUpdatesFinalAgreed,
   isJvTermsField,
   isTerminalStatus,
+  feasibilityGateBlockReason,
   statusStepAttachment,
   statusStepConfig,
+  transitionNeedsFeasibility,
   type StatusStepField,
 } from '@/lib/domain/land';
-import { documentRepository, landJvRepository, landRepository } from '@/lib/repositories';
+import {
+  companySettingsRepository,
+  documentRepository,
+  landFeasibilityRepository,
+  landJvRepository,
+  landRepository,
+} from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { todayLocal } from '@/lib/utils/format';
 
@@ -43,6 +52,27 @@ export function LandStatusCard({ land }: { land: Land }) {
   const nextStatuses = allowedNextStatuses(land.status, land.acquisition_type);
   const currentIndex = LAND_PIPELINE_STEPS.indexOf(land.status);
   const config = target ? statusStepConfig(target, land.acquisition_type) : null;
+
+  /*
+   * Gate G1 (BRD SITE-003). Both reads are live, so approving a study on the
+   * Feasibility tab unlocks the button here without a reload — the two tabs
+   * are on the same page and a user who has just approved something expects
+   * the pipeline to know.
+   */
+  const gateOn = useLiveQuery(
+    async () => (await companySettingsRepository.get())?.require_feasibility_approval ?? false,
+    [],
+  );
+  const feasibility = useLiveQuery(async () => {
+    const rows = await landFeasibilityRepository.listForLand(land.id);
+    return { current: rows[0], latestApproved: rows.find((r) => r.status === 'approved') };
+  }, [land.id]);
+
+  /** The reason a given move is blocked, or null when it is allowed. */
+  function blockedReason(to: LandStatus): string | null {
+    if (!gateOn || !transitionNeedsFeasibility(land.status, to)) return null;
+    return feasibilityGateBlockReason(feasibility ?? {});
+  }
 
   async function openDialog(status: LandStatus) {
     setTarget(status);
@@ -261,17 +291,34 @@ export function LandStatusCard({ land }: { land: Land }) {
             <>
               <p className="mb-2 text-xs font-medium text-ink-muted">Move to</p>
               <div className="flex flex-wrap gap-2">
-                {nextStatuses.map((s) => (
-                  <Button
-                    key={s}
-                    size="sm"
-                    variant={s === 'rejected' ? 'outline' : 'primary'}
-                    onClick={() => openDialog(s)}
-                  >
-                    {LAND_STATUS_META[s].label}
-                  </Button>
-                ))}
+                {nextStatuses.map((s) => {
+                  const blocked = blockedReason(s);
+                  return (
+                    <Button
+                      key={s}
+                      size="sm"
+                      variant={s === 'rejected' ? 'outline' : 'primary'}
+                      disabled={Boolean(blocked)}
+                      title={blocked ?? undefined}
+                      onClick={() => openDialog(s)}
+                    >
+                      {LAND_STATUS_META[s].label}
+                    </Button>
+                  );
+                })}
               </div>
+
+              {/*
+                Gate G1. The disabled button alone reads as a bug — the reason
+                is what turns it into a rule, and it names the tab to go fix it
+                on. Rendered under the row so it is read without hovering.
+              */}
+              {nextStatuses.map((s) => blockedReason(s)).find(Boolean) && (
+                <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
+                  <Lock className="mt-0.5 size-3.5 shrink-0" />
+                  <span>{nextStatuses.map((s) => blockedReason(s)).find(Boolean)}</span>
+                </p>
+              )}
             </>
           )}
         </div>

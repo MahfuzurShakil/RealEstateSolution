@@ -14,6 +14,7 @@ import type {
   LandJvDetails,
   LandOwnerMapping,
   LandProjectMapping,
+  LandFeasibility,
   LandStatusEvent,
   Landowner,
   Lead,
@@ -42,6 +43,7 @@ import type {
   Refund,
   UserProjectAssignment,
   SiteProgressUpdate,
+  SiteVisit,
   TowerWorkItem,
   Project,
   ProjectBudgetLine,
@@ -72,6 +74,9 @@ export class AppDatabase extends Dexie {
   land_owner_mapping!: EntityTable<LandOwnerMapping, 'id'>;
   land_jv_details!: EntityTable<LandJvDetails, 'id'>;
   land_status_history!: EntityTable<LandStatusEvent, 'id'>;
+  // batch L2 — BRD section 8
+  site_visits!: EntityTable<SiteVisit, 'id'>;
+  land_feasibility!: EntityTable<LandFeasibility, 'id'>;
 
   // Module 2 — Project Creation
   projects!: EntityTable<Project, 'id'>;
@@ -419,6 +424,24 @@ export class AppDatabase extends Dexie {
           });
         }
       }
+    });
+
+    /*
+     * v20 — batch L2: site visits and feasibility (BRD section 8).
+     *
+     * Two new tables, nothing altered, so no existing index set is at risk of
+     * being dropped by an incomplete stores() spec (the v15 trap).
+     *
+     * `site_visits` is indexed on `land_id` and on `[land_id+visit_date]`: the
+     * tab reads one land's visits newest-first, which is the compound index
+     * exactly. `land_feasibility` carries `&[land_id+version_no]` — a land
+     * numbers its studies 1, 2, 3 and two rows sharing a number would make
+     * "the current study" ambiguous, which is the one thing gate G1 must never
+     * be. `status` is indexed because the gate asks for the approved one.
+     */
+    this.version(20).stores({
+      site_visits: 'id, land_id, visit_date, [land_id+visit_date]',
+      land_feasibility: 'id, land_id, status, version_no, &[land_id+version_no]',
     });
   }
 }

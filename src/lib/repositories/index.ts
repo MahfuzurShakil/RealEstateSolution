@@ -37,6 +37,7 @@ export {
   type LandFilters,
   type LandWithRelations,
 } from './land.repository';
+export { siteVisitRepository, landFeasibilityRepository } from './site-visit.repository';
 export {
   projectRepository,
   projectStatusEventRepository,

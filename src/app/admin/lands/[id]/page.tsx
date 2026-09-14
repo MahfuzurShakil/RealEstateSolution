@@ -7,6 +7,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { ArrowLeft, Handshake, Pencil, Trash2, User } from 'lucide-react';
 import { LandTimeline } from '@/components/admin/lands/LandTimeline';
 import { LandPaymentPlanPanel } from '@/components/admin/lands/LandPaymentPlanPanel';
+import { SiteVisitPanel } from '@/components/admin/lands/SiteVisitPanel';
+import { FeasibilityPanel } from '@/components/admin/lands/FeasibilityPanel';
 import { LocationCard } from '@/components/ui/map/LocationCard';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { LandStatusCard } from '@/components/admin/lands/LandStatusCard';
@@ -26,12 +28,21 @@ import { JV_SHARE_BASIS_LABEL } from '@/lib/domain/project';
 import {
   expenseRepository,
   landRepository,
+  siteVisitRepository,
   type LandWithRelations,
 } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
-type Tab = 'overview' | 'owners' | 'jv' | 'payments' | 'documents' | 'timeline';
+type Tab =
+  | 'overview'
+  | 'owners'
+  | 'visits'
+  | 'feasibility'
+  | 'jv'
+  | 'payments'
+  | 'documents'
+  | 'timeline';
 
 /**
  * What the owners add up to, against what the land says (BRD LAND-002, BR-002).
@@ -127,6 +138,7 @@ export default function LandDetailPage() {
   const land = useLiveQuery(() => landRepository.getWithRelations(id), [id]);
   /** what has actually been paid against this land, from the cost ledger (L-1) */
   const landCosts = useLiveQuery(() => expenseRepository.landPaymentSummary(id), [id]);
+  const visitCount = useLiveQuery(() => siteVisitRepository.countForLand(id), [id]);
 
   if (land === undefined) return <p className="text-sm text-ink-muted">Loading…</p>;
   if (!land) {
@@ -148,6 +160,8 @@ export default function LandDetailPage() {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { key: 'owners', label: `Owners (${land.owners.length})` },
+    { key: 'visits', label: visitCount ? `Site Visits (${visitCount})` : 'Site Visits' },
+    { key: 'feasibility', label: 'Feasibility' },
     ...(isJv ? [{ key: 'jv' as Tab, label: 'Joint Venture' }] : []),
     // shown for a JV too: the tab explains why there is no plan, which is more
     // use than the tab simply not being there
@@ -432,6 +446,20 @@ export default function LandDetailPage() {
                   <Row label="POA reference" value={land.jv.poa_reference} />
                 </>
               )}
+            </Card>
+          )}
+
+          {tab === 'visits' && (
+            <Card>
+              <CardHeader title="Site Visits" />
+              <SiteVisitPanel land={land} />
+            </Card>
+          )}
+
+          {tab === 'feasibility' && (
+            <Card>
+              <CardHeader title="Feasibility" />
+              <FeasibilityPanel land={land} />
             </Card>
           )}
 

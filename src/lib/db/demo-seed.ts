@@ -18,6 +18,8 @@ import {
   landOwnerMappingRepository,
   landRepository,
   landStatusEventRepository,
+  siteVisitRepository,
+  landFeasibilityRepository,
   landownerRepository,
   materialRequestRepository,
   siteProgressUpdateRepository,
@@ -45,6 +47,7 @@ import { PROCUREMENT_BUDGET_HEAD } from './types';
 import { getDb } from './database';
 import { backfillMaterialItems } from './backfill-material-items';
 import { DEMO_LANDS, DEMO_OWNERS } from './demo-data';
+import { DEMO_FEASIBILITY, DEMO_SITE_VISITS } from './demo-site-visits';
 import { DEMO_BOOKINGS, DEMO_CUSTOMERS, DEMO_DISCOUNT_RULES } from './demo-bookings';
 import { DEMO_LEADS, DEMO_USER_JOINED_DAYS_AGO, DEMO_USERS } from './demo-leads';
 import { DEMO_PROJECTS } from './demo-projects';
@@ -108,6 +111,103 @@ async function makeSamplePng(caption: string): Promise<Blob | null> {
   ctx.fillText('Sample document — demo data', 400, 300);
 
   return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), 'image/png'));
+}
+
+/**
+ * Batch L2 — site visits and feasibility studies (BRD section 8).
+ *
+ * A visit gets one sample photo so the "Photos & files" panel on it is not
+ * empty either, and an approved study is decided by the seeding user so the
+ * decision line reads like a real one.
+ */
+async function seedDemoSiteVisits(
+  landIds: Map<string, string>,
+  createdBy: string | null,
+): Promise<void> {
+  for (const demo of DEMO_SITE_VISITS) {
+    const landId = landIds.get(demo.land);
+    if (!landId) continue;
+
+    const visit = await siteVisitRepository.create(
+      {
+        land_id: landId,
+        visit_date: demo.visit_date,
+        visited_by: demo.visited_by ?? null,
+        participants: demo.participants ?? null,
+        access_note: demo.access_note ?? null,
+        road_width_ft: demo.road_width_ft ?? null,
+        has_electricity: demo.has_electricity ?? null,
+        has_gas: demo.has_gas ?? null,
+        has_water: demo.has_water ?? null,
+        has_sewerage: demo.has_sewerage ?? null,
+        utilities_note: demo.utilities_note ?? null,
+        drainage: demo.drainage ?? null,
+        soil_condition: demo.soil_condition ?? null,
+        is_lowland: demo.is_lowland ?? false,
+        filling_required_ft: demo.filling_required_ft ?? null,
+        surroundings: demo.surroundings ?? null,
+        price_observation: demo.price_observation ?? null,
+        gps_lat: null,
+        gps_lng: null,
+        remarks: demo.remarks ?? null,
+      },
+      createdBy,
+    );
+    await getDb().site_visits.update(visit.id, {
+      created_at: `${demo.visit_date}T11:00:00.000Z`,
+    });
+
+    const png = await makeSamplePng(`${demo.land} — ${demo.visit_date}`);
+    if (png) {
+      const fileName = `site-photo-${demo.visit_date}.png`;
+      await documentRepository.create(
+        {
+          entity_type: 'site_visit',
+          entity_id: visit.id,
+          document_type: 'site_photo',
+          custom_type_name: null,
+          file_url: fileName,
+          file_data: png,
+          file_name: fileName,
+          file_size: png.size,
+          mime_type: 'image/png',
+          is_public: false,
+          uploaded_by: createdBy,
+          uploaded_at: `${demo.visit_date}T11:30:00.000Z`,
+          notes: 'Taken on the visit',
+        },
+        createdBy,
+      );
+    }
+  }
+
+  for (const demo of DEMO_FEASIBILITY) {
+    const landId = landIds.get(demo.land);
+    if (!landId) continue;
+
+    const decided = demo.status === 'approved' || demo.status === 'rejected';
+    await landFeasibilityRepository.create(
+      {
+        land_id: landId,
+        version_no: demo.version_no,
+        est_acquisition_cost: demo.est_acquisition_cost,
+        est_development_cost: demo.est_development_cost,
+        est_other_cost: demo.est_other_cost,
+        expected_revenue: demo.expected_revenue,
+        assumptions: demo.assumptions ?? null,
+        risks: demo.risks ?? null,
+        recommendation: demo.recommendation,
+        status: demo.status,
+        prepared_by: demo.prepared_by ?? null,
+        submitted_at: demo.status === 'draft' ? null : new Date().toISOString(),
+        decided_by: decided ? createdBy : null,
+        decided_at: decided ? new Date().toISOString() : null,
+        decision_note: demo.decision_note ?? null,
+        remarks: null,
+      },
+      createdBy,
+    );
+  }
 }
 
 export async function seedDemoData(createdBy: string | null = null): Promise<void> {
@@ -259,6 +359,8 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
     await db.lands.update(land.id, { created_at: demo.created_at, updated_at: demo.created_at });
     landIds.set(demo.name, land.id);
   }
+
+  await seedDemoSiteVisits(landIds, createdBy);
 
   const { projectIds, unitIds } = await seedDemoProjects(landIds, ownerIds, createdBy);
   const { userIds, leadIdByPhone } = await seedDemoLeads(projectIds, unitIds, createdBy);

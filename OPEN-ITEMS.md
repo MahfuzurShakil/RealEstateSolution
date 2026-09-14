@@ -1067,6 +1067,9 @@ they change no schema.
 | `documents` | `status_event_id` | Module 1 — evidence attached at a pipeline step needs to say which step it arrived at; nullable and not indexed, so no schema version change |
 | `lands` | `location_upazila`, `road_access`, `land_classification`, `source` | Module 1 / batch L1 — BRD LAND-001. Not indexed, so no schema version change. The last two are `lookup_values` categories (`land_classification`, `land_source`), seeded in `seed.ts` |
 | `land_owner_mapping` | `ownership_area`, `agreed_amount` | Module 1 / batch L1 — BRD LAND-002 wants paid/due per owner. Area is stored, not derived from the share: heirs divide a khatian by the deed, not by arithmetic. The per-owner settlement schedule that consumes `agreed_amount` is batch L5 |
+| `site_visits`, `land_feasibility` | whole tables (Dexie **v20**) | Module 1 / batch L2 — BRD SITE-001, SITE-002. Many visits per land; feasibility is versioned rather than edited in place, and `&[land_id+version_no]` keeps "the current study" unambiguous because gate G1 reads it |
+| `company_settings` | `require_feasibility_approval` | Module 1 / batch L2 — gate G1 (BRD SITE-003), off unless switched on. Not indexed, so no schema version change. The DD and land-development gates (G2/G3) join it in batches L3 and L6 |
+| `documents` | new `entity_type` value `site_visit` | Module 1 / batch L2 — a visit's photos belong to the visit, not to the land, so the first visit's photos stay with the first visit |
 
 **Removed from the scope document**
 
