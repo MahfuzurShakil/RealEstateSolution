@@ -24,6 +24,7 @@ export type EntityType =
   | 'land'
   | 'site_visit'
   | 'land_dd_item'
+  | 'land_development_activity'
   | 'project'
   | 'unit'
   | 'customer'
@@ -160,6 +161,14 @@ export interface CompanySettings extends BaseEntity {
    * none.
    */
   require_development_ready?: boolean | null;
+  /**
+   * BRD DEV-004 — a plot that needs no development at all.
+   *
+   * Set per land, not globally: a ready plot in Uttara needs no filling and a
+   * paddy field in Keraniganj needs nine feet of it, and gate G3 has to tell
+   * the two apart. Lives on , not here — this line is only a pointer
+   * for anyone reading the gate switches above.
+   */
 }
 
 /* ------------------------------------------------------------------ *
@@ -236,6 +245,15 @@ export interface Land extends BaseEntity {
    * KPI in BRD section 32. From `lookup_values` (category='land_source').
    */
   source?: string | null;
+  /**
+   * BRD DEV-004 — this plot needs no development work at all.
+   *
+   * Per land, not a global setting: a ready plot in Uttara needs no filling
+   * and a paddy field in Keraniganj needs nine feet of it, and gate G3 has to
+   * tell the two apart. Set here, the gate lets the land straight through and
+   * the Development tab says why it is empty.
+   */
+  no_development_required?: boolean | null;
   mouza?: string | null;
   dag_number?: string | null;
   khatian_number?: string | null;
@@ -428,6 +446,80 @@ export interface LandFeasibility extends BaseEntity {
   decision_note?: string | null;
   remarks?: string | null;
 }
+
+/* ------------------------------------------------------------------ *
+ * Module 1 / batch L6 — Land Development (BRD section 11)
+ * ------------------------------------------------------------------ */
+
+/**
+ * What gets done to raw land before anything is built on it (BRD DEV-001).
+ *
+ * A `lookup_values` category rather than an ENUM: the list differs by plot —
+ * a hillside needs cutting and retaining walls, a paddy field needs four feet
+ * of fill — and no code branches on which one it is.
+ */
+export const LAND_DEVELOPMENT_ACTIVITIES = [
+  'Site clearing',
+  'Earth filling',
+  'Soil improvement',
+  'Boundary wall',
+  'Internal roads',
+  'Drainage',
+  'Utility connections',
+  'Gate & guard post',
+  'Security arrangement',
+  'Landscaping',
+  'Retaining wall',
+  'Other',
+] as const;
+
+export const DEVELOPMENT_ACTIVITY_STATUSES = [
+  'planned',
+  'in_progress',
+  'completed',
+  'on_hold',
+  'cancelled',
+] as const;
+export type DevelopmentActivityStatus = (typeof DEVELOPMENT_ACTIVITY_STATUSES)[number];
+
+/** One piece of development work on a plot (BRD DEV-001, DEV-002). */
+export interface LandDevelopmentActivity extends BaseEntity {
+  land_id: UUID;
+  /** from `lookup_values` (category='land_development_activity') */
+  activity_type: string;
+  /** a `suppliers.id` with `type = 'contractor'`; null while unawarded */
+  contractor_id?: UUID | null;
+  /** what the quantity is counted in — cft of fill, rft of wall, sft of road */
+  unit?: string | null;
+  planned_qty?: number | null;
+  /** BRD DEV-002 — the budget. Committed and actual arrive with cost centers. */
+  budget_amount: number;
+  start_date?: ISODate | null;
+  target_date?: ISODate | null;
+  status: DevelopmentActivityStatus;
+  notes?: string | null;
+}
+
+/** One report against an activity (BRD DEV-003). */
+export interface LandDevelopmentProgress extends BaseEntity {
+  activity_id: UUID;
+  progress_date: ISODate;
+  qty_done?: number | null;
+  pct_complete: number;
+  /** money actually spent so far, as reported from site */
+  amount_incurred?: number | null;
+  recorded_by?: UUID | null;
+  remarks?: string | null;
+}
+
+/** Document types for entity_type = 'land_development_activity' (BRD DEV-003) */
+export const DEVELOPMENT_DOCUMENT_TYPES = [
+  'progress_photo',
+  'measurement_sheet',
+  'contractor_bill',
+  'completion_certificate',
+  'other',
+] as const;
 
 /* ------------------------------------------------------------------ *
  * Module 1 / batch L4 — Negotiation & Acquisition (BRD section 10)

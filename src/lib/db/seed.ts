@@ -29,6 +29,8 @@ import {
   SITE_VISIT_DOCUMENT_TYPES,
   DD_CHECKLIST_SEED,
   DD_EVIDENCE_DOCUMENT_TYPES,
+  DEVELOPMENT_DOCUMENT_TYPES,
+  LAND_DEVELOPMENT_ACTIVITIES,
   UNIT_TYPE_OPTIONS,
 } from './types';
 
@@ -52,6 +54,9 @@ async function runSeed(): Promise<void> {
   await ensureOptions('document_type', 'land', [...LAND_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'site_visit', [...SITE_VISIT_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'land_dd_item', [...DD_EVIDENCE_DOCUMENT_TYPES]);
+  await ensureOptions('document_type', 'land_development_activity', [
+    ...DEVELOPMENT_DOCUMENT_TYPES,
+  ]);
   await ensureOptions('document_type', 'project', [...PROJECT_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'lead', [...LEAD_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'customer', [...CUSTOMER_DOCUMENT_TYPES]);
@@ -66,6 +71,8 @@ async function runSeed(): Promise<void> {
   // BRD LAND-001. Both vary by district, so neither is an ENUM in code.
   await ensureOptions('land_classification', null, [...LAND_CLASSIFICATION_OPTIONS]);
   await ensureOptions('land_source', null, [...LAND_SOURCE_OPTIONS]);
+  // BRD DEV-001 — the list differs by plot, so it is Master Data
+  await ensureOptions('land_development_activity', null, [...LAND_DEVELOPMENT_ACTIVITIES]);
   await ensureOptions('unit_type', null, [...UNIT_TYPE_OPTIONS]);
   await ensureOptions('facing', null, [...FACING_OPTIONS]);
   await ensureOptions('amenity', null, [...AMENITY_OPTIONS]);

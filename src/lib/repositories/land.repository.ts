@@ -20,6 +20,7 @@ import {
   landNegotiationRepository,
 } from './negotiation.repository';
 import { ownerSettlementRepository } from './owner-settlement.repository';
+import { landDevelopmentRepository } from './land-development.repository';
 
 export interface LandFilters {
   search?: string;
@@ -144,6 +145,7 @@ class LandRepository extends BaseRepository<Land> {
     await landNegotiationRepository.removeForLand(id);
     await landAcquisitionCostRepository.removeForLand(id);
     await ownerSettlementRepository.removeForLand(id);
+    await landDevelopmentRepository.removeForLand(id);
     await documentRepository.removeForEntity('land', id);
     await this.remove(id);
   }

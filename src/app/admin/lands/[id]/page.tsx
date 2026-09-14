@@ -13,6 +13,7 @@ import { DueDiligencePanel } from '@/components/admin/lands/DueDiligencePanel';
 import { NegotiationPanel } from '@/components/admin/lands/NegotiationPanel';
 import { AcquisitionCostPanel } from '@/components/admin/lands/AcquisitionCostPanel';
 import { OwnerSettlementPanel } from '@/components/admin/lands/OwnerSettlementPanel';
+import { DevelopmentPanel } from '@/components/admin/lands/DevelopmentPanel';
 import { LocationCard } from '@/components/ui/map/LocationCard';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { LandStatusCard } from '@/components/admin/lands/LandStatusCard';
@@ -35,6 +36,7 @@ import {
   landDdRepository,
   landNegotiationRepository,
   ownerSettlementRepository,
+  landDevelopmentRepository,
   siteVisitRepository,
   type LandWithRelations,
 } from '@/lib/repositories';
@@ -49,6 +51,7 @@ type Tab =
   | 'dd'
   | 'negotiation'
   | 'acqcost'
+  | 'development'
   | 'jv'
   | 'payments'
   | 'documents'
@@ -153,6 +156,10 @@ export default function LandDetailPage() {
   const ddProgress = useLiveQuery(() => landDdRepository.progressForLand(id), [id]);
   // BRD LAND-002 / ACQ-003 — what each owner is owed and what has gone to them
   const settlement = useLiveQuery(() => ownerSettlementRepository.positionForLand(id), [id]);
+  const devReadiness = useLiveQuery(
+    () => landDevelopmentRepository.readinessForLand(id),
+    [id],
+  );
   const roundCount = useLiveQuery(
     async () => (await landNegotiationRepository.listForLand(id)).length,
     [id],
@@ -197,6 +204,12 @@ export default function LandDetailPage() {
      * ignore tabs.
      */
     ...(costSheetRelevant ? [{ key: 'acqcost' as Tab, label: 'Acquisition Cost' }] : []),
+    {
+      key: 'development',
+      label: devReadiness?.outstanding
+        ? `Development (${devReadiness.outstanding})`
+        : 'Development',
+    },
     ...(isJv ? [{ key: 'jv' as Tab, label: 'Joint Venture' }] : []),
     // shown for a JV too: the tab explains why there is no plan, which is more
     // use than the tab simply not being there
@@ -534,6 +547,13 @@ export default function LandDetailPage() {
             <Card>
               <CardHeader title="Acquisition Cost" />
               <AcquisitionCostPanel land={land} />
+            </Card>
+          )}
+
+          {tab === 'development' && (
+            <Card>
+              <CardHeader title="Land Development" />
+              <DevelopmentPanel land={land} />
             </Card>
           )}
 

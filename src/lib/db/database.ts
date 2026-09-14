@@ -16,6 +16,8 @@ import type {
   LandProjectMapping,
   DdChecklistItem,
   LandAcquisitionCost,
+  LandDevelopmentActivity,
+  LandDevelopmentProgress,
   LandNegotiation,
   LandDdItem,
   LandFeasibility,
@@ -87,6 +89,9 @@ export class AppDatabase extends Dexie {
   // batch L4 — BRD section 10
   land_negotiations!: EntityTable<LandNegotiation, 'id'>;
   land_acquisition_costs!: EntityTable<LandAcquisitionCost, 'id'>;
+  // batch L6 — BRD section 11
+  land_development_activities!: EntityTable<LandDevelopmentActivity, 'id'>;
+  land_development_progress!: EntityTable<LandDevelopmentProgress, 'id'>;
 
   // Module 2 — Project Creation
   projects!: EntityTable<Project, 'id'>;
@@ -485,6 +490,23 @@ export class AppDatabase extends Dexie {
     this.version(22).stores({
       land_negotiations: 'id, land_id, owner_id, status, offer_date, [land_id+round_no]',
       land_acquisition_costs: 'id, land_id, cost_head, &[land_id+cost_head]',
+    });
+
+    /*
+     * v23 — batch L6: land development (BRD section 11).
+     *
+     * `[land_id+status]` is what gate G3 reads: whether anything on this plot
+     * is still unfinished. Without it the gate would scan every activity on
+     * every plot to answer a question about one.
+     *
+     * `land_development_progress` is indexed on `activity_id` alone — a
+     * progress log is read whole, newest first, and never queried by date
+     * across activities.
+     */
+    this.version(23).stores({
+      land_development_activities:
+        'id, land_id, activity_type, contractor_id, status, [land_id+status]',
+      land_development_progress: 'id, activity_id, progress_date',
     });
   }
 }

@@ -160,6 +160,40 @@ export function transitionNeedsDueDiligence(from: LandStatus, to: LandStatus): b
   return from === 'agreed' && (to === 'acquired' || to === 'jv_signed');
 }
 
+/**
+ * Gate G3 (BRD DEV-004) — no project on land that is still being worked on.
+ *
+ * A project planned over a plot that is still being filled has a schedule
+ * nobody can meet: piling cannot start on ground that is four feet short, and
+ * the dates on the plan are wrong from the day they are drawn.
+ *
+ * Enforced where the link is actually made — `ProjectForm` — rather than on the
+ * land page, because `linked_to_project` is set by Module 2 and never chosen by
+ * hand.
+ */
+export function developmentGateBlockReason(
+  land: { name: string; no_development_required?: boolean | null } | undefined,
+  readiness: { total: number; outstanding: number; onHold: number } | undefined,
+): string | null {
+  if (!land || !readiness) return null;
+  // a ready plot is ready; the flag is the whole answer
+  if (land.no_development_required) return null;
+
+  /*
+   * No activities at all is not the same as no work needed. A plot nobody has
+   * assessed is the case this gate exists for, and letting it through because
+   * the list happens to be empty would make the gate a formality.
+   */
+  if (readiness.total === 0) {
+    return `${land.name} has no land-development record. Add the activities it needs on the Development tab, or mark the plot as needing no development.`;
+  }
+  if (readiness.outstanding > 0) {
+    const held = readiness.onHold > 0 ? ` (${readiness.onHold} on hold)` : '';
+    return `${land.name} has ${readiness.outstanding} development ${readiness.outstanding === 1 ? 'activity' : 'activities'} still unfinished${held}.`;
+  }
+  return null;
+}
+
 /** Pipeline order used by the detail-page progress trail. */
 export const LAND_PIPELINE_STEPS: LandStatus[] = [
   'sourced',

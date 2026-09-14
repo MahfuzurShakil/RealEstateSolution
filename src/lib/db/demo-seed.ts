@@ -24,6 +24,8 @@ import {
   landDdRepository,
   landNegotiationRepository,
   landAcquisitionCostRepository,
+  landDevelopmentRepository,
+  landDevelopmentProgressRepository,
   landownerRepository,
   materialRequestRepository,
   siteProgressUpdateRepository,
@@ -54,6 +56,7 @@ import { DEMO_LANDS, DEMO_OWNERS } from './demo-data';
 import { DEMO_FEASIBILITY, DEMO_SITE_VISITS } from './demo-site-visits';
 import { DEMO_DD_FINDINGS } from './demo-dd';
 import { DEMO_ACQUISITION_COSTS, DEMO_NEGOTIATION_ROUNDS } from './demo-negotiation';
+import { DEMO_DEVELOPMENT, DEMO_NO_DEVELOPMENT_LANDS } from './demo-development';
 import { DEMO_BOOKINGS, DEMO_CUSTOMERS, DEMO_DISCOUNT_RULES } from './demo-bookings';
 import { DEMO_LEADS, DEMO_USER_JOINED_DAYS_AGO, DEMO_USERS } from './demo-leads';
 import { DEMO_PROJECTS } from './demo-projects';
@@ -369,6 +372,76 @@ async function seedDemoOwnerSettlement(
   );
 }
 
+/**
+ * Batch L6 — land development activities and their progress (BRD section 11).
+ *
+ * Seeded after the suppliers exist, because an activity names a contractor from
+ * the vendor master. Progress reports go through `record`, which is what moves
+ * an activity from planned to in progress and closes it at 100% — replaying
+ * them through the real path is how the demo proves the rule rather than
+ * asserting it.
+ */
+async function seedDemoDevelopment(
+  landIds: Map<string, string>,
+  createdBy: string | null,
+): Promise<void> {
+  for (const name of DEMO_NO_DEVELOPMENT_LANDS) {
+    const landId = landIds.get(name);
+    if (landId) await landRepository.update(landId, { no_development_required: true });
+  }
+
+  const suppliers = await supplierRepository.getAll();
+
+  for (const demo of DEMO_DEVELOPMENT) {
+    const landId = landIds.get(demo.land);
+    if (!landId) continue;
+
+    const contractor = demo.contractor
+      ? suppliers.find((s) => s.name === demo.contractor)
+      : undefined;
+
+    const activity = await landDevelopmentRepository.create(
+      {
+        land_id: landId,
+        activity_type: demo.activity_type,
+        contractor_id: contractor?.id ?? null,
+        unit: demo.unit ?? null,
+        planned_qty: demo.planned_qty ?? null,
+        budget_amount: demo.budget_amount,
+        start_date: demo.start_date ?? null,
+        target_date: demo.target_date ?? null,
+        // the reports below drive the status; this is where it starts
+        status: demo.progress?.length ? 'planned' : demo.status,
+        notes: demo.notes ?? null,
+      },
+      createdBy,
+    );
+
+    for (const p of demo.progress ?? []) {
+      await landDevelopmentProgressRepository.record(
+        {
+          activity_id: activity.id,
+          progress_date: p.progress_date,
+          qty_done: p.qty_done ?? null,
+          pct_complete: p.pct_complete,
+          amount_incurred: p.amount_incurred ?? null,
+          recorded_by: createdBy,
+          remarks: p.remarks ?? null,
+        },
+        createdBy,
+      );
+    }
+
+    /*
+     * `on_hold` and `cancelled` are decisions, not progress, so `record` can
+     * never produce them — they are set after the reports have run.
+     */
+    if (demo.status === 'on_hold' || demo.status === 'cancelled') {
+      await landDevelopmentRepository.update(activity.id, { status: demo.status });
+    }
+  }
+}
+
 export async function seedDemoData(createdBy: string | null = null): Promise<void> {
   // owners first — lands reference them
   const ownerIds = new Map<string, string>();
@@ -543,6 +616,8 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
    * it, and this demo would otherwise load with an empty catalogue.
    */
   await backfillMaterialItems(getDb());
+  // after procurement: a development activity names a contractor from the vendor master
+  await seedDemoDevelopment(landIds, createdBy);
   await seedDemoFinance(projectIds, landIds, userIds, bookingIds, createdBy);
   await seedDemoUserAccess(projectIds, userIds, createdBy);
 

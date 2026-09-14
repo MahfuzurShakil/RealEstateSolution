@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { Info, Map as MapIcon } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -13,9 +14,15 @@ import {
   type Project,
   type ProjectType,
 } from '@/lib/db/types';
-import { ACQUISITION_TYPE_LABEL, LAND_SIZE_UNIT_LABEL } from '@/lib/domain/land';
+import {
+  ACQUISITION_TYPE_LABEL,
+  LAND_SIZE_UNIT_LABEL,
+  developmentGateBlockReason,
+} from '@/lib/domain/land';
 import { PROJECT_TYPE_LABEL } from '@/lib/domain/project';
 import {
+  companySettingsRepository,
+  landDevelopmentRepository,
   landProjectMappingRepository,
   landRepository,
   lookupRepository,
@@ -130,6 +137,36 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
     setLandIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
   }
 
+  /*
+   * Gate G3 (BRD DEV-004) — a project planned over a plot that is still being
+   * filled has a schedule nobody can meet: piling cannot start on ground that
+   * is four feet short, and the dates are wrong from the day they are drawn.
+   *
+   * Live, so ticking a plot shows the problem immediately rather than at save.
+   * Lands already linked to this project are exempt: the link exists, and
+   * re-validating history would make an existing project unsaveable over work
+   * that was done before the gate was switched on.
+   */
+  const gateOn = useLiveQuery(
+    async () => (await companySettingsRepository.get())?.require_development_ready ?? false,
+    [],
+  );
+  const alreadyLinked = useMemo(
+    () => new Set(project?.lands.map((l) => l.id) ?? []),
+    [project],
+  );
+  const blockedLands = useLiveQuery(async () => {
+    const reasons: string[] = [];
+    for (const id of landIds) {
+      if (alreadyLinked.has(id)) continue;
+      const land = await landRepository.getById(id);
+      const readiness = await landDevelopmentRepository.readinessForLand(id);
+      const reason = developmentGateBlockReason(land ?? undefined, readiness);
+      if (reason) reasons.push(reason);
+    }
+    return reasons;
+  }, [landIds, alreadyLinked]) ?? [];
+
   function toggleAmenity(value: string) {
     setAmenities((list) =>
       list.includes(value) ? list.filter((a) => a !== value) : [...list, value],
@@ -148,6 +185,17 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
       next.expected_completion_date = 'Completion cannot be before the start date';
     }
     if (landIds.length === 0) next.lands = 'Link at least one land to this project';
+    /*
+     * Gate G3 (BRD DEV-004). Checked here because this is where the link is
+     * actually made — `linked_to_project` is set by this form and never chosen
+     * on the land page.
+     *
+     * Every blocked plot is named rather than just the first, so somebody
+     * fixing this does not discover the second one after saving the first.
+     */
+    else if (gateOn && blockedLands.length > 0) {
+      next.lands = blockedLands.join(' ');
+    }
     if (form.is_featured && !form.is_public) {
       next.is_featured = 'A featured project must be public first';
     }
