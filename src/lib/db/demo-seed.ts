@@ -20,6 +20,8 @@ import {
   landStatusEventRepository,
   siteVisitRepository,
   landFeasibilityRepository,
+  ddChecklistRepository,
+  landDdRepository,
   landownerRepository,
   materialRequestRepository,
   siteProgressUpdateRepository,
@@ -48,6 +50,7 @@ import { getDb } from './database';
 import { backfillMaterialItems } from './backfill-material-items';
 import { DEMO_LANDS, DEMO_OWNERS } from './demo-data';
 import { DEMO_FEASIBILITY, DEMO_SITE_VISITS } from './demo-site-visits';
+import { DEMO_DD_FINDINGS } from './demo-dd';
 import { DEMO_BOOKINGS, DEMO_CUSTOMERS, DEMO_DISCOUNT_RULES } from './demo-bookings';
 import { DEMO_LEADS, DEMO_USER_JOINED_DAYS_AGO, DEMO_USERS } from './demo-leads';
 import { DEMO_PROJECTS } from './demo-projects';
@@ -210,6 +213,51 @@ async function seedDemoSiteVisits(
   }
 }
 
+/**
+ * Batch L3 — due-diligence checklists and findings (BRD section 9).
+ *
+ * Runs `ensureForLand` on every land, not just the ones with findings, so the
+ * demo shows what a land at the start of due diligence looks like: a full
+ * checklist, everything pending, and a gate that will not let it through.
+ * Findings are then applied on top for the three lands that have got further.
+ */
+async function seedDemoDueDiligence(
+  landIds: Map<string, string>,
+  createdBy: string | null,
+): Promise<void> {
+  for (const landId of landIds.values()) {
+    await landDdRepository.ensureForLand(landId, createdBy);
+  }
+
+  const master = await ddChecklistRepository.allItems();
+  const byCode = new Map(master.map((m) => [m.code, m.id]));
+  const now = new Date().toISOString();
+
+  for (const demo of DEMO_DD_FINDINGS) {
+    const landId = landIds.get(demo.land);
+    const itemId = byCode.get(demo.code);
+    if (!landId || !itemId) continue;
+
+    const rows = await landDdRepository.listForLand(landId);
+    const row = rows.find((r) => r.item_id === itemId);
+    if (!row) continue;
+
+    const settled =
+      demo.status === 'passed' || demo.status === 'waived' || demo.status === 'not_applicable';
+    await landDdRepository.update(row.id, {
+      status: demo.status,
+      finding: demo.finding ?? null,
+      submitted_by: createdBy,
+      submitted_at: now,
+      reviewed_by: settled ? createdBy : null,
+      reviewed_at: settled ? now : null,
+      waiver_reason: demo.waiver_reason ?? null,
+      waived_by: demo.status === 'waived' ? createdBy : null,
+      waived_at: demo.status === 'waived' ? now : null,
+    });
+  }
+}
+
 export async function seedDemoData(createdBy: string | null = null): Promise<void> {
   // owners first — lands reference them
   const ownerIds = new Map<string, string>();
@@ -361,6 +409,7 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
   }
 
   await seedDemoSiteVisits(landIds, createdBy);
+  await seedDemoDueDiligence(landIds, createdBy);
 
   const { projectIds, unitIds } = await seedDemoProjects(landIds, ownerIds, createdBy);
   const { userIds, leadIdByPhone } = await seedDemoLeads(projectIds, unitIds, createdBy);

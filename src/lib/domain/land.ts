@@ -122,6 +122,44 @@ export function transitionNeedsFeasibility(from: LandStatus, to: LandStatus): bo
   return from === 'under_review' && to === 'dd_in_progress';
 }
 
+/**
+ * Gate G2 (BRD DD-004, BR-001) — no acquisition on unfinished due diligence.
+ *
+ * The BRD's hardest rule: "Acquisition cannot complete until mandatory due
+ * diligence passes or an authorized waiver exists." Registration is the point
+ * of no return on a land purchase, and an unchecked encumbrance found
+ * afterwards is not a problem anybody can fix.
+ *
+ * Only *mandatory* items block. An optional item left pending is a note, not a
+ * defect — which is exactly why the master checklist makes `is_mandatory` a
+ * decision rather than a default.
+ */
+export function ddGateBlockReason(progress: {
+  mandatoryTotal: number;
+  mandatoryOutstanding: number;
+  mandatoryFailed: number;
+} | undefined): string | null {
+  if (!progress) return null;
+
+  if (progress.mandatoryTotal === 0) {
+    return 'No due-diligence checklist has been started for this land. Open the Due Diligence tab before completing the acquisition.';
+  }
+  if (progress.mandatoryFailed > 0) {
+    const n = progress.mandatoryFailed;
+    return `${n} mandatory due-diligence ${n === 1 ? 'check has' : 'checks have'} failed. Resolve ${n === 1 ? 'it' : 'them'} or record an authorised waiver before completing the acquisition.`;
+  }
+  if (progress.mandatoryOutstanding > 0) {
+    const n = progress.mandatoryOutstanding;
+    return `${n} mandatory due-diligence ${n === 1 ? 'check is' : 'checks are'} still outstanding. Every mandatory check must pass, be waived, or be marked not applicable first.`;
+  }
+  return null;
+}
+
+/** Which transitions G2 guards: the two that close a land purchase. */
+export function transitionNeedsDueDiligence(from: LandStatus, to: LandStatus): boolean {
+  return from === 'agreed' && (to === 'acquired' || to === 'jv_signed');
+}
+
 /** Pipeline order used by the detail-page progress trail. */
 export const LAND_PIPELINE_STEPS: LandStatus[] = [
   'sourced',

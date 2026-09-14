@@ -14,6 +14,8 @@ import type {
   LandJvDetails,
   LandOwnerMapping,
   LandProjectMapping,
+  DdChecklistItem,
+  LandDdItem,
   LandFeasibility,
   LandStatusEvent,
   Landowner,
@@ -77,6 +79,9 @@ export class AppDatabase extends Dexie {
   // batch L2 — BRD section 8
   site_visits!: EntityTable<SiteVisit, 'id'>;
   land_feasibility!: EntityTable<LandFeasibility, 'id'>;
+  // batch L3 — BRD section 9
+  dd_checklist_items!: EntityTable<DdChecklistItem, 'id'>;
+  land_dd_items!: EntityTable<LandDdItem, 'id'>;
 
   // Module 2 — Project Creation
   projects!: EntityTable<Project, 'id'>;
@@ -442,6 +447,22 @@ export class AppDatabase extends Dexie {
     this.version(20).stores({
       site_visits: 'id, land_id, visit_date, [land_id+visit_date]',
       land_feasibility: 'id, land_id, status, version_no, &[land_id+version_no]',
+    });
+
+    /*
+     * v21 — batch L3: legal due diligence (BRD section 9).
+     *
+     * `land_dd_items` carries `&[land_id+item_id]` because a land checks each
+     * item once. A duplicate row would make "how many mandatory items are
+     * outstanding" — which is the number gate G2 blocks on — depend on which
+     * of two rows was read first.
+     *
+     * `[land_id+status]` answers the gate's actual question (what on this land
+     * is not passed/waived) without scanning every land's checklist.
+     */
+    this.version(21).stores({
+      dd_checklist_items: 'id, &code, category, is_mandatory, is_active, sort_order',
+      land_dd_items: 'id, land_id, item_id, status, &[land_id+item_id], [land_id+status]',
     });
   }
 }

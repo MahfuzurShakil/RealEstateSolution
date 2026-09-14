@@ -9,6 +9,7 @@ import { LandTimeline } from '@/components/admin/lands/LandTimeline';
 import { LandPaymentPlanPanel } from '@/components/admin/lands/LandPaymentPlanPanel';
 import { SiteVisitPanel } from '@/components/admin/lands/SiteVisitPanel';
 import { FeasibilityPanel } from '@/components/admin/lands/FeasibilityPanel';
+import { DueDiligencePanel } from '@/components/admin/lands/DueDiligencePanel';
 import { LocationCard } from '@/components/ui/map/LocationCard';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { LandStatusCard } from '@/components/admin/lands/LandStatusCard';
@@ -28,6 +29,7 @@ import { JV_SHARE_BASIS_LABEL } from '@/lib/domain/project';
 import {
   expenseRepository,
   landRepository,
+  landDdRepository,
   siteVisitRepository,
   type LandWithRelations,
 } from '@/lib/repositories';
@@ -39,6 +41,7 @@ type Tab =
   | 'owners'
   | 'visits'
   | 'feasibility'
+  | 'dd'
   | 'jv'
   | 'payments'
   | 'documents'
@@ -139,6 +142,8 @@ export default function LandDetailPage() {
   /** what has actually been paid against this land, from the cost ledger (L-1) */
   const landCosts = useLiveQuery(() => expenseRepository.landPaymentSummary(id), [id]);
   const visitCount = useLiveQuery(() => siteVisitRepository.countForLand(id), [id]);
+  // the tab badge counts what BLOCKS, not what is done — see the panel
+  const ddProgress = useLiveQuery(() => landDdRepository.progressForLand(id), [id]);
 
   if (land === undefined) return <p className="text-sm text-ink-muted">Loading…</p>;
   if (!land) {
@@ -162,6 +167,12 @@ export default function LandDetailPage() {
     { key: 'owners', label: `Owners (${land.owners.length})` },
     { key: 'visits', label: visitCount ? `Site Visits (${visitCount})` : 'Site Visits' },
     { key: 'feasibility', label: 'Feasibility' },
+    {
+      key: 'dd',
+      label: ddProgress?.mandatoryOutstanding
+        ? `Due Diligence (${ddProgress.mandatoryOutstanding})`
+        : 'Due Diligence',
+    },
     ...(isJv ? [{ key: 'jv' as Tab, label: 'Joint Venture' }] : []),
     // shown for a JV too: the tab explains why there is no plan, which is more
     // use than the tab simply not being there
@@ -460,6 +471,13 @@ export default function LandDetailPage() {
             <Card>
               <CardHeader title="Feasibility" />
               <FeasibilityPanel land={land} />
+            </Card>
+          )}
+
+          {tab === 'dd' && (
+            <Card>
+              <CardHeader title="Legal Due Diligence" />
+              <DueDiligencePanel land={land} />
             </Card>
           )}
 

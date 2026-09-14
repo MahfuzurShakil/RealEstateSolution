@@ -1,0 +1,270 @@
+/**
+ * Batch L3 demo data — due-diligence findings (BRD section 9).
+ *
+ * Keyed on the land's `name` and the checklist item's `code`. Anything not
+ * listed here stays `pending`, which is the honest state for a land whose
+ * lawyer has not finished — and it is what gives gate G2 something to block on.
+ *
+ * The three lands covered are deliberately at three different stages: one
+ * fully settled with a waiver, one fully settled without, and one mid-search
+ * with a failed mandatory item. A demo where everything passes proves nothing
+ * about a gate.
+ */
+
+export interface DemoDdFinding {
+  land: string;
+  code: string;
+  status: 'in_progress' | 'passed' | 'failed' | 'waived' | 'not_applicable';
+  finding?: string;
+  waiver_reason?: string;
+}
+
+export const DEMO_DD_FINDINGS: DemoDdFinding[] = [
+  /* Bashundhara — JV signed, so every mandatory item is settled. One waiver,
+     because a real acquisition almost always carries one. */
+  {
+    land: 'Bashundhara Block K corner plot',
+    code: 'ownership_proof',
+    status: 'passed',
+    finding: 'Sole owner on RS and BS khatian. NID verified against the deed.',
+  },
+  {
+    land: 'Bashundhara Block K corner plot',
+    code: 'heir_consent',
+    status: 'not_applicable',
+    finding: 'Purchased by the current owner in 1998 — not inherited.',
+  },
+  {
+    land: 'Bashundhara Block K corner plot',
+    code: 'poa_validity',
+    status: 'passed',
+    finding: 'POA-2026-014 registered at Gulshan sub-registry, unrevoked.',
+  },
+  {
+    land: 'Bashundhara Block K corner plot',
+    code: 'deed_chain',
+    status: 'passed',
+    finding: 'Chain traced to 1987. Four transfers, all registered.',
+  },
+  {
+    land: 'Bashundhara Block K corner plot',
+    code: 'khatian_verified',
+    status: 'passed',
+    finding: 'RS and BS agree on the dag and the area.',
+  },
+  {
+    land: 'Bashundhara Block K corner plot',
+    code: 'mutation_done',
+    status: 'passed',
+    finding: 'Mutation 2019, DCR attached.',
+  },
+  {
+    land: 'Bashundhara Block K corner plot',
+    code: 'encumbrance_search',
+    status: 'passed',
+    finding: 'Search certificate 2001–2026 clear.',
+  },
+  {
+    land: 'Bashundhara Block K corner plot',
+    code: 'mortgage_clear',
+    status: 'passed',
+    finding: 'No charge ever registered.',
+  },
+  {
+    land: 'Bashundhara Block K corner plot',
+    code: 'litigation_clear',
+    status: 'passed',
+    finding: 'Civil and land survey tribunal searches clear.',
+  },
+  {
+    land: 'Bashundhara Block K corner plot',
+    code: 'land_tax_paid',
+    status: 'passed',
+    finding: 'Dakhila current to 1432 Bangla.',
+  },
+  {
+    land: 'Bashundhara Block K corner plot',
+    code: 'holding_tax_paid',
+    status: 'waived',
+    finding: 'City corporation shows BDT 41,500 outstanding for 2024–25.',
+    waiver_reason:
+      'Seller liability under clause 7 of the JV agreement. BDT 200,000 withheld from the signing money until the receipt is produced.',
+  },
+  {
+    land: 'Bashundhara Block K corner plot',
+    code: 'acquisition_check',
+    status: 'passed',
+    finding: 'No L.A. case. Not khas.',
+  },
+  {
+    land: 'Bashundhara Block K corner plot',
+    code: 'boundary_survey',
+    status: 'passed',
+    finding:
+      'Amin survey matches the deed within 0.4 decimal. North wall rebuilt on the correct line.',
+  },
+  {
+    land: 'Bashundhara Block K corner plot',
+    code: 'possession_clear',
+    status: 'passed',
+    finding: 'Tenant vacated March 2026, handover letter on file.',
+  },
+  {
+    land: 'Bashundhara Block K corner plot',
+    code: 'access_right',
+    status: 'passed',
+    finding: 'Two recorded road frontages.',
+  },
+  {
+    land: 'Bashundhara Block K corner plot',
+    code: 'land_use_clearance',
+    status: 'passed',
+    finding: 'RAJUK DAP — residential, up to 9 floors at this FAR.',
+  },
+  {
+    land: 'Bashundhara Block K corner plot',
+    code: 'authority_noc',
+    status: 'not_applicable',
+    finding: 'Outside the civil aviation height zone; no water body on the dag.',
+  },
+
+  /* Uttara — acquired, all mandatory settled, no waiver needed. */
+  {
+    land: 'Uttara Sector 13 residential plot',
+    code: 'ownership_proof',
+    status: 'passed',
+    finding: 'Sole owner, allotment from RAJUK in 2006.',
+  },
+  {
+    land: 'Uttara Sector 13 residential plot',
+    code: 'heir_consent',
+    status: 'not_applicable',
+    finding: 'Allotted, not inherited.',
+  },
+  {
+    land: 'Uttara Sector 13 residential plot',
+    code: 'deed_chain',
+    status: 'passed',
+    finding: 'RAJUK allotment then registered deed 2011. Two links, both clean.',
+  },
+  {
+    land: 'Uttara Sector 13 residential plot',
+    code: 'khatian_verified',
+    status: 'passed',
+    finding: 'BS khatian matches the allotment letter.',
+  },
+  {
+    land: 'Uttara Sector 13 residential plot',
+    code: 'mutation_done',
+    status: 'passed',
+    finding: 'Mutation 2012, DCR attached.',
+  },
+  {
+    land: 'Uttara Sector 13 residential plot',
+    code: 'encumbrance_search',
+    status: 'passed',
+    finding: 'Clear 2001–2026.',
+  },
+  {
+    land: 'Uttara Sector 13 residential plot',
+    code: 'mortgage_clear',
+    status: 'passed',
+    finding: 'No charge registered.',
+  },
+  {
+    land: 'Uttara Sector 13 residential plot',
+    code: 'litigation_clear',
+    status: 'passed',
+    finding: 'No case found.',
+  },
+  {
+    land: 'Uttara Sector 13 residential plot',
+    code: 'land_tax_paid',
+    status: 'passed',
+    finding: 'Dakhila current.',
+  },
+  {
+    land: 'Uttara Sector 13 residential plot',
+    code: 'acquisition_check',
+    status: 'passed',
+    finding: 'RAJUK-allotted land, not under acquisition.',
+  },
+  {
+    land: 'Uttara Sector 13 residential plot',
+    code: 'boundary_survey',
+    status: 'passed',
+    finding: 'Survey matches the allotment plan exactly.',
+  },
+  {
+    land: 'Uttara Sector 13 residential plot',
+    code: 'possession_clear',
+    status: 'passed',
+    finding: 'Vacant plot, nothing standing.',
+  },
+  {
+    land: 'Uttara Sector 13 residential plot',
+    code: 'land_use_clearance',
+    status: 'passed',
+    finding: 'Sector 13 residential, 7 floors permitted.',
+  },
+
+  /* Chattogram Khulshi — mid due diligence, and the case worth demonstrating:
+     a failed mandatory item plus several still running, so gate G2 has real
+     work to do and the tab header has a real number in it. */
+  {
+    land: 'Chattogram Khulshi hillside plot',
+    code: 'ownership_proof',
+    status: 'passed',
+    finding: 'Owner confirmed on BS khatian.',
+  },
+  {
+    land: 'Chattogram Khulshi hillside plot',
+    code: 'heir_consent',
+    status: 'in_progress',
+    finding:
+      'Inherited from the father in 2014. Two of three siblings have signed; the third is in Dubai.',
+  },
+  {
+    land: 'Chattogram Khulshi hillside plot',
+    code: 'deed_chain',
+    status: 'passed',
+    finding: 'Traced to 1979 through the inheritance deed.',
+  },
+  {
+    land: 'Chattogram Khulshi hillside plot',
+    code: 'khatian_verified',
+    status: 'passed',
+    finding: 'RS and BS consistent.',
+  },
+  {
+    land: 'Chattogram Khulshi hillside plot',
+    code: 'mutation_done',
+    status: 'failed',
+    finding:
+      'Mutation is still in the deceased father name. Namjari application filed 2024 and not disposed of. Registration cannot proceed until it is.',
+  },
+  {
+    land: 'Chattogram Khulshi hillside plot',
+    code: 'encumbrance_search',
+    status: 'in_progress',
+    finding: 'Search filed at the Chattogram sub-registry, certificate awaited.',
+  },
+  {
+    land: 'Chattogram Khulshi hillside plot',
+    code: 'litigation_clear',
+    status: 'passed',
+    finding: 'No case in the civil court or the land survey tribunal.',
+  },
+  {
+    land: 'Chattogram Khulshi hillside plot',
+    code: 'land_tax_paid',
+    status: 'passed',
+    finding: 'Dakhila current to 1431.',
+  },
+  {
+    land: 'Chattogram Khulshi hillside plot',
+    code: 'land_use_clearance',
+    status: 'in_progress',
+    finding: 'CDA hill-cutting permission is the open question — application under review.',
+  },
+];

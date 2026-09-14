@@ -23,6 +23,7 @@ export interface BaseEntity {
 export type EntityType =
   | 'land'
   | 'site_visit'
+  | 'land_dd_item'
   | 'project'
   | 'unit'
   | 'customer'
@@ -144,6 +145,21 @@ export interface CompanySettings extends BaseEntity {
    * it strands lands mid-pipeline on the day it ships.
    */
   require_feasibility_approval?: boolean | null;
+  /**
+   * Gate G2 (BRD DD-004 / BR-001): block Agreed → Acquired / JV Signed while a
+   * mandatory due-diligence item is unfinished or failed and not waived.
+   *
+   * The BRD's hardest rule, and the one most worth switching on. Off unless
+   * chosen for the same reason as G1 — land acquired before this system
+   * existed has no checklist.
+   */
+  require_dd_completion?: boolean | null;
+  /**
+   * Gate G3 (BRD DEV-004): block linking a land to a project until its
+   * land-development activities are complete or the land is marked as needing
+   * none.
+   */
+  require_development_ready?: boolean | null;
 }
 
 /* ------------------------------------------------------------------ *
@@ -412,6 +428,258 @@ export interface LandFeasibility extends BaseEntity {
   decision_note?: string | null;
   remarks?: string | null;
 }
+
+/* ------------------------------------------------------------------ *
+ * Module 1 / batch L3 — Legal Due Diligence (BRD section 9)
+ * ------------------------------------------------------------------ */
+
+/**
+ * What the checklist groups items under (BRD DD-001).
+ *
+ * Not a `lookup_values` category, because the code branches on nothing here —
+ * it is purely how the tab is sectioned, and an admin adding a seventh group
+ * would produce a section with no meaning behind it.
+ */
+export const DD_CATEGORIES = [
+  'ownership',
+  'title',
+  'encumbrance',
+  'statutory',
+  'physical',
+  'authority',
+] as const;
+export type DdCategory = (typeof DD_CATEGORIES)[number];
+
+export const DD_CATEGORY_LABEL: Record<DdCategory, string> = {
+  ownership: 'Ownership',
+  title: 'Title & deed chain',
+  encumbrance: 'Encumbrance & mortgage',
+  statutory: 'Tax & statutory',
+  physical: 'Physical & boundary',
+  authority: 'Authority approvals',
+};
+
+/**
+ * A configurable checklist item (BRD DD-001).
+ *
+ * A master table rather than a `lookup_values` row, because an item is more
+ * than a label: it carries `is_mandatory`, which gate G2 reads, and a category
+ * that sections the tab. `lookup_values` is for flat "pick one of these"
+ * lists, and bolting two meaningful columns onto it for one consumer would
+ * make every other list carry columns it has no use for.
+ *
+ * Items are deactivated, never deleted: a land whose due diligence already
+ * references an item must keep reading a real row, and `is_mandatory` at the
+ * time of the check is what an auditor will ask about.
+ */
+export interface DdChecklistItem extends BaseEntity {
+  /** stable key, so renaming the label does not orphan anything */
+  code: string;
+  label: string;
+  category: DdCategory;
+  /** gate G2 only blocks on the mandatory ones (BRD DD-004 / BR-001) */
+  is_mandatory: boolean;
+  /** what the lawyer is actually being asked to confirm */
+  guidance?: string | null;
+  sort_order: number;
+  is_active: boolean;
+}
+
+/**
+ * The states an item moves through (BRD DD-003).
+ *
+ * `not_applicable` is separate from `passed` on purpose: a mortgage search on
+ * land that was never mortgaged is not a check that passed, and an auditor
+ * asking "was this verified" deserves the honest answer.
+ *
+ * `waived` is the only way a `failed` or unfinished mandatory item lets a land
+ * through gate G2, and it always carries a reason and a name (BR-001).
+ */
+export const DD_ITEM_STATUSES = [
+  'pending',
+  'in_progress',
+  'passed',
+  'failed',
+  'waived',
+  'not_applicable',
+] as const;
+export type DdItemStatus = (typeof DD_ITEM_STATUSES)[number];
+
+/** One checklist item as it stands on one land (BRD DD-002, DD-003). */
+export interface LandDdItem extends BaseEntity {
+  land_id: UUID;
+  item_id: UUID;
+  status: DdItemStatus;
+  /** who is doing the check */
+  assigned_to?: UUID | null;
+  /** what they found — required when an item fails */
+  finding?: string | null;
+  submitted_by?: UUID | null;
+  submitted_at?: ISODateTime | null;
+  reviewed_by?: UUID | null;
+  reviewed_at?: ISODateTime | null;
+  waiver_reason?: string | null;
+  waived_by?: UUID | null;
+  waived_at?: ISODateTime | null;
+  /**
+   * Whether this item was mandatory when the land's checklist was created.
+   *
+   * Snapshotted rather than read live from the master, because an admin
+   * unticking "mandatory" on an item would otherwise silently open gate G2 on
+   * every land the item was blocking — the lands would pass a check nobody
+   * decided to waive.
+   */
+  is_mandatory: boolean;
+}
+
+/** Document types for entity_type = 'land_dd_item' (BRD DD-002) */
+export const DD_EVIDENCE_DOCUMENT_TYPES = [
+  'khatian_copy',
+  'dolil_deed',
+  'mutation_certificate',
+  'tax_receipt',
+  'search_report',
+  'ncc_certificate',
+  'court_order',
+  'survey_report',
+  'other',
+] as const;
+
+/**
+ * The checklist a fresh install starts with (BRD DD-001).
+ *
+ * Every item the BRD names, plus the ones a Bangladeshi land purchase actually
+ * turns on. The mandatory set is the one the client still has to confirm —
+ * see BRD-ALIGNMENT-PLAN.md section 7, Q2 — so it is seeded with the answer a
+ * lawyer would give and left editable in Master Data.
+ */
+export const DD_CHECKLIST_SEED: Array<{
+  code: string;
+  label: string;
+  category: DdCategory;
+  is_mandatory: boolean;
+  guidance: string;
+}> = [
+  {
+    code: 'ownership_proof',
+    label: 'Ownership confirmed',
+    category: 'ownership',
+    is_mandatory: true,
+    guidance: 'Seller is the recorded owner, and every recorded owner is party to the deal.',
+  },
+  {
+    code: 'heir_consent',
+    label: 'Heirs / co-owners consent',
+    category: 'ownership',
+    is_mandatory: true,
+    guidance: 'Warisan certificate where inherited; written consent from every co-owner.',
+  },
+  {
+    code: 'poa_validity',
+    label: 'Power of attorney valid',
+    category: 'ownership',
+    is_mandatory: false,
+    guidance: 'Only where someone signs on an owner’s behalf — registered and unrevoked.',
+  },
+  {
+    code: 'deed_chain',
+    label: 'Deed chain traced',
+    category: 'title',
+    is_mandatory: true,
+    guidance: 'Unbroken chain of dolil back at least 25 years.',
+  },
+  {
+    code: 'khatian_verified',
+    label: 'Khatian verified',
+    category: 'title',
+    is_mandatory: true,
+    guidance: 'CS / SA / RS / BS khatian consistent with the deed and with each other.',
+  },
+  {
+    code: 'mutation_done',
+    label: 'Mutation (namjari) complete',
+    category: 'title',
+    is_mandatory: true,
+    guidance: 'Mutation in the current owner’s name, with the DCR.',
+  },
+  {
+    code: 'encumbrance_search',
+    label: 'Encumbrance search clear',
+    category: 'encumbrance',
+    is_mandatory: true,
+    guidance: 'Sub-registry search certificate covering the last 25 years.',
+  },
+  {
+    code: 'mortgage_clear',
+    label: 'No subsisting mortgage',
+    category: 'encumbrance',
+    is_mandatory: true,
+    guidance: 'Bank NOC or redemption evidence where a charge was ever registered.',
+  },
+  {
+    code: 'litigation_clear',
+    label: 'No pending litigation',
+    category: 'encumbrance',
+    is_mandatory: true,
+    guidance: 'Civil and land-survey court searches; check for injunctions.',
+  },
+  {
+    code: 'land_tax_paid',
+    label: 'Land development tax paid',
+    category: 'statutory',
+    is_mandatory: true,
+    guidance: 'Dakhila up to the current Bangla year.',
+  },
+  {
+    code: 'holding_tax_paid',
+    label: 'Municipal holding tax clear',
+    category: 'statutory',
+    is_mandatory: false,
+    guidance: 'City corporation or pourashava dues cleared.',
+  },
+  {
+    code: 'acquisition_check',
+    label: 'Not under government acquisition',
+    category: 'statutory',
+    is_mandatory: true,
+    guidance: 'L.A. case search — check for requisition and for khas classification.',
+  },
+  {
+    code: 'boundary_survey',
+    label: 'Boundary survey matches the deed',
+    category: 'physical',
+    is_mandatory: true,
+    guidance: 'Amin survey against the dag; note any encroachment.',
+  },
+  {
+    code: 'possession_clear',
+    label: 'Vacant possession deliverable',
+    category: 'physical',
+    is_mandatory: true,
+    guidance: 'Tenants, structures and any adverse possession identified with a vacancy date.',
+  },
+  {
+    code: 'access_right',
+    label: 'Legal right of access',
+    category: 'physical',
+    is_mandatory: false,
+    guidance: 'Road access is on record, not by neighbour’s goodwill.',
+  },
+  {
+    code: 'land_use_clearance',
+    label: 'Land use permits development',
+    category: 'authority',
+    is_mandatory: true,
+    guidance: 'RAJUK / CDA detailed area plan — zoning allows the intended use.',
+  },
+  {
+    code: 'authority_noc',
+    label: 'Authority NOCs identified',
+    category: 'authority',
+    is_mandatory: false,
+    guidance: 'Civil aviation, environment, water body or heritage NOCs where they apply.',
+  },
+];
 
 /** Document types for entity_type = 'site_visit' (BRD SITE-001) */
 export const SITE_VISIT_DOCUMENT_TYPES = [

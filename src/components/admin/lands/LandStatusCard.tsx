@@ -18,15 +18,18 @@ import {
   amountUpdatesFinalAgreed,
   isJvTermsField,
   isTerminalStatus,
+  ddGateBlockReason,
   feasibilityGateBlockReason,
   statusStepAttachment,
   statusStepConfig,
+  transitionNeedsDueDiligence,
   transitionNeedsFeasibility,
   type StatusStepField,
 } from '@/lib/domain/land';
 import {
   companySettingsRepository,
   documentRepository,
+  landDdRepository,
   landFeasibilityRepository,
   landJvRepository,
   landRepository,
@@ -68,10 +71,21 @@ export function LandStatusCard({ land }: { land: Land }) {
     return { current: rows[0], latestApproved: rows.find((r) => r.status === 'approved') };
   }, [land.id]);
 
+  const ddProgress = useLiveQuery(() => landDdRepository.progressForLand(land.id), [land.id]);
+  const ddGateOn = useLiveQuery(
+    async () => (await companySettingsRepository.get())?.require_dd_completion ?? false,
+    [],
+  );
+
   /** The reason a given move is blocked, or null when it is allowed. */
   function blockedReason(to: LandStatus): string | null {
-    if (!gateOn || !transitionNeedsFeasibility(land.status, to)) return null;
-    return feasibilityGateBlockReason(feasibility ?? {});
+    if (gateOn && transitionNeedsFeasibility(land.status, to)) {
+      return feasibilityGateBlockReason(feasibility ?? {});
+    }
+    if (ddGateOn && transitionNeedsDueDiligence(land.status, to)) {
+      return ddGateBlockReason(ddProgress);
+    }
+    return null;
   }
 
   async function openDialog(status: LandStatus) {

@@ -1069,7 +1069,9 @@ they change no schema.
 | `land_owner_mapping` | `ownership_area`, `agreed_amount` | Module 1 / batch L1 — BRD LAND-002 wants paid/due per owner. Area is stored, not derived from the share: heirs divide a khatian by the deed, not by arithmetic. The per-owner settlement schedule that consumes `agreed_amount` is batch L5 |
 | `site_visits`, `land_feasibility` | whole tables (Dexie **v20**) | Module 1 / batch L2 — BRD SITE-001, SITE-002. Many visits per land; feasibility is versioned rather than edited in place, and `&[land_id+version_no]` keeps "the current study" unambiguous because gate G1 reads it |
 | `company_settings` | `require_feasibility_approval` | Module 1 / batch L2 — gate G1 (BRD SITE-003), off unless switched on. Not indexed, so no schema version change. The DD and land-development gates (G2/G3) join it in batches L3 and L6 |
-| `documents` | new `entity_type` value `site_visit` | Module 1 / batch L2 — a visit's photos belong to the visit, not to the land, so the first visit's photos stay with the first visit |
+| `dd_checklist_items`, `land_dd_items` | whole tables (Dexie **v21**) | Module 1 / batch L3 — BRD DD-001…003. A master table rather than a `lookup_values` group because an item carries `is_mandatory` (which gate G2 reads) and a category. `land_dd_items.is_mandatory` is snapshotted, so unticking mandatory on the master cannot silently open the gate on lands it was blocking |
+| `company_settings` | `require_dd_completion`, `require_development_ready` | Module 1 / batches L3 and L6 — gates G2 (BRD DD-004 / BR-001) and G3 (DEV-004), both off unless switched on |
+| `documents` | new `entity_type` values `site_visit`, `land_dd_item` | Module 1 / batch L2 — a visit's photos belong to the visit, not to the land, so the first visit's photos stay with the first visit |
 
 **Removed from the scope document**
 

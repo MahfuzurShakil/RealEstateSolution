@@ -55,14 +55,16 @@ function SettingsForm({
     notes: settings?.notes ?? '',
   });
   /*
-   * Gate G1 (BRD SITE-003). Kept out of `form` because that state is all
-   * strings and this is a boolean — threading a checkbox through a `set(key,
-   * value: string)` helper is how a "false" ends up stored as the string
-   * "false" and reads as true ever after.
+   * The three pipeline gates (BRD SITE-003, DD-004, DEV-004). Kept out of
+   * `form` because that state is all strings and these are booleans —
+   * threading a checkbox through a `set(key, value: string)` helper is how a
+   * `false` ends up stored as the string "false" and reads as true ever after.
    */
-  const [requireFeasibility, setRequireFeasibility] = useState(
-    settings?.require_feasibility_approval ?? false,
-  );
+  const [gates, setGates] = useState({
+    require_feasibility_approval: settings?.require_feasibility_approval ?? false,
+    require_dd_completion: settings?.require_dd_completion ?? false,
+    require_development_ready: settings?.require_development_ready ?? false,
+  });
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -92,7 +94,7 @@ function SettingsForm({
         default_currency: form.default_currency.trim() || 'BDT',
         logo_url: form.logo_url.trim() || null,
         notes: form.notes.trim() || null,
-        require_feasibility_approval: requireFeasibility,
+        ...gates,
       });
       setSaved(true);
     } finally {
@@ -222,32 +224,41 @@ function SettingsForm({
         */}
         <Card>
           <CardHeader title="Pipeline gates" />
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-hairline p-3 transition-colors hover:bg-admin-50/40">
-            <input
-              type="checkbox"
-              className="mt-0.5 size-4 accent-admin-600"
-              checked={requireFeasibility}
-              onChange={(e) => {
-                setRequireFeasibility(e.target.checked);
+          <p className="mb-3 text-xs text-ink-muted">
+            Each gate stops a land moving on until something is actually done. All three are off
+            unless switched on: land recorded before this system existed has no feasibility study,
+            no checklist and no development record, and turning a gate on for it would strand it
+            mid-pipeline.
+          </p>
+          <div className="space-y-2">
+            <GateToggle
+              label="G1 · Require an approved feasibility study before due diligence"
+              detail="A land cannot move from Under Review to Due Diligence until its latest feasibility study is approved and recommends proceeding. The lawyers are the expensive part of sourcing a plot, and this stops the firm paying for a title search on land it was never going to buy."
+              checked={gates.require_feasibility_approval}
+              onChange={(v) => {
+                setGates((g) => ({ ...g, require_feasibility_approval: v }));
                 setSaved(false);
               }}
             />
-            <span>
-              <span className="block text-sm font-medium text-ink">
-                Require an approved feasibility study before due diligence
-              </span>
-              <span className="mt-0.5 block text-xs text-ink-muted">
-                A land cannot move from Under Review to Due Diligence until its latest feasibility
-                study is approved and recommends proceeding. The lawyers are the expensive part of
-                sourcing a plot, and this is the switch that stops the firm paying for a title
-                search on land it was never going to buy.
-              </span>
-              <span className="mt-1.5 block text-xs text-ink-muted">
-                Off by default — land recorded before this system existed has no study, and
-                switching the gate on strands it mid-pipeline.
-              </span>
-            </span>
-          </label>
+            <GateToggle
+              label="G2 · Require mandatory due diligence before acquisition"
+              detail="A land cannot be marked Acquired or JV Signed while a mandatory checklist item is unfinished or failed, unless it carries an authorised waiver with a reason. Registration is the point of no return, and an encumbrance found afterwards is not a problem anybody can fix."
+              checked={gates.require_dd_completion}
+              onChange={(v) => {
+                setGates((g) => ({ ...g, require_dd_completion: v }));
+                setSaved(false);
+              }}
+            />
+            <GateToggle
+              label="G3 · Require land development to be ready before a project"
+              detail="A land cannot be linked to a project while a development activity is still in progress, unless the land is marked as needing no development. A project planned on land that is still being filled has a schedule nobody can meet."
+              checked={gates.require_development_ready}
+              onChange={(v) => {
+                setGates((g) => ({ ...g, require_development_ready: v }));
+                setSaved(false);
+              }}
+            />
+          </div>
         </Card>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -302,5 +313,33 @@ function SettingsForm({
         </Card>
       </aside>
     </div>
+  );
+}
+
+/** One pipeline gate. Extracted because there are three of them now. */
+function GateToggle({
+  label,
+  detail,
+  checked,
+  onChange,
+}: {
+  label: string;
+  detail: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-hairline p-3 transition-colors hover:bg-admin-50/40">
+      <input
+        type="checkbox"
+        className="mt-0.5 size-4 shrink-0 accent-admin-600"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span className="min-w-0">
+        <span className="block text-sm font-medium text-ink">{label}</span>
+        <span className="mt-0.5 block text-xs text-ink-muted">{detail}</span>
+      </span>
+    </label>
   );
 }

@@ -1,6 +1,11 @@
 'use client';
 
-import { companySettingsRepository, landRepository, lookupRepository } from '../repositories';
+import {
+  companySettingsRepository,
+  ddChecklistRepository,
+  landRepository,
+  lookupRepository,
+} from '../repositories';
 import { demoDataWasCleared, seedDemoData } from './demo-seed';
 import {
   AMENITY_OPTIONS,
@@ -22,6 +27,8 @@ import {
   SUPPLIER_VOUCHER_DOCUMENT_TYPES,
   SITE_PROGRESS_DOCUMENT_TYPES,
   SITE_VISIT_DOCUMENT_TYPES,
+  DD_CHECKLIST_SEED,
+  DD_EVIDENCE_DOCUMENT_TYPES,
   UNIT_TYPE_OPTIONS,
 } from './types';
 
@@ -44,6 +51,7 @@ async function runSeed(): Promise<void> {
   // Module 1 already has rows, and Module 2's option-lists still need adding.
   await ensureOptions('document_type', 'land', [...LAND_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'site_visit', [...SITE_VISIT_DOCUMENT_TYPES]);
+  await ensureOptions('document_type', 'land_dd_item', [...DD_EVIDENCE_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'project', [...PROJECT_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'lead', [...LEAD_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'customer', [...CUSTOMER_DOCUMENT_TYPES]);
@@ -65,6 +73,8 @@ async function runSeed(): Promise<void> {
   // Tier 3.3: §1.2 always named `cost_category` a lookup list; it was an ENUM
   // until now. Seeded with codes, because an expense stores the code.
   await ensureSystemCostCategories();
+  // BRD DD-001 — the checklist a fresh install starts with, editable after
+  await ensureDdChecklist();
 
   // Demo dataset: only on a truly fresh database, and never again once the
   // user has deliberately cleared it from the dashboard.
@@ -115,6 +125,33 @@ async function ensureSystemCostCategories(): Promise<void> {
       is_system: true,
     })),
   );
+}
+
+/**
+ * Seeds the due-diligence checklist (BRD DD-001).
+ *
+ * Matched on `code`, not on the label: an install where 'Mutation (namjari)
+ * complete' has been renamed must not have a second copy added underneath it
+ * on the next load. Existing rows are left exactly as they are, including a
+ * mandatory flag the office has since changed.
+ */
+async function ensureDdChecklist(): Promise<void> {
+  const existing = await ddChecklistRepository.allItems();
+  const known = new Set(existing.map((r) => r.code));
+  const missing = DD_CHECKLIST_SEED.filter((c) => !known.has(c.code));
+  if (missing.length === 0) return;
+
+  for (const [i, item] of missing.entries()) {
+    await ddChecklistRepository.create({
+      code: item.code,
+      label: item.label,
+      category: item.category,
+      is_mandatory: item.is_mandatory,
+      guidance: item.guidance,
+      sort_order: existing.length + i + 1,
+      is_active: true,
+    });
+  }
 }
 
 /** Adds the options of one category that are not in the table yet. */

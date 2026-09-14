@@ -39,6 +39,13 @@ export {
 } from './land.repository';
 export { siteVisitRepository, landFeasibilityRepository } from './site-visit.repository';
 export {
+  ddChecklistRepository,
+  landDdRepository,
+  isSettled,
+  type DdProgress,
+  type LandDdItemWithMaster,
+} from './dd.repository';
+export {
   projectRepository,
   projectStatusEventRepository,
   landProjectMappingRepository,

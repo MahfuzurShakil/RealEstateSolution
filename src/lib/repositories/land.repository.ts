@@ -14,6 +14,7 @@ import { nextCode } from '../utils/id';
 import { BaseRepository, type NewRecord } from './base.repository';
 import { documentRepository } from './document.repository';
 import { landFeasibilityRepository, siteVisitRepository } from './site-visit.repository';
+import { landDdRepository } from './dd.repository';
 
 export interface LandFilters {
   search?: string;
@@ -134,6 +135,7 @@ class LandRepository extends BaseRepository<Land> {
     // batch L2 — the visits take their own photos with them
     await siteVisitRepository.removeForLand(id);
     await landFeasibilityRepository.removeForLand(id);
+    await landDdRepository.removeForLand(id);
     await documentRepository.removeForEntity('land', id);
     await this.remove(id);
   }
