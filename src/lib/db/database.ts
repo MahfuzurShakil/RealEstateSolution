@@ -15,6 +15,8 @@ import type {
   LandOwnerMapping,
   LandProjectMapping,
   DdChecklistItem,
+  LandAcquisitionCost,
+  LandNegotiation,
   LandDdItem,
   LandFeasibility,
   LandStatusEvent,
@@ -82,6 +84,9 @@ export class AppDatabase extends Dexie {
   // batch L3 — BRD section 9
   dd_checklist_items!: EntityTable<DdChecklistItem, 'id'>;
   land_dd_items!: EntityTable<LandDdItem, 'id'>;
+  // batch L4 — BRD section 10
+  land_negotiations!: EntityTable<LandNegotiation, 'id'>;
+  land_acquisition_costs!: EntityTable<LandAcquisitionCost, 'id'>;
 
   // Module 2 — Project Creation
   projects!: EntityTable<Project, 'id'>;
@@ -463,6 +468,23 @@ export class AppDatabase extends Dexie {
     this.version(21).stores({
       dd_checklist_items: 'id, &code, category, is_mandatory, is_active, sort_order',
       land_dd_items: 'id, land_id, item_id, status, &[land_id+item_id], [land_id+status]',
+    });
+
+    /*
+     * v22 — batch L4: negotiation and acquisition cost (BRD section 10).
+     *
+     * `land_negotiations` is indexed on `[land_id+round_no]` but NOT uniquely:
+     * a land can genuinely run two ladders at once when it has two owners
+     * negotiating separately, and a unique index would force the second owner's
+     * round 1 to be called round 3.
+     *
+     * `land_acquisition_costs` carries `&[land_id+cost_head]` because a land
+     * estimates each head once — two rows for "registration fee" would make the
+     * total depend on whether the reader summed or took the first.
+     */
+    this.version(22).stores({
+      land_negotiations: 'id, land_id, owner_id, status, offer_date, [land_id+round_no]',
+      land_acquisition_costs: 'id, land_id, cost_head, &[land_id+cost_head]',
     });
   }
 }

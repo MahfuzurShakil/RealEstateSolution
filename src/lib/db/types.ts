@@ -430,6 +430,96 @@ export interface LandFeasibility extends BaseEntity {
 }
 
 /* ------------------------------------------------------------------ *
+ * Module 1 / batch L4 — Negotiation & Acquisition (BRD section 10)
+ * ------------------------------------------------------------------ */
+
+/** Whose move it was (BRD ACQ-001). */
+export const NEGOTIATION_PARTIES = ['us', 'owner'] as const;
+export type NegotiationParty = (typeof NEGOTIATION_PARTIES)[number];
+
+export const NEGOTIATION_ROUND_STATUSES = [
+  'open',
+  'accepted',
+  'rejected',
+  'superseded',
+] as const;
+export type NegotiationRoundStatus = (typeof NEGOTIATION_ROUND_STATUSES)[number];
+
+/**
+ * One round of a negotiation (BRD ACQ-001).
+ *
+ * This replaces the single "Offered amount" typed into the pipeline dialog.
+ * That field recorded the last number anybody entered and nothing about how it
+ * got there — who moved, when, what was attached to the price, which broker was
+ * in the room. A price without its conditions is not a price: "4.2 crore" and
+ * "4.2 crore with possession in six months and the boundary wall rebuilt" are
+ * different deals.
+ *
+ * Rounds are never edited once superseded or accepted, so the ladder stays
+ * readable as the record of how the deal was actually reached.
+ */
+export interface LandNegotiation extends BaseEntity {
+  land_id: UUID;
+  /** which owner this round was with; null when it is with all of them */
+  owner_id?: UUID | null;
+  round_no: number;
+  party: NegotiationParty;
+  amount: number;
+  offer_date: ISODate;
+  /** payment terms — instalments, advance, timing */
+  terms?: string | null;
+  /** everything that is not money: possession date, wall, tenants, trees */
+  conditions?: string | null;
+  broker_name?: string | null;
+  /** commission agreed with that broker, where one is involved */
+  broker_commission?: number | null;
+  status: NegotiationRoundStatus;
+  recorded_by?: UUID | null;
+  remarks?: string | null;
+}
+
+/**
+ * A line of the acquisition cost build-up (BRD ACQ-002).
+ *
+ * The BRD wants total acquisition cost, not just land price: registration,
+ * legal, taxes and fees, broker commission and anything else. Only the
+ * *estimate* is stored — the actual is read from the expense ledger, because
+ * the money has already been recorded there and a second copy is a second
+ * answer.
+ */
+export const ACQUISITION_COST_HEADS = [
+  'land_price',
+  'registration_fee',
+  'stamp_duty',
+  'vat_tax',
+  'mutation_cost',
+  'legal_fee',
+  'broker_commission',
+  'survey_fee',
+  'other',
+] as const;
+export type AcquisitionCostHead = (typeof ACQUISITION_COST_HEADS)[number];
+
+export const ACQUISITION_COST_HEAD_LABEL: Record<AcquisitionCostHead, string> = {
+  land_price: 'Land price',
+  registration_fee: 'Registration fee',
+  stamp_duty: 'Stamp duty',
+  vat_tax: 'VAT & tax',
+  mutation_cost: 'Mutation (namjari)',
+  legal_fee: 'Legal fees',
+  broker_commission: 'Broker commission',
+  survey_fee: 'Survey fee',
+  other: 'Other',
+};
+
+export interface LandAcquisitionCost extends BaseEntity {
+  land_id: UUID;
+  cost_head: AcquisitionCostHead;
+  estimated_amount: number;
+  remarks?: string | null;
+}
+
+/* ------------------------------------------------------------------ *
  * Module 1 / batch L3 — Legal Due Diligence (BRD section 9)
  * ------------------------------------------------------------------ */
 

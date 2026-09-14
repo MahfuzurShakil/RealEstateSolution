@@ -15,6 +15,10 @@ import { BaseRepository, type NewRecord } from './base.repository';
 import { documentRepository } from './document.repository';
 import { landFeasibilityRepository, siteVisitRepository } from './site-visit.repository';
 import { landDdRepository } from './dd.repository';
+import {
+  landAcquisitionCostRepository,
+  landNegotiationRepository,
+} from './negotiation.repository';
 
 export interface LandFilters {
   search?: string;
@@ -136,6 +140,8 @@ class LandRepository extends BaseRepository<Land> {
     await siteVisitRepository.removeForLand(id);
     await landFeasibilityRepository.removeForLand(id);
     await landDdRepository.removeForLand(id);
+    await landNegotiationRepository.removeForLand(id);
+    await landAcquisitionCostRepository.removeForLand(id);
     await documentRepository.removeForEntity('land', id);
     await this.remove(id);
   }

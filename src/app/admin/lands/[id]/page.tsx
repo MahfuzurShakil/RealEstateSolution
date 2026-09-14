@@ -10,6 +10,8 @@ import { LandPaymentPlanPanel } from '@/components/admin/lands/LandPaymentPlanPa
 import { SiteVisitPanel } from '@/components/admin/lands/SiteVisitPanel';
 import { FeasibilityPanel } from '@/components/admin/lands/FeasibilityPanel';
 import { DueDiligencePanel } from '@/components/admin/lands/DueDiligencePanel';
+import { NegotiationPanel } from '@/components/admin/lands/NegotiationPanel';
+import { AcquisitionCostPanel } from '@/components/admin/lands/AcquisitionCostPanel';
 import { LocationCard } from '@/components/ui/map/LocationCard';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { LandStatusCard } from '@/components/admin/lands/LandStatusCard';
@@ -30,6 +32,7 @@ import {
   expenseRepository,
   landRepository,
   landDdRepository,
+  landNegotiationRepository,
   siteVisitRepository,
   type LandWithRelations,
 } from '@/lib/repositories';
@@ -42,6 +45,8 @@ type Tab =
   | 'visits'
   | 'feasibility'
   | 'dd'
+  | 'negotiation'
+  | 'acqcost'
   | 'jv'
   | 'payments'
   | 'documents'
@@ -144,6 +149,10 @@ export default function LandDetailPage() {
   const visitCount = useLiveQuery(() => siteVisitRepository.countForLand(id), [id]);
   // the tab badge counts what BLOCKS, not what is done — see the panel
   const ddProgress = useLiveQuery(() => landDdRepository.progressForLand(id), [id]);
+  const roundCount = useLiveQuery(
+    async () => (await landNegotiationRepository.listForLand(id)).length,
+    [id],
+  );
 
   if (land === undefined) return <p className="text-sm text-ink-muted">Loading…</p>;
   if (!land) {
@@ -162,6 +171,9 @@ export default function LandDetailPage() {
   const isJv = land.acquisition_type === 'joint_venture';
   const purchasePricing = landUsesPurchasePricing(land.acquisition_type);
   const headline = landHeadlineAmount(land);
+  const costSheetRelevant = ['agreed', 'acquired', 'jv_signed', 'linked_to_project', 'disposed'].includes(
+    land.status,
+  );
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { key: 'owners', label: `Owners (${land.owners.length})` },
@@ -173,6 +185,14 @@ export default function LandDetailPage() {
         ? `Due Diligence (${ddProgress.mandatoryOutstanding})`
         : 'Due Diligence',
     },
+    { key: 'negotiation', label: roundCount ? `Negotiation (${roundCount})` : 'Negotiation' },
+    /*
+     * The cost sheet is only offered once there is a deal to cost. A land
+     * nobody has agreed on has no acquisition to build up, and an empty sheet
+     * of nine zeroes on every sourced plot is a tab that teaches people to
+     * ignore tabs.
+     */
+    ...(costSheetRelevant ? [{ key: 'acqcost' as Tab, label: 'Acquisition Cost' }] : []),
     ...(isJv ? [{ key: 'jv' as Tab, label: 'Joint Venture' }] : []),
     // shown for a JV too: the tab explains why there is no plan, which is more
     // use than the tab simply not being there
@@ -478,6 +498,20 @@ export default function LandDetailPage() {
             <Card>
               <CardHeader title="Legal Due Diligence" />
               <DueDiligencePanel land={land} />
+            </Card>
+          )}
+
+          {tab === 'negotiation' && (
+            <Card>
+              <CardHeader title="Negotiation" />
+              <NegotiationPanel land={land} />
+            </Card>
+          )}
+
+          {tab === 'acqcost' && (
+            <Card>
+              <CardHeader title="Acquisition Cost" />
+              <AcquisitionCostPanel land={land} />
             </Card>
           )}
 

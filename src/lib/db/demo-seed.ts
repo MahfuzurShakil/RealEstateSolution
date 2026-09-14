@@ -22,6 +22,8 @@ import {
   landFeasibilityRepository,
   ddChecklistRepository,
   landDdRepository,
+  landNegotiationRepository,
+  landAcquisitionCostRepository,
   landownerRepository,
   materialRequestRepository,
   siteProgressUpdateRepository,
@@ -51,6 +53,7 @@ import { backfillMaterialItems } from './backfill-material-items';
 import { DEMO_LANDS, DEMO_OWNERS } from './demo-data';
 import { DEMO_FEASIBILITY, DEMO_SITE_VISITS } from './demo-site-visits';
 import { DEMO_DD_FINDINGS } from './demo-dd';
+import { DEMO_ACQUISITION_COSTS, DEMO_NEGOTIATION_ROUNDS } from './demo-negotiation';
 import { DEMO_BOOKINGS, DEMO_CUSTOMERS, DEMO_DISCOUNT_RULES } from './demo-bookings';
 import { DEMO_LEADS, DEMO_USER_JOINED_DAYS_AGO, DEMO_USERS } from './demo-leads';
 import { DEMO_PROJECTS } from './demo-projects';
@@ -258,6 +261,64 @@ async function seedDemoDueDiligence(
   }
 }
 
+/**
+ * Batch L4 — negotiation rounds and acquisition cost estimates (BRD §10).
+ *
+ * Rounds are written with an explicit status rather than through `addRound`,
+ * because `addRound` supersedes whatever is open — correct for a user typing
+ * one round at a time, wrong for replaying a ladder that already has its
+ * outcome. The `round_no` is the seed order within a land.
+ */
+async function seedDemoNegotiation(
+  landIds: Map<string, string>,
+  createdBy: string | null,
+): Promise<void> {
+  const roundNo = new Map<string, number>();
+
+  for (const demo of DEMO_NEGOTIATION_ROUNDS) {
+    const landId = landIds.get(demo.land);
+    if (!landId) continue;
+
+    const next = (roundNo.get(landId) ?? 0) + 1;
+    roundNo.set(landId, next);
+
+    const saved = await landNegotiationRepository.create(
+      {
+        land_id: landId,
+        owner_id: null,
+        round_no: next,
+        party: demo.party,
+        amount: demo.amount,
+        offer_date: demo.offer_date,
+        terms: demo.terms ?? null,
+        conditions: demo.conditions ?? null,
+        broker_name: demo.broker_name ?? null,
+        broker_commission: demo.broker_commission ?? null,
+        status: demo.status,
+        recorded_by: createdBy,
+        remarks: demo.remarks ?? null,
+      },
+      createdBy,
+    );
+    // the round carries the date it happened, not the moment of seeding
+    await getDb().land_negotiations.update(saved.id, {
+      created_at: `${demo.offer_date}T10:00:00.000Z`,
+    });
+  }
+
+  for (const demo of DEMO_ACQUISITION_COSTS) {
+    const landId = landIds.get(demo.land);
+    if (!landId) continue;
+    await landAcquisitionCostRepository.setEstimate(
+      landId,
+      demo.cost_head,
+      demo.estimated_amount,
+      demo.remarks ?? null,
+      createdBy,
+    );
+  }
+}
+
 export async function seedDemoData(createdBy: string | null = null): Promise<void> {
   // owners first — lands reference them
   const ownerIds = new Map<string, string>();
@@ -410,6 +471,7 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
 
   await seedDemoSiteVisits(landIds, createdBy);
   await seedDemoDueDiligence(landIds, createdBy);
+  await seedDemoNegotiation(landIds, createdBy);
 
   const { projectIds, unitIds } = await seedDemoProjects(landIds, ownerIds, createdBy);
   const { userIds, leadIdByPhone } = await seedDemoLeads(projectIds, unitIds, createdBy);
