@@ -60,6 +60,22 @@ export interface DocumentRecord extends BaseEntity {
   uploaded_by: UUID | null;
   uploaded_at: ISODateTime;
   notes?: string | null;
+  /**
+   * The pipeline step this file was attached at, when it was uploaded from a
+   * status-change dialog rather than from the Documents tab.
+   *
+   * The document still belongs to the entity itself — a khatian copy attached
+   * during legal verification is a land document, and the Documents tab lists
+   * it like any other. This only records *where it came in*, so the Timeline
+   * can show the evidence next to the step it was collected at.
+   *
+   * Nullable and not indexed, so no Dexie version block was opened: a land's
+   * document set is small enough to filter in memory, and the same precedent
+   * already covers `towers.current_progress_pct`. The name is deliberately
+   * generic — project and material-request pipelines have status history of
+   * exactly the same shape and will reuse this field.
+   */
+  status_event_id?: UUID | null;
 }
 
 export type LookupCategory =
@@ -155,8 +171,20 @@ export interface Land extends BaseEntity {
   land_size: number;
   land_size_unit: LandSizeUnit;
   asking_price: number;
-  negotiated_price?: number | null;
-  /** reference amount for the future Finance module */
+  /**
+   * What was actually settled on.
+   *
+   * `negotiated_price` used to sit between this and `asking_price` (Scope v3.md
+   * Section 2.3). It was dropped after client review: a single "negotiated"
+   * number is a snapshot of a conversation that has rounds, and the offer
+   * ladder that replaces it (BRD ACQ-001, batch L4) records every round with
+   * its date, its terms and who made it. Keeping a lone field alongside that
+   * would leave two answers to "what did we offer".
+   *
+   * Written by the pipeline when a land reaches `acquired` or `jv_signed`, and
+   * editable afterwards for corrections and for lands entered after the fact.
+   * On a JV this is the cash side of the deal, not a purchase price.
+   */
   final_agreed_amount?: number | null;
   gps_lat?: number | null;
   gps_lng?: number | null;

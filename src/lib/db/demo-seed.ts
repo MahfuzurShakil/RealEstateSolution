@@ -145,7 +145,6 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
         land_size: demo.land_size,
         land_size_unit: demo.land_size_unit,
         asking_price: demo.asking_price,
-        negotiated_price: demo.negotiated_price ?? null,
         final_agreed_amount: demo.final_agreed_amount ?? null,
         gps_lat: demo.gps_lat ?? null,
         gps_lng: demo.gps_lng ?? null,

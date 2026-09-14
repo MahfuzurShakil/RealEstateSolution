@@ -127,7 +127,7 @@ export default function LandDetailPage() {
             <div className="space-y-5">
               <Card>
                 <CardHeader title="Land Information" />
-                <Row label="Reference name" value={land.name} />
+                <Row label="Land name" value={land.name} />
                 <Row label="Code" value={land.code} />
                 <Row
                   label="Size"
@@ -158,7 +158,6 @@ export default function LandDetailPage() {
                 {purchasePricing && (
                   <>
                     <Row label="Asking price" value={formatBdt(land.asking_price)} />
-                    <Row label="Negotiated price" value={formatBdt(land.negotiated_price)} />
                   </>
                 )}
                 <Row

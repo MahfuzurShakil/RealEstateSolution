@@ -52,7 +52,6 @@ interface FormState {
   land_size: string;
   land_size_unit: LandSizeUnit;
   asking_price: string;
-  negotiated_price: string;
   final_agreed_amount: string;
   gps_lat: string;
   gps_lng: string;
@@ -80,7 +79,6 @@ const EMPTY: FormState = {
   land_size: '',
   land_size_unit: 'katha',
   asking_price: '',
-  negotiated_price: '',
   final_agreed_amount: '',
   gps_lat: '',
   gps_lng: '',
@@ -112,7 +110,6 @@ function toFormState(land: LandWithRelations): FormState {
     land_size: str(land.land_size),
     land_size_unit: land.land_size_unit,
     asking_price: str(land.asking_price),
-    negotiated_price: str(land.negotiated_price),
     final_agreed_amount: str(land.final_agreed_amount),
     gps_lat: str(land.gps_lat),
     gps_lng: str(land.gps_lng),
@@ -188,7 +185,7 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
 
   function validate(): boolean {
     const next: Record<string, string> = {};
-    if (!form.name.trim()) next.name = 'Reference name is required';
+    if (!form.name.trim()) next.name = 'Land name is required';
     if (!form.location_division.trim()) next.location_division = 'Required';
     if (!form.location_district.trim()) next.location_district = 'Required';
     if (!form.location_area.trim()) next.location_area = 'Required';
@@ -239,7 +236,6 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
         land_size: Number(form.land_size),
         land_size_unit: form.land_size_unit,
         asking_price: Number(form.asking_price),
-        negotiated_price: num(form.negotiated_price),
         final_agreed_amount: num(form.final_agreed_amount),
         gps_lat: num(form.gps_lat),
         gps_lng: num(form.gps_lng),
@@ -300,7 +296,13 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
       <Card>
         <CardHeader title="Land Information" />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Field label="Reference Name" required error={errors.name} className="xl:col-span-2">
+          <Field
+            label="Land Name"
+            hint="What your team calls this plot — usually the area and the block or road"
+            required
+            error={errors.name}
+            className="xl:col-span-2"
+          >
             <TextInput
               value={form.name}
               onChange={(e) => set('name', e.target.value)}
@@ -384,7 +386,7 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
               invalid={Boolean(errors.land_size)}
             />
           </Field>
-          <Field label="Size Unit" required>
+          <Field label="Measuring Unit" required>
             <SelectInput
               value={form.land_size_unit}
               onChange={(e) => set('land_size_unit', e.target.value as LandSizeUnit)}
@@ -399,59 +401,72 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
         </div>
       </Card>
 
+      {/*
+        A new joint venture has no money question left to ask here — no asking
+        price, and the cash side is written by the pipeline at signing — so the
+        card is not rendered rather than rendered empty.
+      */}
+      {(purchasePricing || isEdit) && (
       <Card>
         <CardHeader title="Commercials (BDT)" />
         {/*
-          Asking → negotiated → agreed is three stages of one number, and a
-          joint venture has none of them: the owner is not asking a price,
+          A joint venture has no asking price: the owner is not asking one,
           nothing is being haggled down, and what they receive is a share of the
-          building. Asking the questions anyway produced a purchase price on
-          every JV plot that nobody had agreed to pay.
+          building. Asking anyway produced a purchase price on every JV plot
+          that nobody had agreed to pay. An existing figure is kept rather than
+          cleared when a plot switches, because a land that was being bought
+          before the JV was struck genuinely had an asking price.
 
-          The one money question a JV does have is the cash side, which is the
-          field below — and an existing figure is kept rather than cleared when
-          a plot switches, because a land that was being bought before the JV
-          was struck genuinely had an asking price.
+          Negotiated Price used to sit here too, and was dropped after client
+          review: one "negotiated" number is a snapshot of a conversation that
+          has rounds, and the offer ladder that replaces it records each round
+          with its date and terms. See the note on `Land` in db/types.ts.
+
+          Final Agreed Amount is not asked for when a land is first added —
+          nothing is agreed on the day a plot is sourced, and the pipeline
+          writes it at Acquired / JV Signed. It stays editable afterwards, which
+          is how a land bought before this system existed gets its figure and
+          how a typo gets fixed.
         */}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {purchasePricing && (
-            <>
-              <Field label="Asking Price" required error={errors.asking_price}>
-                <MoneyInput
-                  value={form.asking_price}
-                  placeholder="e.g. 45000000"
-                  onChange={(e) => set('asking_price', e.target.value)}
-                  invalid={Boolean(errors.asking_price)}
-                />
-              </Field>
-              <Field label="Negotiated Price">
-                <MoneyInput
-                  value={form.negotiated_price}
-                  placeholder="e.g. 42000000"
-                  onChange={(e) => set('negotiated_price', e.target.value)}
-                />
-              </Field>
-            </>
+            <Field label="Asking Price" required error={errors.asking_price}>
+              <MoneyInput
+                value={form.asking_price}
+                placeholder="e.g. 45000000"
+                onChange={(e) => set('asking_price', e.target.value)}
+                invalid={Boolean(errors.asking_price)}
+              />
+            </Field>
           )}
-          <Field
-            label={finalAmountLabel(form.acquisition_type)}
-            hint={finalAmountHint(form.acquisition_type)}
-            className={purchasePricing ? undefined : 'md:col-span-2'}
-          >
-            <MoneyInput
-              value={form.final_agreed_amount}
-              placeholder={purchasePricing ? 'e.g. 40000000' : 'e.g. 5000000, or 0'}
-              onChange={(e) => set('final_agreed_amount', e.target.value)}
-            />
-          </Field>
+          {isEdit && (
+            <Field
+              label={finalAmountLabel(form.acquisition_type)}
+              hint={finalAmountHint(form.acquisition_type)}
+              className={purchasePricing ? undefined : 'md:col-span-2'}
+            >
+              <MoneyInput
+                value={form.final_agreed_amount}
+                placeholder={purchasePricing ? 'e.g. 40000000' : 'e.g. 5000000, or 0'}
+                onChange={(e) => set('final_agreed_amount', e.target.value)}
+              />
+            </Field>
+          )}
         </div>
-        {!purchasePricing && (
+        {!isEdit && (
+          <p className="mt-3 text-xs text-ink-muted">
+            The final agreed amount is recorded by the pipeline when this land is marked acquired —
+            it is not set here.
+          </p>
+        )}
+        {isEdit && !purchasePricing && (
           <p className="mt-3 text-xs text-ink-muted">
             The unit split is below — that is what the owner is actually paid. This field is only
             the cash alongside it.
           </p>
         )}
       </Card>
+      )}
 
       <Card>
         <CardHeader
@@ -620,7 +635,13 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
           onChange={(lat, lng) => setForm((f) => ({ ...f, gps_lat: lat, gps_lng: lng }))}
         />
 
-        <div className="mt-4 grid gap-4">
+        {/*
+          These two were stacked in a one-column grid, which left Nearby
+          Facilities sitting at half the width of the card with dead space
+          beside it. They are the same kind of field and the same size, so they
+          sit side by side and each fills its half.
+        */}
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
           <Field label="Nearby Facilities">
             <TextArea
               value={form.nearby_facilities}
@@ -628,7 +649,7 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
               placeholder="School, hospital, market, main road distance…"
             />
           </Field>
-          <Field label="Remarks" className="md:col-span-2 xl:col-span-3">
+          <Field label="Remarks">
             <TextArea
               value={form.remarks}
               placeholder="Internal notes about this opportunity…"

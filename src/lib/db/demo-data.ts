@@ -40,7 +40,6 @@ export interface DemoLand {
   land_size: number;
   land_size_unit: LandSizeUnit;
   asking_price: number;
-  negotiated_price?: number;
   final_agreed_amount?: number;
   gps_lat?: number;
   gps_lng?: number;
@@ -221,7 +220,6 @@ export const DEMO_LANDS: DemoLand[] = [
     land_size: 7.5,
     land_size_unit: 'katha',
     asking_price: 39000000,
-    negotiated_price: 36500000,
     final_agreed_amount: 36000000,
     gps_lat: 23.8759,
     gps_lng: 90.3795,
@@ -337,7 +335,6 @@ export const DEMO_LANDS: DemoLand[] = [
     land_size: 2,
     land_size_unit: 'bigha',
     asking_price: 44000000,
-    negotiated_price: 41000000,
     gps_lat: 23.8985,
     gps_lng: 90.4023,
     nearby_facilities: 'Tongi railway station 2.5km, BSCIC industrial area 1km',
@@ -600,7 +597,6 @@ export const DEMO_LANDS: DemoLand[] = [
     land_size: 8,
     land_size_unit: 'katha',
     asking_price: 86000000,
-    negotiated_price: 82000000,
     final_agreed_amount: 82000000,
     gps_lat: 23.7561,
     gps_lng: 90.3746,

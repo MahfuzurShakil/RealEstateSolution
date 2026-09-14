@@ -94,17 +94,24 @@ class LandRepository extends BaseRepository<Land> {
       NewRecord<LandStatusEvent>,
       'land_id' | 'from_status' | 'to_status'
     >,
-  ): Promise<Land | undefined> {
+  ): Promise<{ land: Land; event: LandStatusEvent } | undefined> {
     const current = await this.getById(id);
     if (!current) return undefined;
 
-    await landStatusEventRepository.create({
+    const logged = await landStatusEventRepository.create({
       ...event,
       land_id: id,
       from_status: current.status,
       to_status: status,
     });
-    return this.update(id, { status });
+    const land = await this.update(id, { status });
+    /*
+     * The event comes back with the land because the caller may have files to
+     * file against it — the status dialog attaches evidence at the moment the
+     * step is confirmed, and a document cannot name the step it arrived at
+     * until the step exists.
+     */
+    return land ? { land, event: logged } : undefined;
   }
 
   async countByStatus(): Promise<Record<string, number>> {

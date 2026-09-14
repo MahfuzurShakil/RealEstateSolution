@@ -124,6 +124,46 @@ export interface StatusStepConfig {
   fields: StatusStepField[];
 }
 
+/**
+ * What paperwork a step collects, and what to file it as (client feedback,
+ * 2026-09-14).
+ *
+ * Evidence turns up at the moment the step is confirmed — the surveyor comes
+ * back from the plot with twenty photos, the lawyer comes back with the search
+ * report — and until now the only way to store it was the Documents tab, as a
+ * separate errand after the dialog was closed. So the photos lived on a phone.
+ *
+ * Each step therefore files its uploads under a sensible land document type,
+ * chosen here rather than asked for in the dialog: the step already says what
+ * the file is. The Documents tab still lists them, because they are land
+ * documents like any other — this only decides the label and records which step
+ * they arrived at.
+ */
+export interface StatusStepAttachment {
+  /** one of LAND_DOCUMENT_TYPES */
+  documentType: string;
+  /** required when documentType is 'other' — becomes `custom_type_name` */
+  customName?: string;
+  /** what the dropzone invites the user to attach */
+  prompt: string;
+}
+
+const ATTACHMENTS: Record<LandStatus, StatusStepAttachment> = {
+  new: { documentType: 'other', customName: 'Reopening note', prompt: 'Anything supporting the decision to reconsider this land' },
+  site_visit_done: { documentType: 'site_photo', prompt: 'Site photos, boundary shots, road access — attach as many as you took' },
+  legal_verification: { documentType: 'khatian_copy', prompt: 'Khatian copy, search report, encumbrance certificate' },
+  negotiation: { documentType: 'other', customName: 'Negotiation record', prompt: 'Written offer, owner’s counter, broker note' },
+  decision: { documentType: 'other', customName: 'Decision note', prompt: 'Board minutes or the approval note' },
+  acquired: { documentType: 'dolil_deed', prompt: 'Registered deed, mutation papers, registration receipt' },
+  jv_signed: { documentType: 'jv_agreement', prompt: 'Signed JV agreement, power of attorney' },
+  rejected: { documentType: 'other', customName: 'Rejection note', prompt: 'Anything that records why this was dropped' },
+  linked_to_project: { documentType: 'other', customName: 'Project link note', prompt: 'Supporting paperwork' },
+};
+
+export function statusStepAttachment(status: LandStatus): StatusStepAttachment {
+  return ATTACHMENTS[status];
+}
+
 const REMARKS = (required = false, placeholder = 'Anything worth remembering about this step'): StatusStepField => ({
   key: 'remarks',
   label: required ? 'Remarks (required)' : 'Remarks',
@@ -415,13 +455,19 @@ export function finalAmountHint(acquisitionType: AcquisitionType): string {
 export function landHeadlineAmount(land: {
   acquisition_type: AcquisitionType;
   asking_price: number;
-  negotiated_price?: number | null;
   final_agreed_amount?: number | null;
 }): { label: string; amount: number | null } {
+  /*
+   * A purchase used to fall back through `negotiated_price` on its way to the
+   * asking price. That field is gone (see the note on `Land`), and the agreed
+   * amount is the better figure anyway: before anything is settled the row
+   * shows what is being asked, and the moment the pipeline records a deal the
+   * row shows what was actually agreed.
+   */
   const value =
     land.acquisition_type === 'joint_venture'
       ? land.final_agreed_amount
-      : (land.negotiated_price ?? land.asking_price);
+      : (land.final_agreed_amount ?? land.asking_price);
   const amount = Number(value);
   return {
     label: land.acquisition_type === 'joint_venture' ? 'Cash to owner' : 'Price',

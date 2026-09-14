@@ -1064,6 +1064,13 @@ they change no schema.
 | `land_jv_details` | `jv_share_basis` | Module 2 — a share % is meaningless without "percent of what" |
 | `payments` | `booking_id` | Module 4 — 8.2 links a payment through an instalment that does not exist yet |
 | `land_status_history`, `project_status_history` | whole tables | Audit trail for the pipelines |
+| `documents` | `status_event_id` | Module 1 — evidence attached at a pipeline step needs to say which step it arrived at; nullable and not indexed, so no schema version change |
+
+**Removed from the scope document**
+
+| Table | Field | Why |
+|---|---|---|
+| `lands` | `negotiated_price` | Client review 2026-09-14. One "negotiated" number is a snapshot of a conversation that has rounds; the offer ladder replacing it (BRD ACQ-001, batch L4 of `BRD-ALIGNMENT-PLAN.md` §5.6) records every round with its date, terms and who made it. Keeping both would leave two answers to "what did we offer". `landHeadlineAmount` now falls back `final_agreed_amount ?? asking_price`, so a land shows what is being asked until something is actually agreed. |
 
 ---
 

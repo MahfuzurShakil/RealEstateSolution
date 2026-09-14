@@ -20,19 +20,21 @@ import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { DocumentRecord, EntityType } from '@/lib/db/types';
 import { documentRepository, lookupRepository } from '@/lib/repositories';
+import {
+  ACCEPTED_UPLOAD_TYPES,
+  MAX_UPLOAD_BYTES,
+  formatFileSize,
+} from '@/lib/domain/file-upload';
 import { cn } from '@/lib/utils/cn';
 import { formatDate, humanize } from '@/lib/utils/format';
 
-/** PDF or image, up to 5 MB (feedback #5). */
-const MAX_BYTES = 5 * 1024 * 1024;
-const ACCEPTED = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
-
-function formatSize(bytes?: number | null): string {
-  if (!bytes) return '—';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+/*
+ * PDF or image, up to 5 MB (feedback #5). The limits moved to
+ * `lib/domain/file-upload.ts` when the pipeline-step uploader was added, so
+ * both uploaders enforce one rule rather than two copies of it.
+ */
+const ACCEPTED: readonly string[] = ACCEPTED_UPLOAD_TYPES;
+const formatSize = formatFileSize;
 
 function isImage(doc: DocumentRecord): boolean {
   return Boolean(doc.mime_type?.startsWith('image/'));
@@ -234,7 +236,7 @@ function UploadDialog({
       setError('Only PDF, PNG, JPG or WEBP files are accepted');
       return;
     }
-    if (picked.size > MAX_BYTES) {
+    if (picked.size > MAX_UPLOAD_BYTES) {
       setError(`"${picked.name}" is ${formatSize(picked.size)} — the limit is 5 MB`);
       return;
     }
@@ -387,7 +389,7 @@ function UploadDialog({
 }
 
 /** Large preview with a sidebar to flip between the record's documents. */
-function DocumentViewer({
+export function DocumentViewer({
   doc,
   documents,
   onSelect,

@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
+import { StepAttachments } from '@/components/admin/documents/StepAttachments';
+import { useMockSession } from '@/lib/auth/mock-session';
 import type { JvShareBasis, Land, LandStatus } from '@/lib/db/types';
 import {
   LAND_PIPELINE_STEPS,
@@ -15,10 +17,11 @@ import {
   amountUpdatesFinalAgreed,
   isJvTermsField,
   isTerminalStatus,
+  statusStepAttachment,
   statusStepConfig,
   type StatusStepField,
 } from '@/lib/domain/land';
-import { landJvRepository, landRepository } from '@/lib/repositories';
+import { documentRepository, landJvRepository, landRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { todayLocal } from '@/lib/utils/format';
 
@@ -29,8 +32,11 @@ import { todayLocal } from '@/lib/utils/format';
  * Module 2, not by hand.
  */
 export function LandStatusCard({ land }: { land: Land }) {
+  const { userId } = useMockSession();
   const [target, setTarget] = useState<LandStatus | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
+  const [files, setFiles] = useState<File[]>([]);
+  const [fileError, setFileError] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -41,6 +47,8 @@ export function LandStatusCard({ land }: { land: Land }) {
   async function openDialog(status: LandStatus) {
     setTarget(status);
     setError('');
+    setFileError('');
+    setFiles([]);
     /*
      * JV terms already agreed at an earlier step are offered back rather than
      * asked for again — the share is normally settled in negotiation and only
@@ -83,13 +91,47 @@ export function LandStatusCard({ land }: { land: Land }) {
     setBusy(true);
     try {
       const amount = values.amount?.trim() ? Number(values.amount) : null;
-      await landRepository.setStatus(land.id, target, {
+      const moved = await landRepository.setStatus(land.id, target, {
         event_date: values.event_date,
         performed_by: values.performed_by?.trim() || null,
         amount,
         reference_no: values.reference_no?.trim() || null,
         remarks: values.remarks?.trim() || null,
       });
+
+      /*
+       * Evidence collected at this step. It is filed against the *land*, not
+       * against the event, so the Documents tab lists it like any other land
+       * document — a khatian copy is a khatian copy whichever screen it came
+       * in through. `status_event_id` only records where it arrived, which is
+       * what lets the Timeline show it beside the step it belongs to.
+       *
+       * Uploaded after the status has moved rather than before: if the move
+       * fails there is nothing to attach evidence to, and a file filed against
+       * a step that never happened is worse than a file not filed.
+       */
+      if (moved && files.length) {
+        const attachment = statusStepAttachment(target);
+        const uploadedAt = new Date().toISOString();
+        for (const file of files) {
+          await documentRepository.create({
+            entity_type: 'land',
+            entity_id: land.id,
+            document_type: attachment.documentType,
+            custom_type_name: attachment.customName ?? null,
+            file_url: file.name,
+            file_data: file,
+            file_name: file.name,
+            file_size: file.size,
+            mime_type: file.type,
+            is_public: false,
+            uploaded_by: userId,
+            uploaded_at: uploadedAt,
+            notes: `Attached at "${LAND_STATUS_META[target].label}"`,
+            status_event_id: moved.event.id,
+          });
+        }
+      }
       // the amount agreed at the outcome step is the land's final agreed amount
       if (amount !== null && amountUpdatesFinalAgreed(target)) {
         await landRepository.update(land.id, { final_agreed_amount: amount });
@@ -250,6 +292,15 @@ export function LandStatusCard({ land }: { land: Land }) {
         >
           <div className="grid gap-4">
             {config.fields.map(renderField)}
+
+            <StepAttachments
+              files={files}
+              onChange={setFiles}
+              prompt={statusStepAttachment(target).prompt}
+              error={fileError}
+              onError={setFileError}
+            />
+
             {/*
               A validation error that belongs to no single field — the two
               shares failing to total 100 is about the pair, not about either

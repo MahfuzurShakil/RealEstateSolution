@@ -109,7 +109,7 @@ new
 lands
  - id                    UUID, PK
  - code                  VARCHAR, e.g. "LND-2026-001", auto
- - name                  VARCHAR — internal reference name
+ - name                  VARCHAR — land name (UI label "Land Name")
  - location_division     VARCHAR
  - location_district     VARCHAR
  - location_area         VARCHAR
@@ -120,7 +120,6 @@ lands
  - land_size              DECIMAL         (value)
  - land_size_unit         ENUM: katha | bigha | decimal
  - asking_price           DECIMAL
- - negotiated_price       DECIMAL, nullable
  - final_agreed_amount    DECIMAL, nullable   -- reference amount for future Finance module (payment/installment tracked there)
  - gps_lat                DECIMAL, nullable
  - gps_lng                DECIMAL, nullable
