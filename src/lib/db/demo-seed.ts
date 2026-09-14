@@ -40,7 +40,7 @@ import {
   refundRepository,
   userProjectAssignmentRepository,
 } from '../repositories';
-import type { MaterialRequestStatus, ProjectStatus } from './types';
+import type { LandStatus, MaterialRequestStatus, ProjectStatus } from './types';
 import { PROCUREMENT_BUDGET_HEAD } from './types';
 import { getDb } from './database';
 import { backfillMaterialItems } from './backfill-material-items';
@@ -137,8 +137,12 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
         name: demo.name,
         location_division: demo.location_division,
         location_district: demo.location_district,
+        location_upazila: demo.location_upazila ?? null,
         location_area: demo.location_area,
         road: demo.road ?? null,
+        road_access: demo.road_access ?? null,
+        land_classification: demo.land_classification ?? null,
+        source: demo.source ?? null,
         mouza: demo.mouza ?? null,
         dag_number: demo.dag_number ?? null,
         khatian_number: demo.khatian_number ?? null,
@@ -165,6 +169,8 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
           land_id: land.id,
           owner_id: ownerId,
           ownership_share_pct: row.share,
+          ownership_area: row.area ?? null,
+          agreed_amount: row.amount ?? null,
           is_primary_contact: Boolean(row.primary),
         },
         createdBy,
@@ -186,7 +192,22 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
       );
     }
 
-    let previous = 'new' as (typeof demo.history)[number]['to_status'];
+    /*
+     * Every land starts at `sourced`, so that is what the first history row
+     * came from.
+     *
+     * This was `'new' as (typeof demo.history)[number]['to_status']` — the
+     * value the pipeline used before it took the BRD's names. The `as` was
+     * doing the damage: it told the compiler to accept whatever string sat in
+     * front of it, so when the enum was renamed every other site in the
+     * codebase failed typecheck and this one did not. The demo then seeded
+     * eleven history rows pointing at a status that no longer exists, and the
+     * Timeline threw reading the label for it.
+     *
+     * Annotated rather than cast, the way the project seeder below already
+     * does it, so the next rename breaks the build here too.
+     */
+    let previous: LandStatus = 'sourced';
     for (const event of demo.history) {
       const saved = await landStatusEventRepository.create(
         {

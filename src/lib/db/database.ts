@@ -368,6 +368,58 @@ export class AppDatabase extends Dexie {
       stock_write_offs:
         'id, &code, project_id, item_id, write_off_date, reason, [project_id+item_id]',
     });
+
+    /*
+     * v19 — the land pipeline takes the BRD's names (BRD v2.0 LAND-004).
+     *
+     * No index changes: `lands.status` and `land_status_history.to_status` were
+     * already indexed and stay indexed. The version block exists only to hang
+     * the row rewrite off, the same way v13 hung the material-item back-fill.
+     *
+     * The rewrite is done here rather than by a find-and-replace across `src/`,
+     * and that is not fussiness. `site_visit_done` is a value in TWO unrelated
+     * enums — this one and the *lead* pipeline in `lib/domain/lead.ts`, where
+     * it means a sales visit to a prospective buyer. A global replace would
+     * have silently renamed half of Sales & CRM.
+     *
+     * `negotiation`, `acquired`, `jv_signed`, `rejected` and
+     * `linked_to_project` keep their values and are absent from the map. A row
+     * whose status is not in the map is left exactly as it is, so re-running
+     * this upgrade on already-migrated data is a no-op rather than a
+     * corruption.
+     */
+    this.version(19).stores({}).upgrade(async (tx) => {
+      const RENAMED: Record<string, string> = {
+        new: 'sourced',
+        site_visit_done: 'under_review',
+        legal_verification: 'dd_in_progress',
+        decision: 'agreed',
+      };
+
+      const lands = await tx.table('lands').toArray();
+      for (const land of lands) {
+        const next = RENAMED[land.status as string];
+        if (next) await tx.table('lands').update(land.id, { status: next });
+      }
+
+      /*
+       * Both ends of every history row. `from_status` matters as much as
+       * `to_status`: the Timeline renders "Due Diligence — from Under Review",
+       * and a half-migrated row would look up a label for a status that no
+       * longer exists and render undefined.
+       */
+      const history = await tx.table('land_status_history').toArray();
+      for (const event of history) {
+        const from = RENAMED[event.from_status as string];
+        const to = RENAMED[event.to_status as string];
+        if (from || to) {
+          await tx.table('land_status_history').update(event.id, {
+            ...(from ? { from_status: from } : {}),
+            ...(to ? { to_status: to } : {}),
+          });
+        }
+      }
+    });
   }
 }
 

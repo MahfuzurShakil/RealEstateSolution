@@ -139,15 +139,33 @@ export interface CompanySettings extends BaseEntity {
  * Module 1 — Land Management
  * ------------------------------------------------------------------ */
 
+/**
+ * The land pipeline, in the BRD's vocabulary (BRD v2.0 LAND-004).
+ *
+ * These used to be our own names — `new`, `site_visit_done`,
+ * `legal_verification`, `decision`. The client chose the BRD's words over ours,
+ * so the stored values were rewritten by the v19 upgrade rather than relabelled
+ * in the UI. The map, and the reason a find-and-replace would have been wrong,
+ * are both on that version block in `database.ts`.
+ *
+ * Two values are ours and are not in the BRD's list of eight:
+ *
+ * - `jv_signed` — the BRD folds a joint venture into ACQUIRED, but the whole JV
+ *   branch (share basis, unit allocation, owner inventory) keys off this being
+ *   its own outcome.
+ * - `linked_to_project` — set by Module 2 when the land is mapped to a project,
+ *   never chosen by hand.
+ */
 export const LAND_STATUSES = [
-  'new',
-  'site_visit_done',
-  'legal_verification',
+  'sourced',
+  'under_review',
+  'dd_in_progress',
   'negotiation',
-  'decision',
+  'agreed',
   'acquired',
   'jv_signed',
   'rejected',
+  'disposed',
   'linked_to_project',
 ] as const;
 export type LandStatus = (typeof LAND_STATUSES)[number];
@@ -163,8 +181,34 @@ export interface Land extends BaseEntity {
   name: string;
   location_division: string;
   location_district: string;
+  /**
+   * BRD LAND-001. The administrative tier between district and area, and the
+   * one a Bangladeshi land record is actually filed under — a mouza belongs to
+   * an upazila, so a dag number is only unambiguous with it.
+   */
+  location_upazila?: string | null;
   location_area: string;
+  /** the road the plot is on */
   road?: string | null;
+  /**
+   * BRD LAND-001 — how the plot is reached, which is not the same question as
+   * which road it is on. Free text rather than a width: at sourcing nobody has
+   * measured anything, and the surveyed width belongs to the site visit
+   * (BRD SITE-001, batch L2).
+   */
+  road_access?: string | null;
+  /**
+   * BRD LAND-001 — নাল, ভিটি, ডোবা and the rest. Sourced from `lookup_values`
+   * (category='land_classification') because the list differs by district and
+   * the office should not need a deploy to add one.
+   */
+  land_classification?: string | null;
+  /**
+   * BRD LAND-001 — where the opportunity came from: a broker, the owner
+   * directly, a reference, our own survey. Drives the "acquisition pipeline"
+   * KPI in BRD section 32. From `lookup_values` (category='land_source').
+   */
+  source?: string | null;
   mouza?: string | null;
   dag_number?: string | null;
   khatian_number?: string | null;
@@ -208,6 +252,27 @@ export interface LandOwnerMapping extends BaseEntity {
   owner_id: UUID;
   ownership_share_pct: number;
   is_primary_contact: boolean;
+  /**
+   * BRD LAND-002 — how much land this owner holds, in the land's own
+   * `land_size_unit`.
+   *
+   * Not derived from the percentage on purpose. A share and an area disagree
+   * more often than they agree in a real khatian: heirs divide by the deed,
+   * not by arithmetic, and the percentage is frequently a rounding of the
+   * area rather than the other way round. Storing both is what lets the
+   * Owners tab show them side by side and flag the gap.
+   */
+  ownership_area?: number | null;
+  /**
+   * BRD LAND-002 — what was agreed with *this* owner.
+   *
+   * A land with three owners is three settlements at three prices, and BR-003
+   * requires every payment to reference its owner. The per-owner settlement
+   * schedule that consumes this arrives in batch L5; until then the figure is
+   * recorded and shown against the land total, which is how the mismatch
+   * becomes visible before anybody is paid.
+   */
+  agreed_amount?: number | null;
 }
 
 export interface LandJvDetails extends BaseEntity {
@@ -243,6 +308,44 @@ export interface LandStatusEvent extends BaseEntity {
   reference_no?: string | null;
   remarks?: string | null;
 }
+
+/**
+ * BRD LAND-001 — how a plot is classified in the land record.
+ *
+ * These are the Bangladeshi cadastral classes, kept in Bangla because that is
+ * what the khatian says and what the land officer will read back to you.
+ * Seeded into `lookup_values` rather than frozen as an ENUM: the set varies by
+ * district, and adding one should not need a deploy.
+ */
+export const LAND_CLASSIFICATION_OPTIONS = [
+  'নাল (Nal — paddy land)',
+  'ভিটি (Bhiti — homestead)',
+  'ডোবা (Doba — ditch/pond)',
+  'পুকুর (Pukur — pond)',
+  'বাগান (Bagan — orchard)',
+  'চালা (Chala — high land)',
+  'ডাঙ্গা (Danga — dry raised land)',
+  'বাণিজ্যিক (Commercial)',
+  'অন্যান্য (Other)',
+] as const;
+
+/**
+ * BRD LAND-001 — where the opportunity came from.
+ *
+ * This is the denominator of the acquisition-pipeline KPI in BRD section 32:
+ * without it there is no way to answer "which of our sources actually produce
+ * land we buy", which is the question that decides who gets paid a commission
+ * next year.
+ */
+export const LAND_SOURCE_OPTIONS = [
+  'Broker / Dalal',
+  'Direct owner approach',
+  'Owner walk-in',
+  'Reference',
+  'Own survey',
+  'Auction / Bank',
+  'Other',
+] as const;
 
 /** Document types for entity_type = 'land' (Section 2.7) */
 export const LAND_DOCUMENT_TYPES = [

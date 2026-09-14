@@ -23,11 +23,90 @@ import {
   landUsesPurchasePricing,
 } from '@/lib/domain/land';
 import { JV_SHARE_BASIS_LABEL } from '@/lib/domain/project';
-import { expenseRepository, landRepository } from '@/lib/repositories';
+import {
+  expenseRepository,
+  landRepository,
+  type LandWithRelations,
+} from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
 type Tab = 'overview' | 'owners' | 'jv' | 'payments' | 'documents' | 'timeline';
+
+/**
+ * What the owners add up to, against what the land says (BRD LAND-002, BR-002).
+ *
+ * Three sums, each compared with the figure it should match. A row is shown
+ * only when the owners have supplied that figure at all — a land where nobody
+ * has recorded areas yet should say nothing about areas rather than report a
+ * shortfall of the whole plot.
+ */
+function OwnerReconciliation({ land }: { land: LandWithRelations }) {
+  const unit = LAND_SIZE_UNIT_LABEL[land.land_size_unit];
+  const shareTotal = land.owners.reduce((s, o) => s + (Number(o.ownership_share_pct) || 0), 0);
+
+  const withArea = land.owners.filter((o) => o.ownership_area != null);
+  const areaTotal = withArea.reduce((s, o) => s + Number(o.ownership_area), 0);
+
+  const withAmount = land.owners.filter((o) => o.agreed_amount != null);
+  const amountTotal = withAmount.reduce((s, o) => s + Number(o.agreed_amount), 0);
+  const landAgreed = Number(land.final_agreed_amount) || 0;
+
+  const off = (a: number, b: number) => Math.abs(a - b) > 0.01;
+
+  const lines: Array<{ label: string; value: string; warn: boolean; note?: string }> = [
+    {
+      label: 'Ownership shares',
+      value: `${shareTotal}%`,
+      warn: off(shareTotal, 100),
+      note: off(shareTotal, 100) ? 'should total 100%' : undefined,
+    },
+  ];
+
+  if (withArea.length) {
+    lines.push({
+      label: `Owner areas (${withArea.length} of ${land.owners.length})`,
+      value: `${areaTotal} of ${land.land_size} ${unit}`,
+      warn: withArea.length === land.owners.length && off(areaTotal, land.land_size),
+      note:
+        withArea.length < land.owners.length
+          ? 'not recorded for every owner'
+          : off(areaTotal, land.land_size)
+            ? `${(areaTotal - land.land_size).toFixed(2)} ${unit} out`
+            : undefined,
+    });
+  }
+
+  if (withAmount.length && landAgreed > 0) {
+    lines.push({
+      label: `Agreed with owners (${withAmount.length} of ${land.owners.length})`,
+      value: `${formatBdt(amountTotal)} of ${formatBdt(landAgreed)}`,
+      warn: withAmount.length === land.owners.length && off(amountTotal, landAgreed),
+      note:
+        withAmount.length < land.owners.length
+          ? 'not recorded for every owner'
+          : off(amountTotal, landAgreed)
+            ? `${formatBdt(Math.abs(amountTotal - landAgreed))} ${amountTotal > landAgreed ? 'over' : 'short'}`
+            : undefined,
+    });
+  }
+
+  return (
+    <dl className="mt-4 space-y-2 border-t border-hairline pt-4">
+      {lines.map((line) => (
+        <div key={line.label} className="flex flex-wrap items-baseline justify-between gap-2">
+          <dt className="text-xs text-ink-muted">{line.label}</dt>
+          <dd
+            className={`text-sm tabular-nums ${line.warn ? 'font-medium text-amber-700' : 'text-ink'}`}
+          >
+            {line.value}
+            {line.note && <span className="ml-2 text-xs font-normal">({line.note})</span>}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -137,10 +216,14 @@ export default function LandDetailPage() {
                   label="Acquisition type"
                   value={ACQUISITION_TYPE_LABEL[land.acquisition_type]}
                 />
+                <Row label="Classification" value={land.land_classification} />
+                <Row label="Source" value={land.source} />
                 <Row label="Division" value={land.location_division} />
                 <Row label="District" value={land.location_district} />
+                <Row label="Upazila / Thana" value={land.location_upazila} />
                 <Row label="Area" value={land.location_area} />
                 <Row label="Road" value={land.road} />
+                <Row label="Road access" value={land.road_access} />
                 <Row label="Mouza" value={land.mouza} />
                 <Row label="Dag number" value={land.dag_number} />
                 <Row label="Khatian number" value={land.khatian_number} />
@@ -285,11 +368,38 @@ export default function LandDetailPage() {
                         </p>
                       </div>
                       {row.is_primary_contact && <Badge tone="teal">Primary</Badge>}
-                      <Badge>{row.ownership_share_pct}%</Badge>
+                      {/* BRD LAND-002 — share, area and price, per owner */}
+                      <div className="shrink-0 text-right">
+                        <p className="text-sm font-medium text-ink tabular-nums">
+                          {row.ownership_share_pct}%
+                          {row.ownership_area != null && (
+                            <span className="text-ink-muted">
+                              {' · '}
+                              {row.ownership_area} {LAND_SIZE_UNIT_LABEL[land.land_size_unit]}
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-ink-muted tabular-nums">
+                          {row.agreed_amount != null
+                            ? formatBdt(row.agreed_amount)
+                            : 'No amount agreed'}
+                        </p>
+                      </div>
                     </li>
                   ))}
                 </ul>
               )}
+
+              {/*
+                BR-002: ownership percentages must be valid and reconciled.
+                The form already refuses to save shares that do not total 100,
+                so that line is a confirmation. Area and money are not
+                enforced — an owner's area is what the deed says and the
+                agreed amounts are settled one at a time — so a mismatch is
+                reported rather than blocked, which is the point: it has to be
+                visible before anybody is paid.
+              */}
+              {land.owners.length > 0 && <OwnerReconciliation land={land} />}
             </Card>
           )}
 

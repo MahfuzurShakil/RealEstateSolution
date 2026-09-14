@@ -91,17 +91,28 @@ company_settings
 Land opportunity থেকে শুরু করে acquisition/JV পর্যন্ত পুরো pipeline track করা, এবং পরে Project-এর সাথে link করা।
 
 ### 2.2 Status Pipeline
+
+BRD v2.0 LAND-004 এর নাম নেওয়া হয়েছে (client decision, 2026-09-14). আগের নাম
+(`new`, `site_visit_done`, `legal_verification`, `decision`) Dexie v19 upgrade
+block-এ rewrite করা হয়েছে — `database.ts` দেখো।
+
 ```
-new
-  → site_visit_done
-  → legal_verification
+sourced
+  → under_review           (site visit + feasibility)
+  → dd_in_progress         (legal due diligence)
   → negotiation
-  → decision
+  → agreed
       ├─ acquired          (direct purchase)
       ├─ jv_signed
       └─ rejected
+  → disposed               (owned land sold on — from acquired / jv_signed)
   → linked_to_project      (once mapped to a Project)
 ```
+
+`jv_signed` আর `linked_to_project` BRD-র আট-টার তালিকায় নাই, কিন্তু রাখা হয়েছে:
+BRD জয়েন্ট ভেঞ্চারকে ACQUIRED-এর ভিতরে ধরে, অথচ আমাদের পুরো JV branch (share
+basis, unit allocation, owner inventory) এটাকে আলাদা outcome ধরেই চলে; আর
+`linked_to_project` Module 2 নিজে সেট করে, হাতে বাছা যায় না।
 
 ### 2.3 `lands` table
 

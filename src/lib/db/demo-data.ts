@@ -32,8 +32,12 @@ export interface DemoLand {
   name: string;
   location_division: string;
   location_district: string;
+  location_upazila?: string;
   location_area: string;
   road?: string;
+  road_access?: string;
+  land_classification?: string;
+  source?: string;
   mouza?: string;
   dag_number?: string;
   khatian_number?: string;
@@ -48,8 +52,20 @@ export interface DemoLand {
   status: LandStatus;
   remarks?: string;
   created_at: string;
-  /** owner keys + their share of the plot */
-  owners: { key: string; share: number; primary?: boolean }[];
+  /**
+   * Owner keys + their share of the plot. `area` is in the land's own
+   * `land_size_unit` and `amount` is what was agreed with that owner
+   * specifically (BRD LAND-002) — both are left off the lands where nobody
+   * would have recorded them yet, so the Owners tab shows the "not recorded
+   * for every owner" case as well as the reconciled one.
+   */
+  owners: {
+    key: string;
+    share: number;
+    primary?: boolean;
+    area?: number;
+    amount?: number;
+  }[];
   jv?: {
     developer_share_pct: number;
     landowner_share_pct: number;
@@ -143,10 +159,14 @@ export const DEMO_OWNERS: DemoOwner[] = [
 export const DEMO_LANDS: DemoLand[] = [
   {
     name: 'Bashundhara Block K corner plot',
+    land_classification: 'ভিটি (Bhiti — homestead)',
+    source: 'Direct owner approach',
     location_division: 'Dhaka',
     location_district: 'Dhaka',
+    location_upazila: 'Vatara',
     location_area: 'Bashundhara R/A',
     road: 'Road 12, Block K',
+    road_access: 'Two-road corner, 25 ft and 20 ft pucca',
     mouza: 'Baridhara',
     dag_number: '1245',
     khatian_number: '88/3',
@@ -175,13 +195,13 @@ export const DEMO_LANDS: DemoLand[] = [
     },
     history: [
       {
-        to_status: 'site_visit_done',
+        to_status: 'under_review',
         event_date: '2026-01-22',
         performed_by: 'Kamal Hossain (Land Team)',
         remarks: 'Road access good, boundary wall broken on the north side.',
       },
       {
-        to_status: 'legal_verification',
+        to_status: 'dd_in_progress',
         event_date: '2026-02-09',
         performed_by: 'Adv. Nusrat Jahan',
         reference_no: 'LV-2026-004',
@@ -195,7 +215,7 @@ export const DEMO_LANDS: DemoLand[] = [
         remarks: 'Owner agreed to 45:55 sharing instead of an outright sale.',
       },
       {
-        to_status: 'decision',
+        to_status: 'agreed',
         event_date: '2026-04-05',
         amount: 45000000,
         remarks: 'Board approved the JV structure.',
@@ -210,10 +230,14 @@ export const DEMO_LANDS: DemoLand[] = [
   },
   {
     name: 'Uttara Sector 13 residential plot',
+    land_classification: 'ভিটি (Bhiti — homestead)',
+    source: 'Broker / Dalal',
     location_division: 'Dhaka',
     location_district: 'Dhaka',
+    location_upazila: 'Uttara',
     location_area: 'Uttara',
     road: 'Road 9, Sector 13',
+    road_access: '60 ft sector road, direct frontage',
     mouza: 'Turag',
     dag_number: '3120',
     khatian_number: '412',
@@ -228,16 +252,16 @@ export const DEMO_LANDS: DemoLand[] = [
     status: 'acquired',
     remarks: 'Registration completed; mutation filing in progress.',
     created_at: '2026-01-06T05:45:00.000Z',
-    owners: [{ key: 'nasima', share: 100, primary: true }],
+    owners: [{ key: 'nasima', share: 100, primary: true, area: 7.5, amount: 36_000_000 }],
     history: [
       {
-        to_status: 'site_visit_done',
+        to_status: 'under_review',
         event_date: '2026-01-11',
         performed_by: 'Kamal Hossain (Land Team)',
         remarks: 'Filled plot, ready for piling. Metro line within walking distance.',
       },
       {
-        to_status: 'legal_verification',
+        to_status: 'dd_in_progress',
         event_date: '2026-01-28',
         performed_by: 'Adv. Nusrat Jahan',
         reference_no: 'LV-2026-002',
@@ -250,7 +274,7 @@ export const DEMO_LANDS: DemoLand[] = [
         performed_by: 'Rifat Ahmed',
       },
       {
-        to_status: 'decision',
+        to_status: 'agreed',
         event_date: '2026-03-01',
         amount: 36000000,
         remarks: 'Approved at BDT 36,000,000 with payment in three instalments.',
@@ -266,10 +290,14 @@ export const DEMO_LANDS: DemoLand[] = [
   },
   {
     name: 'Savar highway-side land',
+    land_classification: 'চালা (Chala — high land)',
+    source: 'Reference',
     location_division: 'Dhaka',
     location_district: 'Dhaka',
+    location_upazila: 'Savar',
     location_area: 'Savar',
     road: 'Dhaka–Aricha Highway',
+    road_access: 'Dhaka–Aricha highway frontage, 40 ft service road',
     mouza: 'Baliapur',
     dag_number: '778',
     khatian_number: '205/1',
@@ -281,12 +309,12 @@ export const DEMO_LANDS: DemoLand[] = [
     gps_lng: 90.2667,
     nearby_facilities: 'Savar Bazar 2km, Enam Medical College 3km, highway frontage 60ft',
     acquisition_type: 'joint_venture',
-    status: 'decision',
+    status: 'agreed',
     remarks: 'Two siblings inherited the land; both must sign.',
     created_at: '2026-02-03T07:10:00.000Z',
     owners: [
-      { key: 'abdul', share: 60, primary: true },
-      { key: 'shahida', share: 40 },
+      { key: 'abdul', share: 60, primary: true, area: 0.9 },
+      { key: 'shahida', share: 40, area: 0.6 },
     ],
     jv: {
       developer_share_pct: 50,
@@ -296,13 +324,13 @@ export const DEMO_LANDS: DemoLand[] = [
     },
     history: [
       {
-        to_status: 'site_visit_done',
+        to_status: 'under_review',
         event_date: '2026-02-12',
         performed_by: 'Shafiq Rahman (Land Team)',
         remarks: 'Low land, will need about 4ft of filling. Highway frontage is the main value.',
       },
       {
-        to_status: 'legal_verification',
+        to_status: 'dd_in_progress',
         event_date: '2026-03-16',
         performed_by: 'Adv. Tanvir Alam',
         reference_no: 'LV-2026-011',
@@ -316,7 +344,7 @@ export const DEMO_LANDS: DemoLand[] = [
         remarks: 'Owners are asking for 50:50 sharing plus 2 parking spaces.',
       },
       {
-        to_status: 'decision',
+        to_status: 'agreed',
         event_date: '2026-06-10',
         amount: 57000000,
         remarks: 'Awaiting board decision on the extra parking demand.',
@@ -325,10 +353,14 @@ export const DEMO_LANDS: DemoLand[] = [
   },
   {
     name: 'Gazipur Tongi industrial-adjacent plot',
+    land_classification: 'চালা (Chala — high land)',
+    source: 'Broker / Dalal',
     location_division: 'Dhaka',
     location_district: 'Gazipur',
+    location_upazila: 'Tongi',
     location_area: 'Tongi',
     road: 'Kamarpara Road',
+    road_access: '30 ft approach road off Tongi–Ashulia road',
     mouza: 'Auchpara',
     dag_number: '5567',
     khatian_number: '1102',
@@ -345,13 +377,13 @@ export const DEMO_LANDS: DemoLand[] = [
     owners: [{ key: 'ruhul', share: 100, primary: true }],
     history: [
       {
-        to_status: 'site_visit_done',
+        to_status: 'under_review',
         event_date: '2026-03-18',
         performed_by: 'Shafiq Rahman (Land Team)',
         remarks: 'Boundary marked with pillars. Drainage on the east edge needs checking.',
       },
       {
-        to_status: 'legal_verification',
+        to_status: 'dd_in_progress',
         event_date: '2026-04-22',
         performed_by: 'Adv. Tanvir Alam',
         reference_no: 'LV-2026-019',
@@ -368,10 +400,14 @@ export const DEMO_LANDS: DemoLand[] = [
   },
   {
     name: 'Chattogram Khulshi hillside plot',
+    land_classification: 'ডাঙ্গা (Danga — dry raised land)',
+    source: 'Own survey',
     location_division: 'Chattogram',
     location_district: 'Chattogram',
+    location_upazila: 'Khulshi',
     location_area: 'Khulshi',
     road: 'Zakir Hossain Road',
+    road_access: '20 ft hill road, steep for the last 60 m',
     mouza: 'Pahartali',
     dag_number: '901',
     khatian_number: '77',
@@ -382,19 +418,19 @@ export const DEMO_LANDS: DemoLand[] = [
     gps_lng: 91.8113,
     nearby_facilities: 'Chattogram Medical 4km, Khulshi Mart 1km, foreign consulates nearby',
     acquisition_type: 'direct_purchase',
-    status: 'legal_verification',
+    status: 'dd_in_progress',
     remarks: 'Premium location; slope will raise the foundation cost.',
     created_at: '2026-04-08T06:00:00.000Z',
     owners: [{ key: 'jashim', share: 100, primary: true }],
     history: [
       {
-        to_status: 'site_visit_done',
+        to_status: 'under_review',
         event_date: '2026-04-15',
         performed_by: 'Imran Kabir (Chattogram)',
         remarks: 'Hill-cutting clearance will be needed. Approach road is narrow (16ft).',
       },
       {
-        to_status: 'legal_verification',
+        to_status: 'dd_in_progress',
         event_date: '2026-05-20',
         performed_by: 'Adv. Sabbir Rahman',
         reference_no: 'LV-2026-023',
@@ -404,10 +440,14 @@ export const DEMO_LANDS: DemoLand[] = [
   },
   {
     name: 'Narayanganj Fatullah plot',
+    land_classification: 'নাল (Nal — paddy land)',
+    source: 'Owner walk-in',
     location_division: 'Dhaka',
     location_district: 'Narayanganj',
+    location_upazila: 'Fatullah',
     location_area: 'Fatullah',
     road: 'Pagla–Fatullah Road',
+    road_access: 'Pagla–Fatullah road, 18 ft access lane',
     mouza: 'Kutubpur',
     dag_number: '2210',
     khatian_number: '630',
@@ -418,12 +458,12 @@ export const DEMO_LANDS: DemoLand[] = [
     gps_lng: 90.4917,
     nearby_facilities: 'Fatullah Stadium 1.8km, launch terminal 3km, primary school 400m',
     acquisition_type: 'direct_purchase',
-    status: 'site_visit_done',
+    status: 'under_review',
     created_at: '2026-05-19T08:15:00.000Z',
     owners: [{ key: 'monir', share: 100, primary: true }],
     history: [
       {
-        to_status: 'site_visit_done',
+        to_status: 'under_review',
         event_date: '2026-05-26',
         performed_by: 'Shafiq Rahman (Land Team)',
         remarks: 'Tenants currently on the land; vacancy timeline to be confirmed.',
@@ -432,10 +472,14 @@ export const DEMO_LANDS: DemoLand[] = [
   },
   {
     name: 'Sylhet Zindabazar mixed-use plot',
+    land_classification: 'বাণিজ্যিক (Commercial)',
+    source: 'Reference',
     location_division: 'Sylhet',
     location_district: 'Sylhet',
+    location_upazila: 'Sylhet Sadar',
     location_area: 'Zindabazar',
     road: 'Jail Road',
+    road_access: 'Zindabazar main road frontage',
     mouza: 'Sylhet Sadar',
     dag_number: '145',
     khatian_number: '19/2',
@@ -445,7 +489,7 @@ export const DEMO_LANDS: DemoLand[] = [
     asking_price: 0,
     nearby_facilities: 'Commercial hub, Sylhet MAG Osmani Medical 2km',
     acquisition_type: 'joint_venture',
-    status: 'new',
+    status: 'sourced',
     remarks: 'Referred by a broker; first meeting not held yet.',
     created_at: '2026-07-02T10:05:00.000Z',
     owners: [{ key: 'farhana', share: 100, primary: true }],
@@ -453,10 +497,14 @@ export const DEMO_LANDS: DemoLand[] = [
   },
   {
     name: 'Keraniganj riverside land',
+    land_classification: 'ডোবা (Doba — ditch/pond)',
+    source: 'Broker / Dalal',
     location_division: 'Dhaka',
     location_district: 'Dhaka',
+    location_upazila: 'Keraniganj',
     location_area: 'Keraniganj',
     road: 'Zinzira–Kaliganj Road',
+    road_access: 'No pucca approach — 12 ft earthen track from the embankment',
     mouza: 'Zinzira',
     dag_number: '4402',
     khatian_number: '881',
@@ -470,16 +518,16 @@ export const DEMO_LANDS: DemoLand[] = [
     status: 'rejected',
     remarks: 'Dropped — flood risk and unresolved title.',
     created_at: '2026-02-20T03:50:00.000Z',
-    owners: [{ key: 'delwar', share: 100, primary: true }],
+    owners: [{ key: 'delwar', share: 100, primary: true, area: 8, amount: 82_000_000 }],
     history: [
       {
-        to_status: 'site_visit_done',
+        to_status: 'under_review',
         event_date: '2026-02-27',
         performed_by: 'Kamal Hossain (Land Team)',
         remarks: 'Water logging visible even in the dry season.',
       },
       {
-        to_status: 'legal_verification',
+        to_status: 'dd_in_progress',
         event_date: '2026-03-30',
         performed_by: 'Adv. Tanvir Alam',
         reference_no: 'LV-2026-013',
@@ -496,10 +544,14 @@ export const DEMO_LANDS: DemoLand[] = [
   },
   {
     name: 'Mirpur DOHS adjacent plot',
+    land_classification: 'ভিটি (Bhiti — homestead)',
+    source: 'Direct owner approach',
     location_division: 'Dhaka',
     location_district: 'Dhaka',
+    location_upazila: 'Mirpur',
     location_area: 'Mirpur',
     road: 'Avenue 5, Mirpur DOHS',
+    road_access: '25 ft road, next to DOHS gate 2',
     mouza: 'Mirpur',
     dag_number: '667',
     khatian_number: '340',
@@ -511,21 +563,25 @@ export const DEMO_LANDS: DemoLand[] = [
     gps_lng: 90.3654,
     nearby_facilities: 'DOHS gate 300m, Mirpur 12 metro 2km, school and mosque within 500m',
     acquisition_type: 'joint_venture',
-    status: 'new',
+    status: 'sourced',
     remarks: 'Owner is abroad; discussions happening over WhatsApp.',
     created_at: '2026-08-05T11:40:00.000Z',
     owners: [
-      { key: 'sultana', share: 50, primary: true },
+      { key: 'sultana', share: 50, primary: true, area: 2.5 },
       { key: 'nasima', share: 50 },
     ],
     history: [],
   },
   {
     name: 'Chattogram Agrabad commercial plot',
+    land_classification: 'বাণিজ্যিক (Commercial)',
+    source: 'Auction / Bank',
     location_division: 'Chattogram',
     location_district: 'Chattogram',
+    location_upazila: 'Double Mooring',
     location_area: 'Agrabad C/A',
     road: 'Sheikh Mujib Road',
+    road_access: 'Agrabad C/A main avenue, 80 ft frontage',
     mouza: 'Agrabad',
     dag_number: '2210',
     khatian_number: '512',
@@ -553,13 +609,13 @@ export const DEMO_LANDS: DemoLand[] = [
     },
     history: [
       {
-        to_status: 'site_visit_done',
+        to_status: 'under_review',
         event_date: '2026-02-11',
         performed_by: 'Kamal Hossain (Land Team)',
         remarks: 'Level plot, boundary intact, direct access from the main road.',
       },
       {
-        to_status: 'legal_verification',
+        to_status: 'dd_in_progress',
         event_date: '2026-03-04',
         performed_by: 'Adv. Nusrat Jahan',
         reference_no: 'LV-2026-011',
@@ -572,7 +628,7 @@ export const DEMO_LANDS: DemoLand[] = [
         performed_by: 'Rifat Ahmed',
       },
       {
-        to_status: 'decision',
+        to_status: 'agreed',
         event_date: '2026-04-28',
         amount: 91000000,
         remarks: 'Board preferred a JV over an outright purchase at this price.',
@@ -587,10 +643,14 @@ export const DEMO_LANDS: DemoLand[] = [
   },
   {
     name: 'Dhanmondi Road 27 plot',
+    land_classification: 'ভিটি (Bhiti — homestead)',
+    source: 'Own survey',
     location_division: 'Dhaka',
     location_district: 'Dhaka',
+    location_upazila: 'Dhanmondi',
     location_area: 'Dhanmondi',
     road: 'Road 27 (old)',
+    road_access: 'Road 27 (old), 60 ft, direct frontage',
     mouza: 'Dhanmondi',
     dag_number: '119',
     khatian_number: '44/1',
@@ -608,12 +668,12 @@ export const DEMO_LANDS: DemoLand[] = [
     owners: [{ key: 'delwar', share: 100, primary: true }],
     history: [
       {
-        to_status: 'site_visit_done',
+        to_status: 'under_review',
         event_date: '2026-01-15',
         performed_by: 'Kamal Hossain (Land Team)',
       },
       {
-        to_status: 'legal_verification',
+        to_status: 'dd_in_progress',
         event_date: '2026-01-30',
         performed_by: 'Adv. Nusrat Jahan',
         reference_no: 'LV-2026-002',
@@ -624,7 +684,7 @@ export const DEMO_LANDS: DemoLand[] = [
         amount: 84000000,
         performed_by: 'Rifat Ahmed',
       },
-      { to_status: 'decision', event_date: '2026-02-27', amount: 82000000 },
+      { to_status: 'agreed', event_date: '2026-02-27', amount: 82000000 },
       {
         to_status: 'acquired',
         event_date: '2026-03-10',

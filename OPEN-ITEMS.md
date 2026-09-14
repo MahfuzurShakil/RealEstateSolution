@@ -1065,6 +1065,8 @@ they change no schema.
 | `payments` | `booking_id` | Module 4 — 8.2 links a payment through an instalment that does not exist yet |
 | `land_status_history`, `project_status_history` | whole tables | Audit trail for the pipelines |
 | `documents` | `status_event_id` | Module 1 — evidence attached at a pipeline step needs to say which step it arrived at; nullable and not indexed, so no schema version change |
+| `lands` | `location_upazila`, `road_access`, `land_classification`, `source` | Module 1 / batch L1 — BRD LAND-001. Not indexed, so no schema version change. The last two are `lookup_values` categories (`land_classification`, `land_source`), seeded in `seed.ts` |
+| `land_owner_mapping` | `ownership_area`, `agreed_amount` | Module 1 / batch L1 — BRD LAND-002 wants paid/due per owner. Area is stored, not derived from the share: heirs divide a khatian by the deed, not by arithmetic. The per-owner settlement schedule that consumes `agreed_amount` is batch L5 |
 
 **Removed from the scope document**
 

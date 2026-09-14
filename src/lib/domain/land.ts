@@ -2,24 +2,25 @@ import type { BadgeTone } from '@/components/ui/Badge';
 import type { AcquisitionType, LandStatus } from '@/lib/db/types';
 
 /**
- * Module 1 status pipeline (Scope v3.md, Section 2.2):
+ * Module 1 status pipeline, in the BRD's vocabulary (BRD v2.0 LAND-004):
  *
- *   new → site_visit_done → legal_verification → negotiation → decision
- *         → acquired | jv_signed | rejected
- *         → linked_to_project
+ *   sourced → under_review → dd_in_progress → negotiation → agreed
+ *           → acquired | jv_signed | rejected
+ *           → disposed | linked_to_project
  *
  * `linked_to_project` is NOT chosen by hand — Module 2 sets it when the land is
  * mapped to a project, so it is excluded from the manual transition list.
  */
 export const LAND_STATUS_META: Record<LandStatus, { label: string; tone: BadgeTone }> = {
-  new: { label: 'New', tone: 'neutral' },
-  site_visit_done: { label: 'Site Visit Done', tone: 'blue' },
-  legal_verification: { label: 'Legal Verification', tone: 'blue' },
+  sourced: { label: 'Sourced', tone: 'neutral' },
+  under_review: { label: 'Under Review', tone: 'blue' },
+  dd_in_progress: { label: 'Due Diligence', tone: 'blue' },
   negotiation: { label: 'Negotiation', tone: 'amber' },
-  decision: { label: 'Decision', tone: 'amber' },
+  agreed: { label: 'Agreed', tone: 'amber' },
   acquired: { label: 'Acquired', tone: 'green' },
   jv_signed: { label: 'JV Signed', tone: 'green' },
   rejected: { label: 'Rejected', tone: 'red' },
+  disposed: { label: 'Disposed', tone: 'neutral' },
   linked_to_project: { label: 'Linked to Project', tone: 'teal' },
 };
 
@@ -31,15 +32,22 @@ export function allowedNextStatuses(
   const outcome: LandStatus = acquisitionType === 'joint_venture' ? 'jv_signed' : 'acquired';
 
   const map: Record<LandStatus, LandStatus[]> = {
-    new: ['site_visit_done', 'rejected'],
-    site_visit_done: ['legal_verification', 'rejected'],
-    legal_verification: ['negotiation', 'rejected'],
-    negotiation: ['decision', 'rejected'],
-    decision: [outcome, 'rejected'],
-    acquired: [],
-    jv_signed: [],
+    sourced: ['under_review', 'rejected'],
+    under_review: ['dd_in_progress', 'rejected'],
+    dd_in_progress: ['negotiation', 'rejected'],
+    negotiation: ['agreed', 'rejected'],
+    agreed: [outcome, 'rejected'],
+    /*
+     * A land we own can be sold on (BRD LAND-004 DISPOSED). It is not offered
+     * from `linked_to_project`: a plot a project is being built on is not
+     * something to dispose of from the land screen, and if it genuinely is,
+     * the project has to let go of it first.
+     */
+    acquired: ['disposed'],
+    jv_signed: ['disposed'],
     // a rejected land can be reopened at the start of the pipeline
-    rejected: ['new'],
+    rejected: ['sourced'],
+    disposed: [],
     linked_to_project: [],
   };
   return map[current];
@@ -47,11 +55,11 @@ export function allowedNextStatuses(
 
 /** Pipeline order used by the detail-page progress trail. */
 export const LAND_PIPELINE_STEPS: LandStatus[] = [
-  'new',
-  'site_visit_done',
-  'legal_verification',
+  'sourced',
+  'under_review',
+  'dd_in_progress',
   'negotiation',
-  'decision',
+  'agreed',
 ];
 
 export const ACQUISITION_TYPE_LABEL: Record<AcquisitionType, string> = {
@@ -65,9 +73,9 @@ export const LAND_SIZE_UNIT_LABEL: Record<string, string> = {
   decimal: 'Decimal',
 };
 
-/** A land is "closed" once acquired/JV-signed/rejected or handed to a project. */
+/** A land is "closed" once acquired/JV-signed/rejected/disposed or handed to a project. */
 export function isTerminalStatus(status: LandStatus): boolean {
-  return ['acquired', 'jv_signed', 'rejected', 'linked_to_project'].includes(status);
+  return ['acquired', 'jv_signed', 'rejected', 'disposed', 'linked_to_project'].includes(status);
 }
 
 /**
@@ -149,14 +157,15 @@ export interface StatusStepAttachment {
 }
 
 const ATTACHMENTS: Record<LandStatus, StatusStepAttachment> = {
-  new: { documentType: 'other', customName: 'Reopening note', prompt: 'Anything supporting the decision to reconsider this land' },
-  site_visit_done: { documentType: 'site_photo', prompt: 'Site photos, boundary shots, road access — attach as many as you took' },
-  legal_verification: { documentType: 'khatian_copy', prompt: 'Khatian copy, search report, encumbrance certificate' },
+  sourced: { documentType: 'other', customName: 'Reopening note', prompt: 'Anything supporting the decision to reconsider this land' },
+  under_review: { documentType: 'site_photo', prompt: 'Site photos, boundary shots, road access — attach as many as you took' },
+  dd_in_progress: { documentType: 'khatian_copy', prompt: 'Khatian copy, search report, encumbrance certificate' },
   negotiation: { documentType: 'other', customName: 'Negotiation record', prompt: 'Written offer, owner’s counter, broker note' },
-  decision: { documentType: 'other', customName: 'Decision note', prompt: 'Board minutes or the approval note' },
+  agreed: { documentType: 'other', customName: 'Decision note', prompt: 'Board minutes or the approval note' },
   acquired: { documentType: 'dolil_deed', prompt: 'Registered deed, mutation papers, registration receipt' },
   jv_signed: { documentType: 'jv_agreement', prompt: 'Signed JV agreement, power of attorney' },
   rejected: { documentType: 'other', customName: 'Rejection note', prompt: 'Anything that records why this was dropped' },
+  disposed: { documentType: 'other', customName: 'Disposal record', prompt: 'Transfer deed, sale agreement, board approval' },
   linked_to_project: { documentType: 'other', customName: 'Project link note', prompt: 'Supporting paperwork' },
 };
 
@@ -173,7 +182,7 @@ const REMARKS = (required = false, placeholder = 'Anything worth remembering abo
 });
 
 const BASE_STATUS_STEP_CONFIG: Record<LandStatus, StatusStepConfig> = {
-  new: {
+  sourced: {
     title: 'Reopen this land',
     question: 'Move the land back to the start of the pipeline?',
     confirmLabel: 'Reopen',
@@ -183,7 +192,7 @@ const BASE_STATUS_STEP_CONFIG: Record<LandStatus, StatusStepConfig> = {
       REMARKS(true, 'Why is this land being reconsidered?'),
     ],
   },
-  site_visit_done: {
+  under_review: {
     title: 'Confirm site visit',
     question: 'Record that the site visit has been completed.',
     confirmLabel: 'Confirm visit',
@@ -194,7 +203,7 @@ const BASE_STATUS_STEP_CONFIG: Record<LandStatus, StatusStepConfig> = {
       REMARKS(false, 'Road access, soil condition, boundary issues…'),
     ],
   },
-  legal_verification: {
+  dd_in_progress: {
     title: 'Confirm legal verification',
     question: 'Record that the documents have been legally verified.',
     confirmLabel: 'Confirm verification',
@@ -218,7 +227,7 @@ const BASE_STATUS_STEP_CONFIG: Record<LandStatus, StatusStepConfig> = {
       REMARKS(false, 'Owner expectation, payment terms discussed…'),
     ],
   },
-  decision: {
+  agreed: {
     title: 'Move to decision',
     question: 'Record that the land is now awaiting a final decision.',
     confirmLabel: 'Move to decision',
@@ -261,6 +270,29 @@ const BASE_STATUS_STEP_CONFIG: Record<LandStatus, StatusStepConfig> = {
       { key: 'event_date', label: 'Rejected on', placeholder: '', type: 'date', required: true },
       { key: 'performed_by', label: 'Decided by', placeholder: 'e.g. Management committee', type: 'text' },
       REMARKS(true, 'Why is this land being rejected? (required)'),
+    ],
+  },
+  /*
+   * BRD LAND-004 DISPOSED — land the company owned and has sold on.
+   *
+   * The amount is what was *received*, and deliberately does NOT write
+   * `final_agreed_amount` (see `amountUpdatesFinalAgreed`): that field is what
+   * we paid for the plot, and the land's cost ledger and payment schedule are
+   * both built from it. Overwriting it with a sale price would make an
+   * acquisition that was settled years ago appear to have cost whatever the
+   * buyer paid.
+   */
+  disposed: {
+    title: 'Mark as disposed',
+    question: 'Record that this land has been sold on. A reason is required.',
+    confirmLabel: 'Mark disposed',
+    tone: 'warning',
+    fields: [
+      { key: 'event_date', label: 'Disposed on', placeholder: '', type: 'date', required: true },
+      { key: 'amount', label: 'Amount received (BDT)', placeholder: 'e.g. 52000000', type: 'number' },
+      { key: 'reference_no', label: 'Deed / transfer reference', placeholder: 'e.g. 8812/2026', type: 'text' },
+      { key: 'performed_by', label: 'Approved by', placeholder: 'e.g. Management committee', type: 'text' },
+      REMARKS(true, 'Why was this land disposed of, and to whom?'),
     ],
   },
   linked_to_project: {
@@ -336,7 +368,7 @@ const JV_STATUS_STEP_CONFIG: Partial<Record<LandStatus, StatusStepConfig>> = {
       REMARKS(false, 'Owner expectation, rent during construction, extra demands…'),
     ],
   },
-  decision: {
+  agreed: {
     title: 'Move to decision',
     question: 'Record that the joint venture is awaiting a final decision.',
     confirmLabel: 'Move to decision',

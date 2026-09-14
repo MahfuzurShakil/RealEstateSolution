@@ -9,7 +9,9 @@ import {
   PAYMENT_DOCUMENT_TYPES,
   FACING_OPTIONS,
   LAND_DOCUMENT_TYPES,
+  LAND_CLASSIFICATION_OPTIONS,
   LAND_SIZE_UNITS,
+  LAND_SOURCE_OPTIONS,
   LEAD_DOCUMENT_TYPES,
   COST_CATEGORY_SEED,
   MATERIAL_UNIT_OPTIONS,
@@ -51,6 +53,9 @@ async function runSeed(): Promise<void> {
   await ensureOptions('document_type', 'expense', [...EXPENSE_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'refund', [...REFUND_DOCUMENT_TYPES]);
   await ensureOptions('land_size_unit', null, [...LAND_SIZE_UNITS]);
+  // BRD LAND-001. Both vary by district, so neither is an ENUM in code.
+  await ensureOptions('land_classification', null, [...LAND_CLASSIFICATION_OPTIONS]);
+  await ensureOptions('land_source', null, [...LAND_SOURCE_OPTIONS]);
   await ensureOptions('unit_type', null, [...UNIT_TYPE_OPTIONS]);
   await ensureOptions('facing', null, [...FACING_OPTIONS]);
   await ensureOptions('amenity', null, [...AMENITY_OPTIONS]);

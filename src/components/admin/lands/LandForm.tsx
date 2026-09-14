@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -28,6 +29,7 @@ import {
 } from '@/lib/domain/land';
 import {
   landJvRepository,
+  lookupRepository,
   landOwnerMappingRepository,
   landRepository,
   landownerRepository,
@@ -37,6 +39,10 @@ import {
 interface OwnerRow {
   owner_id: string;
   ownership_share_pct: string;
+  /** BRD LAND-002 — in the land's own `land_size_unit` */
+  ownership_area: string;
+  /** BRD LAND-002 — what was agreed with this owner specifically */
+  agreed_amount: string;
   is_primary_contact: boolean;
 }
 
@@ -44,8 +50,12 @@ interface FormState {
   name: string;
   location_division: string;
   location_district: string;
+  location_upazila: string;
   location_area: string;
   road: string;
+  road_access: string;
+  land_classification: string;
+  source: string;
   mouza: string;
   dag_number: string;
   khatian_number: string;
@@ -71,8 +81,12 @@ const EMPTY: FormState = {
   name: '',
   location_division: '',
   location_district: '',
+  location_upazila: '',
   location_area: '',
   road: '',
+  road_access: '',
+  land_classification: '',
+  source: '',
   mouza: '',
   dag_number: '',
   khatian_number: '',
@@ -102,8 +116,12 @@ function toFormState(land: LandWithRelations): FormState {
     name: land.name,
     location_division: land.location_division,
     location_district: land.location_district,
+    location_upazila: str(land.location_upazila),
     location_area: land.location_area,
     road: str(land.road),
+    road_access: str(land.road_access),
+    land_classification: str(land.land_classification),
+    source: str(land.source),
     mouza: str(land.mouza),
     dag_number: str(land.dag_number),
     khatian_number: str(land.khatian_number),
@@ -140,6 +158,8 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
     land?.owners.map((o) => ({
       owner_id: o.owner_id,
       ownership_share_pct: str(o.ownership_share_pct),
+      ownership_area: str(o.ownership_area),
+      agreed_amount: str(o.agreed_amount),
       is_primary_contact: o.is_primary_contact,
     })) ?? [],
   );
@@ -147,6 +167,13 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
   const [quickAddIndex, setQuickAddIndex] = useState<number | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+
+  // BRD LAND-001 — both lists are Master Data, editable without a deploy
+  const classifications = useLiveQuery(
+    () => lookupRepository.options('land_classification'),
+    [],
+  );
+  const sources = useLiveQuery(() => lookupRepository.options('land_source'), []);
 
   useEffect(() => {
     landownerRepository
@@ -168,7 +195,13 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
   function addOwnerRow() {
     setOwners((rows) => [
       ...rows,
-      { owner_id: '', ownership_share_pct: '', is_primary_contact: rows.length === 0 },
+      {
+        owner_id: '',
+        ownership_share_pct: '',
+        ownership_area: '',
+        agreed_amount: '',
+        is_primary_contact: rows.length === 0,
+      },
     ]);
   }
 
@@ -228,8 +261,12 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
         name: form.name.trim(),
         location_division: form.location_division.trim(),
         location_district: form.location_district.trim(),
+        location_upazila: form.location_upazila.trim() || null,
         location_area: form.location_area.trim(),
         road: form.road.trim() || null,
+        road_access: form.road_access.trim() || null,
+        land_classification: form.land_classification.trim() || null,
+        source: form.source.trim() || null,
         mouza: form.mouza.trim() || null,
         dag_number: form.dag_number.trim() || null,
         khatian_number: form.khatian_number.trim() || null,
@@ -251,7 +288,7 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
         saved = await landRepository.create({
           ...payload,
           code: '',
-          status: 'new',
+          status: 'sourced',
           assigned_to: null,
         });
       }
@@ -265,6 +302,8 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
             land_id: saved.id,
             owner_id: o.owner_id,
             ownership_share_pct: Number(o.ownership_share_pct) || 0,
+            ownership_area: num(o.ownership_area),
+            agreed_amount: num(o.agreed_amount),
             is_primary_contact: o.is_primary_contact,
           }),
         ),
@@ -339,6 +378,15 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
               invalid={Boolean(errors.location_district)}
             />
           </Field>
+          {/* BRD LAND-001 — a mouza belongs to an upazila, so a dag number is
+              only unambiguous with one */}
+          <Field label="Upazila / Thana">
+            <TextInput
+              value={form.location_upazila}
+              placeholder="e.g. Tongi"
+              onChange={(e) => set('location_upazila', e.target.value)}
+            />
+          </Field>
           <Field label="Area" required error={errors.location_area}>
             <TextInput
               value={form.location_area}
@@ -352,6 +400,16 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
               value={form.road}
               placeholder="e.g. Road 12, Block K"
               onChange={(e) => set('road', e.target.value)}
+            />
+          </Field>
+          {/* BRD LAND-001 — how the plot is *reached*, which is a different
+              question from which road it is on. The surveyed width belongs to
+              the site visit (SITE-001), not here. */}
+          <Field label="Road Access" hint="How the plot is reached today">
+            <TextInput
+              value={form.road_access}
+              placeholder="e.g. 20 ft pucca road, direct frontage"
+              onChange={(e) => set('road_access', e.target.value)}
             />
           </Field>
           <Field label="Mouza">
@@ -394,6 +452,33 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
               {LAND_SIZE_UNITS.map((u) => (
                 <option key={u} value={u}>
                   {LAND_SIZE_UNIT_LABEL[u]}
+                </option>
+              ))}
+            </SelectInput>
+          </Field>
+
+          {/* BRD LAND-001. Both lists are Master Data, not ENUMs — the
+              classification set varies by district, and a new source of leads
+              should not need a deploy. */}
+          <Field label="Land Classification" hint="As written on the khatian">
+            <SelectInput
+              value={form.land_classification}
+              onChange={(e) => set('land_classification', e.target.value)}
+            >
+              <option value="">Not recorded</option>
+              {classifications?.map((o) => (
+                <option key={o.id} value={o.value}>
+                  {o.value}
+                </option>
+              ))}
+            </SelectInput>
+          </Field>
+          <Field label="Source" hint="Where this opportunity came from">
+            <SelectInput value={form.source} onChange={(e) => set('source', e.target.value)}>
+              <option value="">Not recorded</option>
+              {sources?.map((o) => (
+                <option key={o.id} value={o.value}>
+                  {o.value}
                 </option>
               ))}
             </SelectInput>
@@ -487,7 +572,7 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
             {owners.map((row, index) => (
               <div
                 key={index}
-                className="grid items-end gap-3 rounded-xl border border-hairline p-3 md:grid-cols-[2fr_1fr_auto_auto]"
+                className="grid items-end gap-3 rounded-xl border border-hairline p-3 md:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_1.2fr_auto_auto]"
               >
                 <Field label="Landowner">
                   <div className="flex gap-2">
@@ -524,6 +609,29 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
                     value={row.ownership_share_pct}
                     placeholder="e.g. 50"
                     onChange={(e) => updateOwnerRow(index, { ownership_share_pct: e.target.value })}
+                  />
+                </Field>
+                {/*
+                  BRD LAND-002. The area is not derived from the share: heirs
+                  divide a khatian by the deed, not by arithmetic, and the two
+                  disagree often enough that computing one from the other would
+                  hide the disagreement rather than surface it.
+                */}
+                <Field label={`Area (${LAND_SIZE_UNIT_LABEL[form.land_size_unit]})`}>
+                  <TextInput
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={row.ownership_area}
+                    placeholder="e.g. 4.5"
+                    onChange={(e) => updateOwnerRow(index, { ownership_area: e.target.value })}
+                  />
+                </Field>
+                <Field label="Agreed amount">
+                  <MoneyInput
+                    value={row.agreed_amount}
+                    placeholder="e.g. 20000000"
+                    onChange={(e) => updateOwnerRow(index, { agreed_amount: e.target.value })}
                   />
                 </Field>
                 <Checkbox
