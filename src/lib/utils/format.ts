@@ -81,22 +81,7 @@ export function humanize(value?: string | null): string {
 
 /** Today in the user's own timezone as YYYY-MM-DD (toISOString would give UTC). */
 export function todayLocal(): string {
-  return localDay(new Date().toISOString());
-}
-
-/**
- * The calendar day a date or timestamp falls on, in the user's own timezone.
- *
- * A plain `YYYY-MM-DD` is already a day and is returned as it is. A timestamp
- * is converted: slicing an ISO string gives the UTC day, which in Dhaka is
- * yesterday until six in the morning — an approval at 5 a.m. would be dated
- * the day before it happened.
- */
-export function localDay(value: string | null | undefined): string {
-  if (!value) return '';
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value.slice(0, 10);
+  const d = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }

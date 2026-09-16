@@ -201,22 +201,3 @@ site visit recorded 26 May"), so it is never a silent change.
 > Answer section 7's three open questions with me before starting part 3.
 > Browser-verify each part, seed the BD demo data so every feed entry type is
 > represented, and commit per part.
-
----
-
-## Built — L7, 2026-09-15
-
-Four commits, one per part: `889be9e` automatic transitions and the correction
-override, `f5f9d17` the Pipeline read-out, `655d4a9` six tabs, and the
-Lifecycle feed after it. Two things differ from sections 4–6:
-
-- **One small data addition.** `land_status_history.source`
-  (`manual | automatic | correction`) is optional and unindexed, so there is
-  no Dexie version. Without it the feed cannot say what moved a land.
-- **G1 is no longer a Settings switch.** An approved Proceed study is the only
-  way into Due Diligence now, so the rule holds everywhere; land entered after
-  the fact goes through "Correct this status".
-
-Deliberately not done: automatic moves are forward only, so deleting the visit
-that moved a land does not move it back (the delete dialog says so and points
-at the correction).

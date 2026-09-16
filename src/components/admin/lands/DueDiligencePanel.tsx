@@ -28,7 +28,7 @@ import {
 } from '@/lib/repositories';
 import { formatDate } from '@/lib/utils/format';
 
-export const STATUS_META: Record<DdItemStatus, { label: string; tone: BadgeTone }> = {
+const STATUS_META: Record<DdItemStatus, { label: string; tone: BadgeTone }> = {
   pending: { label: 'Pending', tone: 'neutral' },
   in_progress: { label: 'In progress', tone: 'blue' },
   passed: { label: 'Passed', tone: 'green' },

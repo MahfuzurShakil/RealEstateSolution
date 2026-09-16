@@ -5,8 +5,10 @@ import { useParams, useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ArrowLeft, Handshake, Pencil, Trash2, User } from 'lucide-react';
-import { LandLifecycle } from '@/components/admin/lands/LandLifecycle';
+import { LandTimeline } from '@/components/admin/lands/LandTimeline';
 import { LandPaymentPlanPanel } from '@/components/admin/lands/LandPaymentPlanPanel';
+import { SiteVisitPanel } from '@/components/admin/lands/SiteVisitPanel';
+import { FeasibilityPanel } from '@/components/admin/lands/FeasibilityPanel';
 import { DueDiligencePanel } from '@/components/admin/lands/DueDiligencePanel';
 import { NegotiationPanel } from '@/components/admin/lands/NegotiationPanel';
 import { AcquisitionCostPanel } from '@/components/admin/lands/AcquisitionCostPanel';
@@ -185,13 +187,6 @@ export default function LandDetailPage() {
   const costSheetRelevant = ['agreed', 'acquired', 'jv_signed', 'linked_to_project', 'disposed'].includes(
     land.status,
   );
-  /** Takes the user to where a piece of work lives — from the Pipeline card or a feed entry. */
-  const openArea = (area: LandWorkArea) => {
-    setTab(TAB_FOR_AREA[area]);
-    // the card sits beside the tabs on desktop and under them on a phone
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { key: 'lifecycle', label: 'Lifecycle' },
@@ -393,11 +388,26 @@ export default function LandDetailPage() {
             </div>
           )}
 
+          {/*
+            Lifecycle — what has happened to this land. Part 4 of L7 merges
+            these into one date-ordered feed; until then they sit together here
+            rather than on three tabs.
+          */}
           {tab === 'lifecycle' && (
-            <Card>
-              <CardHeader title="Lifecycle" />
-              <LandLifecycle land={land} onOpen={openArea} />
-            </Card>
+            <div className="space-y-5">
+              <Card>
+                <CardHeader title="Pipeline history" />
+                <LandTimeline landId={land.id} />
+              </Card>
+              <Card>
+                <CardHeader title="Site Visits" />
+                <SiteVisitPanel land={land} />
+              </Card>
+              <Card>
+                <CardHeader title="Feasibility" />
+                <FeasibilityPanel land={land} />
+              </Card>
+            </div>
           )}
 
           {tab === 'legal' && (
@@ -572,7 +582,11 @@ export default function LandDetailPage() {
         <aside className="min-w-0 space-y-5 lg:order-2">
           <LandStatusCard
             land={land}
-            onOpen={openArea}
+            onOpen={(area) => {
+              setTab(TAB_FOR_AREA[area]);
+              // the card sits beside the tabs on desktop and under them on a phone
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
           />
 
           <LocationCard

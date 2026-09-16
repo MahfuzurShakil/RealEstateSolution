@@ -1,10 +1,4 @@
-import type {
-  AcquisitionType,
-  JvShareBasis,
-  LandSizeUnit,
-  LandStatus,
-  LandStatusEventSource,
-} from './types';
+import type { AcquisitionType, JvShareBasis, LandSizeUnit, LandStatus } from './types';
 
 /**
  * Bangladesh-context demo dataset for Module 1, so a fresh install never opens
@@ -32,12 +26,6 @@ export interface DemoStatusEvent {
   amount?: number;
   reference_no?: string;
   remarks?: string;
-  /**
-   * L7 — left off for the history written by the old status dialogs, which is
-   * what that history was. Uttara carries `automatic` rows and Dhanmondi a
-   * `correction`, so the Lifecycle feed shows all three kinds.
-   */
-  source?: LandStatusEventSource;
 }
 
 export interface DemoLand {
@@ -265,39 +253,31 @@ export const DEMO_LANDS: DemoLand[] = [
     remarks: 'Registration completed; mutation filing in progress.',
     created_at: '2026-01-06T05:45:00.000Z',
     owners: [{ key: 'nasima', share: 100, primary: true, area: 7.5, amount: 36_000_000 }],
-    /*
-     * Uttara is the land whose story the pipeline wrote itself (L7): every
-     * middle step is dated and worded exactly as landPipelineRepository would
-     * have written it from the visit, the approved study and the ladder in
-     * demo-site-visits.ts and demo-negotiation.ts. Registration stays manual.
-     */
     history: [
       {
         to_status: 'under_review',
-        event_date: '2026-01-12',
+        event_date: '2026-01-11',
         performed_by: 'Kamal Hossain (Land Team)',
-        remarks: 'Site visit recorded, led by Kamal Hossain (Land Team).',
-        source: 'automatic',
+        remarks: 'Filled plot, ready for piling. Metro line within walking distance.',
       },
       {
         to_status: 'dd_in_progress',
-        event_date: '2026-01-27',
-        remarks: 'Feasibility study version 2 approved, recommending Proceed.',
-        source: 'automatic',
+        event_date: '2026-01-28',
+        performed_by: 'Adv. Nusrat Jahan',
+        reference_no: 'LV-2026-002',
+        remarks: 'RAJUK plot, allotment papers verified. No encumbrance.',
       },
       {
         to_status: 'negotiation',
-        event_date: '2026-02-02',
-        amount: 39000000,
-        remarks: 'Negotiation round 1 recorded — the owner’s ask.',
-        source: 'automatic',
+        event_date: '2026-02-14',
+        amount: 36500000,
+        performed_by: 'Rifat Ahmed',
       },
       {
         to_status: 'agreed',
-        event_date: '2026-02-20',
+        event_date: '2026-03-01',
         amount: 36000000,
-        remarks: 'Round 3 accepted — this amount is now the agreed price.',
-        source: 'automatic',
+        remarks: 'Approved at BDT 36,000,000 with payment in three instalments.',
       },
       {
         to_status: 'acquired',
@@ -305,7 +285,6 @@ export const DEMO_LANDS: DemoLand[] = [
         amount: 36000000,
         reference_no: '4521/2026',
         remarks: 'Registered at Uttara sub-registry office.',
-        source: 'manual',
       },
     ],
   },
@@ -687,20 +666,31 @@ export const DEMO_LANDS: DemoLand[] = [
     remarks: 'Bought outright — the family was settling an inheritance.',
     created_at: '2026-01-06T08:45:00.000Z',
     owners: [{ key: 'delwar', share: 100, primary: true }],
-    /*
-     * The case "Correct this status" exists for (LAND-UX-REVIEW.md §7 Q2):
-     * bought and registered on paper before anyone used this system, then
-     * entered straight at Acquired with the reason on the record.
-     */
     history: [
       {
+        to_status: 'under_review',
+        event_date: '2026-01-15',
+        performed_by: 'Kamal Hossain (Land Team)',
+      },
+      {
+        to_status: 'dd_in_progress',
+        event_date: '2026-01-30',
+        performed_by: 'Adv. Nusrat Jahan',
+        reference_no: 'LV-2026-002',
+      },
+      {
+        to_status: 'negotiation',
+        event_date: '2026-02-14',
+        amount: 84000000,
+        performed_by: 'Rifat Ahmed',
+      },
+      { to_status: 'agreed', event_date: '2026-02-27', amount: 82000000 },
+      {
         to_status: 'acquired',
-        // the day the registration fee was paid — see EXP-2026-003 in demo-finance.ts
-        event_date: '2024-08-18',
-        performed_by: 'Land team lead',
-        remarks:
-          'Registered on 18 Aug 2024 (deed 1187/2024), before this system was in use — the visit, legal checks and negotiation were done on paper. Entered directly as acquired.',
-        source: 'correction',
+        event_date: '2026-03-10',
+        amount: 82000000,
+        reference_no: '1187/2026',
+        remarks: 'Registered at the Dhanmondi sub-registry office.',
       },
     ],
   },

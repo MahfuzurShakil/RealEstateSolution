@@ -1,12 +1,14 @@
 'use client';
 
 import { useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Droplets,
   Flame,
   MapPin,
   Mountain,
   Pencil,
+  Plus,
   Trash2,
   Users,
   Zap,
@@ -14,98 +16,152 @@ import {
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { Checkbox, Field, TextArea, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { Land, SiteVisit } from '@/lib/db/types';
 import { landPipelineRepository, siteVisitRepository } from '@/lib/repositories';
-import { todayLocal } from '@/lib/utils/format';
+import { formatDate, todayLocal } from '@/lib/utils/format';
 
 /**
- * One site visit, as it opens on the Lifecycle feed (BRD SITE-001).
+ * Site visits for one land (BRD SITE-001).
  *
- * The list of visits used to be a tab of its own. Since L7 each visit is an
- * entry in the land's one date-ordered feed, and this is what the entry shows
- * when opened: what the team found, the photos they came back with, and the
- * edit and delete that belong to the visit. Photos hang off the visit through
- * the shared document vault, so the first visit's photos stay with it.
+ * A list rather than a single record, because a plot worth buying is visited
+ * more than once and what changes between the visits is the point. Photos hang
+ * off each visit through the shared document vault, so the first visit's photos
+ * stay attached to the first visit.
  */
-export function SiteVisitDetails({ land, visit }: { land: Land; visit: SiteVisit }) {
-  const [editing, setEditing] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [photosOpen, setPhotosOpen] = useState(false);
+export function SiteVisitPanel({ land }: { land: Land }) {
+  const [editing, setEditing] = useState<SiteVisit | 'new' | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  const visits = useLiveQuery(() => siteVisitRepository.listForLand(land.id), [land.id]);
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2">
-        {visit.participants && (
-          <span className="inline-flex items-center gap-1.5 text-xs text-ink-muted">
-            <Users className="size-3.5" /> with {visit.participants}
-          </span>
-        )}
-        {/* the two findings that change a price the most */}
-        {visit.is_lowland && (
-          <Badge tone="amber">
-            Lowland{visit.filling_required_ft ? ` · ${visit.filling_required_ft} ft fill` : ''}
-          </Badge>
-        )}
-        {visit.road_width_ft != null && <Badge>{visit.road_width_ft} ft road</Badge>}
-        <div className="ml-auto flex items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={() => setEditing(true)} aria-label="Edit visit">
-            <Pencil className="size-4" />
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setDeleting(true)} aria-label="Delete visit">
-            <Trash2 className="size-4" />
-          </Button>
-        </div>
-      </div>
-
-      <div className="mt-3">
-        <UtilityStrip visit={visit} />
-      </div>
-
-      <dl className="mt-3 grid gap-3 sm:grid-cols-2">
-        <Detail label="Access on the day" value={visit.access_note} />
-        <Detail label="Drainage" value={visit.drainage} />
-        <Detail label="Soil" value={visit.soil_condition} />
-        <Detail label="Surroundings" value={visit.surroundings} />
-        <Detail label="Price observed nearby" value={visit.price_observation} />
-        <Detail label="Utilities note" value={visit.utilities_note} />
-      </dl>
-
-      {visit.remarks && (
-        <p className="mt-3 whitespace-pre-wrap border-t border-hairline pt-3 text-sm text-ink-muted">
-          {visit.remarks}
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-ink-muted">
+          {visits?.length ?? 0} visit{visits?.length === 1 ? '' : 's'} recorded · newest first
         </p>
+        <Button size="sm" className="w-full sm:w-auto" onClick={() => setEditing('new')}>
+          <Plus className="size-4" /> Record a visit
+        </Button>
+      </div>
+
+      {visits && visits.length === 0 ? (
+        <EmptyState
+          icon={MapPin}
+          title="No site visit recorded yet"
+          description="Capture what the team found on the ground — access, utilities, soil and lowland, what neighbours say land is going for — and attach the photos they came back with."
+          action={
+            <Button onClick={() => setEditing('new')}>
+              <Plus className="size-4" /> Record a visit
+            </Button>
+          }
+        />
+      ) : (
+        <ul className="space-y-3">
+          {visits?.map((visit) => (
+            <li key={visit.id} className="rounded-xl border border-hairline bg-white">
+              <div className="flex flex-wrap items-start gap-3 p-4">
+                {/*
+                  Icon and text are one flex item taking a full row below `sm`.
+                  As three siblings they were three flex items, and the badges
+                  and buttons do not shrink — so on a laptop the date and the
+                  visitor's name were squeezed into a column a few characters
+                  wide while the badges sat comfortably beside them.
+                */}
+                <div className="flex w-full min-w-0 items-start gap-3 sm:w-auto sm:flex-1">
+                  <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-admin-50 text-admin-600">
+                    <MapPin className="size-5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-ink">{formatDate(visit.visit_date)}</p>
+                    <p className="mt-0.5 text-xs text-ink-muted">
+                      {visit.visited_by ? `Led by ${visit.visited_by}` : 'Visitor not recorded'}
+                      {visit.participants ? ` · with ${visit.participants}` : ''}
+                    </p>
+                  </div>
+                </div>
+
+                {/* the two findings that change a price the most */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {visit.is_lowland && (
+                    <Badge tone="amber">
+                      Lowland{visit.filling_required_ft ? ` · ${visit.filling_required_ft} ft fill` : ''}
+                    </Badge>
+                  )}
+                  {visit.road_width_ft != null && <Badge>{visit.road_width_ft} ft road</Badge>}
+                </div>
+
+                <div className="flex w-full items-center justify-end gap-1 sm:w-auto">
+                  <Button variant="ghost" size="sm" onClick={() => setEditing(visit)} aria-label="Edit visit">
+                    <Pencil className="size-4" />
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setDeleteId(visit.id)} aria-label="Delete visit">
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="border-t border-hairline px-4 py-3">
+                <UtilityStrip visit={visit} />
+
+                <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <Detail label="Access on the day" value={visit.access_note} />
+                  <Detail label="Drainage" value={visit.drainage} />
+                  <Detail label="Soil" value={visit.soil_condition} />
+                  <Detail label="Surroundings" value={visit.surroundings} />
+                  <Detail label="Price observed nearby" value={visit.price_observation} />
+                  <Detail label="Utilities note" value={visit.utilities_note} />
+                </dl>
+
+                {visit.remarks && (
+                  <p className="mt-3 whitespace-pre-wrap border-t border-hairline pt-3 text-sm text-ink-muted">
+                    {visit.remarks}
+                  </p>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setOpenId(openId === visit.id ? null : visit.id)}
+                  className="mt-3 text-xs font-medium text-admin-700 hover:underline"
+                >
+                  {openId === visit.id ? 'Hide photos' : 'Photos & files'}
+                </button>
+
+                {openId === visit.id && (
+                  <div className="mt-3 border-t border-hairline pt-3">
+                    <DocumentsPanel entityType="site_visit" entityId={visit.id} />
+                  </div>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
 
-      <button
-        type="button"
-        onClick={() => setPhotosOpen((v) => !v)}
-        className="mt-3 text-xs font-medium text-admin-700 hover:underline"
-      >
-        {photosOpen ? 'Hide photos' : 'Photos & files'}
-      </button>
-
-      {photosOpen && (
-        <div className="mt-3 border-t border-hairline pt-3">
-          <DocumentsPanel entityType="site_visit" entityId={visit.id} />
-        </div>
+      {editing && (
+        <VisitDialog
+          land={land}
+          visit={editing === 'new' ? undefined : editing}
+          onClose={() => setEditing(null)}
+        />
       )}
-
-      {editing && <VisitDialog land={land} visit={visit} onClose={() => setEditing(false)} />}
 
       <ConfirmDialog
-        open={deleting}
+        open={deleteId !== null}
         title="Delete this site visit"
-        message="The visit and every photo attached to it are removed. This cannot be undone. The land's status is not moved back — correct it if this visit was the only reason it moved."
+        message="The visit and every photo attached to it are removed. This cannot be undone."
         confirmLabel="Delete visit"
         tone="danger"
-        onCancel={() => setDeleting(false)}
+        onCancel={() => setDeleteId(null)}
         onConfirm={async () => {
-          await siteVisitRepository.removeCascade(visit.id);
-          setDeleting(false);
+          if (deleteId) await siteVisitRepository.removeCascade(deleteId);
+          setDeleteId(null);
         }}
       />
     </>
@@ -164,7 +220,7 @@ type Tri = 'yes' | 'no' | 'unknown';
 const toTri = (v?: boolean | null): Tri => (v === true ? 'yes' : v === false ? 'no' : 'unknown');
 const fromTri = (v: Tri): boolean | null => (v === 'yes' ? true : v === 'no' ? false : null);
 
-export function VisitDialog({
+function VisitDialog({
   land,
   visit,
   onClose,

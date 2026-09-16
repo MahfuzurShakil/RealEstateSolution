@@ -8,7 +8,6 @@ import type {
   SiteVisit,
 } from '../db/types';
 import { nextAutomaticStep, type LandWorkFacts } from '../domain/land';
-import { localDay } from '../utils/format';
 import type { NewRecord } from './base.repository';
 import { landRepository } from './land.repository';
 import { landNegotiationRepository } from './negotiation.repository';
@@ -72,7 +71,7 @@ class LandPipelineRepository {
       acceptedRound: accepted && {
         round_no: accepted.round_no,
         amount: accepted.amount,
-        accepted_on: localDay(accepted.updated_at),
+        accepted_on: accepted.updated_at.slice(0, 10),
       },
     };
   }
