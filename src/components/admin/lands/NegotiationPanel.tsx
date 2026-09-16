@@ -11,11 +11,7 @@ import { Field, MoneyInput, SelectInput, TextArea, TextInput } from '@/component
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { LandNegotiation, NegotiationParty, NegotiationRoundStatus } from '@/lib/db/types';
-import {
-  landNegotiationRepository,
-  landPipelineRepository,
-  type LandWithRelations,
-} from '@/lib/repositories';
+import { landNegotiationRepository, type LandWithRelations } from '@/lib/repositories';
 import { formatBdt, formatDate, todayLocal } from '@/lib/utils/format';
 
 const STATUS_META: Record<NegotiationRoundStatus, { label: string; tone: BadgeTone }> = {
@@ -195,12 +191,7 @@ export function NegotiationPanel({ land }: { land: LandWithRelations }) {
       )}
 
       {accepting && (
-        <AcceptDialog
-          round={accepting}
-          land={land}
-          userId={userId}
-          onClose={() => setAccepting(null)}
-        />
+        <AcceptDialog round={accepting} land={land} onClose={() => setAccepting(null)} />
       )}
     </>
   );
@@ -216,12 +207,10 @@ export function NegotiationPanel({ land }: { land: LandWithRelations }) {
 function AcceptDialog({
   round,
   land,
-  userId,
   onClose,
 }: {
   round: LandNegotiation;
   land: LandWithRelations;
-  userId: string | null;
   onClose: () => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -236,13 +225,14 @@ function AcceptDialog({
       icon={Handshake}
       confirmLabel="Accept round"
       busy={busy}
-      message="Every other round is marked superseded, this amount becomes the land's agreed amount, and the land moves to Agreed."
+      message="Every other round is marked superseded, and this amount becomes the land's agreed amount."
       onCancel={onClose}
       onConfirm={async () => {
         setBusy(true);
         try {
-          // writes the agreed amount and makes the land Agreed (L7)
-          await landPipelineRepository.acceptNegotiationRound(round.id, userId);
+          const { landRepository } = await import('@/lib/repositories');
+          await landNegotiationRepository.accept(round.id);
+          await landRepository.update(land.id, { final_agreed_amount: round.amount });
           onClose();
         } finally {
           setBusy(false);
@@ -303,7 +293,7 @@ function RoundDialog({
     setError('');
     setSaving(true);
     try {
-      await landPipelineRepository.addNegotiationRound(
+      await landNegotiationRepository.addRound(
         {
           land_id: land.id,
           owner_id: form.owner_id || null,

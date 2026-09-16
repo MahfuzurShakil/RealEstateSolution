@@ -17,7 +17,7 @@ import type {
   LandFeasibility,
 } from '@/lib/db/types';
 import { FEASIBILITY_RECOMMENDATIONS } from '@/lib/db/types';
-import { landFeasibilityRepository, landPipelineRepository } from '@/lib/repositories';
+import { landFeasibilityRepository } from '@/lib/repositories';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
 const STATUS_META: Record<FeasibilityStatus, { label: string; tone: BadgeTone }> = {
@@ -276,9 +276,7 @@ function DecisionDialog({
       subtitle={`Version ${study.version_no} · recommends ${study.recommendation}`}
       message={
         approve
-          ? study.recommendation === 'proceed'
-            ? 'Approving records the board’s decision on these numbers. A land still under review moves to Due Diligence the moment this is approved.'
-            : `Approving records the board’s decision on these numbers. It recommends ${study.recommendation}, so the land stays where it is.`
+          ? 'Approving records the board’s decision on these numbers. It is what lets the land move on to due diligence.'
           : 'Rejecting closes this version. A changed decision means a new version, so the rejected numbers stay readable.'
       }
       tone={approve ? 'success' : 'danger'}
@@ -293,12 +291,12 @@ function DecisionDialog({
         }
         setBusy(true);
         try {
-          // an approval recommending Proceed sends the land to due diligence (L7)
-          await landPipelineRepository.decideFeasibility(
-            study.id,
-            { approve, note: note.trim() },
-            userId,
-          );
+          await landFeasibilityRepository.update(study.id, {
+            status: approve ? 'approved' : 'rejected',
+            decided_by: userId,
+            decided_at: new Date().toISOString(),
+            decision_note: note.trim(),
+          });
           onClose();
         } finally {
           setBusy(false);
