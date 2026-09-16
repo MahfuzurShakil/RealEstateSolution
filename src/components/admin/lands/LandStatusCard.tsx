@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowRight, Bot, GitBranch, Info, Lock, Wrench } from 'lucide-react';
+import { Check, GitBranch, Lock } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -13,53 +13,46 @@ import { CorrectStatusDialog } from '@/components/admin/lands/CorrectStatusDialo
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { JvShareBasis, Land, LandStatus } from '@/lib/db/types';
 import {
+  AUTOMATIC_TRANSITIONS,
   LAND_PIPELINE_STEPS,
   LAND_STATUS_META,
   allowedNextStatuses,
   amountUpdatesFinalAgreed,
+  isJvTermsField,
+  isTerminalStatus,
   correctableStatuses,
   ddGateBlockReason,
-  isJvTermsField,
-  landReadout,
   statusStepAttachment,
   statusStepConfig,
   transitionNeedsDueDiligence,
-  type LandWorkArea,
   type StatusStepField,
 } from '@/lib/domain/land';
 import {
   companySettingsRepository,
   documentRepository,
   landDdRepository,
-  landDevelopmentRepository,
-  landFeasibilityRepository,
   landJvRepository,
-  landNegotiationRepository,
-  landProjectMappingRepository,
   landRepository,
-  landStatusEventRepository,
 } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
-import { formatDate, todayLocal } from '@/lib/utils/format';
+import { todayLocal } from '@/lib/utils/format';
+
+const AUTOMATIC_CAUSE: Partial<Record<LandStatus, string>> = {
+  sourced: 'the first site visit is recorded',
+  under_review: 'a feasibility study recommending Proceed is approved',
+  dd_in_progress: 'the first negotiation round is recorded',
+  negotiation: 'a negotiation round is accepted',
+};
 
 /**
- * The Pipeline card — a read-out, not a set of buttons (L7, review section 4).
+ * Pipeline trail + the manual transitions valid from the current status.
  *
- * It answers one question: why is this land here, and what unblocks it? The
- * four middle steps follow the work recorded on the page (see
- * `landPipelineRepository`), so the card's job is to say which piece of work
- * the land is waiting on and take the user to it. The real-world events —
- * Acquired, JV Signed, Rejected, Disposed, Reopen — are still buttons, under
- * the read-out, because nothing else in the system can know a deed was signed.
+ * Since L7 only the real-world events are buttons here (Acquired, JV Signed,
+ * Rejected, Disposed, Reopen). The four middle steps follow the work recorded
+ * on the tabs — see `landPipelineRepository`. `linked_to_project` is set by
+ * Module 2. A land in the wrong place is fixed with "Correct this status".
  */
-export function LandStatusCard({
-  land,
-  onOpen,
-}: {
-  land: Land;
-  /** takes the user to the place on the page where that work is recorded */
-  onOpen: (area: LandWorkArea) => void;
-}) {
+export function LandStatusCard({ land }: { land: Land }) {
   const { userId } = useMockSession();
   const [target, setTarget] = useState<LandStatus | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -70,55 +63,16 @@ export function LandStatusCard({
   const [correcting, setCorrecting] = useState(false);
 
   const nextStatuses = allowedNextStatuses(land.status, land.acquisition_type);
+  const currentIndex = LAND_PIPELINE_STEPS.indexOf(land.status);
   const config = target ? statusStepConfig(target, land.acquisition_type) : null;
 
   const ddProgress = useLiveQuery(() => landDdRepository.progressForLand(land.id), [land.id]);
-  const settings = useLiveQuery(() => companySettingsRepository.get(), []);
-  const ddGateOn = settings?.require_dd_completion ?? false;
+  const ddGateOn = useLiveQuery(
+    async () => (await companySettingsRepository.get())?.require_dd_completion ?? false,
+    [],
+  );
 
-  /*
-   * Everything the read-out reasons about, in one live query, so the sentence
-   * changes the moment the work does — approving a study further down the page
-   * updates this card without a reload.
-   */
-  const facts = useLiveQuery(async () => {
-    const [studies, rounds, development, projects, events] = await Promise.all([
-      landFeasibilityRepository.listForLand(land.id),
-      landNegotiationRepository.listForLand(land.id),
-      landDevelopmentRepository.readinessForLand(land.id),
-      landProjectMappingRepository.projectsForLand(land.id),
-      landStatusEventRepository.listForLand(land.id),
-    ]);
-    return {
-      feasibility: {
-        current: studies[0],
-        latestApproved: studies.find((r) => r.status === 'approved'),
-      },
-      openRound: rounds.find((r) => r.status === 'open'),
-      roundCount: rounds.length,
-      development,
-      projectNames: projects.map((p) => p.name),
-      lastEvent: events.at(-1),
-    };
-  }, [land.id, land.status]);
-
-  const readout = facts
-    ? landReadout({
-        status: land.status,
-        acquisitionType: land.acquisition_type,
-        feasibility: facts.feasibility,
-        openRound: facts.openRound,
-        roundCount: facts.roundCount,
-        dd: ddProgress,
-        ddGateOn,
-        development: facts.development,
-        noDevelopmentRequired: Boolean(land.no_development_required),
-        developmentGateOn: settings?.require_development_ready ?? false,
-        projectNames: facts.projectNames,
-      })
-    : null;
-
-  /** The reason a manual event is blocked, or null when it is allowed. */
+  /** The reason a given move is blocked, or null when it is allowed. */
   function blockedReason(to: LandStatus): string | null {
     if (ddGateOn && transitionNeedsDueDiligence(land.status, to)) {
       return ddGateBlockReason(ddProgress);
@@ -132,8 +86,8 @@ export function LandStatusCard({
     setFileError('');
     setFiles([]);
     /*
-     * JV terms already on record are offered back rather than asked for
-     * again — the split is usually settled across the negotiation and only
+     * JV terms already agreed at an earlier step are offered back rather than
+     * asked for again — the share is normally settled in negotiation and only
      * confirmed at signing, and re-typing it is how the two come to disagree.
      */
     const jv =
@@ -156,7 +110,12 @@ export function LandStatusCard({
       return;
     }
 
-    // the two shares are a split of one thing — the same rule the Edit Land form enforces
+    /*
+     * The two shares are a split of one thing, so they have to total 100 —
+     * the same rule the Edit Land form enforces. Checked only when both are
+     * filled, because both are optional at negotiation and decision: the point
+     * of those steps is that the split is not settled yet.
+     */
     const dev = values.developer_share_pct?.trim();
     const own = values.landowner_share_pct?.trim();
     const capturesJvTerms = config.fields.some((f) => isJvTermsField(f.key));
@@ -168,28 +127,24 @@ export function LandStatusCard({
     setBusy(true);
     try {
       const amount = values.amount?.trim() ? Number(values.amount) : null;
-      const moved = await landRepository.setStatus(
-        land.id,
-        target,
-        {
-          event_date: values.event_date,
-          performed_by: values.performed_by?.trim() || null,
-          amount,
-          reference_no: values.reference_no?.trim() || null,
-          remarks: values.remarks?.trim() || null,
-          source: 'manual',
-        },
-        userId,
-      );
+      const moved = await landRepository.setStatus(land.id, target, {
+        event_date: values.event_date,
+        performed_by: values.performed_by?.trim() || null,
+        amount,
+        reference_no: values.reference_no?.trim() || null,
+        remarks: values.remarks?.trim() || null,
+      });
 
       /*
        * Evidence collected at this step. It is filed against the *land*, not
        * against the event, so the Documents tab lists it like any other land
-       * document. `status_event_id` only records where it arrived, which is
-       * what lets the Lifecycle feed show it beside the step it belongs to.
+       * document — a khatian copy is a khatian copy whichever screen it came
+       * in through. `status_event_id` only records where it arrived, which is
+       * what lets the Timeline show it beside the step it belongs to.
        *
-       * Uploaded after the status has moved rather than before: a file filed
-       * against a step that never happened is worse than a file not filed.
+       * Uploaded after the status has moved rather than before: if the move
+       * fails there is nothing to attach evidence to, and a file filed against
+       * a step that never happened is worse than a file not filed.
        */
       if (moved && files.length) {
         const attachment = statusStepAttachment(target);
@@ -218,12 +173,24 @@ export function LandStatusCard({
         await landRepository.update(land.id, { final_agreed_amount: amount });
       }
 
-      // JV terms go to `land_jv_details`: a share is a term of the deal, not an event
+      /*
+       * JV terms go to `land_jv_details`, not to the status event: a share is a
+       * term of the deal, not something that happened on a date. Written only
+       * when both shares are present, so moving to negotiation without them
+       * does not overwrite a split already agreed with blanks.
+       */
       if (capturesJvTerms && dev && own) {
         const existing = await landJvRepository.getForLand(land.id);
         await landJvRepository.upsertForLand(land.id, {
           developer_share_pct: Number(dev),
           landowner_share_pct: Number(own),
+          /*
+           * Only signing sets the agreement date. Negotiation and decision
+           * record a share that is still being agreed, and stamping today's
+           * date on the agreement each time one of them is confirmed would
+           * leave the JV claiming to have been signed at the meeting where it
+           * was still being argued about.
+           */
           agreement_date:
             target === 'jv_signed' ? values.event_date : (existing?.agreement_date ?? values.event_date),
           // untouched here — they belong to the Edit Land form
@@ -275,22 +242,6 @@ export function LandStatusCard({
     );
   }
 
-  const stepIndex = LAND_PIPELINE_STEPS.indexOf(land.status);
-  // past the five steps (acquired, linked…) every segment is filled; rejected fills none
-  const filled =
-    stepIndex >= 0
-      ? stepIndex + 1
-      : land.status === 'rejected'
-        ? 0
-        : LAND_PIPELINE_STEPS.length;
-  /*
-   * Only when it explains the status shown. Module 2 links a land to a project
-   * without writing a history row, so a linked land's last row is the signing
-   * — "Moved to JV Signed" under a "Linked to Project" badge is two answers.
-   */
-  const last = facts?.lastEvent?.to_status === land.status ? facts.lastEvent : undefined;
-  const blocked = nextStatuses.map((s) => blockedReason(s)).find(Boolean);
-
   return (
     <>
       <Card>
@@ -303,146 +254,96 @@ export function LandStatusCard({
           }
         />
 
-        {/* where it is — five segments; the badge and the read-out say the rest */}
-        <div className="flex gap-1" aria-hidden>
-          {LAND_PIPELINE_STEPS.map((step, i) => (
-            <span
-              key={step}
-              title={LAND_STATUS_META[step].label}
-              className={cn(
-                'h-1.5 flex-1 rounded-full',
-                i < filled ? 'bg-admin-500' : 'bg-slate-200',
-              )}
-            />
-          ))}
-        </div>
-        <p className="mt-1.5 text-xs text-ink-muted">
-          {stepIndex >= 0
-            ? `Step ${stepIndex + 1} of ${LAND_PIPELINE_STEPS.length}`
-            : land.status === 'rejected'
-              ? 'Dropped from the pipeline'
-              : 'Past the pipeline'}
-        </p>
-
-        {/* why it is here, and what unblocks it */}
-        {readout && (
-          <div className="mt-4 rounded-xl border border-admin-100 bg-admin-50/50 p-3.5">
-            {readout.waitingOn ? (
-              <>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-admin-700">
-                  Waiting on
-                </p>
-                <p className="mt-1 text-sm text-ink">{readout.waitingOn}</p>
-              </>
-            ) : (
-              <p className="text-sm text-ink">{readout.settled}</p>
-            )}
-            {readout.action && (
-              <button
-                type="button"
-                onClick={() => onOpen(readout.action!.area)}
-                className="mt-2.5 inline-flex items-center gap-1.5 text-sm font-medium text-admin-700 hover:underline"
-              >
-                {readout.action.label} <ArrowRight className="size-3.5" />
-              </button>
-            )}
-          </div>
-        )}
-
-        {readout && readout.notes.length > 0 && (
-          <ul className="mt-3 space-y-2">
-            {readout.notes.map((note) => (
-              <li
-                key={note.text}
-                className={cn(
-                  'flex items-start gap-2 text-xs',
-                  note.tone === 'warn' ? 'text-amber-800' : 'text-ink-muted',
-                )}
-              >
-                {note.tone === 'warn' ? (
-                  <Lock className="mt-0.5 size-3.5 shrink-0" />
-                ) : (
-                  <Info className="mt-0.5 size-3.5 shrink-0" />
-                )}
-                <span>
-                  {note.text}
-                  {note.action && (
-                    <>
-                      {' '}
-                      <button
-                        type="button"
-                        onClick={() => onOpen(note.action!.area)}
-                        className="font-medium text-admin-700 hover:underline"
-                      >
-                        {note.action.label}
-                      </button>
-                    </>
+        <ol className="space-y-3">
+          {LAND_PIPELINE_STEPS.map((step, i) => {
+            const done =
+              currentIndex > i || (isTerminalStatus(land.status) && land.status !== 'rejected');
+            const active = land.status === step;
+            return (
+              <li key={step} className="flex items-center gap-3">
+                <span
+                  className={cn(
+                    'grid size-6 shrink-0 place-items-center rounded-full text-[11px] font-semibold',
+                    done
+                      ? 'bg-admin-500 text-white'
+                      : active
+                        ? 'bg-admin-100 text-admin-700 ring-2 ring-admin-300'
+                        : 'bg-slate-100 text-slate-400',
                   )}
+                >
+                  {done ? <Check className="size-3.5" /> : i + 1}
+                </span>
+                <span
+                  className={cn(
+                    'text-sm',
+                    active ? 'font-medium text-ink' : done ? 'text-ink-muted' : 'text-slate-400',
+                  )}
+                >
+                  {LAND_STATUS_META[step].label}
                 </span>
               </li>
-            ))}
-          </ul>
-        )}
+            );
+          })}
+        </ol>
 
-        {/* what moved it last — so an automatic change is never a silent one */}
-        {last && (
-          <p className="mt-4 flex items-start gap-2 border-t border-hairline pt-3 text-xs text-ink-muted">
-            {last.source === 'automatic' ? (
-              <Bot className="mt-0.5 size-3.5 shrink-0" />
-            ) : last.source === 'correction' ? (
-              <Wrench className="mt-0.5 size-3.5 shrink-0" />
-            ) : (
-              <GitBranch className="mt-0.5 size-3.5 shrink-0" />
-            )}
-            <span>
-              {last.source === 'correction' ? 'Corrected to' : 'Moved to'}{' '}
-              <span className="font-medium text-ink">{LAND_STATUS_META[last.to_status].label}</span>{' '}
-              on {formatDate(last.event_date)}
-              {last.source === 'automatic' && last.remarks ? ` — ${last.remarks}` : '.'}
-            </span>
-          </p>
-        )}
+        <div className="mt-5 border-t border-hairline pt-4">
+          {AUTOMATIC_TRANSITIONS[land.status] && (
+            <p className="mb-3 text-xs text-ink-muted">
+              Moves to {LAND_STATUS_META[AUTOMATIC_TRANSITIONS[land.status]!].label} by itself when{' '}
+              {AUTOMATIC_CAUSE[land.status]}.
+            </p>
+          )}
+          {nextStatuses.length === 0 ? (
+            <p className="text-xs text-ink-muted">
+              {land.status === 'linked_to_project'
+                ? 'This land is linked to a project.'
+                : 'No further status change available from here.'}
+            </p>
+          ) : (
+            <>
+              <p className="mb-2 text-xs font-medium text-ink-muted">Move to</p>
+              <div className="flex flex-wrap gap-2">
+                {nextStatuses.map((s) => {
+                  const blocked = blockedReason(s);
+                  return (
+                    <Button
+                      key={s}
+                      size="sm"
+                      variant={s === 'rejected' ? 'outline' : 'primary'}
+                      disabled={Boolean(blocked)}
+                      title={blocked ?? undefined}
+                      onClick={() => openDialog(s)}
+                    >
+                      {LAND_STATUS_META[s].label}
+                    </Button>
+                  );
+                })}
+              </div>
 
-        {nextStatuses.length > 0 && (
-          <div className="mt-4 border-t border-hairline pt-4">
-            <p className="mb-2 text-xs font-medium text-ink-muted">Record an event</p>
-            <div className="flex flex-wrap gap-2">
-              {nextStatuses.map((s) => {
-                const reason = blockedReason(s);
-                return (
-                  <Button
-                    key={s}
-                    size="sm"
-                    variant={s === 'rejected' ? 'outline' : 'primary'}
-                    disabled={Boolean(reason)}
-                    title={reason ?? undefined}
-                    onClick={() => openDialog(s)}
-                  >
-                    {statusStepConfig(s, land.acquisition_type)?.confirmLabel ??
-                      LAND_STATUS_META[s].label}
-                  </Button>
-                );
-              })}
-            </div>
-            {/* gate G2: a disabled button alone reads as a bug — the reason makes it a rule */}
-            {blocked && (
-              <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
-                <Lock className="mt-0.5 size-3.5 shrink-0" />
-                <span>{blocked}</span>
-              </p>
-            )}
-          </div>
-        )}
+              {/*
+                Gate G1. The disabled button alone reads as a bug — the reason
+                is what turns it into a rule, and it names the tab to go fix it
+                on. Rendered under the row so it is read without hovering.
+              */}
+              {nextStatuses.map((s) => blockedReason(s)).find(Boolean) && (
+                <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
+                  <Lock className="mt-0.5 size-3.5 shrink-0" />
+                  <span>{nextStatuses.map((s) => blockedReason(s)).find(Boolean)}</span>
+                </p>
+              )}
+            </>
+          )}
 
-        {correctableStatuses(land.status, land.acquisition_type).length > 0 && (
-          <button
-            type="button"
-            onClick={() => setCorrecting(true)}
-            className="mt-4 text-xs font-medium text-ink-muted underline-offset-2 hover:text-admin-700 hover:underline"
-          >
-            Correct this status
-          </button>
-        )}
+          {correctableStatuses(land.status, land.acquisition_type).length > 0 && (
+            <button
+              type="button"
+              onClick={() => setCorrecting(true)}
+              className="mt-4 text-xs font-medium text-ink-muted underline-offset-2 hover:text-admin-700 hover:underline"
+            >
+              Correct this status
+            </button>
+          )}
+        </div>
       </Card>
 
       {correcting && <CorrectStatusDialog land={land} onClose={() => setCorrecting(false)} />}
@@ -471,7 +372,12 @@ export function LandStatusCard({
               onError={setFileError}
             />
 
-            {/* an error about the pair of shares, which belongs to no single field */}
+            {/*
+              A validation error that belongs to no single field — the two
+              shares failing to total 100 is about the pair, not about either
+              one. Without this the dialog simply refused to close and said
+              nothing, which reads as a broken button.
+            */}
             {error && !config.fields.some((f) => f.required && !values[f.key]?.trim()) && (
               <p className="text-sm text-red-600">{error}</p>
             )}
