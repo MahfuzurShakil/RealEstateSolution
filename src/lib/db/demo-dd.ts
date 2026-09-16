@@ -14,10 +14,34 @@
 export interface DemoDdFinding {
   land: string;
   code: string;
-  status: 'in_progress' | 'passed' | 'failed' | 'waived' | 'not_applicable';
+  status:
+    | 'in_progress'
+    | 'submitted'
+    | 'passed'
+    | 'conditionally_approved'
+    | 'failed'
+    | 'waived'
+    | 'not_applicable';
   finding?: string;
   waiver_reason?: string;
 }
+
+/** The seeded checklist's mandatory items (DD_CHECKLIST_SEED). */
+const MANDATORY_CODES = [
+  'ownership_proof',
+  'heir_consent',
+  'deed_chain',
+  'khatian_verified',
+  'mutation_done',
+  'encumbrance_search',
+  'mortgage_clear',
+  'litigation_clear',
+  'land_tax_paid',
+  'acquisition_check',
+  'boundary_survey',
+  'possession_clear',
+  'land_use_clearance',
+];
 
 export const DEMO_DD_FINDINGS: DemoDdFinding[] = [
   /* Bashundhara — JV signed, so every mandatory item is settled. One waiver,
@@ -246,8 +270,8 @@ export const DEMO_DD_FINDINGS: DemoDdFinding[] = [
   {
     land: 'Chattogram Khulshi hillside plot',
     code: 'encumbrance_search',
-    status: 'in_progress',
-    finding: 'Search filed at the Chattogram sub-registry, certificate awaited.',
+    status: 'submitted',
+    finding: 'Search certificate from the Chattogram sub-registry received and handed in for review.',
   },
   {
     land: 'Chattogram Khulshi hillside plot',
@@ -267,4 +291,51 @@ export const DEMO_DD_FINDINGS: DemoDdFinding[] = [
     status: 'in_progress',
     finding: 'CDA hill-cutting permission is the open question — application under review.',
   },
+
+  /* L7 — Gazipur is mid-search while negotiating: some checks done, one awaiting review */
+  ...(['ownership_proof', 'deed_chain', 'khatian_verified', 'land_tax_paid'] as const).map(
+    (code): DemoDdFinding => ({
+      land: 'Gazipur Tongi industrial-adjacent plot',
+      code,
+      status: 'passed',
+      finding: 'Verified against the record-room copy.',
+    }),
+  ),
+  {
+    land: 'Gazipur Tongi industrial-adjacent plot',
+    code: 'encumbrance_search',
+    status: 'submitted',
+    finding: 'Search report 2001–2026 received from the Tongi sub-registry; submitted for review.',
+  },
+
+  /*
+   * Savar is agreed and settled for signing — every mandatory check done, one
+   * of them approved on a condition (BRD DD-003), which is the case the
+   * conditional state exists for.
+   */
+  ...passAllMandatory('Savar highway-side land', {
+    boundary_survey: {
+      status: 'conditionally_approved',
+      finding:
+        'Approved on condition the neighbour’s tin shed on the east strip is removed before signing; the 2.5 decimal strip under dispute is excluded from the agreement.',
+    },
+  }),
+
+  /* the two closed deals had their checks done in full */
+  ...passAllMandatory('Chattogram Agrabad commercial plot'),
+  ...passAllMandatory('Dhanmondi Road 27 plot'),
 ];
+
+function passAllMandatory(
+  land: string,
+  overrides: Partial<Record<string, Pick<DemoDdFinding, 'status' | 'finding'>>> = {},
+): DemoDdFinding[] {
+  return MANDATORY_CODES.map((code) => ({
+    land,
+    code,
+    status: 'passed',
+    finding: 'Checked and clear.',
+    ...overrides[code],
+  }));
+}
+

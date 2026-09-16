@@ -137,10 +137,14 @@ async function seedDemoSiteVisits(
     const landId = landIds.get(demo.land);
     if (!landId) continue;
 
+    // a plan is dated from load day, so it is always upcoming
+    const planned = demo.planned_in_days != null;
+    const visitDate = planned ? daysFromToday(demo.planned_in_days!).slice(0, 10) : demo.visit_date;
     const visit = await siteVisitRepository.create(
       {
         land_id: landId,
-        visit_date: demo.visit_date,
+        status: planned ? 'planned' : 'completed',
+        visit_date: visitDate,
         visited_by: demo.visited_by ?? null,
         participants: demo.participants ?? null,
         access_note: demo.access_note ?? null,
@@ -162,6 +166,7 @@ async function seedDemoSiteVisits(
       },
       createdBy,
     );
+    if (planned) continue;
     await getDb().site_visits.update(visit.id, {
       created_at: `${demo.visit_date}T11:00:00.000Z`,
     });
@@ -195,7 +200,9 @@ async function seedDemoSiteVisits(
     if (!landId) continue;
 
     const decided = demo.status === 'approved' || demo.status === 'rejected';
-    await landFeasibilityRepository.create(
+    // morning in Dhaka, so the stored day is the same day locally
+    const at = (d?: string) => (d ? `${d}T04:00:00.000Z` : null);
+    const study = await landFeasibilityRepository.create(
       {
         land_id: landId,
         version_no: demo.version_no,
@@ -208,14 +215,19 @@ async function seedDemoSiteVisits(
         recommendation: demo.recommendation,
         status: demo.status,
         prepared_by: demo.prepared_by ?? null,
-        submitted_at: demo.status === 'draft' ? null : new Date().toISOString(),
+        submitted_at: demo.status === 'draft' ? null : at(demo.submitted_on ?? demo.prepared_on),
         decided_by: decided ? createdBy : null,
-        decided_at: decided ? new Date().toISOString() : null,
+        decided_at: decided ? at(demo.decided_on ?? demo.submitted_on ?? demo.prepared_on) : null,
         decision_note: demo.decision_note ?? null,
         remarks: null,
       },
       createdBy,
     );
+    // the timeline dates a study by its own days, not by the moment of seeding
+    await getDb().land_feasibility.update(study.id, {
+      created_at: at(demo.prepared_on)!,
+      updated_at: at(demo.decided_on ?? demo.submitted_on ?? demo.prepared_on)!,
+    });
   }
 }
 
@@ -237,7 +249,26 @@ async function seedDemoDueDiligence(
 
   const master = await ddChecklistRepository.allItems();
   const byCode = new Map(master.map((m) => [m.code, m.id]));
-  const now = new Date().toISOString();
+
+  /*
+   * Findings are dated from the day the land went to due diligence, five a
+   * week — how a lawyer reports back. They used to carry the moment of
+   * seeding, which put a land's whole legal history on today.
+   */
+  const ddStart = new Map(
+    DEMO_LANDS.map((l) => [
+      l.name,
+      l.history.find((h) => h.to_status === 'dd_in_progress')?.event_date ?? l.created_at.slice(0, 10),
+    ]),
+  );
+  const seen = new Map<string, number>();
+  const findingAt = (land: string) => {
+    const n = seen.get(land) ?? 0;
+    seen.set(land, n + 1);
+    const d = new Date(`${ddStart.get(land)}T05:00:00.000Z`);
+    d.setUTCDate(d.getUTCDate() + 2 + Math.floor(n / 5) * 7);
+    return d.toISOString();
+  };
 
   for (const demo of DEMO_DD_FINDINGS) {
     const landId = landIds.get(demo.land);
@@ -249,7 +280,11 @@ async function seedDemoDueDiligence(
     if (!row) continue;
 
     const settled =
-      demo.status === 'passed' || demo.status === 'waived' || demo.status === 'not_applicable';
+      demo.status === 'passed' ||
+      demo.status === 'conditionally_approved' ||
+      demo.status === 'waived' ||
+      demo.status === 'not_applicable';
+    const now = findingAt(demo.land);
     await landDdRepository.update(row.id, {
       status: demo.status,
       finding: demo.finding ?? null,
@@ -556,7 +591,8 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
       );
       // log entries carry the date of the step, not the moment of seeding
       await db.land_status_history.update(saved.id, {
-        created_at: `${event.event_date}T09:00:00.000Z`,
+        // after the visit, study or round of the same day — a status follows its cause
+        created_at: `${event.event_date}T12:00:00.000Z`,
       });
       previous = event.to_status;
     }
@@ -1649,6 +1685,45 @@ async function seedDemoFinance(
         monthlyCount: 4,
         registrationAmount: 10000000,
         registrationAfterMonths: 7,
+      },
+      createdBy,
+    );
+  }
+
+  // L7 — the JV cash side is scheduled too: signing money is money owed (BRD ACQ-003)
+  for (const [name, agreementDate] of [
+    ['Bashundhara Block K corner plot', '2026-04-18'],
+    ['Chattogram Agrabad commercial plot', '2026-05-12'],
+  ] as const) {
+    const landId = landIds.get(name);
+    if (!landId) continue;
+    const land = await landRepository.getById(landId);
+    const cash = Number(land?.final_agreed_amount) || 0;
+    if (cash <= 0) continue;
+    await paymentScheduleRepository.generateForLand(
+      landId,
+      {
+        agreementDate,
+        advanceAmount: Math.round(cash / 2),
+        monthlyCount: 0,
+        registrationAmount: cash - Math.round(cash / 2),
+        registrationAfterMonths: 2,
+      },
+      createdBy,
+    );
+  }
+
+  // L7 — every acquired purchase carries its settlement schedule (BRD ACQ-003)
+  const uttaraLandId = landIds.get('Uttara Sector 13 residential plot');
+  if (uttaraLandId) {
+    await paymentScheduleRepository.generateForLand(
+      uttaraLandId,
+      {
+        agreementDate: '2026-03-01',
+        advanceAmount: 10800000,
+        monthlyCount: 2,
+        registrationAmount: 15200000,
+        registrationAfterMonths: 3,
       },
       createdBy,
     );

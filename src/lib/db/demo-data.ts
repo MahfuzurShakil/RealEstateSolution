@@ -290,6 +290,8 @@ export const DEMO_LANDS: DemoLand[] = [
   },
   {
     name: 'Savar highway-side land',
+    // the signing money agreed in round 2 of the ladder (demo-negotiation.ts)
+    final_agreed_amount: 5_000_000,
     land_classification: 'চালা (Chala — high land)',
     source: 'Reference',
     location_division: 'Dhaka',

@@ -3,9 +3,10 @@ import type { DevelopmentActivityStatus } from './types';
 /**
  * Batch L6 demo data — land development (BRD section 11).
  *
- * Two plots, deliberately at opposite ends. Narayanganj is the lowland case:
- * four feet of fill, a boundary wall and drainage, half of it unfinished — so
- * gate G3 has a real reason to refuse a project on it. Uttara is the ready
+ * Two plots, deliberately at opposite ends. Agrabad is the plot still being
+ * worked on — demolition and fill, a boundary wall and drainage, half of it
+ * unfinished — so gate G3 has a real reason to refuse a project on it. It is a
+ * JV-signed plot because L7 allows development only on land the company holds. Uttara is the ready
  * plot, marked as needing no development at all, which is the other half of
  * DEV-004 and the reason that flag exists.
  */
@@ -39,7 +40,7 @@ export const DEMO_NO_DEVELOPMENT_LANDS = [
 
 export const DEMO_DEVELOPMENT: DemoDevelopmentActivity[] = [
   {
-    land: 'Narayanganj Fatullah plot',
+    land: 'Chattogram Agrabad commercial plot',
     activity_type: 'Site clearing',
     contractor: 'Nirman Construction Services',
     unit: 'sft',
@@ -67,7 +68,7 @@ export const DEMO_DEVELOPMENT: DemoDevelopmentActivity[] = [
     ],
   },
   {
-    land: 'Narayanganj Fatullah plot',
+    land: 'Chattogram Agrabad commercial plot',
     activity_type: 'Earth filling',
     contractor: 'Nirman Construction Services',
     unit: 'cft',
@@ -95,7 +96,7 @@ export const DEMO_DEVELOPMENT: DemoDevelopmentActivity[] = [
     ],
   },
   {
-    land: 'Narayanganj Fatullah plot',
+    land: 'Chattogram Agrabad commercial plot',
     activity_type: 'Boundary wall',
     contractor: 'Nirman Construction Services',
     unit: 'rft',
@@ -106,7 +107,7 @@ export const DEMO_DEVELOPMENT: DemoDevelopmentActivity[] = [
     notes: '5 ft brick wall with a 3 ft parapet. Cannot start before the fill settles.',
   },
   {
-    land: 'Narayanganj Fatullah plot',
+    land: 'Chattogram Agrabad commercial plot',
     activity_type: 'Drainage',
     unit: 'rft',
     planned_qty: 220,

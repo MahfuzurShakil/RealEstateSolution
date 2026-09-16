@@ -17,6 +17,11 @@ import type { FeasibilityRecommendation, FeasibilityStatus } from './types';
 
 export interface DemoSiteVisit {
   land: string;
+  /**
+   * L7 — a planned visit (BRD SITE-001 "visit plans"). Dated from load day,
+   * so the plan is always upcoming rather than a stale past date.
+   */
+  planned_in_days?: number;
   visit_date: string;
   visited_by?: string;
   participants?: string;
@@ -49,6 +54,10 @@ export interface DemoFeasibility {
   status: FeasibilityStatus;
   prepared_by?: string;
   decision_note?: string;
+  /** real days, so the timeline reads in order — negotiation follows approval (SITE-003) */
+  prepared_on: string;
+  submitted_on?: string;
+  decided_on?: string;
 }
 
 export const DEMO_SITE_VISITS: DemoSiteVisit[] = [
@@ -147,7 +156,7 @@ export const DEMO_SITE_VISITS: DemoSiteVisit[] = [
   },
   {
     land: 'Keraniganj riverside land',
-    visit_date: '2026-06-08',
+    visit_date: '2026-03-05',
     visited_by: 'Shafiq Rahman (Land Team)',
     access_note: 'No pucca approach. 12 ft earthen track from the embankment, impassable after rain.',
     road_width_ft: 12,
@@ -164,6 +173,92 @@ export const DEMO_SITE_VISITS: DemoSiteVisit[] = [
     price_observation: 'Cheap at 23 lakh per katha, and the reason is visible from the plot',
     remarks:
       'The fill alone would be most of the land price. Recommended against before due diligence money was spent.',
+  },
+
+  /*
+   * L7 — every land that reached negotiation had its plot walked first, so
+   * the Site Visit step is ticked on each of them.
+   */
+  {
+    land: 'Gazipur Tongi industrial-adjacent plot',
+    visit_date: '2026-03-18',
+    visited_by: 'Shafiq Rahman (Land Team)',
+    access_note: '30 ft approach road off the Tongi–Ashulia road',
+    road_width_ft: 30,
+    has_electricity: true,
+    has_gas: true,
+    has_water: false,
+    has_sewerage: false,
+    utilities_note: 'Gas and power at the boundary; no WASA line, deep tube-well needed',
+    drainage: 'East edge collects water in heavy rain',
+    soil_condition: 'Red clay, firm',
+    is_lowland: false,
+    surroundings: 'Garment factories north and east, BSCIC estate 1 km',
+    price_observation: 'Brokers quote 2.1–2.3 crore per bigha on this road',
+    remarks: 'Boundary pillars in place. Drainage on the east edge needs a survey.',
+  },
+  {
+    land: 'Savar highway-side land',
+    visit_date: '2026-02-12',
+    visited_by: 'Kamal Hossain (Land Team)',
+    participants: 'Both heirs',
+    access_note: 'Direct frontage on the Dhaka–Aricha highway service lane',
+    road_width_ft: 40,
+    has_electricity: true,
+    has_gas: false,
+    has_water: false,
+    has_sewerage: false,
+    drainage: 'Highway drain along the front',
+    soil_condition: 'Low at the back — about 4 ft of fill behind the highway frontage',
+    is_lowland: true,
+    filling_required_ft: 4,
+    surroundings: 'Shops on the highway, housing behind',
+    price_observation: 'Highway-facing land asking 60–70 lakh per katha',
+    remarks: 'A tin shed on the east strip belongs to a neighbour — raise it in legal checks.',
+  },
+  {
+    land: 'Chattogram Agrabad commercial plot',
+    visit_date: '2026-02-11',
+    visited_by: 'Imran Kabir (Chattogram)',
+    access_note: 'Frontage on Agrabad Access Road',
+    road_width_ft: 50,
+    has_electricity: true,
+    has_gas: true,
+    has_water: true,
+    has_sewerage: true,
+    drainage: 'CCC drain, adequate',
+    soil_condition: 'Old building footprint, soil test needed',
+    is_lowland: false,
+    surroundings: 'Banks and offices both sides',
+    price_observation: 'Commercial plots here quote above 1.5 crore per katha',
+    remarks: 'A single-storey structure stands on the plot and has to be demolished.',
+  },
+  {
+    land: 'Dhanmondi Road 27 plot',
+    visit_date: '2026-01-15',
+    visited_by: 'Kamal Hossain (Land Team)',
+    access_note: 'Road 27 (old), 60 ft frontage',
+    road_width_ft: 60,
+    has_electricity: true,
+    has_gas: true,
+    has_water: true,
+    has_sewerage: true,
+    drainage: 'City drain, no waterlogging reported',
+    soil_condition: 'Old house footprint',
+    is_lowland: false,
+    surroundings: 'Residential towers on both sides, lake 400 m',
+    price_observation: 'Dhanmondi asking above 1 crore per katha',
+    remarks: 'Family wants to close quickly to settle the inheritance.',
+  },
+
+  /* a plan, not a visit — the Sylhet plot has not been looked at yet */
+  {
+    land: 'Sylhet Zindabazar mixed-use plot',
+    planned_in_days: 5,
+    visit_date: '',
+    visited_by: 'Imran Kabir (Chattogram)',
+    participants: 'Owner’s representative',
+    remarks: 'Walk the frontage on Jail Road and check the building setback with the owner.',
   },
 ];
 
@@ -182,7 +277,10 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     recommendation: 'proceed',
     status: 'approved',
     prepared_by: 'Rifat Ahmed (Land Team)',
-    decision_note: 'Board approved 2026-04-02. Proceed on the 55:45 basis.',
+    decision_note: 'Board approved 2026-02-27. Proceed on the 55:45 basis.',
+    prepared_on: '2026-02-18',
+    submitted_on: '2026-02-22',
+    decided_on: '2026-02-27',
   },
   {
     land: 'Uttara Sector 13 residential plot',
@@ -196,7 +294,10 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     recommendation: 'hold',
     status: 'rejected',
     prepared_by: 'Rifat Ahmed (Land Team)',
-    decision_note: 'Margin under 30% at the asking price. Re-study after negotiating.',
+    decision_note: 'Margin under 30% at the asking price. Re-study at a lower land price.',
+    prepared_on: '2026-01-13',
+    submitted_on: '2026-01-15',
+    decided_on: '2026-01-17',
   },
   {
     land: 'Uttara Sector 13 residential plot',
@@ -205,12 +306,15 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     est_development_cost: 2_000_000,
     est_other_cost: 6_500_000,
     expected_revenue: 78_000_000,
-    assumptions: 'Purchase at 36,000,000 after negotiation, 7 floors, BDT 9,800/sqft',
+    assumptions: 'Purchase capped at 36,000,000 — the owner has signalled room below asking. 7 floors, BDT 9,800/sqft',
     risks: 'No gas connection in the block — buyers will ask, and the answer costs something',
     recommendation: 'proceed',
     status: 'approved',
     prepared_by: 'Rifat Ahmed (Land Team)',
-    decision_note: 'Approved at the negotiated land price. Proceed to registration.',
+    decision_note: 'Approved with the land price capped at 36,000,000. Proceed to negotiation.',
+    prepared_on: '2026-01-20',
+    submitted_on: '2026-01-22',
+    decided_on: '2026-01-26',
   },
   {
     land: 'Narayanganj Fatullah plot',
@@ -225,6 +329,8 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     recommendation: 'proceed',
     status: 'submitted',
     prepared_by: 'Shafiq Rahman (Land Team)',
+    prepared_on: '2026-05-30',
+    submitted_on: '2026-06-03',
   },
   {
     land: 'Chattogram Khulshi hillside plot',
@@ -240,6 +346,7 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     recommendation: 'hold',
     status: 'draft',
     prepared_by: 'Jashim Uddin (Chattogram office)',
+    prepared_on: '2026-04-20',
   },
   {
     land: 'Keraniganj riverside land',
@@ -254,6 +361,79 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     status: 'approved',
     prepared_by: 'Shafiq Rahman (Land Team)',
     decision_note:
-      'Board agreed 2026-06-20 — the development cost is not recoverable at Keraniganj rates. Land rejected.',
+      'Board agreed 2026-04-08 — the development cost is not recoverable at Keraniganj rates. Land rejected.',
+    prepared_on: '2026-03-20',
+    submitted_on: '2026-03-25',
+    decided_on: '2026-04-08',
+  },
+
+  /* L7 — approved before each of these lands went to negotiation (SITE-003) */
+  {
+    land: 'Gazipur Tongi industrial-adjacent plot',
+    version_no: 1,
+    est_acquisition_cost: 42_000_000,
+    est_development_cost: 6_000_000,
+    est_other_cost: 5_000_000,
+    expected_revenue: 82_000_000,
+    assumptions: 'Outright purchase near 41 crore, industrial-worker housing, 8 floors',
+    risks: 'No WASA line; the east-edge drainage may need a retaining drain',
+    recommendation: 'proceed',
+    status: 'approved',
+    prepared_by: 'Shafiq Rahman (Land Team)',
+    decision_note: 'Approved. Negotiate below 41,000,000.',
+    prepared_on: '2026-05-10',
+    submitted_on: '2026-05-14',
+    decided_on: '2026-05-25',
+  },
+  {
+    land: 'Savar highway-side land',
+    version_no: 1,
+    est_acquisition_cost: 5_000_000,
+    est_development_cost: 3_000_000,
+    est_other_cost: 6_000_000,
+    expected_revenue: 96_000_000,
+    assumptions: 'JV 60:40 on flat count, 6 floors, highway-facing shops on the ground floor',
+    risks: 'Two heirs must both sign; tin shed on the east strip',
+    recommendation: 'proceed',
+    status: 'approved',
+    prepared_by: 'Rifat Ahmed (Land Team)',
+    decision_note: 'Approved. Proceed on a 60:40 JV.',
+    prepared_on: '2026-04-15',
+    submitted_on: '2026-04-20',
+    decided_on: '2026-04-28',
+  },
+  {
+    land: 'Chattogram Agrabad commercial plot',
+    version_no: 1,
+    est_acquisition_cost: 8_000_000,
+    est_development_cost: 5_000_000,
+    est_other_cost: 9_000_000,
+    expected_revenue: 210_000_000,
+    assumptions: 'JV on commercial floor area, 10 floors, bank tenants for the podium',
+    risks: 'Demolition of the existing structure; soil not yet tested',
+    recommendation: 'proceed',
+    status: 'approved',
+    prepared_by: 'Jashim Uddin (Chattogram office)',
+    decision_note: 'Approved. Strong location — proceed.',
+    prepared_on: '2026-03-10',
+    submitted_on: '2026-03-14',
+    decided_on: '2026-03-20',
+  },
+  {
+    land: 'Dhanmondi Road 27 plot',
+    version_no: 1,
+    est_acquisition_cost: 86_000_000,
+    est_development_cost: 4_000_000,
+    est_other_cost: 9_000_000,
+    expected_revenue: 150_000_000,
+    assumptions: 'Outright purchase around 82–84 crore, 9 floors, BDT 17,000/sqft',
+    risks: 'Price is high; the margin depends on the Dhanmondi rate holding',
+    recommendation: 'proceed',
+    status: 'approved',
+    prepared_by: 'Rifat Ahmed (Land Team)',
+    decision_note: 'Approved if the price is agreed at or under 84,000,000.',
+    prepared_on: '2026-01-25',
+    submitted_on: '2026-02-01',
+    decided_on: '2026-02-10',
   },
 ];

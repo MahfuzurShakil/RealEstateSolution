@@ -98,8 +98,13 @@ export function LandProgressCard({
       {
         key: 'settlement',
         label: 'Settlement schedule',
-        done: Boolean(schedule),
-        count: schedule ? plural(schedule.installments.length, 'instalment') : undefined,
+        // a JV paid only in units has no cash to schedule, once it is signed
+        done: Boolean(schedule) || (isJv && landIsHeld(land.status) && !(Number(land.final_agreed_amount) > 0)),
+        count: schedule
+          ? plural(schedule.installments.length, 'instalment')
+          : isJv && landIsHeld(land.status) && !(Number(land.final_agreed_amount) > 0)
+            ? 'not needed'
+            : undefined,
         section: 'acquisition',
       },
       {

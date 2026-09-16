@@ -18,6 +18,30 @@ full defect list is in `ANALYSIS-REPORT_2026-09-02.md`.
 
 ---
 
+## 0m. Land L7 redesign — open after 2026-09-16 (LAND-L7-PLAN.md)
+
+Deferred on purpose; none blocks the redesign.
+
+- **LAND-003 document versioning.** A re-uploaded deed replaces nothing and
+  links to nothing; there is no "version 2 of the same document". Belongs with
+  the cross-cutting document-versioning work (BRD-ALIGNMENT-PLAN §3).
+- **DEV-002 committed / forecast cost, ACQ-004 cost center.** Development
+  activities carry a budget and site-reported spend only; land payments link to
+  voucher, method and party but not a cost center. Both need FIN-001/002 cost
+  centers first.
+- **Status never moves back.** Deleting the visit, DD finding or round that moved
+  a land does not return it to the earlier status. "Correct status" is the
+  remedy; an automatic reversal would rewrite history other records were made
+  against.
+- **G3 stays a switch.** DEV-004 says "configured readiness criteria", so it is
+  still off by default — which is why the demo Agrabad plot is linked to a
+  project with development unfinished.
+- **Demo `phone` ConstraintError** seen once in the console after a double
+  "Reload sample data" click (two seeds racing). Not reproduced on a single
+  reload; worth guarding the button against a second click.
+
+---
+
 ## 1. Open
 
 ### 1.1 `.claude/launch.json` dev port

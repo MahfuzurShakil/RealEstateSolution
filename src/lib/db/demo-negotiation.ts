@@ -115,8 +115,68 @@ export const DEMO_NEGOTIATION_ROUNDS: DemoNegotiationRound[] = [
     offer_date: '2026-06-08',
     terms: 'Signing money at agreement, rent for 30 months from the date of possession',
     conditions: '50:50 split; unit allocation to be drawn on the approved plan, not promised now',
-    status: 'open',
-    remarks: 'Countered on the signing money and offered rent instead. Board is comfortable to 6.5M.',
+    status: 'accepted',
+    remarks: 'Countered on the signing money and offered rent instead. Accepted — the land is agreed.',
+  },
+
+  /*
+   * L7 — the three closed deals reached their price through the ladder too, so
+   * "Price agreed" is ticked on every land that got past negotiation.
+   */
+  {
+    land: 'Bashundhara Block K corner plot',
+    party: 'owner',
+    amount: 8_000_000,
+    offer_date: '2026-03-02',
+    terms: 'Signing money on the day of the agreement',
+    conditions: '50:50 split',
+    status: 'superseded',
+  },
+  {
+    land: 'Bashundhara Block K corner plot',
+    party: 'us',
+    amount: 6_000_000,
+    offer_date: '2026-03-30',
+    terms: 'Signing money at agreement',
+    conditions: '55:45 split on flat count',
+    status: 'accepted',
+    remarks: 'Owner took the lower signing money for the better split.',
+  },
+  {
+    land: 'Chattogram Agrabad commercial plot',
+    party: 'us',
+    amount: 4_000_000,
+    offer_date: '2026-03-26',
+    terms: 'Signing money at agreement',
+    conditions: 'Split on commercial floor area; developer demolishes the existing structure',
+    status: 'superseded',
+  },
+  {
+    land: 'Chattogram Agrabad commercial plot',
+    party: 'owner',
+    amount: 4_500_000,
+    offer_date: '2026-04-20',
+    terms: 'Signing money at agreement',
+    conditions: 'Split on commercial floor area; developer demolishes the existing structure',
+    status: 'accepted',
+  },
+  {
+    land: 'Dhanmondi Road 27 plot',
+    party: 'owner',
+    amount: 86_000_000,
+    offer_date: '2026-02-14',
+    terms: 'Full payment within 90 days',
+    status: 'superseded',
+    remarks: 'Family opened at the asking price.',
+  },
+  {
+    land: 'Dhanmondi Road 27 plot',
+    party: 'us',
+    amount: 82_000_000,
+    offer_date: '2026-02-24',
+    terms: 'Advance at agreement, balance before registration',
+    status: 'accepted',
+    remarks: 'Accepted — the family wanted a quick close to settle the inheritance.',
   },
 ];
 
