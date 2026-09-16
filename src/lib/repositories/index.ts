@@ -34,6 +34,7 @@ export {
   landOwnerMappingRepository,
   landJvRepository,
   landStatusEventRepository,
+  OwnerInUseError,
   type LandFilters,
   type LandWithRelations,
 } from './land.repository';

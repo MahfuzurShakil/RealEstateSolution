@@ -179,6 +179,9 @@ class LandownerRepository extends BaseRepository<Landowner> {
   }
 }
 
+/** An owner with payments or a settlement plan cannot be taken off a land. */
+export class OwnerInUseError extends Error {}
+
 class LandOwnerMappingRepository extends BaseRepository<LandOwnerMapping> {
   constructor() {
     super(() => db.land_owner_mapping);
@@ -186,6 +189,71 @@ class LandOwnerMappingRepository extends BaseRepository<LandOwnerMapping> {
 
   async listForLand(landId: string): Promise<LandOwnerMapping[]> {
     return db.land_owner_mapping.where('land_id').equals(landId).toArray();
+  }
+
+  /**
+   * Owners that cannot be taken off this land, and why — the sentence to show.
+   *
+   * An owner who has been paid, or has a settlement plan, is referenced by id
+   * from `expenses.owner_mapping_id` and `payment_schedules` (entity
+   * `land_owner`). Removing the mapping would leave that money pointing at
+   * nothing: the Owners tab would show it as unlinked and the owner's paid/due
+   * would be wrong. Refused rather than cascaded, because deleting payments
+   * from a land form is not something anybody means to do.
+   */
+  async removalBlockReason(landId: string, keepOwnerIds: string[]): Promise<string | null> {
+    const keep = new Set(keepOwnerIds);
+    const leaving = (await this.listForLand(landId)).filter((m) => !keep.has(m.owner_id));
+    const blocked: string[] = [];
+    for (const m of leaving) {
+      const [paid, plans] = await Promise.all([
+        db.expenses.filter((e) => e.owner_mapping_id === m.id).count(),
+        db.payment_schedules.where('[entity_type+entity_id]').equals(['land_owner', m.id]).count(),
+      ]);
+      if (paid > 0 || plans > 0) {
+        const name = (await db.landowners.get(m.owner_id))?.name ?? 'An owner';
+        blocked.push(
+          `${name} (${[paid && `${paid} payment${paid === 1 ? '' : 's'}`, plans && 'a settlement plan']
+            .filter(Boolean)
+            .join(' and ')})`,
+        );
+      }
+    }
+    return blocked.length
+      ? `Cannot remove ${blocked.join(', ')} from this land — money is recorded against them. Move or delete those records first.`
+      : null;
+  }
+
+  /**
+   * Makes the land's owners match `rows`, keeping each existing mapping's id.
+   *
+   * This used to delete every mapping and create new ones, which gave every
+   * owner a new id on each save and silently orphaned their payments and
+   * settlement plans. Rows are matched on `owner_id`: an owner still on the
+   * land is updated in place, a new owner is created, and an owner taken off
+   * is removed — unless money points at them (`removalBlockReason`).
+   */
+  async syncForLand(
+    landId: string,
+    rows: Array<Omit<NewRecord<LandOwnerMapping>, 'land_id'>>,
+  ): Promise<void> {
+    const blocked = await this.removalBlockReason(
+      landId,
+      rows.map((r) => r.owner_id),
+    );
+    if (blocked) throw new OwnerInUseError(blocked);
+
+    const existing = new Map((await this.listForLand(landId)).map((m) => [m.owner_id, m]));
+    for (const row of rows) {
+      const current = existing.get(row.owner_id);
+      if (current) {
+        await this.update(current.id, row);
+        existing.delete(row.owner_id);
+      } else {
+        await this.create({ ...row, land_id: landId });
+      }
+    }
+    for (const leftover of existing.values()) await this.remove(leftover.id);
   }
 
   /** Sum of ownership_share_pct — a full land should total 100. */

@@ -202,7 +202,7 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
     [owners],
   );
   const ownerAreaTotal =
-    Math.round(owners.reduce((sum, o) => sum + (Number(o.ownership_area) || 0), 0) * 100) / 100;
+    Math.round(owners.reduce((sum, o) => sum + (Number(o.ownership_area) || 0), 0) * 10000) / 10000;
   const ownerAreaMismatch =
     owners.some((o) => o.ownership_area.trim() !== '') &&
     Math.abs(ownerAreaTotal - (Number(form.land_size) || 0)) > 0.01;
@@ -238,13 +238,16 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
    * the table flag it when the two stop agreeing.
    */
   const round2 = (n: number) => String(Math.round(n * 100) / 100);
+  // area keeps four places: 45% of 1.5 bigha is 0.675, and rounding it to 0.68
+  // makes the owners' areas add up to more than the land
+  const round4 = (n: number) => String(Math.round(n * 10000) / 10000);
   function setOwnerShare(index: number, value: string) {
     const size = Number(form.land_size);
     const pct = Number(value);
     updateOwnerRow(index, {
       ownership_share_pct: value,
       ...(value.trim() !== '' && size > 0 && Number.isFinite(pct)
-        ? { ownership_area: round2((size * pct) / 100) }
+        ? { ownership_area: round4((size * pct) / 100) }
         : {}),
     });
   }
@@ -311,6 +314,21 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
     if (!validate()) return;
     setSaving(true);
     try {
+      /*
+       * Checked before anything is written, so a refused owner removal does
+       * not leave the land saved with its old owners and a half-applied edit.
+       */
+      if (land) {
+        const blocked = await landOwnerMappingRepository.removalBlockReason(
+          land.id,
+          owners.map((o) => o.owner_id),
+        );
+        if (blocked) {
+          setErrors((prev) => ({ ...prev, owners: blocked }));
+          return;
+        }
+      }
+
       const payload = {
         name: form.name.trim(),
         location_division: form.location_division.trim(),
@@ -347,20 +365,16 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
         });
       }
 
-      // Owner mappings: rewrite the set for this land.
-      const existing = await landOwnerMappingRepository.listForLand(saved.id);
-      await Promise.all(existing.map((m) => landOwnerMappingRepository.remove(m.id)));
-      await Promise.all(
-        owners.map((o) =>
-          landOwnerMappingRepository.create({
-            land_id: saved.id,
-            owner_id: o.owner_id,
-            ownership_share_pct: Number(o.ownership_share_pct) || 0,
-            ownership_area: num(o.ownership_area),
-            agreed_amount: num(o.agreed_amount),
-            is_primary_contact: o.is_primary_contact,
-          }),
-        ),
+      // Owner mappings: updated in place, so payments and plans keep their owner.
+      await landOwnerMappingRepository.syncForLand(
+        saved.id,
+        owners.map((o) => ({
+          owner_id: o.owner_id,
+          ownership_share_pct: Number(o.ownership_share_pct) || 0,
+          ownership_area: num(o.ownership_area),
+          agreed_amount: num(o.agreed_amount),
+          is_primary_contact: o.is_primary_contact,
+        })),
       );
 
       // JV details exist only for joint_venture lands.
