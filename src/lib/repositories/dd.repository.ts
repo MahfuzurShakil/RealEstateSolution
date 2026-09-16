@@ -31,7 +31,12 @@ export interface DdProgress {
 
 /** A single item's own idea of "done". */
 export function isSettled(status: DdItemStatus): boolean {
-  return status === 'passed' || status === 'waived' || status === 'not_applicable';
+  return (
+    status === 'passed' ||
+    status === 'conditionally_approved' ||
+    status === 'waived' ||
+    status === 'not_applicable'
+  );
 }
 
 class DdChecklistRepository extends BaseRepository<DdChecklistItem> {

@@ -225,29 +225,24 @@ function SettingsForm({
         <Card>
           <CardHeader title="Pipeline gates" />
           <p className="mb-3 text-xs text-ink-muted">
-            Each gate stops a land moving on until something is actually done. All three are off
-            unless switched on: land recorded before this system existed has no feasibility study,
-            no checklist and no development record, and turning a gate on for it would strand it
-            mid-pipeline.
+            Each gate stops a land moving on until something is actually done. The first two are BRD
+            rules and always apply. The development gate is off unless switched on: land recorded
+            before this system existed has no development record, and turning it on would strand
+            that land short of a project.
           </p>
           <div className="space-y-2">
-            <GateToggle
-              label="G1 · Require an approved feasibility study before due diligence"
-              detail="A land cannot move from Under Review to Due Diligence until its latest feasibility study is approved and recommends proceeding. The lawyers are the expensive part of sourcing a plot, and this stops the firm paying for a title search on land it was never going to buy."
-              checked={gates.require_feasibility_approval}
-              onChange={(v) => {
-                setGates((g) => ({ ...g, require_feasibility_approval: v }));
-                setSaved(false);
-              }}
+            {/*
+              L7 — G1 and G2 are BRD rules (SITE-003, DD-004), not preferences,
+              so they are always on. Land entered after the fact is put in place
+              with "Correct status" on the land page, which records why.
+            */}
+            <AlwaysOnGate
+              label="SITE-003 · An approved feasibility study before negotiation"
+              detail="No negotiation round can be recorded until a feasibility study recommending Proceed is approved."
             />
-            <GateToggle
-              label="G2 · Require mandatory due diligence before acquisition"
-              detail="A land cannot be marked Acquired or JV Signed while a mandatory checklist item is unfinished or failed, unless it carries an authorised waiver with a reason. Registration is the point of no return, and an encumbrance found afterwards is not a problem anybody can fix."
-              checked={gates.require_dd_completion}
-              onChange={(v) => {
-                setGates((g) => ({ ...g, require_dd_completion: v }));
-                setSaved(false);
-              }}
+            <AlwaysOnGate
+              label="DD-004 · Mandatory due diligence before acquisition"
+              detail="Registration or JV signing cannot be recorded while a mandatory checklist item is unfinished or failed, unless it carries an authorised waiver."
             />
             <GateToggle
               label="G3 · Require land development to be ready before a project"
@@ -312,6 +307,19 @@ function SettingsForm({
           </p>
         </Card>
       </aside>
+    </div>
+  );
+}
+
+/** A BRD rule shown beside the switches, so nobody goes looking for its toggle. */
+function AlwaysOnGate({ label, detail }: { label: string; detail: string }) {
+  return (
+    <div className="flex items-start gap-3 rounded-xl border border-hairline bg-slate-50/60 p-3">
+      <Check className="mt-0.5 size-4 shrink-0 text-admin-600" />
+      <span className="min-w-0">
+        <span className="block text-sm font-medium text-ink">{label} — always on</span>
+        <span className="mt-0.5 block text-xs text-ink-muted">{detail}</span>
+      </span>
     </div>
   );
 }

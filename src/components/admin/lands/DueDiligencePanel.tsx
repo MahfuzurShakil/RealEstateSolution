@@ -9,6 +9,7 @@ import {
   FileCheck2,
   MinusCircle,
   Paperclip,
+  Send,
   ShieldAlert,
   X,
 } from 'lucide-react';
@@ -23,6 +24,7 @@ import { DD_CATEGORY_LABEL, DD_ITEM_STATUSES } from '@/lib/db/types';
 import {
   isSettled,
   landDdRepository,
+  landPipelineRepository,
   userRepository,
   type LandDdItemWithMaster,
 } from '@/lib/repositories';
@@ -31,7 +33,9 @@ import { formatDate } from '@/lib/utils/format';
 const STATUS_META: Record<DdItemStatus, { label: string; tone: BadgeTone }> = {
   pending: { label: 'Pending', tone: 'neutral' },
   in_progress: { label: 'In progress', tone: 'blue' },
+  submitted: { label: 'Submitted for review', tone: 'blue' },
   passed: { label: 'Passed', tone: 'green' },
+  conditionally_approved: { label: 'Approved with condition', tone: 'teal' },
   failed: { label: 'Failed', tone: 'red' },
   waived: { label: 'Waived', tone: 'amber' },
   not_applicable: { label: 'Not applicable', tone: 'neutral' },
@@ -40,7 +44,9 @@ const STATUS_META: Record<DdItemStatus, { label: string; tone: BadgeTone }> = {
 const STATUS_ICON: Record<DdItemStatus, typeof Check> = {
   pending: CircleDashed,
   in_progress: CircleDashed,
+  submitted: Send,
   passed: Check,
+  conditionally_approved: Check,
   failed: X,
   waived: ShieldAlert,
   not_applicable: MinusCircle,
@@ -261,6 +267,14 @@ function UpdateItemDialog({
       setError('Say what the check found — a failure with no finding is not a record.');
       return;
     }
+    if (status === 'conditionally_approved' && !finding.trim()) {
+      setError('State the condition — an approval on a condition nobody wrote down is a pass.');
+      return;
+    }
+    if (status === 'submitted' && !finding.trim()) {
+      setError('Submit the finding for review — there is nothing to review without it.');
+      return;
+    }
     if (status === 'waived' && !waiver.trim()) {
       setError('A waiver needs a reason. This is the authorisation BR-001 asks for.');
       return;
@@ -270,7 +284,8 @@ function UpdateItemDialog({
     try {
       const now = new Date().toISOString();
       const wasWaived = row.status === 'waived';
-      await landDdRepository.update(row.id, {
+      // through the pipeline: the first item worked on starts due diligence on the land
+      await landPipelineRepository.updateDdItem(row.id, {
         status,
         finding: finding.trim() || null,
         assigned_to: assignee || null,
@@ -286,7 +301,7 @@ function UpdateItemDialog({
          */
         waived_by: status === 'waived' ? (wasWaived ? row.waived_by : userId) : null,
         waived_at: status === 'waived' ? (wasWaived ? row.waived_at : now) : null,
-      });
+      }, userId);
       onClose();
     } finally {
       setSaving(false);
@@ -340,9 +355,13 @@ function UpdateItemDialog({
         </Field>
 
         <Field
-          label="Finding"
-          required={status === 'failed'}
-          error={status === 'failed' ? error || undefined : undefined}
+          label={status === 'conditionally_approved' ? 'Condition' : 'Finding'}
+          required={status === 'failed' || status === 'submitted' || status === 'conditionally_approved'}
+          error={
+            status === 'failed' || status === 'submitted' || status === 'conditionally_approved'
+              ? error || undefined
+              : undefined
+          }
           hint="What the search or the papers actually showed"
         >
           <TextArea
@@ -381,7 +400,15 @@ function UpdateItemDialog({
           </p>
         )}
 
-        {error && status !== 'failed' && status !== 'waived' && (
+        {status === 'conditionally_approved' && (
+          <p className="rounded-xl border border-hairline bg-slate-50 px-3 py-2.5 text-xs text-ink-muted">
+            Approved on a condition settles the check for acquisition. The condition is kept as
+            the finding, so the deed and the settlement can be held to it.
+          </p>
+        )}
+
+        {error &&
+          !['failed', 'waived', 'submitted', 'conditionally_approved'].includes(status) && (
           <p className="text-sm text-red-600">{error}</p>
         )}
       </div>

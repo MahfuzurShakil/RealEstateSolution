@@ -3,6 +3,9 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
+  CalendarClock,
+  CalendarPlus,
+  CheckCircle2,
   Droplets,
   Flame,
   MapPin,
@@ -21,94 +24,98 @@ import { Checkbox, Field, TextArea, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { useMockSession } from '@/lib/auth/mock-session';
-import type { Land, SiteVisit } from '@/lib/db/types';
-import { siteVisitRepository } from '@/lib/repositories';
+import type { Land, SiteVisit, SiteVisitStatus } from '@/lib/db/types';
+import { landPipelineRepository, siteVisitRepository } from '@/lib/repositories';
+import { TimelineItem, TimelineList } from '@/components/admin/lands/TimelineItem';
 import { formatDate, todayLocal } from '@/lib/utils/format';
 
 /**
- * Site visits for one land (BRD SITE-001).
+ * Site visits for one land (BRD SITE-001), on the Timeline.
  *
- * A list rather than a single record, because a plot worth buying is visited
- * more than once and what changes between the visits is the point. Photos hang
- * off each visit through the shared document vault, so the first visit's photos
- * stay attached to the first visit.
+ * A plot worth buying is visited more than once, so visits are a timeline:
+ * newest first, each opening onto what the team found and the photos and video
+ * they came back with. A visit can be *planned* first (SITE-001 "visit plans")
+ * and marked done afterwards; only a visit that happened moves the land to
+ * Under Review.
  */
 export function SiteVisitPanel({ land }: { land: Land }) {
-  const [editing, setEditing] = useState<SiteVisit | 'new' | null>(null);
+  const [editing, setEditing] = useState<{ visit?: SiteVisit; mode: VisitMode } | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [openId, setOpenId] = useState<string | null>(null);
 
   const visits = useLiveQuery(() => siteVisitRepository.listForLand(land.id), [land.id]);
+  const done = visits?.filter((v) => v.status !== 'planned').length ?? 0;
+  const planned = (visits?.length ?? 0) - done;
 
   return (
     <>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-ink-muted">
-          {visits?.length ?? 0} visit{visits?.length === 1 ? '' : 's'} recorded · newest first
+          {done} visit{done === 1 ? '' : 's'} done
+          {planned > 0 && ` · ${planned} planned`}
         </p>
-        <Button size="sm" className="w-full sm:w-auto" onClick={() => setEditing('new')}>
-          <Plus className="size-4" /> Record a visit
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={() => setEditing({ mode: 'plan' })}>
+            <CalendarPlus className="size-4" /> Plan a visit
+          </Button>
+          <Button size="sm" onClick={() => setEditing({ mode: 'record' })}>
+            <Plus className="size-4" /> Record a visit
+          </Button>
+        </div>
       </div>
 
       {visits && visits.length === 0 ? (
         <EmptyState
           icon={MapPin}
-          title="No site visit recorded yet"
-          description="Capture what the team found on the ground — access, utilities, soil and lowland, what neighbours say land is going for — and attach the photos they came back with."
-          action={
-            <Button onClick={() => setEditing('new')}>
-              <Plus className="size-4" /> Record a visit
-            </Button>
-          }
+          title="No site visit yet"
+          description="Plan a visit, or record one that has happened — access, utilities, soil and lowland, what neighbours say land is going for, with photos and video. The first visit moves the land to Under Review."
         />
       ) : (
-        <ul className="space-y-3">
-          {visits?.map((visit) => (
-            <li key={visit.id} className="rounded-xl border border-hairline bg-white">
-              <div className="flex flex-wrap items-start gap-3 p-4">
-                {/*
-                  Icon and text are one flex item taking a full row below `sm`.
-                  As three siblings they were three flex items, and the badges
-                  and buttons do not shrink — so on a laptop the date and the
-                  visitor's name were squeezed into a column a few characters
-                  wide while the badges sat comfortably beside them.
-                */}
-                <div className="flex w-full min-w-0 items-start gap-3 sm:w-auto sm:flex-1">
-                  <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-admin-50 text-admin-600">
-                    <MapPin className="size-5" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-ink">{formatDate(visit.visit_date)}</p>
-                    <p className="mt-0.5 text-xs text-ink-muted">
-                      {visit.visited_by ? `Led by ${visit.visited_by}` : 'Visitor not recorded'}
-                      {visit.participants ? ` · with ${visit.participants}` : ''}
-                    </p>
-                  </div>
-                </div>
-
-                {/* the two findings that change a price the most */}
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {visit.is_lowland && (
-                    <Badge tone="amber">
-                      Lowland{visit.filling_required_ft ? ` · ${visit.filling_required_ft} ft fill` : ''}
-                    </Badge>
+        <TimelineList>
+          {visits?.map((visit) => {
+            const isPlanned = visit.status === 'planned';
+            return (
+              <TimelineItem
+                key={visit.id}
+                marker={isPlanned ? <CalendarClock className="size-3.5" /> : <MapPin className="size-3.5" />}
+                markerClassName={isPlanned ? 'bg-amber-100 text-amber-700' : undefined}
+                date={formatDate(visit.visit_date)}
+                title={
+                  <>
+                    {isPlanned ? 'Planned visit' : 'Site visit'}
+                    {isPlanned && <Badge tone="amber">Planned</Badge>}
+                    {visit.is_lowland && (
+                      <Badge tone="amber">
+                        Lowland{visit.filling_required_ft ? ` · ${visit.filling_required_ft} ft fill` : ''}
+                      </Badge>
+                    )}
+                    {visit.road_width_ft != null && <Badge>{visit.road_width_ft} ft road</Badge>}
+                  </>
+                }
+                meta={
+                  (visit.visited_by ? `Led by ${visit.visited_by}` : 'Visitor not recorded') +
+                  (visit.participants ? ` · with ${visit.participants}` : '')
+                }
+              >
+                <div className="mb-3 flex flex-wrap justify-end gap-1">
+                  {isPlanned && (
+                    <Button size="sm" onClick={() => setEditing({ visit, mode: 'record' })}>
+                      <CheckCircle2 className="size-4" /> Mark as done
+                    </Button>
                   )}
-                  {visit.road_width_ft != null && <Badge>{visit.road_width_ft} ft road</Badge>}
-                </div>
-
-                <div className="flex w-full items-center justify-end gap-1 sm:w-auto">
-                  <Button variant="ghost" size="sm" onClick={() => setEditing(visit)} aria-label="Edit visit">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditing({ visit, mode: isPlanned ? 'plan' : 'record' })}
+                    aria-label="Edit visit"
+                  >
                     <Pencil className="size-4" />
                   </Button>
                   <Button variant="ghost" size="sm" onClick={() => setDeleteId(visit.id)} aria-label="Delete visit">
                     <Trash2 className="size-4" />
                   </Button>
                 </div>
-              </div>
 
-              <div className="border-t border-hairline px-4 py-3">
-                <UtilityStrip visit={visit} />
+                {!isPlanned && <UtilityStrip visit={visit} />}
 
                 <dl className="mt-3 grid gap-3 sm:grid-cols-2">
                   <Detail label="Access on the day" value={visit.access_note} />
@@ -125,29 +132,23 @@ export function SiteVisitPanel({ land }: { land: Land }) {
                   </p>
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => setOpenId(openId === visit.id ? null : visit.id)}
-                  className="mt-3 text-xs font-medium text-admin-700 hover:underline"
-                >
-                  {openId === visit.id ? 'Hide photos' : 'Photos & files'}
-                </button>
-
-                {openId === visit.id && (
+                {!isPlanned && (
                   <div className="mt-3 border-t border-hairline pt-3">
+                    <p className="mb-2 text-xs font-medium text-ink-muted">Photos &amp; video</p>
                     <DocumentsPanel entityType="site_visit" entityId={visit.id} />
                   </div>
                 )}
-              </div>
-            </li>
-          ))}
-        </ul>
+              </TimelineItem>
+            );
+          })}
+        </TimelineList>
       )}
 
       {editing && (
         <VisitDialog
           land={land}
-          visit={editing === 'new' ? undefined : editing}
+          visit={editing.visit}
+          mode={editing.mode}
           onClose={() => setEditing(null)}
         />
       )}
@@ -155,7 +156,7 @@ export function SiteVisitPanel({ land }: { land: Land }) {
       <ConfirmDialog
         open={deleteId !== null}
         title="Delete this site visit"
-        message="The visit and every photo attached to it are removed. This cannot be undone."
+        message="The visit and every photo attached to it are removed. This cannot be undone. The land's status is not moved back."
         confirmLabel="Delete visit"
         tone="danger"
         onCancel={() => setDeleteId(null)}
@@ -167,6 +168,8 @@ export function SiteVisitPanel({ land }: { land: Land }) {
     </>
   );
 }
+
+type VisitMode = 'plan' | 'record';
 
 /**
  * Four utilities as chips.
@@ -223,12 +226,16 @@ const fromTri = (v: Tri): boolean | null => (v === 'yes' ? true : v === 'no' ? f
 function VisitDialog({
   land,
   visit,
+  mode,
   onClose,
 }: {
   land: Land;
   visit?: SiteVisit;
+  /** `plan` asks only who and when; `record` asks what was found */
+  mode: VisitMode;
   onClose: () => void;
 }) {
+  const planning = mode === 'plan';
   const { userId } = useMockSession();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -269,6 +276,7 @@ function VisitDialog({
     try {
       const payload = {
         land_id: land.id,
+        status: (planning ? 'planned' : 'completed') as SiteVisitStatus,
         visit_date: form.visit_date,
         visited_by: form.visited_by.trim() || null,
         participants: form.participants.trim() || null,
@@ -292,8 +300,9 @@ function VisitDialog({
         remarks: form.remarks.trim() || null,
       };
 
-      if (visit) await siteVisitRepository.update(visit.id, payload);
-      else await siteVisitRepository.create(payload, userId);
+      // through the pipeline: a visit that happened moves a sourced land to Under Review
+      if (visit) await landPipelineRepository.updateSiteVisit(visit.id, payload, userId);
+      else await landPipelineRepository.recordSiteVisit(payload, userId);
       onClose();
     } finally {
       setSaving(false);
@@ -303,7 +312,17 @@ function VisitDialog({
   return (
     <Modal
       open
-      title={visit ? 'Edit site visit' : 'Record a site visit'}
+      title={
+        planning
+          ? visit
+            ? 'Edit planned visit'
+            : 'Plan a site visit'
+          : visit?.status === 'planned'
+            ? 'Record what the visit found'
+            : visit
+              ? 'Edit site visit'
+              : 'Record a site visit'
+      }
       subtitle={`${land.code} · ${land.name}`}
       icon={MapPin}
       size="xl"
@@ -314,7 +333,7 @@ function VisitDialog({
             Cancel
           </Button>
           <Button onClick={save} disabled={saving}>
-            {saving ? 'Saving…' : visit ? 'Save changes' : 'Save visit'}
+            {saving ? 'Saving…' : planning ? 'Save plan' : visit ? 'Save visit' : 'Save visit'}
           </Button>
         </>
       }
@@ -325,7 +344,7 @@ function VisitDialog({
             Who went, and when
           </h4>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Field label="Visit date" required error={error || undefined}>
+            <Field label={planning ? 'Planned for' : 'Visit date'} required error={error || undefined}>
               <TextInput
                 type="date"
                 value={form.visit_date}
@@ -349,6 +368,16 @@ function VisitDialog({
           </div>
         </section>
 
+        {planning ? (
+          <Field label="What to look at">
+            <TextArea
+              value={form.remarks}
+              placeholder="e.g. Walk the east boundary with the owner; check where the drain goes in the rains"
+              onChange={(e) => set('remarks', e.target.value)}
+            />
+          </Field>
+        ) : (
+        <>
         <section>
           <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">
             Access
@@ -482,9 +511,10 @@ function VisitDialog({
 
         <p className="flex items-start gap-2 rounded-xl border border-hairline bg-slate-50 px-3 py-2.5 text-xs text-ink-muted">
           <Users className="mt-0.5 size-4 shrink-0 text-admin-600" />
-          Photos and video are attached after the visit is saved — open it in the list and use
-          &ldquo;Photos &amp; files&rdquo;.
+          Photos and video are attached after the visit is saved — open it on the timeline.
         </p>
+        </>
+        )}
       </div>
     </Modal>
   );

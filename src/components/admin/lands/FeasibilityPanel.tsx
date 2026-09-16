@@ -19,6 +19,7 @@ import type {
 import { FEASIBILITY_RECOMMENDATIONS } from '@/lib/db/types';
 import { landFeasibilityRepository } from '@/lib/repositories';
 import { formatBdt, formatDate } from '@/lib/utils/format';
+import { TimelineItem, TimelineList } from '@/components/admin/lands/TimelineItem';
 
 const STATUS_META: Record<FeasibilityStatus, { label: string; tone: BadgeTone }> = {
   draft: { label: 'Draft', tone: 'neutral' },
@@ -80,7 +81,7 @@ export function FeasibilityPanel({ land }: { land: Land }) {
         <EmptyState
           icon={Calculator}
           title="No feasibility study yet"
-          description="Estimate what this land will cost to acquire and develop, what it should return, and what could go wrong. An approved study recommending Proceed is what lets the land move on to due diligence."
+          description="Estimate what this land will cost to acquire and develop, what it should return, and what could go wrong. An approved study recommending Proceed is what opens negotiation with the owner (BRD SITE-003)."
           action={
             <Button onClick={() => setEditing('new')}>
               <Plus className="size-4" /> Add a study
@@ -88,42 +89,55 @@ export function FeasibilityPanel({ land }: { land: Land }) {
           }
         />
       ) : (
-        <ul className="space-y-3">
+        <TimelineList>
           {studies?.map((study) => {
             const t = totals(study);
             const isCurrent = study.id === current?.id;
             return (
-              <li
+              <TimelineItem
                 key={study.id}
-                className={
-                  isCurrent
-                    ? 'rounded-xl border-2 border-admin-200 bg-white'
-                    : 'rounded-xl border border-hairline bg-white opacity-90'
+                marker={`v${study.version_no}`}
+                markerClassName={
+                  study.status === 'approved'
+                    ? 'bg-emerald-500 text-white'
+                    : isCurrent
+                      ? undefined
+                      : 'bg-slate-100 text-slate-500'
+                }
+                muted={!isCurrent}
+                defaultOpen={isCurrent}
+                date={formatDate(study.decided_at ?? study.submitted_at ?? study.created_at)}
+                title={
+                  <>
+                    Feasibility version {study.version_no}
+                    <Badge tone={STATUS_META[study.status].tone}>{STATUS_META[study.status].label}</Badge>
+                    <Badge tone={RECOMMENDATION_META[study.recommendation].tone}>
+                      {RECOMMENDATION_META[study.recommendation].label}
+                    </Badge>
+                    {isCurrent && <Badge tone="teal">Current</Badge>}
+                  </>
+                }
+                meta={study.prepared_by ? `Prepared by ${study.prepared_by}` : undefined}
+                aside={
+                  <span
+                    className={
+                      t.margin >= 0
+                        ? 'text-sm font-medium tabular-nums text-emerald-700'
+                        : 'text-sm font-medium tabular-nums text-red-700'
+                    }
+                  >
+                    {t.pct != null ? `${t.pct.toFixed(1)}% margin` : formatBdt(t.margin)}
+                  </span>
                 }
               >
-                <div className="flex flex-wrap items-center gap-2 border-b border-hairline p-4">
-                  <span className="text-sm font-medium text-ink">Version {study.version_no}</span>
-                  <Badge tone={STATUS_META[study.status].tone}>
-                    {STATUS_META[study.status].label}
-                  </Badge>
-                  <Badge tone={RECOMMENDATION_META[study.recommendation].tone}>
-                    {RECOMMENDATION_META[study.recommendation].label}
-                  </Badge>
-                  {isCurrent && <Badge tone="teal">Current</Badge>}
-                  <span className="ml-auto text-xs text-ink-muted">
-                    {study.prepared_by ? `${study.prepared_by} · ` : ''}
-                    {formatDate(study.created_at)}
-                  </span>
-                </div>
-
-                <div className="grid gap-px bg-hairline sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-px overflow-hidden rounded-xl border border-hairline bg-hairline sm:grid-cols-2 lg:grid-cols-4">
                   <Figure label="Acquisition" value={study.est_acquisition_cost} />
                   <Figure label="Development" value={study.est_development_cost} />
                   <Figure label="Other costs" value={study.est_other_cost} />
                   <Figure label="Expected revenue" value={study.expected_revenue} />
                 </div>
 
-                <div className="flex flex-wrap items-baseline justify-between gap-3 border-t border-hairline px-4 py-3">
+                <div className="mt-3 flex flex-wrap items-baseline justify-between gap-3">
                   <span className="text-sm text-ink-muted">
                     Total cost <strong className="text-ink tabular-nums">{formatBdt(t.cost)}</strong>
                   </span>
@@ -140,7 +154,7 @@ export function FeasibilityPanel({ land }: { land: Land }) {
                 </div>
 
                 {(study.assumptions || study.risks || study.decision_note) && (
-                  <dl className="grid gap-3 border-t border-hairline px-4 py-3 sm:grid-cols-2">
+                  <dl className="mt-3 grid gap-3 border-t border-hairline pt-3 sm:grid-cols-2">
                     {study.assumptions && (
                       <div>
                         <dt className="text-xs text-ink-muted">Assumptions</dt>
@@ -171,7 +185,7 @@ export function FeasibilityPanel({ land }: { land: Land }) {
                   study would approve numbers nobody is working from.
                 */}
                 {isCurrent && study.status !== 'approved' && study.status !== 'rejected' && (
-                  <div className="flex flex-wrap gap-2 border-t border-hairline px-4 py-3">
+                  <div className="mt-3 flex flex-wrap gap-2 border-t border-hairline pt-3">
                     {study.status === 'draft' && (
                       <>
                         <Button size="sm" variant="outline" onClick={() => setEditing(study)}>
@@ -198,10 +212,10 @@ export function FeasibilityPanel({ land }: { land: Land }) {
                     )}
                   </div>
                 )}
-              </li>
+              </TimelineItem>
             );
           })}
-        </ul>
+        </TimelineList>
       )}
 
       {editing && (
@@ -276,7 +290,7 @@ function DecisionDialog({
       subtitle={`Version ${study.version_no} · recommends ${study.recommendation}`}
       message={
         approve
-          ? 'Approving records the board’s decision on these numbers. It is what lets the land move on to due diligence.'
+          ? 'Approving records the board’s decision on these numbers. An approved study recommending Proceed opens negotiation with the owner.'
           : 'Rejecting closes this version. A changed decision means a new version, so the rejected numbers stay readable.'
       }
       tone={approve ? 'success' : 'danger'}

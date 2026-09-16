@@ -11,7 +11,13 @@ import { Field, MoneyInput, SelectInput, TextArea, TextInput } from '@/component
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { LandNegotiation, NegotiationParty, NegotiationRoundStatus } from '@/lib/db/types';
-import { landNegotiationRepository, type LandWithRelations } from '@/lib/repositories';
+import {
+  PipelineBlockedError,
+  landNegotiationRepository,
+  landPipelineRepository,
+  type LandWithRelations,
+} from '@/lib/repositories';
+import { LockedNotice, TimelineItem, TimelineList } from '@/components/admin/lands/TimelineItem';
 import { formatBdt, formatDate, todayLocal } from '@/lib/utils/format';
 
 const STATUS_META: Record<NegotiationRoundStatus, { label: string; tone: BadgeTone }> = {
@@ -41,6 +47,13 @@ export function NegotiationPanel({ land }: { land: LandWithRelations }) {
   const [accepting, setAccepting] = useState<LandNegotiation | null>(null);
 
   const rounds = useLiveQuery(() => landNegotiationRepository.listForLand(land.id), [land.id]);
+  // BRD SITE-003 — no negotiation until a Proceed study is approved
+  const blocked = useLiveQuery(
+    () => landPipelineRepository.negotiationBlockReason(land.id),
+    [land.id],
+  );
+  // once the deal is closed, the ladder is history — nothing more to offer
+  const closed = !['sourced', 'under_review', 'dd_in_progress', 'negotiation'].includes(land.status);
   const accepted = rounds?.find((r) => r.status === 'accepted');
 
   /* The gap between the first ask and where it ended — the number a land team
@@ -55,10 +68,24 @@ export function NegotiationPanel({ land }: { land: LandWithRelations }) {
         <p className="text-sm text-ink-muted">
           {rounds?.length ?? 0} round{rounds?.length === 1 ? '' : 's'} · newest first
         </p>
-        <Button size="sm" className="w-full sm:w-auto" onClick={() => setAdding(true)}>
-          <Plus className="size-4" /> Record a round
-        </Button>
+        {!closed && (
+          <Button
+            size="sm"
+            className="w-full sm:w-auto"
+            disabled={Boolean(blocked)}
+            title={blocked ?? undefined}
+            onClick={() => setAdding(true)}
+          >
+            <Plus className="size-4" /> Record a round
+          </Button>
+        )}
       </div>
+
+      {!closed && blocked && (
+        <LockedNotice>
+          <strong>Negotiation is locked.</strong> {blocked}
+        </LockedNotice>
+      )}
 
       {accepted && (
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
@@ -88,97 +115,73 @@ export function NegotiationPanel({ land }: { land: LandWithRelations }) {
           icon={ArrowLeftRight}
           title="No rounds recorded yet"
           description="Record each offer and counter-offer as it happens — the amount, the payment terms, what was attached to the price, and which broker was in the room. The accepted round becomes the land's agreed amount."
-          action={
-            <Button onClick={() => setAdding(true)}>
-              <Plus className="size-4" /> Record a round
-            </Button>
-          }
         />
       ) : (
-        <ol className="relative space-y-3 pl-8">
-          <span className="absolute bottom-3 left-[11px] top-3 w-px bg-hairline" aria-hidden />
+        <TimelineList>
           {rounds?.map((round) => (
-            <li key={round.id} className="relative">
-              <span
-                className={
-                  round.status === 'accepted'
-                    ? 'absolute -left-8 top-3 grid size-6 place-items-center rounded-full bg-emerald-500 text-white ring-4 ring-white'
-                    : round.party === 'us'
-                      ? 'absolute -left-8 top-3 grid size-6 place-items-center rounded-full bg-admin-100 text-admin-700 ring-4 ring-white'
-                      : 'absolute -left-8 top-3 grid size-6 place-items-center rounded-full bg-slate-100 text-slate-500 ring-4 ring-white'
-                }
-              >
-                {round.status === 'accepted' ? (
-                  <Check className="size-3.5" />
-                ) : (
-                  <span className="text-[11px] font-semibold">{round.round_no}</span>
-                )}
-              </span>
-
-              <div
-                className={
-                  round.status === 'superseded'
-                    ? 'rounded-xl border border-hairline bg-white p-4 opacity-70'
-                    : 'rounded-xl border border-hairline bg-white p-4'
-                }
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium text-ink">
-                      {PARTY_LABEL[round.party]}
-                    </span>
-                    <Badge tone={STATUS_META[round.status].tone}>
-                      {STATUS_META[round.status].label}
-                    </Badge>
-                  </div>
-                  <span className="text-sm font-semibold text-ink tabular-nums">
-                    {formatBdt(round.amount)}
-                  </span>
-                </div>
-
-                <p className="mt-1 text-xs text-ink-muted">
-                  {formatDate(round.offer_date)}
-                  {round.broker_name && ` · via ${round.broker_name}`}
-                  {round.broker_commission != null &&
-                    ` (commission ${formatBdt(round.broker_commission)})`}
+            <TimelineItem
+              key={round.id}
+              marker={round.status === 'accepted' ? <Check className="size-3.5" /> : round.round_no}
+              markerClassName={
+                round.status === 'accepted'
+                  ? 'bg-emerald-500 text-white'
+                  : round.party === 'us'
+                    ? undefined
+                    : 'bg-slate-100 text-slate-500'
+              }
+              muted={round.status === 'superseded'}
+              defaultOpen={round.status === 'open'}
+              date={formatDate(round.offer_date)}
+              title={
+                <>
+                  Round {round.round_no} · {PARTY_LABEL[round.party]}
+                  <Badge tone={STATUS_META[round.status].tone}>{STATUS_META[round.status].label}</Badge>
+                </>
+              }
+              meta={round.broker_name ? `via ${round.broker_name}` : undefined}
+              aside={
+                <span className="text-sm font-semibold tabular-nums text-ink">{formatBdt(round.amount)}</span>
+              }
+            >
+              {round.broker_commission != null && (
+                <p className="text-xs text-ink-muted">
+                  Broker commission {formatBdt(round.broker_commission)}
                 </p>
-
-                {(round.terms || round.conditions) && (
-                  <dl className="mt-3 grid gap-3 border-t border-hairline pt-3 sm:grid-cols-2">
-                    {round.terms && (
-                      <div>
-                        <dt className="text-xs text-ink-muted">Payment terms</dt>
-                        <dd className="whitespace-pre-wrap text-sm text-ink">{round.terms}</dd>
-                      </div>
-                    )}
-                    {round.conditions && (
-                      <div>
-                        <dt className="text-xs text-ink-muted">Conditions</dt>
-                        <dd className="whitespace-pre-wrap text-sm text-ink">
-                          {round.conditions}
-                        </dd>
-                      </div>
-                    )}
-                  </dl>
-                )}
-
-                {round.remarks && (
-                  <p className="mt-3 whitespace-pre-wrap border-t border-hairline pt-3 text-sm text-ink-muted">
-                    {round.remarks}
-                  </p>
-                )}
-
-                {round.status === 'open' && (
-                  <div className="mt-3 border-t border-hairline pt-3">
-                    <Button size="sm" onClick={() => setAccepting(round)}>
-                      <Check className="size-4" /> Accept this round
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </li>
+              )}
+              {(round.terms || round.conditions) && (
+                <dl className="mt-2 grid gap-3 sm:grid-cols-2">
+                  {round.terms && (
+                    <div>
+                      <dt className="text-xs text-ink-muted">Payment terms</dt>
+                      <dd className="whitespace-pre-wrap text-sm text-ink">{round.terms}</dd>
+                    </div>
+                  )}
+                  {round.conditions && (
+                    <div>
+                      <dt className="text-xs text-ink-muted">Conditions</dt>
+                      <dd className="whitespace-pre-wrap text-sm text-ink">{round.conditions}</dd>
+                    </div>
+                  )}
+                </dl>
+              )}
+              {round.remarks && (
+                <p className="mt-3 whitespace-pre-wrap border-t border-hairline pt-3 text-sm text-ink-muted">
+                  {round.remarks}
+                </p>
+              )}
+              {round.status === 'open' && !closed && (
+                <div className="mt-3 border-t border-hairline pt-3">
+                  <Button size="sm" onClick={() => setAccepting(round)}>
+                    <Check className="size-4" /> Accept this round
+                  </Button>
+                </div>
+              )}
+              {!round.terms && !round.conditions && !round.remarks && round.status !== 'open' && (
+                <p className="text-sm text-ink-muted">No terms or conditions recorded for this round.</p>
+              )}
+            </TimelineItem>
           ))}
-        </ol>
+        </TimelineList>
       )}
 
       {adding && (
@@ -191,7 +194,12 @@ export function NegotiationPanel({ land }: { land: LandWithRelations }) {
       )}
 
       {accepting && (
-        <AcceptDialog round={accepting} land={land} onClose={() => setAccepting(null)} />
+        <AcceptDialog
+          round={accepting}
+          land={land}
+          userId={userId}
+          onClose={() => setAccepting(null)}
+        />
       )}
     </>
   );
@@ -207,10 +215,12 @@ export function NegotiationPanel({ land }: { land: LandWithRelations }) {
 function AcceptDialog({
   round,
   land,
+  userId,
   onClose,
 }: {
   round: LandNegotiation;
   land: LandWithRelations;
+  userId: string | null;
   onClose: () => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -225,14 +235,13 @@ function AcceptDialog({
       icon={Handshake}
       confirmLabel="Accept round"
       busy={busy}
-      message="Every other round is marked superseded, and this amount becomes the land's agreed amount."
+      message="Every other round is marked superseded, this amount becomes the land's agreed amount, and the land moves to Agreed."
       onCancel={onClose}
       onConfirm={async () => {
         setBusy(true);
         try {
-          const { landRepository } = await import('@/lib/repositories');
-          await landNegotiationRepository.accept(round.id);
-          await landRepository.update(land.id, { final_agreed_amount: round.amount });
+          // writes the agreed amount and makes the land Agreed
+          await landPipelineRepository.acceptNegotiationRound(round.id, userId);
           onClose();
         } finally {
           setBusy(false);
@@ -293,7 +302,7 @@ function RoundDialog({
     setError('');
     setSaving(true);
     try {
-      await landNegotiationRepository.addRound(
+      await landPipelineRepository.addNegotiationRound(
         {
           land_id: land.id,
           owner_id: form.owner_id || null,
@@ -312,6 +321,9 @@ function RoundDialog({
         userId,
       );
       onClose();
+    } catch (e) {
+      if (e instanceof PipelineBlockedError) setError(e.message);
+      else throw e;
     } finally {
       setSaving(false);
     }

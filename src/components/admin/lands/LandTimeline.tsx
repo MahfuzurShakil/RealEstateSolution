@@ -50,7 +50,7 @@ export function LandTimeline({ landId }: { landId: string }) {
     return (
       <EmptyState
         icon={History}
-        title="No pipeline activity yet"
+        title="No status changes yet"
         description="Every status change is logged here with its date, who did it and the remarks recorded at the time."
       />
     );
@@ -82,6 +82,9 @@ export function LandTimeline({ landId }: { landId: string }) {
                   <span className="text-xs text-ink-muted">
                     from {LAND_STATUS_META[event.from_status].label}
                   </span>
+                  {/* L7 — say when the system moved it, or a person corrected it */}
+                  {event.source === 'automatic' && <Badge>Automatic</Badge>}
+                  {event.source === 'correction' && <Badge tone="amber">Corrected</Badge>}
                 </div>
                 <span className="text-xs font-medium text-ink">{formatDate(event.event_date)}</span>
               </div>

@@ -102,16 +102,22 @@ class LandRepository extends BaseRepository<Land> {
       NewRecord<LandStatusEvent>,
       'land_id' | 'from_status' | 'to_status'
     >,
+    actor: string | null = null,
   ): Promise<{ land: Land; event: LandStatusEvent } | undefined> {
     const current = await this.getById(id);
     if (!current) return undefined;
 
-    const logged = await landStatusEventRepository.create({
-      ...event,
-      land_id: id,
-      from_status: current.status,
-      to_status: status,
-    });
+    const logged = await landStatusEventRepository.create(
+      {
+        // rows written before L7 carry no source and are read as manual
+        source: 'manual',
+        ...event,
+        land_id: id,
+        from_status: current.status,
+        to_status: status,
+      },
+      actor,
+    );
     const land = await this.update(id, { status });
     /*
      * The event comes back with the land because the caller may have files to

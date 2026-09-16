@@ -21,6 +21,7 @@ import {
 } from '@/lib/domain/finance';
 import { validateLandTerms } from '@/lib/domain/land-schedule';
 import { paymentInstallmentRepository, paymentScheduleRepository } from '@/lib/repositories';
+import { paymentPlanBlockReason } from '@/lib/domain/land';
 import { formatBdt, formatDate, todayLocal } from '@/lib/utils/format';
 
 /**
@@ -66,7 +67,9 @@ export function LandPaymentPlanPanel({ land }: { land: Land }) {
      * — which is the honest version of the old message.
      */
     const jv = land.acquisition_type !== 'direct_purchase';
-    const jvWithoutCash = jv && agreed <= 0;
+    const jvWithoutCash = jv && agreed <= 0 && land.status !== 'agreed';
+    // BRD ACQ-003 — opens at Agreed, because the bayna is paid before the deed
+    const locked = paymentPlanBlockReason(land.status, agreed);
     return (
       <>
         <Card>
@@ -77,7 +80,9 @@ export function LandPaymentPlanPanel({ land }: { land: Land }) {
               jvWithoutCash ? 'This joint venture has no cash side' : 'No payment plan recorded'
             }
             description={
-              jvWithoutCash
+              locked && !jvWithoutCash
+                ? locked
+                : jvWithoutCash
                 ? 'No cash was recorded as payable to the landowner, so there is nothing to schedule — the owner is paid in units, and the split is on the Joint Venture tab. If signing money or rent during construction was agreed, record it on the land as the cash payable and the plan can be built from it.'
                 : agreed > 0
                   ? jv
@@ -86,7 +91,7 @@ export function LandPaymentPlanPanel({ land }: { land: Land }) {
                   : 'Set the final agreed amount on this land first — the plan is built from it, and without it there is no total to divide.'
             }
             action={
-              agreed > 0 ? (
+              !locked ? (
                 <Button onClick={() => setGenerating(true)}>Record the agreed plan</Button>
               ) : undefined
             }

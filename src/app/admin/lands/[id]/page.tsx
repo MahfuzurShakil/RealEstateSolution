@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, Handshake, Pencil, Trash2, User } from 'lucide-react';
+import { ArrowLeft, Handshake, Pencil, Trash2, User, Wrench } from 'lucide-react';
 import { LandTimeline } from '@/components/admin/lands/LandTimeline';
 import { LandPaymentPlanPanel } from '@/components/admin/lands/LandPaymentPlanPanel';
 import { SiteVisitPanel } from '@/components/admin/lands/SiteVisitPanel';
@@ -16,7 +16,10 @@ import { OwnerSettlementPanel } from '@/components/admin/lands/OwnerSettlementPa
 import { DevelopmentPanel } from '@/components/admin/lands/DevelopmentPanel';
 import { LocationCard } from '@/components/ui/map/LocationCard';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
-import { LandStatusCard } from '@/components/admin/lands/LandStatusCard';
+import { LandProgressCard, type TimelineSection } from '@/components/admin/lands/LandProgressCard';
+import { LandClosingCard } from '@/components/admin/lands/LandClosingCard';
+import { LandEventDialog } from '@/components/admin/lands/LandEventDialog';
+import { CorrectStatusDialog } from '@/components/admin/lands/CorrectStatusDialog';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -25,6 +28,10 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import {
   ACQUISITION_TYPE_LABEL,
   LAND_SIZE_UNIT_LABEL,
+  LAND_STATUS_META,
+  allowedNextStatuses,
+  correctableStatuses,
+  statusStepConfig,
   finalAmountLabel,
   landHeadlineAmount,
   landUsesPurchasePricing,
@@ -43,19 +50,21 @@ import {
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
-type Tab =
-  | 'overview'
-  | 'owners'
-  | 'visits'
-  | 'feasibility'
-  | 'dd'
-  | 'negotiation'
-  | 'acqcost'
-  | 'development'
-  | 'jv'
-  | 'payments'
-  | 'documents'
-  | 'timeline';
+import type { LandStatus } from '@/lib/db/types';
+
+/**
+ * L7 (LAND-L7-PLAN.md) — five tabs. The land record, its owners, the JV terms
+ * and the documents are one tab each; everything that *happens* to the land
+ * lives under Timeline, in the four sections BRD §8–11 names.
+ */
+type Tab = 'overview' | 'owners' | 'jv' | 'documents' | 'timeline';
+
+const SECTIONS: { key: TimelineSection; label: string }[] = [
+  { key: 'site', label: 'Site Visit & Feasibility' },
+  { key: 'legal', label: 'Legal Due Diligence' },
+  { key: 'acquisition', label: 'Negotiation & Acquisition' },
+  { key: 'development', label: 'Land Development' },
+];
 
 /**
  * What the owners add up to, against what the land says (BRD LAND-002, BR-002).
@@ -146,7 +155,10 @@ export default function LandDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('overview');
+  const [section, setSection] = useState<TimelineSection>('site');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deciding, setDeciding] = useState<LandStatus | null>(null);
+  const [correcting, setCorrecting] = useState(false);
 
   const land = useLiveQuery(() => landRepository.getWithRelations(id), [id]);
   /** what has actually been paid against this land, from the cost ledger (L-1) */
@@ -188,35 +200,23 @@ export default function LandDetailPage() {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { key: 'owners', label: `Owners (${land.owners.length})` },
-    { key: 'visits', label: visitCount ? `Site Visits (${visitCount})` : 'Site Visits' },
-    { key: 'feasibility', label: 'Feasibility' },
-    {
-      key: 'dd',
-      label: ddProgress?.mandatoryOutstanding
-        ? `Due Diligence (${ddProgress.mandatoryOutstanding})`
-        : 'Due Diligence',
-    },
-    { key: 'negotiation', label: roundCount ? `Negotiation (${roundCount})` : 'Negotiation' },
-    /*
-     * The cost sheet is only offered once there is a deal to cost. A land
-     * nobody has agreed on has no acquisition to build up, and an empty sheet
-     * of nine zeroes on every sourced plot is a tab that teaches people to
-     * ignore tabs.
-     */
-    ...(costSheetRelevant ? [{ key: 'acqcost' as Tab, label: 'Acquisition Cost' }] : []),
-    {
-      key: 'development',
-      label: devReadiness?.outstanding
-        ? `Development (${devReadiness.outstanding})`
-        : 'Development',
-    },
     ...(isJv ? [{ key: 'jv' as Tab, label: 'Joint Venture' }] : []),
-    // shown for a JV too: the tab explains why there is no plan, which is more
-    // use than the tab simply not being there
-    { key: 'payments', label: 'Payment plan' },
     { key: 'documents', label: 'Documents' },
     { key: 'timeline', label: 'Timeline' },
   ];
+  // small counts on the section pills — the same numbers the progress card shows
+  const sectionCount: Record<TimelineSection, number | undefined> = {
+    site: visitCount || undefined,
+    legal: ddProgress?.mandatoryOutstanding || undefined,
+    acquisition: roundCount || undefined,
+    development: devReadiness?.total || undefined,
+  };
+  const openSection = (next: TimelineSection) => {
+    setTab('timeline');
+    setSection(next);
+    // the card sits beside the tabs on desktop and under them on a phone
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   return (
     <>
@@ -231,7 +231,22 @@ export default function LandDetailPage() {
         title={land.name}
         subtitle={`${land.code} · ${[land.location_area, land.location_district, land.location_division].filter(Boolean).join(', ')}`}
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            {/* the decisions only a person can make — everything else follows the work */}
+            {allowedNextStatuses(land.status).map((to) => (
+              <Button
+                key={to}
+                variant={to === 'rejected' ? 'dangerGhost' : 'outline'}
+                onClick={() => setDeciding(to)}
+              >
+                {statusStepConfig(to, land.acquisition_type)?.confirmLabel ?? LAND_STATUS_META[to].label}
+              </Button>
+            ))}
+            {correctableStatuses(land.status, land.acquisition_type).length > 0 && (
+              <Button variant="ghost" onClick={() => setCorrecting(true)} title="Correct this status">
+                <Wrench className="size-4" /> Correct status
+              </Button>
+            )}
             <Link href={`/admin/lands/${land.id}/edit`}>
               <Button variant="outline">
                 <Pencil className="size-4" /> Edit
@@ -345,7 +360,7 @@ export default function LandDetailPage() {
                       fees do not reduce what the owner is still owed.{' '}
                       <button
                         type="button"
-                        onClick={() => setTab('payments')}
+                        onClick={() => openSection('acquisition')}
                         className="font-medium text-admin-700 hover:underline"
                       >
                         See the agreed plan
@@ -392,6 +407,12 @@ export default function LandDetailPage() {
                   )}
                 </Card>
               )}
+
+              {/* every status change, with what caused it */}
+              <Card>
+                <CardHeader title="Status history" />
+                <LandTimeline landId={land.id} />
+              </Card>
             </div>
           )}
 
@@ -484,92 +505,138 @@ export default function LandDetailPage() {
           )}
 
           {tab === 'jv' && (
-            <Card>
-              <CardHeader title="Joint Venture Details" />
-              {!land.jv ? (
-                <p className="text-sm text-ink-muted">
-                  No JV terms recorded yet — add them from the edit form.
-                </p>
-              ) : (
-                <>
-                  <Row label="Developer share" value={`${land.jv.developer_share_pct}%`} />
-                  <Row label="Landowner share" value={`${land.jv.landowner_share_pct}%`} />
-                  <Row
-                    label="Share basis"
-                    value={JV_SHARE_BASIS_LABEL[land.jv.jv_share_basis ?? 'flat_count']}
-                  />
-                  <Row label="Agreement date" value={formatDate(land.jv.agreement_date)} />
-                  <Row
-                    label="Power of attorney"
-                    value={
-                      land.jv.power_of_attorney ? (
-                        <Badge tone="green">Signed</Badge>
-                      ) : (
-                        <Badge tone="amber">Not signed</Badge>
-                      )
-                    }
-                  />
-                  <Row label="POA reference" value={land.jv.poa_reference} />
-                </>
-              )}
-            </Card>
-          )}
-
-          {tab === 'visits' && (
-            <Card>
-              <CardHeader title="Site Visits" />
-              <SiteVisitPanel land={land} />
-            </Card>
-          )}
-
-          {tab === 'feasibility' && (
-            <Card>
-              <CardHeader title="Feasibility" />
-              <FeasibilityPanel land={land} />
-            </Card>
-          )}
-
-          {tab === 'dd' && (
-            <Card>
-              <CardHeader title="Legal Due Diligence" />
-              <DueDiligencePanel land={land} />
-            </Card>
-          )}
-
-          {tab === 'negotiation' && (
-            <Card>
-              <CardHeader title="Negotiation" />
-              <NegotiationPanel land={land} />
-            </Card>
-          )}
-
-          {tab === 'acqcost' && (
-            <Card>
-              <CardHeader title="Acquisition Cost" />
-              <AcquisitionCostPanel land={land} />
-            </Card>
-          )}
-
-          {tab === 'development' && (
-            <Card>
-              <CardHeader title="Land Development" />
-              <DevelopmentPanel land={land} />
-            </Card>
-          )}
-
-          {tab === 'payments' && (
-            <>
-              <LandPaymentPlanPanel land={land} />
-              {/* BRD ACQ-003 — renders nothing at all on a single-owner plot */}
-              <OwnerSettlementPanel land={land} />
-            </>
+            <div className="space-y-5">
+              <LandClosingCard land={land} />
+              <Card>
+                <CardHeader title="Joint Venture Details" />
+                {!land.jv ? (
+                  <p className="text-sm text-ink-muted">
+                    No JV terms recorded yet — add them from the edit form.
+                  </p>
+                ) : (
+                  <>
+                    <Row label="Developer share" value={`${land.jv.developer_share_pct}%`} />
+                    <Row label="Landowner share" value={`${land.jv.landowner_share_pct}%`} />
+                    <Row
+                      label="Share basis"
+                      value={JV_SHARE_BASIS_LABEL[land.jv.jv_share_basis ?? 'flat_count']}
+                    />
+                    <Row label="Agreement date" value={formatDate(land.jv.agreement_date)} />
+                    <Row
+                      label="Power of attorney"
+                      value={
+                        land.jv.power_of_attorney ? (
+                          <Badge tone="green">Signed</Badge>
+                        ) : (
+                          <Badge tone="amber">Not signed</Badge>
+                        )
+                      }
+                    />
+                    <Row label="POA reference" value={land.jv.poa_reference} />
+                  </>
+                )}
+              </Card>
+            </div>
           )}
 
           {tab === 'timeline' && (
-            <Card>
-              <CardHeader title="Pipeline history" />
-              <LandTimeline landId={land.id} />
-            </Card>
+            <div className="space-y-5">
+              <div className="flex flex-wrap gap-1.5">
+                {SECTIONS.map((sec) => (
+                  <button
+                    key={sec.key}
+                    type="button"
+                    onClick={() => setSection(sec.key)}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors',
+                      section === sec.key
+                        ? 'border-admin-500 bg-admin-500 text-white'
+                        : 'border-hairline bg-white text-ink-muted hover:border-admin-300 hover:text-admin-700',
+                    )}
+                  >
+                    {sec.label}
+                    {sectionCount[sec.key] != null && (
+                      <span
+                        className={cn(
+                          'rounded-full px-1.5 text-[11px] tabular-nums',
+                          section === sec.key ? 'bg-white/20' : 'bg-slate-100',
+                        )}
+                      >
+                        {sectionCount[sec.key]}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {section === 'site' && (
+                <>
+                  <Card>
+                    <CardHeader title="Site Visits" />
+                    <SiteVisitPanel land={land} />
+                  </Card>
+                  <Card>
+                    <CardHeader title="Feasibility" />
+                    <FeasibilityPanel land={land} />
+                  </Card>
+                </>
+              )}
+
+              {section === 'legal' && (
+                <Card>
+                  <CardHeader title="Legal Due Diligence" />
+                  <DueDiligencePanel land={land} />
+                </Card>
+              )}
+
+              {section === 'acquisition' && (
+                <>
+                  <Card>
+                    <CardHeader title="Negotiation" />
+                    <NegotiationPanel land={land} />
+                  </Card>
+                  {/* a JV is signed on its own tab, where the split lives */}
+                  {isJv ? (
+                    <Card>
+                      <CardHeader title="JV signing" />
+                      <p className="text-sm text-ink-muted">
+                        A joint venture is closed by signing, recorded on the{' '}
+                        <button
+                          type="button"
+                          onClick={() => setTab('jv')}
+                          className="font-medium text-admin-700 hover:underline"
+                        >
+                          Joint Venture tab
+                        </button>{' '}
+                        with the share split.
+                      </p>
+                    </Card>
+                  ) : (
+                    <LandClosingCard land={land} />
+                  )}
+                  {/* the cost sheet only once there is a deal to cost */}
+                  {costSheetRelevant && (
+                    <Card>
+                      <CardHeader title="Acquisition Cost" />
+                      <AcquisitionCostPanel land={land} />
+                    </Card>
+                  )}
+                  {/* BRD ACQ-003 — the owner settlement schedule, open from Agreed */}
+                  <div id="land-payment-plan" className="scroll-mt-4">
+                    <LandPaymentPlanPanel land={land} />
+                  </div>
+                  {/* renders nothing at all on a single-owner plot */}
+                  <OwnerSettlementPanel land={land} />
+                </>
+              )}
+
+              {section === 'development' && (
+                <Card>
+                  <CardHeader title="Land Development" />
+                  <DevelopmentPanel land={land} />
+                </Card>
+              )}
+            </div>
           )}
 
           {tab === 'documents' && (
@@ -581,7 +648,7 @@ export default function LandDetailPage() {
         </div>
 
         <aside className="min-w-0 space-y-5 lg:order-2">
-          <LandStatusCard land={land} />
+          <LandProgressCard land={land} onOpen={openSection} />
 
           <LocationCard
             lat={land.gps_lat}
@@ -621,6 +688,11 @@ export default function LandDetailPage() {
           )}
         </aside>
       </div>
+
+      {deciding && (
+        <LandEventDialog land={land} target={deciding} onClose={() => setDeciding(null)} />
+      )}
+      {correcting && <CorrectStatusDialog land={land} onClose={() => setCorrecting(false)} />}
 
       <ConfirmDialog
         open={confirmDelete}

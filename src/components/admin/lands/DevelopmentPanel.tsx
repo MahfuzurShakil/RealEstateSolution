@@ -30,6 +30,8 @@ import {
   type DevelopmentActivityWithProgress,
 } from '@/lib/repositories';
 import { formatBdt, formatDate, todayLocal } from '@/lib/utils/format';
+import { developmentBlockReason } from '@/lib/domain/land';
+import { LockedNotice, TimelineItem, TimelineList } from '@/components/admin/lands/TimelineItem';
 
 const STATUS_META: Record<DevelopmentActivityStatus, { label: string; tone: BadgeTone }> = {
   planned: { label: 'Planned', tone: 'neutral' },
@@ -52,7 +54,6 @@ export function DevelopmentPanel({ land }: { land: Land }) {
   const [editing, setEditing] = useState<DevelopmentActivityWithProgress | 'new' | null>(null);
   const [reporting, setReporting] = useState<DevelopmentActivityWithProgress | null>(null);
   const [deleting, setDeleting] = useState<DevelopmentActivityWithProgress | null>(null);
-  const [filesFor, setFilesFor] = useState<string | null>(null);
 
   const activities = useLiveQuery(() => landDevelopmentRepository.listForLand(land.id), [land.id]);
   const readiness = useLiveQuery(
@@ -62,10 +63,19 @@ export function DevelopmentPanel({ land }: { land: Land }) {
 
   if (!activities || !readiness) return <p className="text-sm text-ink-muted">Loading…</p>;
 
+  // L7 — work on land the company does not hold yet is money spent on somebody else's plot
+  const locked = developmentBlockReason(land.status);
+
   const ready = land.no_development_required || (readiness.total > 0 && readiness.outstanding === 0);
 
   return (
     <>
+      {locked && (
+        <LockedNotice>
+          <strong>Land development is locked.</strong> {locked}
+        </LockedNotice>
+      )}
+
       {/* the answer gate G3 reads, written out */}
       <div
         className={
@@ -100,7 +110,13 @@ export function DevelopmentPanel({ land }: { land: Land }) {
           </p>
         </div>
         <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
-          <Button size="sm" variant="outline" onClick={() => setEditing('new')}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={Boolean(locked)}
+            title={locked ?? undefined}
+            onClick={() => setEditing('new')}
+          >
             <Plus className="size-4" /> Add activity
           </Button>
         </div>
@@ -137,31 +153,37 @@ export function DevelopmentPanel({ land }: { land: Land }) {
           title="No development activities yet"
           description="Record what this plot needs before anything is built on it — filling, boundary wall, internal roads, drainage, utilities — with a budget, a contractor and progress against each."
           action={
-            <Button onClick={() => setEditing('new')}>
-              <Plus className="size-4" /> Add activity
-            </Button>
+            locked ? undefined : (
+              <Button onClick={() => setEditing('new')}>
+                <Plus className="size-4" /> Add activity
+              </Button>
+            )
           }
         />
       ) : (
-        <ul className="space-y-3">
+        <TimelineList>
           {activities.map((a) => (
-            <li key={a.id} className="rounded-xl border border-hairline bg-white">
-              <div className="flex flex-wrap items-start gap-3 p-3">
-                <div className="w-full min-w-0 sm:w-auto sm:flex-1">
-                  <p className="text-sm font-medium text-ink">{a.activity_type}</p>
-                  <p className="mt-0.5 text-xs text-ink-muted">
-                    {a.contractor ? a.contractor.name : 'No contractor awarded'}
-                    {a.planned_qty != null && ` · ${a.planned_qty} ${a.unit ?? ''}`.trimEnd()}
-                    {a.target_date && ` · due ${formatDate(a.target_date)}`}
-                  </p>
-                </div>
-
-                <Badge tone={STATUS_META[a.status].tone}>{STATUS_META[a.status].label}</Badge>
-
-                <div className="shrink-0 text-right">
-                  <p className="text-sm font-medium tabular-nums text-ink">
-                    {formatBdt(a.budget_amount)}
-                  </p>
+            <TimelineItem
+              key={a.id}
+              marker={a.status === 'completed' ? <CheckCircle2 className="size-3.5" /> : <HardHat className="size-3.5" />}
+              markerClassName={a.status === 'completed' ? 'bg-emerald-500 text-white' : undefined}
+              muted={a.status === 'cancelled'}
+              date={formatDate(a.updates[0]?.progress_date ?? a.start_date ?? a.created_at)}
+              title={
+                <>
+                  {a.activity_type}
+                  <Badge tone={STATUS_META[a.status].tone}>{STATUS_META[a.status].label}</Badge>
+                  <span className="text-xs font-normal text-ink-muted">{a.pct_complete}%</span>
+                </>
+              }
+              meta={
+                (a.contractor ? a.contractor.name : 'No contractor awarded') +
+                (a.target_date ? ` · due ${formatDate(a.target_date)}` : '') +
+                (a.updates.length ? ` · ${a.updates.length} report${a.updates.length === 1 ? '' : 's'}` : '')
+              }
+              aside={
+                <>
+                  <p className="text-sm font-medium tabular-nums text-ink">{formatBdt(a.budget_amount)}</p>
                   <p
                     className={
                       a.incurred > a.budget_amount
@@ -171,17 +193,20 @@ export function DevelopmentPanel({ land }: { land: Land }) {
                   >
                     {a.incurred > 0 ? `${formatBdt(a.incurred)} spent` : 'nothing spent'}
                   </p>
+                </>
+              }
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex min-w-[10rem] flex-1 items-center gap-3">
+                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className={a.pct_complete >= 100 ? 'h-full bg-emerald-500' : 'h-full bg-admin-500'}
+                      style={{ width: `${Math.min(100, Math.max(0, a.pct_complete))}%` }}
+                    />
+                  </div>
+                  <span className="shrink-0 text-xs font-medium tabular-nums text-ink">{a.pct_complete}%</span>
                 </div>
-
-                <div className="flex w-full items-center justify-end gap-1 sm:w-auto">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-label="Files"
-                    onClick={() => setFilesFor(filesFor === a.id ? null : a.id)}
-                  >
-                    <Paperclip className="size-4" />
-                  </Button>
+                <div className="flex items-center gap-1">
                   <Button variant="ghost" size="sm" aria-label="Edit" onClick={() => setEditing(a)}>
                     <Pencil className="size-4" />
                   </Button>
@@ -191,49 +216,44 @@ export function DevelopmentPanel({ land }: { land: Land }) {
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={a.status === 'cancelled'}
+                    disabled={a.status === 'cancelled' || Boolean(locked)}
                     onClick={() => setReporting(a)}
                   >
-                    <TrendingUp className="size-4" /> Report
+                    <TrendingUp className="size-4" /> Report progress
                   </Button>
                 </div>
               </div>
 
-              {/* a progress bar earns its place here — the number is the point */}
-              <div className="border-t border-hairline px-3 py-2.5">
-                <div className="flex items-center gap-3">
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className={
-                        a.pct_complete >= 100 ? 'h-full bg-emerald-500' : 'h-full bg-admin-500'
-                      }
-                      style={{ width: `${Math.min(100, Math.max(0, a.pct_complete))}%` }}
-                    />
-                  </div>
-                  <span className="shrink-0 text-xs font-medium tabular-nums text-ink">
-                    {a.pct_complete}%
-                  </span>
-                </div>
+              {a.notes && <p className="mt-2 text-sm text-ink-muted">{a.notes}</p>}
 
-                {a.updates.length > 0 && (
-                  <p className="mt-2 text-xs text-ink-muted">
-                    Last reported {formatDate(a.updates[0].progress_date)}
-                    {a.updates[0].qty_done != null &&
-                      ` · ${a.updates[0].qty_done} ${a.unit ?? ''} done`.trimEnd()}
-                    {a.updates[0].remarks && ` · ${a.updates[0].remarks}`}
-                  </p>
-                )}
-                {a.notes && <p className="mt-1 text-xs text-ink-muted">{a.notes}</p>}
-              </div>
-
-              {filesFor === a.id && (
-                <div className="border-t border-hairline px-3 py-3">
-                  <DocumentsPanel entityType="land_development_activity" entityId={a.id} />
-                </div>
+              {/* BRD DEV-003 — every report, newest first */}
+              {a.updates.length > 0 && (
+                <ul className="mt-3 space-y-2 border-t border-hairline pt-3">
+                  {a.updates.map((u) => (
+                    <li key={u.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-sm">
+                      <span className="w-24 shrink-0 text-xs text-ink-muted">{formatDate(u.progress_date)}</span>
+                      <span className="font-medium tabular-nums text-ink">{u.pct_complete}%</span>
+                      {u.qty_done != null && (
+                        <span className="text-ink-muted">{`${u.qty_done} ${a.unit ?? ''}`.trim()}</span>
+                      )}
+                      {u.amount_incurred != null && (
+                        <span className="tabular-nums text-ink-muted">{formatBdt(u.amount_incurred)} spent</span>
+                      )}
+                      {u.remarks && <span className="basis-full pl-[6.75rem] text-xs text-ink-muted">{u.remarks}</span>}
+                    </li>
+                  ))}
+                </ul>
               )}
-            </li>
+
+              <div className="mt-3 border-t border-hairline pt-3">
+                <p className="mb-2 text-xs font-medium text-ink-muted">
+                  <Paperclip className="mr-1 inline size-3.5" /> Evidence
+                </p>
+                <DocumentsPanel entityType="land_development_activity" entityId={a.id} />
+              </div>
+            </TimelineItem>
           ))}
-        </ul>
+        </TimelineList>
       )}
 
       {editing && (

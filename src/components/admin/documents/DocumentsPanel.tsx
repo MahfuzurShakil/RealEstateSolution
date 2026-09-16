@@ -22,7 +22,8 @@ import type { DocumentRecord, EntityType } from '@/lib/db/types';
 import { documentRepository, lookupRepository } from '@/lib/repositories';
 import {
   ACCEPTED_UPLOAD_TYPES,
-  MAX_UPLOAD_BYTES,
+  isVideoType,
+  rejectUpload,
   formatFileSize,
 } from '@/lib/domain/file-upload';
 import { cn } from '@/lib/utils/cn';
@@ -232,12 +233,9 @@ function UploadDialog({
 
   function pickFile(picked: File | undefined) {
     if (!picked) return;
-    if (!ACCEPTED.includes(picked.type)) {
-      setError('Only PDF, PNG, JPG or WEBP files are accepted');
-      return;
-    }
-    if (picked.size > MAX_UPLOAD_BYTES) {
-      setError(`"${picked.name}" is ${formatSize(picked.size)} — the limit is 5 MB`);
+    const rejected = rejectUpload(picked);
+    if (rejected) {
+      setError(rejected);
       return;
     }
     setError('');
@@ -473,6 +471,8 @@ export function DocumentViewer({
           ) : isImage(doc) ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={url} alt={doc.file_name ?? 'Document'} className="mx-auto max-h-[60vh]" />
+          ) : isVideoType(doc.mime_type) ? (
+            <video src={url} controls className="mx-auto max-h-[60vh] w-full bg-black" />
           ) : (
             <iframe src={url} title={doc.file_name ?? 'Document'} className="h-[60vh] w-full" />
           )}

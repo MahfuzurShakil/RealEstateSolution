@@ -352,7 +352,20 @@ export interface LandStatusEvent extends BaseEntity {
   /** deed no., case no., agreement ref. */
   reference_no?: string | null;
   remarks?: string | null;
+  /**
+   * L7 — what moved the land (LAND-UX-REVIEW.md section 4).
+   *
+   * Four steps now follow the work instead of being typed in beside it, and an
+   * automatic change that does not say it was automatic is a silent change.
+   * Not indexed, so no Dexie version: nothing queries on it, the Lifecycle
+   * feed only reads it. Absent on rows written before L7, which were all
+   * confirmed by hand — read a missing value as `manual`.
+   */
+  source?: LandStatusEventSource | null;
 }
+
+export const LAND_STATUS_EVENT_SOURCES = ['manual', 'automatic', 'correction'] as const;
+export type LandStatusEventSource = (typeof LAND_STATUS_EVENT_SOURCES)[number];
 
 /* ------------------------------------------------------------------ *
  * Module 1 / batch L2 — Site Visit & Feasibility (BRD section 8)
@@ -370,8 +383,19 @@ export interface LandStatusEvent extends BaseEntity {
  * Photos and video are not fields here: they are `documents` rows with
  * `entity_type = 'site_visit'`, like every other file in the system.
  */
+export const SITE_VISIT_STATUSES = ['planned', 'completed'] as const;
+export type SiteVisitStatus = (typeof SITE_VISIT_STATUSES)[number];
+
 export interface SiteVisit extends BaseEntity {
   land_id: UUID;
+  /**
+   * BRD SITE-001 "visit plans" (L7). A planned visit is on the calendar and has
+   * no findings yet; it moves nothing until it is marked done. Not indexed, so
+   * no Dexie version — a missing value is a visit recorded before plans
+   * existed, which was always one that happened.
+   */
+  status?: SiteVisitStatus | null;
+  /** the planned date for a planned visit, the actual date once done */
   visit_date: ISODate;
   /** who led the visit */
   visited_by?: string | null;
@@ -680,7 +704,16 @@ export interface DdChecklistItem extends BaseEntity {
 export const DD_ITEM_STATUSES = [
   'pending',
   'in_progress',
+  /*
+   * L7, BRD DD-003 — "submission, review, rejection, conditional approval".
+   * `submitted` is the lawyer handing a finding in for review; a reviewer
+   * then passes it, fails it (rejection), or approves it on a condition.
+   * A conditional approval settles the item — the condition is its finding,
+   * and the deed or the payment plan is where it gets honoured.
+   */
+  'submitted',
   'passed',
+  'conditionally_approved',
   'failed',
   'waived',
   'not_applicable',
