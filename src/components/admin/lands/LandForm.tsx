@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Checkbox, Field, MoneyInput, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
@@ -35,6 +35,9 @@ import {
   landownerRepository,
   type LandWithRelations,
 } from '@/lib/repositories';
+
+/** Select value that opens the create-landowner dialog instead of picking one. */
+const NEW_OWNER = '__new_owner__';
 
 interface OwnerRow {
   owner_id: string;
@@ -203,6 +206,17 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
         is_primary_contact: rows.length === 0,
       },
     ]);
+  }
+
+  /*
+   * The owner is often not in the master list yet — a plot comes in with a
+   * name and a phone number. Adding the row and opening the create dialog in
+   * one click means nobody has to abandon a half-filled land to go to the
+   * Landowners page first.
+   */
+  function addNewOwner() {
+    setQuickAddIndex(owners.length);
+    addOwnerRow();
   }
 
   function updateOwnerRow(index: number, patch: Partial<OwnerRow>) {
@@ -557,15 +571,21 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
         <CardHeader
           title="Landowners"
           action={
-            <Button type="button" variant="outline" size="sm" onClick={addOwnerRow}>
-              <Plus className="size-4" /> Add owner
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={addNewOwner}>
+                <UserPlus className="size-4" /> New landowner
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={addOwnerRow}>
+                <Plus className="size-4" /> Add owner
+              </Button>
+            </div>
           }
         />
         {owners.length === 0 ? (
           <p className="text-sm text-ink-muted">
-            No landowner linked yet. Owner details are captured for every land, whether it is a
-            direct purchase or a joint venture.
+            No landowner linked yet. Use <strong>Add owner</strong> to pick someone already on the
+            Landowners list, or <strong>New landowner</strong> to create them here — they are saved
+            to the Landowners list as well.
           </p>
         ) : (
           <div className="space-y-3">
@@ -578,10 +598,15 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
                   <div className="flex gap-2">
                     <SelectInput
                       value={row.owner_id}
-                      onChange={(e) => updateOwnerRow(index, { owner_id: e.target.value })}
+                      onChange={(e) => {
+                        // the first option opens the create dialog rather than selecting
+                        if (e.target.value === NEW_OWNER) setQuickAddIndex(index);
+                        else updateOwnerRow(index, { owner_id: e.target.value });
+                      }}
                       invalid={!row.owner_id && Boolean(errors.owners)}
                     >
                       <option value="">Select landowner…</option>
+                      <option value={NEW_OWNER}>+ Create new landowner…</option>
                       {allOwners.map((o) => (
                         <option key={o.id} value={o.id}>
                           {o.name}
@@ -596,7 +621,7 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
                       onClick={() => setQuickAddIndex(index)}
                       title="Create a new landowner"
                     >
-                      <Plus className="size-4" />
+                      <UserPlus className="size-4" /> New
                     </Button>
                   </div>
                 </Field>
