@@ -361,6 +361,34 @@ export function closingBlockReason(input: {
   return null;
 }
 
+/**
+ * BRD LAND-002 / ACQ-003 — what each owner gets of an agreed amount, by share.
+ *
+ * Whole taka, and the rounding lands on the last owner so the parts always add
+ * up to the whole — a split that is off by one taka shows as a mismatch on the
+ * Owners tab. With no shares recorded it divides evenly; one owner takes all.
+ */
+export function splitAmountByShare(
+  total: number,
+  owners: Array<{ id: string; share: number }>,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (owners.length === 0) return out;
+  const shareSum = owners.reduce((s, o) => s + (Number(o.share) || 0), 0);
+  let given = 0;
+  owners.forEach((o, i) => {
+    if (i === owners.length - 1) {
+      out[o.id] = Math.round(total - given);
+      return;
+    }
+    const part =
+      shareSum > 0 ? Math.round((total * (Number(o.share) || 0)) / shareSum) : Math.round(total / owners.length);
+    out[o.id] = part;
+    given += part;
+  });
+  return out;
+}
+
 /** Pipeline order used by the detail-page progress trail. */
 export const LAND_PIPELINE_STEPS: LandStatus[] = [
   'sourced',

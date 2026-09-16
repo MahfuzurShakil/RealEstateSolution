@@ -14,13 +14,14 @@ import {
   closingBlockReason,
   feasibilityGateBlockReason,
   nextAutomaticStep,
+  splitAmountByShare,
   type LandWorkFacts,
 } from '../domain/land';
 import { localDay } from '../utils/format';
 import type { NewRecord, UpdateRecord } from './base.repository';
 import { landDdRepository } from './dd.repository';
 import { paymentScheduleRepository } from './finance.repository';
-import { landJvRepository, landRepository } from './land.repository';
+import { landJvRepository, landOwnerMappingRepository, landRepository } from './land.repository';
 import { landNegotiationRepository } from './negotiation.repository';
 import { landFeasibilityRepository, siteVisitRepository } from './site-visit.repository';
 
@@ -167,7 +168,37 @@ class LandPipelineRepository {
     const round = await landNegotiationRepository.accept(roundId);
     if (!round) return;
     await landRepository.update(round.land_id, { final_agreed_amount: round.amount });
+    await this.fillOwnerAmounts(round.land_id, round.amount);
     await this.syncFromWork(round.land_id, actor);
+  }
+
+  /**
+   * Once a price is agreed, each owner's part of it (BRD LAND-002, ACQ-003).
+   *
+   * Split by share, and only into owners with no amount yet: an amount somebody
+   * set by hand on the Owners tab — the brother who took less — is a decision,
+   * and a later round must not overwrite it. Where the parts then stop adding
+   * up, the Owners tab says so.
+   */
+  async fillOwnerAmounts(landId: string, total: number): Promise<void> {
+    if (!(total > 0)) return;
+    const mappings = await landOwnerMappingRepository.listForLand(landId);
+    const split = splitAmountByShare(
+      total,
+      mappings.map((m) => ({ id: m.id, share: m.ownership_share_pct })),
+    );
+    for (const m of mappings) {
+      if (m.agreed_amount == null) {
+        await landOwnerMappingRepository.update(m.id, { agreed_amount: split[m.id] });
+      }
+    }
+  }
+
+  /** The Owners tab's edit: the amounts as the user set them. */
+  async setOwnerAmounts(amounts: Record<string, number | null>): Promise<void> {
+    for (const [mappingId, amount] of Object.entries(amounts)) {
+      await landOwnerMappingRepository.update(mappingId, { agreed_amount: amount });
+    }
   }
 
   /* --------------------------- closing the deal --------------------------- */
@@ -205,6 +236,7 @@ class LandPipelineRepository {
     const moved = await landRepository.setStatus(landId, 'acquired', { ...details, source: 'manual' }, actor);
     if (!moved) throw new PipelineBlockedError('This land no longer exists.');
     await landRepository.update(landId, { final_agreed_amount: details.amount });
+    await this.fillOwnerAmounts(landId, details.amount);
     return moved.event;
   }
 
@@ -252,6 +284,7 @@ class LandPipelineRepository {
     });
     if (details.cash_payable != null) {
       await landRepository.update(landId, { final_agreed_amount: details.cash_payable });
+      await this.fillOwnerAmounts(landId, details.cash_payable);
     }
     return moved.event;
   }

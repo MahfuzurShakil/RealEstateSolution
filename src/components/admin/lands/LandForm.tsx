@@ -36,6 +36,9 @@ import {
   type LandWithRelations,
 } from '@/lib/repositories';
 
+/** Column layout shared by the owner table's header, rows and total. */
+const OWNER_GRID = 'md:grid-cols-[minmax(0,2.6fr)_minmax(0,1fr)_minmax(0,1fr)_4.5rem_2.5rem]';
+
 /** Select value that opens the create-landowner dialog instead of picking one. */
 const NEW_OWNER = '__new_owner__';
 
@@ -44,7 +47,11 @@ interface OwnerRow {
   ownership_share_pct: string;
   /** BRD LAND-002 — in the land's own `land_size_unit` */
   ownership_area: string;
-  /** BRD LAND-002 — what was agreed with this owner specifically */
+  /**
+   * BRD LAND-002 — what was agreed with this owner specifically. Not on the
+   * form since L7 (nothing is agreed when a land is created); kept in state so
+   * editing a land does not wipe an amount recorded on the Owners tab.
+   */
   agreed_amount: string;
   is_primary_contact: boolean;
 }
@@ -191,9 +198,14 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
   const purchasePricing = landUsesPurchasePricing(form.acquisition_type);
 
   const ownerShareTotal = useMemo(
-    () => owners.reduce((sum, o) => sum + (Number(o.ownership_share_pct) || 0), 0),
+    () => Math.round(owners.reduce((sum, o) => sum + (Number(o.ownership_share_pct) || 0), 0) * 100) / 100,
     [owners],
   );
+  const ownerAreaTotal =
+    Math.round(owners.reduce((sum, o) => sum + (Number(o.ownership_area) || 0), 0) * 100) / 100;
+  const ownerAreaMismatch =
+    owners.some((o) => o.ownership_area.trim() !== '') &&
+    Math.abs(ownerAreaTotal - (Number(form.land_size) || 0)) > 0.01;
 
   function addOwnerRow() {
     setOwners((rows) => [
@@ -217,6 +229,34 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
   function addNewOwner() {
     setQuickAddIndex(owners.length);
     addOwnerRow();
+  }
+
+  /*
+   * Share and area are two ways of saying the same thing on a plot of known
+   * size, so typing one fills the other. Both stay editable: a deed often
+   * divides by area in a way the percentage only rounds, and the totals under
+   * the table flag it when the two stop agreeing.
+   */
+  const round2 = (n: number) => String(Math.round(n * 100) / 100);
+  function setOwnerShare(index: number, value: string) {
+    const size = Number(form.land_size);
+    const pct = Number(value);
+    updateOwnerRow(index, {
+      ownership_share_pct: value,
+      ...(value.trim() !== '' && size > 0 && Number.isFinite(pct)
+        ? { ownership_area: round2((size * pct) / 100) }
+        : {}),
+    });
+  }
+  function setOwnerArea(index: number, value: string) {
+    const size = Number(form.land_size);
+    const area = Number(value);
+    updateOwnerRow(index, {
+      ownership_area: value,
+      ...(value.trim() !== '' && size > 0 && Number.isFinite(area)
+        ? { ownership_share_pct: round2((area / size) * 100) }
+        : {}),
+    });
   }
 
   function updateOwnerRow(index: number, patch: Partial<OwnerRow>) {
@@ -588,97 +628,117 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
             to the Landowners list as well.
           </p>
         ) : (
-          <div className="space-y-3">
-            {owners.map((row, index) => (
-              <div
-                key={index}
-                className="grid items-end gap-3 rounded-xl border border-hairline p-3 md:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_1.2fr_auto_auto]"
-              >
-                <Field label="Landowner">
-                  <div className="flex gap-2">
-                    <SelectInput
-                      value={row.owner_id}
-                      onChange={(e) => {
-                        // the first option opens the create dialog rather than selecting
-                        if (e.target.value === NEW_OWNER) setQuickAddIndex(index);
-                        else updateOwnerRow(index, { owner_id: e.target.value });
-                      }}
-                      invalid={!row.owner_id && Boolean(errors.owners)}
-                    >
-                      <option value="">Select landowner…</option>
-                      <option value={NEW_OWNER}>+ Create new landowner…</option>
-                      {allOwners.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.name}
-                          {o.phone ? ` — ${o.phone}` : ''}
-                        </option>
-                      ))}
-                    </SelectInput>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="md"
-                      onClick={() => setQuickAddIndex(index)}
-                      title="Create a new landowner"
-                    >
-                      <UserPlus className="size-4" /> New
-                    </Button>
-                  </div>
-                </Field>
-                <Field label="Share %">
-                  <TextInput
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="100"
-                    value={row.ownership_share_pct}
-                    placeholder="e.g. 50"
-                    onChange={(e) => updateOwnerRow(index, { ownership_share_pct: e.target.value })}
-                  />
-                </Field>
-                {/*
-                  BRD LAND-002. The area is not derived from the share: heirs
-                  divide a khatian by the deed, not by arithmetic, and the two
-                  disagree often enough that computing one from the other would
-                  hide the disagreement rather than surface it.
-                */}
-                <Field label={`Area (${LAND_SIZE_UNIT_LABEL[form.land_size_unit]})`}>
-                  <TextInput
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={row.ownership_area}
-                    placeholder="e.g. 4.5"
-                    onChange={(e) => updateOwnerRow(index, { ownership_area: e.target.value })}
-                  />
-                </Field>
-                <Field label="Agreed amount">
-                  <MoneyInput
-                    value={row.agreed_amount}
-                    placeholder="e.g. 20000000"
-                    onChange={(e) => updateOwnerRow(index, { agreed_amount: e.target.value })}
-                  />
-                </Field>
-                <Checkbox
-                  label="Primary contact"
-                  className="pb-3"
-                  checked={row.is_primary_contact}
-                  onChange={(e) => updateOwnerRow(index, { is_primary_contact: e.target.checked })}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="mb-1.5"
-                  onClick={() => setOwners((rows) => rows.filter((_, i) => i !== index))}
-                  aria-label="Remove owner"
+          <div>
+            {/* one header for the table; on a phone each field carries its own label */}
+            <div className={`hidden gap-3 px-3 pb-2 text-xs font-medium text-ink-muted md:grid ${OWNER_GRID}`}>
+              <span>Landowner</span>
+              <span>Share %</span>
+              <span>Area ({LAND_SIZE_UNIT_LABEL[form.land_size_unit]})</span>
+              <span>Primary</span>
+              <span className="sr-only">Remove</span>
+            </div>
+            <div className="space-y-2">
+              {owners.map((row, index) => (
+                <div
+                  key={index}
+                  className={`grid items-center gap-3 rounded-xl border border-hairline p-3 ${OWNER_GRID}`}
                 >
-                  <Trash2 className="size-4" />
-                </Button>
-              </div>
-            ))}
-            <p className="text-sm text-ink-muted">
-              Total share: <span className="font-medium text-ink">{ownerShareTotal}%</span>
+                  <div>
+                    <span className="mb-1 block text-xs text-ink-muted md:hidden">Landowner</span>
+                    <div className="flex gap-2">
+                      <SelectInput
+                        aria-label="Landowner"
+                        value={row.owner_id}
+                        onChange={(e) => {
+                          // the second option opens the create dialog rather than selecting
+                          if (e.target.value === NEW_OWNER) setQuickAddIndex(index);
+                          else updateOwnerRow(index, { owner_id: e.target.value });
+                        }}
+                        invalid={!row.owner_id && Boolean(errors.owners)}
+                      >
+                        <option value="">Select landowner…</option>
+                        <option value={NEW_OWNER}>+ Create new landowner…</option>
+                        {allOwners.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.name}
+                            {o.phone ? ` — ${o.phone}` : ''}
+                          </option>
+                        ))}
+                      </SelectInput>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="md"
+                        onClick={() => setQuickAddIndex(index)}
+                        title="Create a new landowner"
+                      >
+                        <UserPlus className="size-4" /> New
+                      </Button>
+                    </div>
+                  </div>
+                  <div>
+                    <span className="mb-1 block text-xs text-ink-muted md:hidden">Share %</span>
+                    <TextInput
+                      aria-label="Share %"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={row.ownership_share_pct}
+                      placeholder="e.g. 50"
+                      onChange={(e) => setOwnerShare(index, e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <span className="mb-1 block text-xs text-ink-muted md:hidden">
+                      Area ({LAND_SIZE_UNIT_LABEL[form.land_size_unit]})
+                    </span>
+                    <TextInput
+                      aria-label={`Area (${LAND_SIZE_UNIT_LABEL[form.land_size_unit]})`}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={row.ownership_area}
+                      placeholder="e.g. 4.5"
+                      onChange={(e) => setOwnerArea(index, e.target.value)}
+                    />
+                  </div>
+                  {/* the column header names it on a desktop; a phone needs the words */}
+                  <label className="flex cursor-pointer items-center gap-2.5 text-sm text-ink md:justify-center">
+                    <input
+                      type="checkbox"
+                      className="size-4 rounded border-hairline accent-admin-500"
+                      checked={row.is_primary_contact}
+                      onChange={(e) => updateOwnerRow(index, { is_primary_contact: e.target.checked })}
+                    />
+                    <span className="md:sr-only">Primary contact</span>
+                  </label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="justify-self-end"
+                    onClick={() => setOwners((rows) => rows.filter((_, i) => i !== index))}
+                    aria-label="Remove owner"
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className={`mt-2 gap-3 px-3 text-sm text-ink-muted md:grid ${OWNER_GRID}`}>
+              <span className="font-medium text-ink">Total</span>
+              <span className={Math.abs(ownerShareTotal - 100) > 0.01 ? 'font-medium text-amber-700' : 'font-medium text-ink'}>
+                {ownerShareTotal}%
+              </span>
+              <span className={ownerAreaMismatch ? 'font-medium text-amber-700' : 'font-medium text-ink'}>
+                {ownerAreaTotal} of {form.land_size || '—'} {LAND_SIZE_UNIT_LABEL[form.land_size_unit]}
+              </span>
+            </div>
+            <p className="mt-2 px-3 text-xs text-ink-muted">
+              Enter a share or an area — the other fills in from the land size, and either can be
+              changed. What each owner is paid is agreed later, in negotiation, and split by share
+              on the Owners tab.
             </p>
           </div>
         )}

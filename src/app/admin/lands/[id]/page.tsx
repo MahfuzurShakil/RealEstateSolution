@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, Handshake, Pencil, Trash2, User, Wrench } from 'lucide-react';
+import { ArrowLeft, Handshake, Pencil, Scale, Trash2, User, Wrench } from 'lucide-react';
 import { LandTimeline } from '@/components/admin/lands/LandTimeline';
 import { LandPaymentPlanPanel } from '@/components/admin/lands/LandPaymentPlanPanel';
 import { SiteVisitPanel } from '@/components/admin/lands/SiteVisitPanel';
@@ -20,6 +20,7 @@ import { LandProgressCard, type TimelineSection } from '@/components/admin/lands
 import { LandClosingCard } from '@/components/admin/lands/LandClosingCard';
 import { LandEventDialog } from '@/components/admin/lands/LandEventDialog';
 import { CorrectStatusDialog } from '@/components/admin/lands/CorrectStatusDialog';
+import { OwnerAmountsDialog } from '@/components/admin/lands/OwnerAmountsDialog';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -159,6 +160,7 @@ export default function LandDetailPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deciding, setDeciding] = useState<LandStatus | null>(null);
   const [correcting, setCorrecting] = useState(false);
+  const [editingAmounts, setEditingAmounts] = useState(false);
 
   const land = useLiveQuery(() => landRepository.getWithRelations(id), [id]);
   /** what has actually been paid against this land, from the cost ledger (L-1) */
@@ -192,6 +194,10 @@ export default function LandDetailPage() {
   }
 
   const isJv = land.acquisition_type === 'joint_venture';
+  const canEditOwnerAmounts =
+    land.owners.length > 0 &&
+    (Number(land.final_agreed_amount) || 0) > 0 &&
+    ['agreed', 'acquired', 'jv_signed', 'linked_to_project', 'disposed'].includes(land.status);
   const purchasePricing = landUsesPurchasePricing(land.acquisition_type);
   const headline = landHeadlineAmount(land);
   const costSheetRelevant = ['agreed', 'acquired', 'jv_signed', 'linked_to_project', 'disposed'].includes(
@@ -421,11 +427,19 @@ export default function LandDetailPage() {
               <CardHeader
                 title="Landowners"
                 action={
-                  <Link href={`/admin/lands/${land.id}/edit`}>
-                    <Button variant="outline" size="sm">
-                      <Pencil className="size-4" /> Manage
-                    </Button>
-                  </Link>
+                  <div className="flex flex-wrap gap-2">
+                    {/* amounts exist once a price does (BRD LAND-002) */}
+                    {canEditOwnerAmounts && (
+                      <Button variant="outline" size="sm" onClick={() => setEditingAmounts(true)}>
+                        <Scale className="size-4" /> Agreed amounts
+                      </Button>
+                    )}
+                    <Link href={`/admin/lands/${land.id}/edit`}>
+                      <Button variant="outline" size="sm">
+                        <Pencil className="size-4" /> Manage
+                      </Button>
+                    </Link>
+                  </div>
                 }
               />
               {land.owners.length === 0 ? (
@@ -693,6 +707,7 @@ export default function LandDetailPage() {
         <LandEventDialog land={land} target={deciding} onClose={() => setDeciding(null)} />
       )}
       {correcting && <CorrectStatusDialog land={land} onClose={() => setCorrecting(false)} />}
+      {editingAmounts && <OwnerAmountsDialog land={land} onClose={() => setEditingAmounts(false)} />}
 
       <ConfirmDialog
         open={confirmDelete}
