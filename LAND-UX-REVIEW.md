@@ -167,14 +167,6 @@ site visit recorded 26 May"), so it is never a silent change.
    work later adds more to a land, a left rail inside the page reads better than
    a wrapping tab row.
 
-**Answered 2026-09-14, before L7 part 3 — all three as proposed:**
-
-1. Yes, automatic on the first round. Due-diligence progress shows as a note on
-   the Pipeline card during negotiation, and G2 still guards Acquired / JV Signed.
-2. Yes, keep "Correct this status", available to every role that can open the
-   land page, reason required, logged as a correction.
-3. Six tabs. Revisit a left rail when Investor or Contractor work adds sections.
-
 ---
 
 ## Next session — starting prompt
