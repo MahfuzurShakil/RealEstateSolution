@@ -508,6 +508,46 @@ export class AppDatabase extends Dexie {
         'id, land_id, activity_type, contractor_id, status, [land_id+status]',
       land_development_progress: 'id, activity_id, progress_date',
     });
+
+    /*
+     * v24 — `jv_signed` folds into `acquired` (client decision 2026-09-18).
+     *
+     * A joint venture that has been signed and a purchase that has been
+     * registered are the same state of the land: it is ours. How it became
+     * ours is `acquisition_type`, which every screen already reads, so the
+     * second status only meant every rule after acquisition had to be written
+     * twice — and one of the two was always the one somebody forgot.
+     *
+     * No index changes; the block exists to hang the row rewrite off, the same
+     * way v19 did for the BRD rename. Rows that are already `acquired` are not
+     * in the map and are left alone, so re-running this is a no-op.
+     *
+     * The new statuses (`under_development`, `ready_for_project`, `on_hold`)
+     * need no migration: no existing row can be in them, and the land
+     * development a plot already has moves it on the next time that work is
+     * touched.
+     */
+    this.version(24).stores({}).upgrade(async (tx) => {
+      const lands = await tx.table('lands').toArray();
+      for (const land of lands) {
+        if (land.status === 'jv_signed') {
+          await tx.table('lands').update(land.id, { status: 'acquired' });
+        }
+      }
+
+      // both ends of a history row, or the Timeline renders a missing label
+      const history = await tx.table('land_status_history').toArray();
+      for (const event of history) {
+        const from = event.from_status === 'jv_signed';
+        const to = event.to_status === 'jv_signed';
+        if (from || to) {
+          await tx.table('land_status_history').update(event.id, {
+            ...(from ? { from_status: 'acquired' } : {}),
+            ...(to ? { to_status: 'acquired' } : {}),
+          });
+        }
+      }
+    });
   }
 }
 

@@ -6,8 +6,8 @@ import { Check, FileImage, FileText, History } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DocumentViewer } from '@/components/admin/documents/DocumentsPanel';
-import type { DocumentRecord, LandStatusEvent } from '@/lib/db/types';
-import { LAND_STATUS_META } from '@/lib/domain/land';
+import type { AcquisitionType, DocumentRecord, LandStatusEvent } from '@/lib/db/types';
+import { LAND_STATUS_META, landStatusLabel } from '@/lib/domain/land';
 import { documentRepository, landStatusEventRepository } from '@/lib/repositories';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
@@ -21,7 +21,14 @@ function Detail({ label, value }: { label: string; value: string }) {
 }
 
 /** Tree-style audit trail of every pipeline step with the details captured. */
-export function LandTimeline({ landId }: { landId: string }) {
+export function LandTimeline({
+  landId,
+  acquisitionType = 'direct_purchase',
+}: {
+  landId: string;
+  /** a JV reached `acquired` by signing, so it is labelled that way */
+  acquisitionType?: AcquisitionType;
+}) {
   const events = useLiveQuery(() => landStatusEventRepository.listForLand(landId), [landId]);
   const [viewing, setViewing] = useState<DocumentRecord | null>(null);
 
@@ -86,9 +93,9 @@ export function LandTimeline({ landId }: { landId: string }) {
             <div className="rounded-xl border border-hairline bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <Badge tone={meta.tone}>{meta.label}</Badge>
+                  <Badge tone={meta.tone}>{landStatusLabel(event.to_status, acquisitionType)}</Badge>
                   <span className="text-xs text-ink-muted">
-                    from {LAND_STATUS_META[event.from_status].label}
+                    from {landStatusLabel(event.from_status, acquisitionType)}
                   </span>
                   {/* L7 — say when the system moved it, or a person corrected it */}
                   {event.source === 'automatic' && <Badge>Automatic</Badge>}

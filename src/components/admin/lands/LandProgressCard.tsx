@@ -6,7 +6,12 @@ import { Check, ChevronRight, Info } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardHeader } from '@/components/ui/Card';
 import type { Land } from '@/lib/db/types';
-import { LAND_STATUS_META, landIsHeld } from '@/lib/domain/land';
+import {
+  LAND_STATUS_META,
+  STEP_SETS_STATUS,
+  landIsHeld,
+  landStatusLabel,
+} from '@/lib/domain/land';
 import {
   landDdRepository,
   landDevelopmentRepository,
@@ -20,7 +25,7 @@ import { cn } from '@/lib/utils/cn';
 export type TimelineSection = 'site' | 'legal' | 'acquisition' | 'development';
 
 interface Step {
-  key: string;
+  key: keyof typeof STEP_SETS_STATUS;
   label: string;
   done: boolean;
   /** the small count beside the label */
@@ -109,14 +114,18 @@ export function LandProgressCard({
       },
       {
         key: 'closing',
-        label: isJv ? 'JV signed' : 'Acquired',
+        label: isJv ? 'JV signed' : 'Registered',
         done: landIsHeld(land.status) || land.status === 'disposed',
         section: 'acquisition',
       },
       {
         key: 'development',
         label: 'Land development',
-        done: Boolean(land.no_development_required) || (dev.total > 0 && dev.outstanding === 0),
+        done:
+          land.status === 'ready_for_project' ||
+          land.status === 'linked_to_project' ||
+          Boolean(land.no_development_required) ||
+          (dev.total > 0 && dev.outstanding === 0),
         count: land.no_development_required
           ? 'not needed'
           : dev.total
@@ -134,7 +143,9 @@ export function LandProgressCard({
       <CardHeader
         title="Progress"
         action={
-          <Badge tone={LAND_STATUS_META[land.status].tone}>{LAND_STATUS_META[land.status].label}</Badge>
+          <Badge tone={LAND_STATUS_META[land.status].tone}>
+            {landStatusLabel(land.status, land.acquisition_type)}
+          </Badge>
         }
       />
       {data && (
@@ -159,6 +170,16 @@ export function LandProgressCard({
                       {step.count}
                     </span>
                   )}
+                  {/*
+                    Which status this step sets, so the card and the status
+                    badge stop looking like two competing lists. A step with no
+                    status is a gate (feasibility) or a record (the schedule).
+                  */}
+                  <span className="hidden shrink-0 text-[11px] text-slate-400 sm:block">
+                    {STEP_SETS_STATUS[step.key]
+                      ? `→ ${landStatusLabel(STEP_SETS_STATUS[step.key]!, land.acquisition_type)}`
+                      : 'no status'}
+                  </span>
                   <ChevronRight className="size-3.5 shrink-0 text-slate-300 group-hover:text-admin-600" />
                 </button>
               </li>

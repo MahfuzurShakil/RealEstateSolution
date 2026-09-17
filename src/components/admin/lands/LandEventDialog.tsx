@@ -48,7 +48,9 @@ export function LandEventDialog({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const closing = target === 'acquired' || target === 'jv_signed';
+  const isJv = land.acquisition_type === 'joint_venture';
+  // one closing status; a JV reaches it by signing, a purchase by registering
+  const closing = target === 'acquired';
   // live, so finishing the DD checklist in another tab unlocks this without a reload
   const blocked = useLiveQuery(
     async () => (closing ? landPipelineRepository.closingBlockReason(land.id) : null),
@@ -62,7 +64,7 @@ export function LandEventDialog({
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const jv = target === 'jv_signed' ? await landJvRepository.getForLand(land.id) : undefined;
+      const jv = closing && isJv ? await landJvRepository.getForLand(land.id) : undefined;
       if (cancelled) return;
       setValues((v) => ({
         ...v,
@@ -75,7 +77,7 @@ export function LandEventDialog({
     return () => {
       cancelled = true;
     };
-  }, [land.id, land.final_agreed_amount, target, closing]);
+  }, [land.id, land.final_agreed_amount, target, closing, isJv]);
 
   if (!config) return null;
 
@@ -97,34 +99,33 @@ export function LandEventDialog({
         reference_no: text('reference_no'),
         remarks: text('remarks'),
       };
-      const event =
-        target === 'acquired'
-          ? await landPipelineRepository.recordRegistration(
+      const event = !closing
+        ? await landPipelineRepository.recordDecision(
+            land.id,
+            target,
+            { ...base, amount: num('amount'), performed_by: text('performed_by') },
+            userId,
+          )
+        : isJv
+          ? await landPipelineRepository.recordJvSigning(
+              land.id,
+              {
+                ...base,
+                developer_share_pct: num('developer_share_pct') ?? 0,
+                landowner_share_pct: num('landowner_share_pct') ?? 0,
+                jv_share_basis: (values.jv_share_basis as JvShareBasis) || 'flat_count',
+                cash_payable: num('amount'),
+              },
+              userId,
+            )
+          : await landPipelineRepository.recordRegistration(
               land.id,
               { ...base, amount: num('amount') ?? 0, performed_by: text('performed_by') },
               userId,
-            )
-          : target === 'jv_signed'
-            ? await landPipelineRepository.recordJvSigning(
-                land.id,
-                {
-                  ...base,
-                  developer_share_pct: num('developer_share_pct') ?? 0,
-                  landowner_share_pct: num('landowner_share_pct') ?? 0,
-                  jv_share_basis: (values.jv_share_basis as JvShareBasis) || 'flat_count',
-                  cash_payable: num('amount'),
-                },
-                userId,
-              )
-            : await landPipelineRepository.recordDecision(
-                land.id,
-                target,
-                { ...base, amount: num('amount'), performed_by: text('performed_by') },
-                userId,
-              );
+            );
 
       if (files.length) {
-        const attachment = statusStepAttachment(target);
+        const attachment = statusStepAttachment(target, land.acquisition_type);
         const uploadedAt = new Date().toISOString();
         for (const file of files) {
           await documentRepository.create({
@@ -206,7 +207,7 @@ export function LandEventDialog({
         <StepAttachments
           files={files}
           onChange={setFiles}
-          prompt={statusStepAttachment(target).prompt}
+          prompt={statusStepAttachment(target, land.acquisition_type).prompt}
           error={fileError}
           onError={setFileError}
         />

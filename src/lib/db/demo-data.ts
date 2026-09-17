@@ -1,4 +1,10 @@
-import type { AcquisitionType, JvShareBasis, LandSizeUnit, LandStatus } from './types';
+import type {
+  AcquisitionType,
+  JvShareBasis,
+  LandSizeUnit,
+  LandStatus,
+  LandStatusEventSource,
+} from './types';
 
 /**
  * Bangladesh-context demo dataset for Module 1, so a fresh install never opens
@@ -21,6 +27,12 @@ export interface DemoOwner {
 
 export interface DemoStatusEvent {
   to_status: LandStatus;
+  /**
+   * L7 — how the change happened. Left off for the history the old status
+   * dialogs wrote, which is what that history was; the newer demo lands carry
+   * `automatic` rows so the Status changes card shows all three kinds.
+   */
+  source?: LandStatusEventSource;
   event_date: string;
   performed_by?: string;
   amount?: number;
@@ -181,7 +193,7 @@ export const DEMO_LANDS: DemoLand[] = [
     nearby_facilities:
       'Independent University 800m, Apollo Hospital 1.5km, 100ft road 400m, Bashundhara Mall 2km',
     acquisition_type: 'joint_venture',
-    status: 'jv_signed',
+    status: 'acquired',
     remarks: 'Corner plot, two-road facing. Owner wanted a JV from the first meeting.',
     created_at: '2026-01-14T09:20:00.000Z',
     owners: [{ key: 'rafiqul', share: 100, primary: true }],
@@ -221,7 +233,7 @@ export const DEMO_LANDS: DemoLand[] = [
         remarks: 'Board approved the JV structure.',
       },
       {
-        to_status: 'jv_signed',
+        to_status: 'acquired',
         event_date: '2026-04-18',
         reference_no: 'JV-2026-003',
         remarks: 'Signed at the Gulshan office. POA executed the same day.',
@@ -565,14 +577,23 @@ export const DEMO_LANDS: DemoLand[] = [
     gps_lng: 90.3654,
     nearby_facilities: 'DOHS gate 300m, Mirpur 12 metro 2km, school and mosque within 500m',
     acquisition_type: 'joint_venture',
-    status: 'sourced',
+    // the parked case (2026-09-18): a real plot nobody has dropped or chased
+    status: 'on_hold',
     remarks: 'Owner is abroad; discussions happening over WhatsApp.',
     created_at: '2026-08-05T11:40:00.000Z',
     owners: [
       { key: 'sultana', share: 50, primary: true, area: 2.5 },
       { key: 'nasima', share: 50 },
     ],
-    history: [],
+    history: [
+      {
+        to_status: 'on_hold',
+        event_date: '2026-08-20',
+        performed_by: 'Land team lead',
+        remarks:
+          'Owner wants 30% above the Mirpur DOHS rate and will not move before the next mutation season. Parked, not dropped — worth asking again after Poush.',
+      },
+    ],
   },
   {
     name: 'Chattogram Agrabad commercial plot',
@@ -597,7 +618,7 @@ export const DEMO_LANDS: DemoLand[] = [
     gps_lng: 91.8093,
     nearby_facilities: 'Agrabad commercial hub, Customs House 700m, port access 3km',
     acquisition_type: 'joint_venture',
-    status: 'jv_signed',
+    status: 'acquired',
     remarks: 'Owner family wanted the share counted in square feet, not flat numbers.',
     created_at: '2026-02-02T10:05:00.000Z',
     owners: [{ key: 'jashim', share: 100, primary: true }],
@@ -636,7 +657,7 @@ export const DEMO_LANDS: DemoLand[] = [
         remarks: 'Board preferred a JV over an outright purchase at this price.',
       },
       {
-        to_status: 'jv_signed',
+        to_status: 'acquired',
         event_date: '2026-05-12',
         reference_no: 'JV-2026-007',
         remarks: 'Signed at the Agrabad office; two witnesses from the owner family.',
@@ -693,6 +714,148 @@ export const DEMO_LANDS: DemoLand[] = [
         amount: 82000000,
         reference_no: '1187/2026',
         remarks: 'Registered at the Dhanmondi sub-registry office.',
+      },
+    ],
+  },
+
+  /*
+   * L7's two new held statuses need somewhere to be seen (2026-09-18). Both
+   * are ours and neither is in a project yet: Ashulia is still being filled
+   * (Under Development), and Block J needs no work at all (Ready for
+   * Project). Their status is seeded as `acquired`; the pipeline moves them
+   * from there off their own records, which is also a check that it does.
+   */
+  {
+    name: 'Ashulia Zirabo industrial plot',
+    land_classification: 'নাল (Nal — paddy land)',
+    source: 'Broker / Dalal',
+    location_division: 'Dhaka',
+    location_district: 'Dhaka',
+    location_upazila: 'Savar',
+    location_area: 'Zirabo',
+    road: 'Zirabo–Bishmail Road',
+    road_access: '24 ft road, truck access from the Ashulia highway',
+    mouza: 'Zirabo',
+    dag_number: '7781',
+    khatian_number: '2210',
+    land_size: 3,
+    land_size_unit: 'bigha',
+    asking_price: 52000000,
+    final_agreed_amount: 49000000,
+    gps_lat: 23.9188,
+    gps_lng: 90.3121,
+    nearby_facilities: 'Ashulia EPZ 4km, Zirabo bazar 900m, Dhaka–Aricha highway 3km',
+    acquisition_type: 'direct_purchase',
+    status: 'acquired',
+    remarks: 'Bought for staff housing. Filling and the boundary wall are running now.',
+    created_at: '2026-02-02T05:30:00.000Z',
+    owners: [{ key: 'farhana', share: 100, primary: true, area: 3, amount: 49_000_000 }],
+    history: [
+      {
+        to_status: 'under_review',
+        event_date: '2026-02-09',
+        performed_by: 'Shafiq Rahman (Land Team)',
+        remarks: 'Site visit recorded, led by Shafiq Rahman (Land Team).',
+        source: 'automatic',
+      },
+      {
+        to_status: 'dd_in_progress',
+        event_date: '2026-03-04',
+        remarks: 'Due diligence started — "Ownership confirmed" was taken up.',
+        source: 'automatic',
+      },
+      {
+        to_status: 'negotiation',
+        event_date: '2026-03-18',
+        amount: 52000000,
+        remarks: 'Negotiation round 1 recorded — the owner’s ask.',
+        source: 'automatic',
+      },
+      {
+        to_status: 'agreed',
+        event_date: '2026-04-06',
+        amount: 49000000,
+        remarks: 'Round 2 accepted — this amount is now the agreed price.',
+        source: 'automatic',
+      },
+      {
+        to_status: 'acquired',
+        event_date: '2026-05-14',
+        amount: 49000000,
+        reference_no: '2298/2026',
+        remarks: 'Registered at the Savar sub-registry office.',
+        source: 'manual',
+      },
+    ],
+  },
+  {
+    name: 'Bashundhara Block J ready plot',
+    land_classification: 'ভিটি (Bhiti — homestead)',
+    source: 'Reference',
+    location_division: 'Dhaka',
+    location_district: 'Dhaka',
+    location_upazila: 'Badda',
+    location_area: 'Bashundhara R/A',
+    road: 'Block J main road',
+    road_access: '40 ft internal road, services at the boundary',
+    mouza: 'Bashundhara',
+    dag_number: '1420',
+    khatian_number: '318',
+    land_size: 5,
+    land_size_unit: 'katha',
+    asking_price: 0,
+    final_agreed_amount: 4_000_000,
+    gps_lat: 23.8199,
+    gps_lng: 90.4312,
+    nearby_facilities: 'Bashundhara gate 1.5km, school 400m, hospital 2km',
+    acquisition_type: 'joint_venture',
+    status: 'acquired',
+    remarks: 'Serviced plot — nothing to fill, so it is ready for a project as it stands.',
+    created_at: '2026-03-12T06:15:00.000Z',
+    owners: [{ key: 'sultana', share: 100, primary: true, area: 5, amount: 4_000_000 }],
+    jv: {
+      developer_share_pct: 58,
+      landowner_share_pct: 42,
+      agreement_date: '2026-06-22',
+      power_of_attorney: true,
+      poa_reference: 'POA-2026-011',
+      jv_share_basis: 'flat_count',
+    },
+    history: [
+      {
+        to_status: 'under_review',
+        event_date: '2026-03-19',
+        performed_by: 'Kamal Hossain (Land Team)',
+        remarks: 'Site visit recorded, led by Kamal Hossain (Land Team).',
+        source: 'automatic',
+      },
+      {
+        to_status: 'dd_in_progress',
+        event_date: '2026-04-08',
+        remarks: 'Due diligence started — "Ownership confirmed" was taken up.',
+        source: 'automatic',
+      },
+      {
+        to_status: 'negotiation',
+        event_date: '2026-05-05',
+        amount: 5000000,
+        remarks: 'Negotiation round 1 recorded — the owner’s ask.',
+        source: 'automatic',
+      },
+      {
+        to_status: 'agreed',
+        event_date: '2026-06-02',
+        amount: 4000000,
+        remarks: 'Round 2 accepted — terms agreed.',
+        source: 'automatic',
+      },
+      {
+        to_status: 'acquired',
+        event_date: '2026-06-22',
+        amount: 4000000,
+        reference_no: 'JV-2026-011',
+        remarks: 'JV agreement signed at the Bashundhara office.',
+        source: 'manual',
       },
     ],
   },

@@ -36,6 +36,8 @@ export interface DemoDevelopmentActivity {
 export const DEMO_NO_DEVELOPMENT_LANDS = [
   'Uttara Sector 13 residential plot',
   'Bashundhara Block K corner plot',
+  // serviced from the day it was signed, so it goes straight to Ready for Project
+  'Bashundhara Block J ready plot',
 ];
 
 export const DEMO_DEVELOPMENT: DemoDevelopmentActivity[] = [
@@ -115,5 +117,63 @@ export const DEMO_DEVELOPMENT: DemoDevelopmentActivity[] = [
     status: 'on_hold',
     notes:
       'Held pending the WASA alignment — the municipal drain on this lane is being re-cut and the levels would have to be redone.',
+  },
+
+  /*
+   * Ashulia is the plot still being worked on, and the only demo land whose
+   * own development sets its status: filling and the wall are unfinished, so
+   * the pipeline holds it at Under Development.
+   */
+  {
+    land: 'Ashulia Zirabo industrial plot',
+    activity_type: 'Site clearing',
+    contractor: 'Nirman Construction Services',
+    unit: 'sft',
+    planned_qty: 21000,
+    budget_amount: 260000,
+    start_date: '2026-05-28',
+    target_date: '2026-06-10',
+    status: 'completed',
+    progress: [
+      {
+        progress_date: '2026-06-08',
+        qty_done: 21000,
+        pct_complete: 100,
+        amount_incurred: 248000,
+        remarks: 'Crop stubble and two sheds cleared.',
+      },
+    ],
+  },
+  {
+    land: 'Ashulia Zirabo industrial plot',
+    activity_type: 'Earth filling',
+    contractor: 'Nirman Construction Services',
+    unit: 'cft',
+    planned_qty: 96000,
+    budget_amount: 3800000,
+    start_date: '2026-06-15',
+    target_date: '2026-10-30',
+    status: 'in_progress',
+    notes: 'Five feet across three bigha, dredger fill from the Turag.',
+    progress: [
+      { progress_date: '2026-07-20', qty_done: 28000, pct_complete: 29, amount_incurred: 1120000 },
+      {
+        progress_date: '2026-09-05',
+        qty_done: 51000,
+        pct_complete: 53,
+        amount_incurred: 2050000,
+        remarks: 'Monsoon slowed the barges; on track for the end of Kartik.',
+      },
+    ],
+  },
+  {
+    land: 'Ashulia Zirabo industrial plot',
+    activity_type: 'Boundary wall',
+    unit: 'rft',
+    planned_qty: 620,
+    budget_amount: 1450000,
+    target_date: '2026-12-15',
+    status: 'planned',
+    notes: 'Cannot start before the fill settles.',
   },
 ];

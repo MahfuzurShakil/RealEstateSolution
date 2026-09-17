@@ -16,6 +16,7 @@ import {
   landJvRepository,
   normalizePhone,
   landOwnerMappingRepository,
+  landPipelineRepository,
   landRepository,
   landStatusEventRepository,
   siteVisitRepository,
@@ -51,6 +52,7 @@ import {
 import type { LandStatus, MaterialRequestStatus, ProjectStatus } from './types';
 import { PROCUREMENT_BUDGET_HEAD } from './types';
 import { getDb } from './database';
+import { landIsHeld } from '../domain/land';
 import { backfillMaterialItems } from './backfill-material-items';
 import { DEMO_LANDS, DEMO_OWNERS } from './demo-data';
 import { DEMO_FEASIBILITY, DEMO_SITE_VISITS } from './demo-site-visits';
@@ -586,6 +588,7 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
           amount: event.amount ?? null,
           reference_no: event.reference_no ?? null,
           remarks: event.remarks ?? null,
+          source: event.source ?? null,
         },
         createdBy,
       );
@@ -597,11 +600,12 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
       previous = event.to_status;
     }
 
-    // a couple of sample attachments on the two closed deals
-    if (demo.status === 'acquired' || demo.status === 'jv_signed') {
+    // a couple of sample attachments on the closed deals
+    if (demo.status === 'acquired') {
       const png = await makeSamplePng(demo.name);
       if (png) {
-        const type = demo.status === 'jv_signed' ? 'jv_agreement' : 'dolil_deed';
+        // a JV closes with an agreement, a purchase with a deed
+        const type = demo.acquisition_type === 'joint_venture' ? 'jv_agreement' : 'dolil_deed';
         const fileName = `${type}-${land.code.toLowerCase()}.png`;
         await documentRepository.create(
           {
@@ -654,6 +658,20 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
   await backfillMaterialItems(getDb());
   // after procurement: a development activity names a contractor from the vendor master
   await seedDemoDevelopment(landIds, createdBy);
+
+  /*
+   * L7 — let the pipeline settle the held plots' statuses from their own
+   * records (2026-09-18). The demo seeds `acquired`; a plot whose filling is
+   * running becomes Under Development and a serviced one Ready for Project,
+   * which is both the demo of those statuses and a check that the rules fire.
+   * Only held land is synced: the rest is a replayed history and is already
+   * where its story says.
+   */
+  for (const landId of landIds.values()) {
+    const land = await landRepository.getById(landId);
+    if (land && landIsHeld(land.status)) await landPipelineRepository.syncFromWork(landId, createdBy);
+  }
+
   await seedDemoFinance(projectIds, landIds, userIds, bookingIds, createdBy);
   await seedDemoUserAccess(projectIds, userIds, createdBy);
 
@@ -1694,6 +1712,7 @@ async function seedDemoFinance(
   for (const [name, agreementDate] of [
     ['Bashundhara Block K corner plot', '2026-04-18'],
     ['Chattogram Agrabad commercial plot', '2026-05-12'],
+    ['Bashundhara Block J ready plot', '2026-06-22'],
   ] as const) {
     const landId = landIds.get(name);
     if (!landId) continue;
@@ -1714,6 +1733,21 @@ async function seedDemoFinance(
   }
 
   // L7 — every acquired purchase carries its settlement schedule (BRD ACQ-003)
+  const ashuliaLandId = landIds.get('Ashulia Zirabo industrial plot');
+  if (ashuliaLandId) {
+    await paymentScheduleRepository.generateForLand(
+      ashuliaLandId,
+      {
+        agreementDate: '2026-04-06',
+        advanceAmount: 19600000,
+        monthlyCount: 2,
+        registrationAmount: 19400000,
+        registrationAfterMonths: 2,
+      },
+      createdBy,
+    );
+  }
+
   const uttaraLandId = landIds.get('Uttara Sector 13 residential plot');
   if (uttaraLandId) {
     await paymentScheduleRepository.generateForLand(

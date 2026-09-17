@@ -22,9 +22,8 @@ import { useMockSession } from '@/lib/auth/mock-session';
 import type { DevelopmentActivityStatus, Land } from '@/lib/db/types';
 import { DEVELOPMENT_ACTIVITY_STATUSES } from '@/lib/db/types';
 import {
-  landDevelopmentProgressRepository,
   landDevelopmentRepository,
-  landRepository,
+  landPipelineRepository,
   lookupRepository,
   supplierRepository,
   type DevelopmentActivityWithProgress,
@@ -133,7 +132,12 @@ export function DevelopmentPanel({ land }: { land: Land }) {
           className="mt-0.5 size-4 shrink-0 accent-admin-600"
           checked={Boolean(land.no_development_required)}
           onChange={async (e) => {
-            await landRepository.update(land.id, { no_development_required: e.target.checked });
+            // a ready plot becomes Ready for Project; the pipeline works that out
+            await landPipelineRepository.setNoDevelopmentRequired(
+              land.id,
+              e.target.checked,
+              userId,
+            );
           }}
         />
         <span className="min-w-0">
@@ -278,7 +282,7 @@ export function DevelopmentPanel({ land }: { land: Land }) {
         message="The activity, its progress reports and any photos attached to it are removed. This cannot be undone."
         onCancel={() => setDeleting(null)}
         onConfirm={async () => {
-          if (deleting) await landDevelopmentRepository.removeCascade(deleting.id);
+          if (deleting) await landPipelineRepository.removeDevelopmentActivity(deleting.id, userId);
           setDeleting(null);
         }}
       />
@@ -342,8 +346,9 @@ function ActivityDialog({
         status: form.status,
         notes: form.notes.trim() || null,
       };
-      if (activity) await landDevelopmentRepository.update(activity.id, payload);
-      else await landDevelopmentRepository.create(payload, userId);
+      // through the pipeline: development work moves a held plot's status
+      if (activity) await landPipelineRepository.updateDevelopmentActivity(activity.id, payload, userId);
+      else await landPipelineRepository.recordDevelopmentActivity(payload, userId);
       onClose();
     } finally {
       setSaving(false);
@@ -507,7 +512,7 @@ function ProgressDialog({
             onClick={async () => {
               setSaving(true);
               try {
-                await landDevelopmentProgressRepository.record(
+                await landPipelineRepository.recordDevelopmentProgress(
                   {
                     activity_id: activity.id,
                     progress_date: form.progress_date,

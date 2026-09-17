@@ -1,8 +1,12 @@
 'use client';
 
+import { db } from '../db/database';
 import type {
   JvShareBasis,
+  Land,
   LandDdItem,
+  LandDevelopmentActivity,
+  LandDevelopmentProgress,
   LandNegotiation,
   LandStatus,
   LandStatusEvent,
@@ -13,15 +17,26 @@ import {
   allowedNextStatuses,
   closingBlockReason,
   feasibilityGateBlockReason,
+  landWaitingOn,
   nextAutomaticStep,
   splitAmountByShare,
   type LandWorkFacts,
+  type WaitingKey,
 } from '../domain/land';
 import { localDay } from '../utils/format';
 import type { NewRecord, UpdateRecord } from './base.repository';
 import { landDdRepository } from './dd.repository';
+import {
+  landDevelopmentProgressRepository,
+  landDevelopmentRepository,
+} from './land-development.repository';
 import { paymentScheduleRepository } from './finance.repository';
-import { landJvRepository, landOwnerMappingRepository, landRepository } from './land.repository';
+import {
+  landJvRepository,
+  landOwnerMappingRepository,
+  landRepository,
+  landStatusEventRepository,
+} from './land.repository';
 import { landNegotiationRepository } from './negotiation.repository';
 import { landFeasibilityRepository, siteVisitRepository } from './site-visit.repository';
 
@@ -48,10 +63,13 @@ export class PipelineBlockedError extends Error {}
 class LandPipelineRepository {
   /** What the records on a land say has happened. */
   async workFacts(landId: string): Promise<LandWorkFacts> {
-    const [visits, ddItems, rounds] = await Promise.all([
+    const [land, visits, ddItems, rounds, activities, development] = await Promise.all([
+      landRepository.getById(landId),
       siteVisitRepository.listForLand(landId),
       landDdRepository.listForLand(landId),
       landNegotiationRepository.listForLand(landId),
+      landDevelopmentRepository.listForLand(landId),
+      landDevelopmentRepository.readinessForLand(landId),
     ]);
     // visits and rounds come back newest first; a planned visit has not happened
     const firstVisit = visits.filter((v) => v.status !== 'planned').at(-1);
@@ -78,6 +96,15 @@ class LandPipelineRepository {
         amount: accepted.amount,
         accepted_on: localDay(accepted.updated_at),
       },
+      development: {
+        total: development.total,
+        outstanding: development.outstanding,
+        firstStartedOn: activities
+          .map((a) => a.start_date)
+          .filter((d): d is string => Boolean(d))
+          .sort()[0],
+      },
+      noDevelopmentRequired: Boolean(land?.no_development_required),
     };
   }
 
@@ -141,6 +168,175 @@ class LandPipelineRepository {
     const row = await landDdRepository.update(id, changes);
     if (row) await this.syncFromWork(row.land_id, actor);
     return row;
+  }
+
+  /* --------------------------- waiting on --------------------------- */
+
+  /**
+   * What each land is waiting on (`landWaitingOn`), for the land list.
+   *
+   * Every table is read once and grouped in memory rather than queried per
+   * land: the list shows a page of lands, and a query per land per table is
+   * how a list page starts taking seconds.
+   */
+  async waitingOnForLands(lands: Land[]): Promise<Map<string, { key: WaitingKey; text: string }>> {
+    const ids = new Set(lands.map((l) => l.id));
+    const [visits, studies, ddItems, rounds, schedules, activities, checklist] = await Promise.all([
+      db.site_visits.toArray(),
+      db.land_feasibility.toArray(),
+      db.land_dd_items.toArray(),
+      db.land_negotiations.toArray(),
+      db.payment_schedules.where('entity_type').equals('land').toArray(),
+      db.land_development_activities.toArray(),
+      db.dd_checklist_items.toArray(),
+    ]);
+
+    const settledDd = new Set(['passed', 'conditionally_approved', 'waived', 'not_applicable']);
+    const byLand = <T extends { land_id: string }>(rows: T[]) => {
+      const map = new Map<string, T[]>();
+      for (const row of rows) {
+        if (!ids.has(row.land_id)) continue;
+        const bucket = map.get(row.land_id);
+        if (bucket) bucket.push(row);
+        else map.set(row.land_id, [row]);
+      }
+      return map;
+    };
+    const visitsBy = byLand(visits);
+    const studiesBy = byLand(studies);
+    const ddBy = byLand(ddItems);
+    const roundsBy = byLand(rounds);
+    const activitiesBy = byLand(activities);
+    const scheduleFor = new Set(schedules.map((s) => s.entity_id));
+
+    const out = new Map<string, { key: WaitingKey; text: string }>();
+    for (const land of lands) {
+      const landStudies = (studiesBy.get(land.id) ?? []).sort((a, b) => b.version_no - a.version_no);
+      const landDd = ddBy.get(land.id) ?? [];
+      const mandatory = landDd.filter((d) => d.is_mandatory);
+      const landRounds = (roundsBy.get(land.id) ?? []).sort((a, b) => b.round_no - a.round_no);
+      const landActivities = activitiesBy.get(land.id) ?? [];
+      out.set(
+        land.id,
+        landWaitingOn({
+          status: land.status,
+          acquisitionType: land.acquisition_type,
+          doneVisits: (visitsBy.get(land.id) ?? []).filter((v) => v.status !== 'planned').length,
+          feasibility: {
+            current: landStudies[0],
+            latestApproved: landStudies.find((s) => s.status === 'approved'),
+          },
+          dd: {
+            mandatoryTotal: mandatory.length,
+            mandatoryOutstanding: mandatory.filter((d) => !settledDd.has(d.status)).length,
+            mandatoryFailed: mandatory.filter((d) => d.status === 'failed').length,
+          },
+          openRound: landRounds.find((r) => r.status === 'open'),
+          roundCount: landRounds.length,
+          hasSchedule: scheduleFor.has(land.id),
+          development: {
+            total: landActivities.length,
+            outstanding: landActivities.filter(
+              (a) => a.status !== 'completed' && a.status !== 'cancelled',
+            ).length,
+          },
+          noDevelopmentRequired: Boolean(land.no_development_required),
+        }),
+      );
+    }
+    // the checklist master is read only to keep this a single round of queries
+    void checklist;
+    return out;
+  }
+
+  /* ------------------------- land development ------------------------- */
+
+  /**
+   * Development work is what moves a held plot to Under Development and then to
+   * Ready for Project, so every write to it goes through here. A plot nobody
+   * has assessed stays `acquired`, which is the honest answer.
+   */
+  async recordDevelopmentActivity(
+    input: NewRecord<LandDevelopmentActivity>,
+    actor: string | null,
+  ): Promise<LandDevelopmentActivity> {
+    const activity = await landDevelopmentRepository.create(input, actor);
+    await this.syncFromWork(activity.land_id, actor);
+    return activity;
+  }
+
+  async updateDevelopmentActivity(
+    id: string,
+    changes: UpdateRecord<LandDevelopmentActivity>,
+    actor: string | null,
+  ): Promise<LandDevelopmentActivity | undefined> {
+    const activity = await landDevelopmentRepository.update(id, changes);
+    if (activity) await this.syncFromWork(activity.land_id, actor);
+    return activity;
+  }
+
+  async removeDevelopmentActivity(id: string, actor: string | null): Promise<void> {
+    const activity = await landDevelopmentRepository.getById(id);
+    await landDevelopmentRepository.removeCascade(id);
+    if (activity) await this.syncFromWork(activity.land_id, actor);
+  }
+
+  async recordDevelopmentProgress(
+    input: NewRecord<LandDevelopmentProgress>,
+    actor: string | null,
+  ): Promise<void> {
+    await landDevelopmentProgressRepository.record(input, actor);
+    const activity = await landDevelopmentRepository.getById(input.activity_id);
+    if (activity) await this.syncFromWork(activity.land_id, actor);
+  }
+
+  /** The "this plot needs no development" flag — it makes a held plot ready. */
+  async setNoDevelopmentRequired(
+    landId: string,
+    value: boolean,
+    actor: string | null,
+  ): Promise<void> {
+    await landRepository.update(landId, { no_development_required: value });
+    await this.syncFromWork(landId, actor);
+  }
+
+  /* ------------------------------- on hold ------------------------------- */
+
+  /**
+   * Back to where the land was before it was parked.
+   *
+   * The status it left is read from its own history rather than stored on the
+   * land: the history row is written anyway, and a second copy of the same
+   * fact is one more thing to keep in step. The work is then re-checked, so a
+   * land that was parked at Agreed and registered on paper meanwhile catches
+   * up in the same call.
+   */
+  async resumeFromHold(
+    landId: string,
+    details: { event_date: string; remarks: string | null },
+    actor: string | null,
+  ): Promise<LandStatusEvent | undefined> {
+    const land = await landRepository.getById(landId);
+    if (!land || land.status !== 'on_hold') {
+      throw new PipelineBlockedError('This land is not on hold.');
+    }
+    const history = await landStatusEventRepository.listForLand(landId);
+    const before = [...history].reverse().find((e) => e.to_status === 'on_hold')?.from_status;
+    const moved = await landRepository.setStatus(
+      landId,
+      before ?? 'sourced',
+      {
+        event_date: details.event_date,
+        performed_by: null,
+        amount: null,
+        reference_no: null,
+        remarks: details.remarks ?? `Resumed — back to ${LAND_STATUS_META[before ?? 'sourced'].label}.`,
+        source: 'manual',
+      },
+      actor,
+    );
+    await this.syncFromWork(landId, actor);
+    return moved?.event;
   }
 
   /** Why a round cannot be recorded yet (BRD SITE-003), or null. */
@@ -261,7 +457,7 @@ class LandPipelineRepository {
     if (blocked) throw new PipelineBlockedError(blocked);
     const moved = await landRepository.setStatus(
       landId,
-      'jv_signed',
+      'acquired',
       {
         event_date: details.event_date,
         amount: details.cash_payable,

@@ -428,10 +428,15 @@ class LandProjectMappingRepository extends BaseRepository<LandProjectMapping> {
           updated_at: new Date().toISOString(),
         });
       } else if (!stillLinked && land.status === 'linked_to_project') {
-        await db.lands.update(land_id, {
-          status: land.acquisition_type === 'joint_venture' ? 'jv_signed' : 'acquired',
-          updated_at: new Date().toISOString(),
-        });
+        /*
+         * Back to where its own development left it, not to `acquired`: a plot
+         * whose filling was finished before the project took it is still
+         * finished when the project lets it go. `landPipelineRepository`
+         * re-derives that from the activities.
+         */
+        await db.lands.update(land_id, { status: 'acquired', updated_at: new Date().toISOString() });
+        const { landPipelineRepository } = await import('./land-pipeline.repository');
+        await landPipelineRepository.syncFromWork(land_id);
       }
     }
   }

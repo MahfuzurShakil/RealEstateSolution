@@ -8,14 +8,15 @@ import type {
 import { localDay, todayLocal } from '@/lib/utils/format';
 
 /**
- * Module 1 status pipeline, in the BRD's vocabulary (BRD v2.0 LAND-004):
+ * Module 1 status pipeline (BRD v2.0 LAND-004, extended 2026-09-18):
  *
  *   sourced → under_review → dd_in_progress → negotiation → agreed
- *           → acquired | jv_signed | rejected
- *           → disposed | linked_to_project
+ *           → acquired → under_development → ready_for_project
+ *           → linked_to_project
+ *   any of those → on_hold | rejected;  ours → disposed
  *
  * `linked_to_project` is NOT chosen by hand — Module 2 sets it when the land is
- * mapped to a project, so it is excluded from the manual transition list.
+ * mapped to a project. See `LAND_STATUSES` for why `jv_signed` is gone.
  */
 export const LAND_STATUS_META: Record<LandStatus, { label: string; tone: BadgeTone }> = {
   sourced: { label: 'Sourced', tone: 'neutral' },
@@ -24,11 +25,49 @@ export const LAND_STATUS_META: Record<LandStatus, { label: string; tone: BadgeTo
   negotiation: { label: 'Negotiation', tone: 'amber' },
   agreed: { label: 'Agreed', tone: 'amber' },
   acquired: { label: 'Acquired', tone: 'green' },
-  jv_signed: { label: 'JV Signed', tone: 'green' },
+  under_development: { label: 'Under Development', tone: 'blue' },
+  ready_for_project: { label: 'Ready for Project', tone: 'green' },
+  linked_to_project: { label: 'Linked to Project', tone: 'teal' },
+  on_hold: { label: 'On Hold', tone: 'amber' },
   rejected: { label: 'Rejected', tone: 'red' },
   disposed: { label: 'Disposed', tone: 'neutral' },
-  linked_to_project: { label: 'Linked to Project', tone: 'teal' },
 };
+
+/**
+ * What to call `acquired` on screen: a joint venture was signed, not bought.
+ *
+ * One status, two words for it — the status says the land is ours and
+ * `acquisition_type` says how, which is why `jv_signed` stopped being a status
+ * of its own (Dexie v24).
+ */
+export function landStatusLabel(status: LandStatus, acquisitionType: AcquisitionType): string {
+  if (status === 'acquired' && acquisitionType === 'joint_venture') return 'JV Signed';
+  return LAND_STATUS_META[status].label;
+}
+
+/* ------------------------------------------------------------------ *
+ * Stages — the coarse filter the land list opens with
+ * ------------------------------------------------------------------ */
+
+export const LAND_STAGES = ['sourcing', 'legal', 'deal', 'owned', 'closed'] as const;
+export type LandStage = (typeof LAND_STAGES)[number];
+
+export const LAND_STAGE_META: Record<LandStage, { label: string; statuses: LandStatus[] }> = {
+  sourcing: { label: 'Sourcing', statuses: ['sourced', 'under_review'] },
+  legal: { label: 'Legal', statuses: ['dd_in_progress'] },
+  deal: { label: 'Deal', statuses: ['negotiation', 'agreed'] },
+  owned: {
+    label: 'Owned',
+    statuses: ['acquired', 'under_development', 'ready_for_project', 'linked_to_project'],
+  },
+  closed: { label: 'Closed', statuses: ['on_hold', 'rejected', 'disposed'] },
+};
+
+export function landStage(status: LandStatus): LandStage {
+  return (
+    LAND_STAGES.find((stage) => LAND_STAGE_META[stage].statuses.includes(status)) ?? 'closed'
+  );
+}
 
 /**
  * The *decisions* a user may record from `current` (L7, LAND-L7-PLAN.md).
@@ -42,11 +81,12 @@ export const LAND_STATUS_META: Record<LandStatus, { label: string; tone: BadgeTo
  */
 export function allowedNextStatuses(current: LandStatus): LandStatus[] {
   const map: Record<LandStatus, LandStatus[]> = {
-    sourced: ['rejected'],
-    under_review: ['rejected'],
-    dd_in_progress: ['rejected'],
-    negotiation: ['rejected'],
-    agreed: ['rejected'],
+    // anything still being chased can be parked or dropped
+    sourced: ['on_hold', 'rejected'],
+    under_review: ['on_hold', 'rejected'],
+    dd_in_progress: ['on_hold', 'rejected'],
+    negotiation: ['on_hold', 'rejected'],
+    agreed: ['on_hold', 'rejected'],
     /*
      * A land we own can be sold on (BRD LAND-004 DISPOSED). It is not offered
      * from `linked_to_project`: a plot a project is being built on is not
@@ -54,11 +94,14 @@ export function allowedNextStatuses(current: LandStatus): LandStatus[] {
      * the project has to let go of it first.
      */
     acquired: ['disposed'],
-    jv_signed: ['disposed'],
+    under_development: ['disposed'],
+    ready_for_project: ['disposed'],
+    linked_to_project: [],
+    // a parked land is resumed (back to where it was) or dropped
+    on_hold: ['rejected'],
     // a rejected land can be reopened at the start of the pipeline
     rejected: ['sourced'],
     disposed: [],
-    linked_to_project: [],
   };
   return map[current];
 }
@@ -192,13 +235,148 @@ export function developmentGateBlockReason(
  * L7 — status follows the work (LAND-L7-PLAN.md)
  * ------------------------------------------------------------------ */
 
-/** The four steps that follow the work, keyed by the status they leave. */
+/**
+ * Which status each piece of work sets, for the Progress card to show beside
+ * the step. `null` means the step moves nothing — it is a gate or a record.
+ */
+export const STEP_SETS_STATUS: Record<string, LandStatus | null> = {
+  visit: 'under_review',
+  feasibility: null,
+  dd: 'dd_in_progress',
+  negotiation: 'agreed',
+  settlement: null,
+  closing: 'acquired',
+  development: 'ready_for_project',
+};
+
+/**
+ * The statuses that move on their own, and where they go next. `acquired` has
+ * two possible next steps (see `nextAutomaticStep`), so it maps to the first.
+ */
 export const AUTOMATIC_TRANSITIONS: Partial<Record<LandStatus, LandStatus>> = {
   sourced: 'under_review',
   under_review: 'dd_in_progress',
   dd_in_progress: 'negotiation',
   negotiation: 'agreed',
+  acquired: 'under_development',
+  under_development: 'ready_for_project',
+  ready_for_project: 'under_development',
 };
+
+/* ------------------------------------------------------------------ *
+ * What each land is waiting on — the land list's second line and filter
+ * ------------------------------------------------------------------ */
+
+export const WAITING_KEYS = [
+  'visit',
+  'feasibility',
+  'dd',
+  'negotiation',
+  'settlement',
+  'registration',
+  'development',
+  'project',
+  'decision',
+  'nothing',
+] as const;
+export type WaitingKey = (typeof WAITING_KEYS)[number];
+
+export const WAITING_LABEL: Record<WaitingKey, string> = {
+  visit: 'A site visit',
+  feasibility: 'Feasibility approval',
+  dd: 'Due diligence',
+  negotiation: 'A negotiation round',
+  settlement: 'A settlement schedule',
+  registration: 'Registration / signing',
+  development: 'Land development',
+  project: 'A project',
+  decision: 'A decision',
+  nothing: 'Nothing',
+};
+
+export interface LandWaitingInput {
+  status: LandStatus;
+  acquisitionType: AcquisitionType;
+  doneVisits: number;
+  feasibility: FeasibilityGateInput;
+  dd?: { mandatoryTotal: number; mandatoryOutstanding: number; mandatoryFailed: number };
+  openRound?: { round_no: number };
+  roundCount: number;
+  hasSchedule: boolean;
+  development?: { total: number; outstanding: number };
+  noDevelopmentRequired?: boolean;
+}
+
+/**
+ * The one thing this land needs next, in a few words.
+ *
+ * Status says which stage a land is in; this says what is holding it there,
+ * which is the question a land team actually asks — "which plots are sitting
+ * with the lawyer", "which are waiting on the board". It is derived, never
+ * stored, so it cannot drift from the records.
+ */
+export function landWaitingOn(input: LandWaitingInput): { key: WaitingKey; text: string } {
+  const isJv = input.acquisitionType === 'joint_venture';
+  switch (input.status) {
+    case 'sourced':
+      return { key: 'visit', text: 'A first site visit' };
+    case 'under_review': {
+      if (input.doneVisits === 0) return { key: 'visit', text: 'A site visit' };
+      const reason = feasibilityGateBlockReason(input.feasibility);
+      if (!reason) return { key: 'dd', text: 'Due diligence to start' };
+      const current = input.feasibility.current;
+      if (!current) return { key: 'feasibility', text: 'A feasibility study' };
+      if (current.status === 'submitted')
+        return { key: 'feasibility', text: `Approval of feasibility v${current.version_no}` };
+      if (current.status === 'draft')
+        return { key: 'feasibility', text: `Feasibility v${current.version_no} to be submitted` };
+      return { key: 'feasibility', text: 'A new feasibility study' };
+    }
+    case 'dd_in_progress': {
+      if (feasibilityGateBlockReason(input.feasibility)) {
+        return { key: 'feasibility', text: 'Feasibility approval before negotiating' };
+      }
+      const dd = input.dd;
+      if (dd && dd.mandatoryFailed > 0)
+        return { key: 'dd', text: `${dd.mandatoryFailed} failed legal check${dd.mandatoryFailed === 1 ? '' : 's'}` };
+      return { key: 'negotiation', text: 'A first negotiation round' };
+    }
+    case 'negotiation':
+      return input.openRound
+        ? { key: 'negotiation', text: `A reply to round ${input.openRound.round_no}` }
+        : { key: 'negotiation', text: `A new round (${input.roundCount} so far)` };
+    case 'agreed': {
+      const dd = input.dd;
+      if (dd && (dd.mandatoryOutstanding > 0 || dd.mandatoryTotal === 0)) {
+        return {
+          key: 'dd',
+          text: dd.mandatoryTotal === 0 ? 'Due diligence to start' : `${dd.mandatoryOutstanding} legal checks`,
+        };
+      }
+      if (!isJv && !input.hasSchedule) return { key: 'settlement', text: 'A settlement schedule' };
+      return { key: 'registration', text: isJv ? 'JV signing' : 'Registration' };
+    }
+    case 'acquired':
+      return {
+        key: 'development',
+        text: 'Development to be planned, or marked as not needed',
+      };
+    case 'under_development': {
+      const n = input.development?.outstanding ?? 0;
+      return { key: 'development', text: `${n} development ${n === 1 ? 'activity' : 'activities'}` };
+    }
+    case 'ready_for_project':
+      return { key: 'project', text: 'A project to be planned on it' };
+    case 'linked_to_project':
+      return { key: 'nothing', text: 'In a project' };
+    case 'on_hold':
+      return { key: 'decision', text: 'A decision to resume or drop it' };
+    case 'rejected':
+      return { key: 'nothing', text: 'Dropped' };
+    case 'disposed':
+      return { key: 'nothing', text: 'Sold on' };
+  }
+}
 
 /** What the records on a land say has happened — read by `landPipelineRepository`. */
 export interface LandWorkFacts {
@@ -208,6 +386,9 @@ export interface LandWorkFacts {
   firstDdWork?: { at: string; label: string };
   firstRound?: { round_no: number; offer_date: string; amount: number; party: 'us' | 'owner' };
   acceptedRound?: { round_no: number; amount: number; accepted_on: string };
+  /** land development, which moves a held plot on (DEV-001…004) */
+  development?: { total: number; outstanding: number; firstStartedOn?: string | null };
+  noDevelopmentRequired?: boolean;
 }
 
 export interface AutomaticStep {
@@ -234,6 +415,77 @@ export function nextAutomaticStep(
   if (!to) return null;
 
   switch (status) {
+    /*
+     * After acquisition the plot itself is worked on, and that work moves it
+     * too: a plot being filled is not a plot a project can be planned over.
+     * `ready_for_project` is what gate G3 and the project form look for.
+     */
+    case 'acquired': {
+      const dev = facts.development;
+      if (facts.noDevelopmentRequired) {
+        return {
+          to: 'ready_for_project',
+          event_date: todayLocal(),
+          performed_by: null,
+          amount: null,
+          remarks: 'Marked as needing no development work — ready for a project.',
+        };
+      }
+      if (!dev || dev.total === 0) return null;
+      if (dev.outstanding === 0) {
+        return {
+          to: 'ready_for_project',
+          event_date: todayLocal(),
+          performed_by: null,
+          amount: null,
+          remarks: `All ${dev.total} development ${dev.total === 1 ? 'activity is' : 'activities are'} complete — ready for a project.`,
+        };
+      }
+      return {
+        to: 'under_development',
+        event_date: localDay(dev.firstStartedOn) || todayLocal(),
+        performed_by: null,
+        amount: null,
+        remarks: `Land development started — ${dev.total} ${dev.total === 1 ? 'activity' : 'activities'} planned.`,
+      };
+    }
+    /*
+     * Backwards, and deliberately: new development work on a plot that was
+     * ready means it is not ready any more. The two rules are mutually
+     * exclusive (outstanding > 0 against outstanding === 0), so this cannot
+     * oscillate.
+     */
+    case 'ready_for_project': {
+      const dev = facts.development;
+      if (facts.noDevelopmentRequired || !dev || dev.outstanding === 0) return null;
+      return {
+        to: 'under_development',
+        event_date: todayLocal(),
+        performed_by: null,
+        amount: null,
+        remarks: `Development work reopened — ${dev.outstanding} ${dev.outstanding === 1 ? 'activity' : 'activities'} unfinished.`,
+      };
+    }
+    case 'under_development': {
+      const dev = facts.development;
+      if (facts.noDevelopmentRequired) {
+        return {
+          to: 'ready_for_project',
+          event_date: todayLocal(),
+          performed_by: null,
+          amount: null,
+          remarks: 'Marked as needing no development work — ready for a project.',
+        };
+      }
+      if (!dev || dev.total === 0 || dev.outstanding > 0) return null;
+      return {
+        to: 'ready_for_project',
+        event_date: todayLocal(),
+        performed_by: null,
+        amount: null,
+        remarks: `All ${dev.total} development ${dev.total === 1 ? 'activity is' : 'activities are'} complete — ready for a project.`,
+      };
+    }
     case 'sourced': {
       const v = facts.firstVisit;
       if (!v) return null;
@@ -291,22 +543,46 @@ export function nextAutomaticStep(
  * system existed, or moved by mistake. Never `linked_to_project` (Module 2
  * owns it), and never the other acquisition type's outcome.
  */
-export function correctableStatuses(
-  current: LandStatus,
-  acquisitionType: AcquisitionType,
-): LandStatus[] {
+export function correctableStatuses(current: LandStatus): LandStatus[] {
   if (current === 'linked_to_project') return [];
-  const wrongOutcome: LandStatus = acquisitionType === 'joint_venture' ? 'acquired' : 'jv_signed';
   return (Object.keys(LAND_STATUS_META) as LandStatus[]).filter(
-    (s) => s !== current && s !== 'linked_to_project' && s !== wrongOutcome,
+    // a project sets `linked_to_project`; parking and dropping are decisions
+    (s) => s !== current && s !== 'linked_to_project' && s !== 'on_hold',
   );
 }
+
+/**
+ * What a status expects to be true, shown beside it when correcting one.
+ *
+ * A correction skips the rules, so the dialog says what the status normally
+ * means — otherwise "Agreed" is just a word in a dropdown, and the land ends
+ * up somewhere its records do not support.
+ */
+export const STATUS_EXPECTS: Record<LandStatus, string> = {
+  sourced: 'Nothing recorded yet.',
+  under_review: 'A site visit has happened.',
+  dd_in_progress: 'The legal checklist is being worked through.',
+  negotiation: 'An offer is on the table.',
+  agreed: 'A price (or JV terms) is agreed, but nothing is registered.',
+  acquired: 'The deed is registered, or the JV agreement is signed.',
+  under_development: 'The plot is ours and development work is running.',
+  ready_for_project: 'The plot is ours and needs no further development.',
+  linked_to_project: 'Set by Module 2 when a project takes the land.',
+  on_hold: 'Parked — recorded from the page header, with a reason.',
+  rejected: 'Dropped. Never bought.',
+  disposed: 'Was ours and has been sold on.',
+};
 
 /* ---------------------------- validations ---------------------------- */
 
 /** Statuses at which the company holds the land — development happens here. */
 export function landIsHeld(status: LandStatus): boolean {
-  return status === 'acquired' || status === 'jv_signed' || status === 'linked_to_project';
+  return (
+    status === 'acquired' ||
+    status === 'under_development' ||
+    status === 'ready_for_project' ||
+    status === 'linked_to_project'
+  );
 }
 
 /**
@@ -315,7 +591,7 @@ export function landIsHeld(status: LandStatus): boolean {
  */
 export function developmentBlockReason(status: LandStatus): string | null {
   if (landIsHeld(status)) return null;
-  return `Land development starts once the land is acquired or the JV is signed. This land is ${LAND_STATUS_META[status].label}.`;
+  return `Land development starts once the land is ours — registered, or the JV signed. This land is ${LAND_STATUS_META[status].label}.`;
 }
 
 /**
@@ -411,7 +687,9 @@ export const LAND_SIZE_UNIT_LABEL: Record<string, string> = {
 
 /** A land is "closed" once acquired/JV-signed/rejected/disposed or handed to a project. */
 export function isTerminalStatus(status: LandStatus): boolean {
-  return ['acquired', 'jv_signed', 'rejected', 'disposed', 'linked_to_project'].includes(status);
+  return (
+    landIsHeld(status) || status === 'rejected' || status === 'disposed' || status === 'on_hold'
+  );
 }
 
 /**
@@ -495,12 +773,19 @@ export interface StatusStepAttachment {
 const ATTACHMENTS: Partial<Record<LandStatus, StatusStepAttachment>> = {
   sourced: { documentType: 'other', customName: 'Reopening note', prompt: 'Anything supporting the decision to reconsider this land' },
   acquired: { documentType: 'dolil_deed', prompt: 'Registered deed, mutation papers, registration receipt' },
-  jv_signed: { documentType: 'jv_agreement', prompt: 'Signed JV agreement, power of attorney' },
+  on_hold: { documentType: 'other', customName: 'Hold note', prompt: 'Anything that records why this is parked' },
   rejected: { documentType: 'other', customName: 'Rejection note', prompt: 'Anything that records why this was dropped' },
   disposed: { documentType: 'other', customName: 'Disposal record', prompt: 'Transfer deed, sale agreement, board approval' },
 };
 
-export function statusStepAttachment(status: LandStatus): StatusStepAttachment {
+export function statusStepAttachment(
+  status: LandStatus,
+  acquisitionType: AcquisitionType = 'direct_purchase',
+): StatusStepAttachment {
+  // a JV closes with an agreement, not a deed
+  if (status === 'acquired' && acquisitionType === 'joint_venture') {
+    return { documentType: 'jv_agreement', prompt: 'Signed JV agreement, power of attorney' };
+  }
   return (
     ATTACHMENTS[status] ?? {
       documentType: 'other',
@@ -541,15 +826,22 @@ const BASE_STATUS_STEP_CONFIG: Partial<Record<LandStatus, StatusStepConfig>> = {
       REMARKS(false, 'Registration office, handover notes…'),
     ],
   },
-  jv_signed: {
-    title: 'Mark JV as signed',
-    question: 'Confirm the joint venture agreement has been signed.',
-    confirmLabel: 'Mark JV signed',
-    tone: 'success',
+  /*
+   * Parking a land (2026-09-18). A plot whose owner has gone quiet, or whose
+   * price is wrong this season, used to be either rejected — which says we
+   * turned it down — or left looking active. The reason is required because
+   * it is the whole content of the status, and "Resume" puts the land back
+   * where it was.
+   */
+  on_hold: {
+    title: 'Put this land on hold',
+    question: 'The land stays on the list but stops being chased. A reason is required.',
+    confirmLabel: 'Put on hold',
+    tone: 'warning',
     fields: [
-      { key: 'event_date', label: 'Agreement date', placeholder: '', type: 'date', required: true },
-      { key: 'reference_no', label: 'Agreement reference', placeholder: 'e.g. JV-2026-003', type: 'text' },
-      REMARKS(false, 'Signing venue, witnesses, conditions…'),
+      { key: 'event_date', label: 'On hold from', placeholder: '', type: 'date', required: true },
+      { key: 'performed_by', label: 'Decided by', placeholder: 'e.g. Land team lead', type: 'text' },
+      REMARKS(true, 'Why is this parked, and what would restart it?'),
     ],
   },
   rejected: {
@@ -634,7 +926,7 @@ const SHARE_FIELDS: StatusStepField[] = [
 ];
 
 const JV_STATUS_STEP_CONFIG: Partial<Record<LandStatus, StatusStepConfig>> = {
-  jv_signed: {
+  acquired: {
     title: 'Mark JV as signed',
     question: 'Confirm the joint venture agreement has been signed.',
     confirmLabel: 'Mark JV signed',
@@ -681,7 +973,7 @@ export function statusStepConfig(
  * "no money", it meant the money could not be planned or chased.
  */
 export function amountUpdatesFinalAgreed(status: LandStatus): boolean {
-  return status === 'acquired' || status === 'jv_signed';
+  return status === 'acquired';
 }
 
 /* ------------------------------------------------------------------ *

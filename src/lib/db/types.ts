@@ -192,6 +192,29 @@ export interface CompanySettings extends BaseEntity {
  * - `linked_to_project` — set by Module 2 when the land is mapped to a project,
  *   never chosen by hand.
  */
+/**
+ * Where a land is (client decision 2026-09-18, extending BRD v2.0 LAND-004).
+ *
+ * The BRD's eight, with three differences the client asked for after using the
+ * screens — the mapping is recorded in BRD-ALIGNMENT-PLAN.md so it can be
+ * explained back:
+ *
+ * - `jv_signed` is gone. "It is ours now" is one state; whether that happened
+ *   by purchase or by joint venture is `acquisition_type`, and keeping it as a
+ *   second status meant writing every later rule twice. Dexie v24 rewrites old
+ *   rows to `acquired`.
+ * - `under_development` and `ready_for_project` are new. Both used to be
+ *   `acquired`, so "which plots are still being filled" and "which can carry a
+ *   project" could not be filtered — the two questions project planning starts
+ *   from. Neither is chosen by hand; land development sets them.
+ * - `on_hold` is new. A plot parked because the owner has gone quiet or the
+ *   price is wrong had nowhere to sit, so it was either rejected (wrong) or
+ *   left looking active (worse).
+ *
+ * Deliberately NOT statuses: a submitted feasibility study, a settlement
+ * schedule, a finished due-diligence checklist. Those are work inside a stage,
+ * and they surface as "waiting on" rather than by splitting the pipeline.
+ */
 export const LAND_STATUSES = [
   'sourced',
   'under_review',
@@ -199,10 +222,12 @@ export const LAND_STATUSES = [
   'negotiation',
   'agreed',
   'acquired',
-  'jv_signed',
+  'under_development',
+  'ready_for_project',
+  'linked_to_project',
+  'on_hold',
   'rejected',
   'disposed',
-  'linked_to_project',
 ] as const;
 export type LandStatus = (typeof LAND_STATUSES)[number];
 

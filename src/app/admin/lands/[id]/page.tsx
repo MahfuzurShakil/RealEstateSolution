@@ -4,7 +4,16 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, Handshake, Pencil, Scale, Trash2, User, Wrench } from 'lucide-react';
+import {
+  ArrowLeft,
+  Handshake,
+  Pencil,
+  PlayCircle,
+  Scale,
+  Trash2,
+  User,
+  Wrench,
+} from 'lucide-react';
 import { LandTimeline } from '@/components/admin/lands/LandTimeline';
 import { LandPaymentPlanPanel } from '@/components/admin/lands/LandPaymentPlanPanel';
 import { SiteVisitPanel } from '@/components/admin/lands/SiteVisitPanel';
@@ -29,9 +38,9 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import {
   ACQUISITION_TYPE_LABEL,
   LAND_SIZE_UNIT_LABEL,
-  LAND_STATUS_META,
   allowedNextStatuses,
   correctableStatuses,
+  landStatusLabel,
   statusStepConfig,
   finalAmountLabel,
   landHeadlineAmount,
@@ -45,11 +54,12 @@ import {
   landNegotiationRepository,
   ownerSettlementRepository,
   landDevelopmentRepository,
+  landPipelineRepository,
   siteVisitRepository,
   type LandWithRelations,
 } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
-import { formatBdt, formatDate } from '@/lib/utils/format';
+import { formatBdt, formatDate, todayLocal } from '@/lib/utils/format';
 
 import type { LandStatus } from '@/lib/db/types';
 
@@ -161,6 +171,7 @@ export default function LandDetailPage() {
   const [deciding, setDeciding] = useState<LandStatus | null>(null);
   const [correcting, setCorrecting] = useState(false);
   const [editingAmounts, setEditingAmounts] = useState(false);
+  const [resuming, setResuming] = useState(false);
 
   const land = useLiveQuery(() => landRepository.getWithRelations(id), [id]);
   /** what has actually been paid against this land, from the cost ledger (L-1) */
@@ -245,10 +256,17 @@ export default function LandDetailPage() {
                 variant={to === 'rejected' ? 'dangerGhost' : 'outline'}
                 onClick={() => setDeciding(to)}
               >
-                {statusStepConfig(to, land.acquisition_type)?.confirmLabel ?? LAND_STATUS_META[to].label}
+                {statusStepConfig(to, land.acquisition_type)?.confirmLabel ??
+                  landStatusLabel(to, land.acquisition_type)}
               </Button>
             ))}
-            {correctableStatuses(land.status, land.acquisition_type).length > 0 && (
+            {/* a parked land is put back where it was, and then re-checked */}
+            {land.status === 'on_hold' && (
+              <Button onClick={() => setResuming(true)}>
+                <PlayCircle className="size-4" /> Resume
+              </Button>
+            )}
+            {correctableStatuses(land.status).length > 0 && (
               <Button variant="ghost" onClick={() => setCorrecting(true)} title="Correct this status">
                 <Wrench className="size-4" /> Correct status
               </Button>
@@ -420,7 +438,7 @@ export default function LandDetailPage() {
                   title="Status changes"
                   action={<span className="text-xs text-ink-muted">Newest first</span>}
                 />
-                <LandTimeline landId={land.id} />
+                <LandTimeline landId={land.id} acquisitionType={land.acquisition_type} />
               </Card>
             </div>
           )}
@@ -711,6 +729,25 @@ export default function LandDetailPage() {
       )}
       {correcting && <CorrectStatusDialog land={land} onClose={() => setCorrecting(false)} />}
       {editingAmounts && <OwnerAmountsDialog land={land} onClose={() => setEditingAmounts(false)} />}
+
+      <ConfirmDialog
+        open={resuming}
+        title="Resume this land"
+        subtitle={land.code}
+        tone="default"
+        icon={PlayCircle}
+        confirmLabel="Resume"
+        message="The land goes back to the status it was in before it was put on hold, and its records are re-checked in case work has moved on since."
+        onCancel={() => setResuming(false)}
+        onConfirm={async () => {
+          await landPipelineRepository.resumeFromHold(
+            land.id,
+            { event_date: todayLocal(), remarks: null },
+            null,
+          );
+          setResuming(false);
+        }}
+      />
 
       <ConfirmDialog
         open={confirmDelete}

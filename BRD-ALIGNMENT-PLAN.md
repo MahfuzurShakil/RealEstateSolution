@@ -364,3 +364,20 @@ than waiting one batch.
   what we have.
 - **No AI work** until the transactional model is stable, which is also the
   BRD's own instruction.
+
+## Land status set — where we differ from the BRD (2026-09-18)
+
+The client approved extending BRD LAND-004 after using the screens. What to say
+if the BRD's author asks:
+
+| BRD LAND-004 | Ours | Why |
+|---|---|---|
+| SOURCED, UNDER_REVIEW, DD_IN_PROGRESS, NEGOTIATION, AGREED, ACQUIRED, REJECTED, DISPOSED | same | unchanged |
+| JV_SIGNED | folded into ACQUIRED | a signed JV and a registered purchase are both "it is ours"; `acquisition_type` already says which, and screens label a JV land "JV Signed" |
+| — | UNDER_DEVELOPMENT | BRD DEV-001…004 exists but had no status, so "which plots are still being filled" could not be filtered |
+| — | READY_FOR_PROJECT | what DEV-004 and PROJ-002 actually gate on |
+| — | ON_HOLD | a parked plot had nowhere to sit, so it was being rejected instead |
+| — | LINKED_TO_PROJECT | ours since Module 2; set when a project takes the land |
+
+Dexie v24 migrates `jv_signed` rows to `acquired` on both the land and its
+status history.

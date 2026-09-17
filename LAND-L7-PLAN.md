@@ -64,6 +64,32 @@ Every change writes a status-history row saying what caused it.
 - DEV-002 committed/forecast cost and ACQ-004 cost centers — need the
   cost-center work (FIN-001/002).
 
+## Status set (client decision 2026-09-18)
+
+Twelve statuses, extending BRD LAND-004. The BRD's eight are kept except
+`JV_SIGNED`, which folded into `ACQUIRED` (how it became ours is
+`acquisition_type`); `UNDER_DEVELOPMENT`, `READY_FOR_PROJECT` and `ON_HOLD`
+are new.
+
+| Status | Set by |
+|---|---|
+| Sourced | land created |
+| Under Review | first site visit done |
+| Due Diligence | first checklist item worked |
+| Negotiation | first offer round |
+| Agreed | a round accepted |
+| Acquired | registration, or JV signing (labelled "JV Signed" on a JV) |
+| Under Development | first development activity |
+| Ready for Project | all development complete, or "no development required" |
+| Linked to Project | Module 2 |
+| On Hold | a person, with a reason; "Resume" returns it to where it was |
+| Rejected / Disposed | a person, with a reason |
+
+Not statuses, shown as **waiting on** instead: a submitted feasibility study, a
+settlement schedule, an unfinished checklist. The land list filters by stage
+(Sourcing · Legal · Deal · Owned · Closed), by status, and by what each land is
+waiting on.
+
 ## Delivery
 
 Commit per part: (1) status engine + validations, (2) BRD gaps, (3) page

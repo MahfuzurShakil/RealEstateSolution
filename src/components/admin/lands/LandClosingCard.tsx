@@ -23,15 +23,14 @@ import { formatBdt, formatDate } from '@/lib/utils/format';
 export function LandClosingCard({ land }: { land: Land }) {
   const [open, setOpen] = useState(false);
   const isJv = land.acquisition_type === 'joint_venture';
-  const target = isJv ? 'jv_signed' : 'acquired';
 
   const blocked = useLiveQuery(
     () => landPipelineRepository.closingBlockReason(land.id),
     [land.id, land.status],
   );
   const event = useLiveQuery(
-    () => landStatusEventRepository.latestForStatus(land.id, target),
-    [land.id, land.status, target],
+    () => landStatusEventRepository.latestForStatus(land.id, 'acquired'),
+    [land.id, land.status],
   );
 
   const closed = landIsHeld(land.status) || land.status === 'disposed';
@@ -86,7 +85,7 @@ export function LandClosingCard({ land }: { land: Land }) {
           )}
         </>
       )}
-      {open && <LandEventDialog land={land} target={target} onClose={() => setOpen(false)} />}
+      {open && <LandEventDialog land={land} target="acquired" onClose={() => setOpen(false)} />}
     </Card>
   );
 }

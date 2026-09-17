@@ -321,9 +321,11 @@ export const DEMO_DD_FINDINGS: DemoDdFinding[] = [
     },
   }),
 
-  /* the two closed deals had their checks done in full */
+  /* the closed deals had their checks done in full */
   ...passAllMandatory('Chattogram Agrabad commercial plot'),
   ...passAllMandatory('Dhanmondi Road 27 plot'),
+  ...passAllMandatory('Ashulia Zirabo industrial plot'),
+  ...passAllMandatory('Bashundhara Block J ready plot'),
 ];
 
 function passAllMandatory(

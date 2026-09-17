@@ -18,6 +18,7 @@ import {
   ACQUISITION_TYPE_LABEL,
   LAND_SIZE_UNIT_LABEL,
   developmentGateBlockReason,
+  landIsHeld,
 } from '@/lib/domain/land';
 import { PROJECT_TYPE_LABEL } from '@/lib/domain/project';
 import {
@@ -91,13 +92,8 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
     landRepository.getAll().then((rows) =>
       setAvailableLands(
         rows
-          .filter(
-            (l) =>
-              alreadyMine.has(l.id) ||
-              l.status === 'acquired' ||
-              l.status === 'jv_signed' ||
-              l.status === 'linked_to_project',
-          )
+          // land the company holds: acquired, being developed, ready, or already linked
+          .filter((l) => alreadyMine.has(l.id) || landIsHeld(l.status))
           .sort((a, b) => a.code.localeCompare(b.code)),
       ),
     );

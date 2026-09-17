@@ -17,10 +17,18 @@ import { ACQUISITION_TYPES, LAND_STATUSES, type AcquisitionType, type LandStatus
 import {
   ACQUISITION_TYPE_LABEL,
   LAND_SIZE_UNIT_LABEL,
+  LAND_STAGES,
+  LAND_STAGE_META,
   LAND_STATUS_META,
+  WAITING_KEYS,
+  WAITING_LABEL,
   landHeadlineAmount,
+  landStage,
+  landStatusLabel,
+  type LandStage,
+  type WaitingKey,
 } from '@/lib/domain/land';
-import { landRepository } from '@/lib/repositories';
+import { landPipelineRepository, landRepository } from '@/lib/repositories';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
 type SortKey = 'newest' | 'oldest' | 'price_high' | 'price_low' | 'size_high';
@@ -28,16 +36,35 @@ type SortKey = 'newest' | 'oldest' | 'price_high' | 'price_low' | 'size_high';
 /** Land list — Design Reference A.7 (filter sidebar + result cards, grid/list toggle). */
 export default function LandsListPage() {
   const [search, setSearch] = useState('');
+  const [stage, setStage] = useState<LandStage | 'all'>('all');
   const [status, setStatus] = useState<LandStatus | 'all'>('all');
+  const [waiting, setWaiting] = useState<WaitingKey | 'all'>('all');
   const [acquisitionType, setAcquisitionType] = useState<AcquisitionType | 'all'>('all');
   const [district, setDistrict] = useState('');
   const [sort, setSort] = useState<SortKey>('newest');
   const [view, setView] = useState<ViewMode>('list');
 
-  const lands = useLiveQuery(
-    () => landRepository.list({ search, status, acquisition_type: acquisitionType, district }),
-    [search, status, acquisitionType, district],
-  );
+  /*
+   * The lands, and what each is waiting on — one query, because the second is
+   * derived from the first and the list needs them together. "Waiting on" is
+   * the filter that answers the questions status cannot: which plots are with
+   * the lawyer, which are waiting on the board, which need registering.
+   */
+  const result = useLiveQuery(async () => {
+    const matched = await landRepository.list({
+      search,
+      status,
+      acquisition_type: acquisitionType,
+      district,
+    });
+    const inStage = stage === 'all' ? matched : matched.filter((l) => landStage(l.status) === stage);
+    const waitingOn = await landPipelineRepository.waitingOnForLands(inStage);
+    const filtered =
+      waiting === 'all' ? inStage : inStage.filter((l) => waitingOn.get(l.id)?.key === waiting);
+    return { lands: filtered, waitingOn };
+  }, [search, stage, status, waiting, acquisitionType, district]);
+  const lands = result?.lands;
+  const waitingOn = result?.waitingOn;
 
   const allLands = useLiveQuery(() => landRepository.getAll(), []);
   const districts = useMemo(
@@ -75,11 +102,18 @@ export default function LandsListPage() {
   const loading = lands === undefined;
   const hasAnyLand = (allLands?.length ?? 0) > 0;
   const filtersActive =
-    Boolean(search) || status !== 'all' || acquisitionType !== 'all' || Boolean(district);
+    Boolean(search) ||
+    stage !== 'all' ||
+    status !== 'all' ||
+    waiting !== 'all' ||
+    acquisitionType !== 'all' ||
+    Boolean(district);
 
   function resetFilters() {
     setSearch('');
+    setStage('all');
     setStatus('all');
+    setWaiting('all');
     setAcquisitionType('all');
     setDistrict('');
   }
@@ -115,6 +149,21 @@ export default function LandsListPage() {
                 </div>
               </Field>
 
+              {/* the coarse cut first: five stages instead of twelve statuses */}
+              <Field label="Stage">
+                <SelectInput
+                  value={stage}
+                  onChange={(e) => setStage(e.target.value as LandStage | 'all')}
+                >
+                  <option value="all">All stages</option>
+                  {LAND_STAGES.map((key) => (
+                    <option key={key} value={key}>
+                      {LAND_STAGE_META[key].label}
+                    </option>
+                  ))}
+                </SelectInput>
+              </Field>
+
               <Field label="Status">
                 <SelectInput
                   value={status}
@@ -124,6 +173,20 @@ export default function LandsListPage() {
                   {LAND_STATUSES.map((s) => (
                     <option key={s} value={s}>
                       {LAND_STATUS_META[s].label}
+                    </option>
+                  ))}
+                </SelectInput>
+              </Field>
+
+              <Field label="Waiting on" hint="What is holding each land where it is">
+                <SelectInput
+                  value={waiting}
+                  onChange={(e) => setWaiting(e.target.value as WaitingKey | 'all')}
+                >
+                  <option value="all">Anything</option>
+                  {WAITING_KEYS.map((key) => (
+                    <option key={key} value={key}>
+                      {WAITING_LABEL[key]}
                     </option>
                   ))}
                 </SelectInput>
@@ -227,8 +290,16 @@ export default function LandsListPage() {
                       view={view}
                       code={land.code}
                       title={land.name}
-                      status={<Badge tone={meta.tone}>{meta.label}</Badge>}
-                      footer={`Added ${formatDate(land.created_at)}`}
+                      status={
+                        <Badge tone={meta.tone}>
+                          {landStatusLabel(land.status, land.acquisition_type)}
+                        </Badge>
+                      }
+                      footer={
+                        waitingOn?.get(land.id) && waitingOn.get(land.id)!.key !== 'nothing'
+                          ? `Waiting on: ${waitingOn.get(land.id)!.text} · added ${formatDate(land.created_at)}`
+                          : `Added ${formatDate(land.created_at)}`
+                      }
                       facts={
                         <>
                           <Badge>

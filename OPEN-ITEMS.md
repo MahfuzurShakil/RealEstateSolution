@@ -36,6 +36,10 @@ Deferred on purpose; none blocks the redesign.
 - **G3 stays a switch.** DEV-004 says "configured readiness criteria", so it is
   still off by default — which is why the demo Agrabad plot is linked to a
   project with development unfinished.
+- **Status is derived forward only.** Deleting the development activity that
+  moved a plot to Under Development does not move it back to Acquired, the same
+  rule the earlier steps follow. Reopening work does move a Ready plot back to
+  Under Development, because that one is unambiguous.
 - **Demo `phone` ConstraintError** seen once in the console after a double
   "Reload sample data" click (two seeds racing). Not reproduced on a single
   reload; worth guarding the button against a second click.
