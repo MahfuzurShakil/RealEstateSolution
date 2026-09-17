@@ -416,7 +416,10 @@ export default function LandDetailPage() {
 
               {/* every status change, with what caused it */}
               <Card>
-                <CardHeader title="Status history" />
+                <CardHeader
+                  title="Status changes"
+                  action={<span className="text-xs text-ink-muted">Newest first</span>}
+                />
                 <LandTimeline landId={land.id} />
               </Card>
             </div>

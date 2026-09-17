@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Check, CircleDashed, FileImage, FileText, History } from 'lucide-react';
+import { Check, FileImage, FileText, History } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DocumentViewer } from '@/components/admin/documents/DocumentsPanel';
@@ -62,9 +62,17 @@ export function LandTimeline({ landId }: { landId: string }) {
       {/* the trunk of the tree */}
       <span className="absolute bottom-3 left-[11px] top-3 w-px bg-hairline" aria-hidden />
 
-      {events.map((event: LandStatusEvent, index) => {
+      {/*
+        Newest first: the question this answers is "where is this land now, and
+        what put it there", so the latest change belongs at the top. The
+        repository returns them oldest-first because that is the order they
+        happened in.
+      */}
+      {[...events].reverse().map((event: LandStatusEvent, index) => {
         const meta = LAND_STATUS_META[event.to_status];
-        const isLast = index === events.length - 1;
+        // every row is something that happened, so every row is ticked; the
+        // newest is filled in, because it is the status the land carries now
+        const isLast = index === 0;
         return (
           <li key={event.id} className="relative">
             <span
@@ -72,7 +80,7 @@ export function LandTimeline({ landId }: { landId: string }) {
                 isLast ? 'bg-admin-500 text-white' : 'bg-admin-100 text-admin-700'
               }`}
             >
-              {isLast ? <CircleDashed className="size-3.5" /> : <Check className="size-3.5" />}
+              <Check className="size-3.5" />
             </span>
 
             <div className="rounded-xl border border-hairline bg-white p-4">
