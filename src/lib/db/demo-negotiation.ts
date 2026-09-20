@@ -30,6 +30,42 @@ export interface DemoAcquisitionCost {
 }
 
 export const DEMO_NEGOTIATION_ROUNDS: DemoNegotiationRound[] = [
+  /* Tangail - the plot that is registered and still waiting on a fill plan. */
+  {
+    land: 'Tangail Mirzapur roadside plot',
+    party: 'us',
+    amount: 29_000_000,
+    offer_date: '2026-04-18',
+    terms: 'Bayna 20%, balance at registration within 90 days',
+    status: 'superseded',
+    remarks: 'Opened below the feasibility ceiling to leave room for the fill.',
+  },
+  {
+    land: 'Tangail Mirzapur roadside plot',
+    party: 'us',
+    amount: 30_500_000,
+    offer_date: '2026-05-26',
+    terms: 'Bayna 6,100,000, balance at registration',
+    status: 'accepted',
+    remarks: 'Accepted. Under the 31,000,000 the board approved.',
+  },
+  /* Madhabdi - agreed, registered, and later transferred on. */
+  {
+    land: 'Narsingdi Madhabdi plot',
+    party: 'us',
+    amount: 23_000_000,
+    offer_date: '2026-01-09',
+    status: 'superseded',
+    remarks: 'Owner wanted 26,000,000 and came down over two weeks.',
+  },
+  {
+    land: 'Narsingdi Madhabdi plot',
+    party: 'us',
+    amount: 24_000_000,
+    offer_date: '2026-01-27',
+    terms: 'Full payment at registration; the owner needed the money in one go',
+    status: 'accepted',
+  },
   /* Uttara — a straightforward purchase talked down over three rounds. The
      accepted amount is 36,000,000, which is what the land already carries. */
   {
@@ -290,5 +326,44 @@ export const DEMO_ACQUISITION_COSTS: DemoAcquisitionCost[] = [
     cost_head: 'survey_fee',
     estimated_amount: 60_000,
     remarks: 'Amin survey before the deed',
+  },
+  /*
+   * Tangail carries a full cost sheet because it is the plot whose true cost
+   * is still open: the acquisition is settled and the development is not, so
+   * the sheet is the one place the two sit side by side.
+   */
+  {
+    land: 'Tangail Mirzapur roadside plot',
+    cost_head: 'land_price',
+    estimated_amount: 30_500_000,
+  },
+  {
+    land: 'Tangail Mirzapur roadside plot',
+    cost_head: 'registration_fee',
+    estimated_amount: 305_000,
+    remarks: '1% of deed value',
+  },
+  {
+    land: 'Tangail Mirzapur roadside plot',
+    cost_head: 'stamp_duty',
+    estimated_amount: 458_000,
+    remarks: '1.5% of deed value',
+  },
+  {
+    land: 'Tangail Mirzapur roadside plot',
+    cost_head: 'vat_tax',
+    estimated_amount: 610_000,
+    remarks: '2% gain tax at source',
+  },
+  {
+    land: 'Tangail Mirzapur roadside plot',
+    cost_head: 'legal_fee',
+    estimated_amount: 180_000,
+  },
+  {
+    land: 'Tangail Mirzapur roadside plot',
+    cost_head: 'survey_fee',
+    estimated_amount: 45_000,
+    remarks: 'Amin survey; the fill quantity survey is still outstanding',
   },
 ];

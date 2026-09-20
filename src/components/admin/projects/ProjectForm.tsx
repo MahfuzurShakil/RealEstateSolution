@@ -20,7 +20,7 @@ import {
   developmentGateBlockReason,
   landIsHeld,
 } from '@/lib/domain/land';
-import { PROJECT_TYPE_LABEL } from '@/lib/domain/project';
+import { PROJECT_TYPE_HINT, PROJECT_TYPE_LABEL } from '@/lib/domain/project';
 import {
   companySettingsRepository,
   landDevelopmentRepository,
@@ -51,7 +51,7 @@ interface FormState {
 
 const EMPTY: FormState = {
   name: '',
-  project_type: 'residential',
+  project_type: 'apartment',
   total_land_area: '',
   total_land_area_unit: 'katha',
   location_summary: '',
@@ -256,7 +256,7 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
               invalid={Boolean(errors.name)}
             />
           </Field>
-          <Field label="Project Type" required>
+          <Field label="Project Type" required hint={PROJECT_TYPE_HINT[form.project_type]}>
             <SelectInput
               value={form.project_type}
               onChange={(e) => set('project_type', e.target.value as ProjectType)}

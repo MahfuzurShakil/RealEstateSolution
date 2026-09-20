@@ -548,6 +548,28 @@ export class AppDatabase extends Dexie {
         }
       }
     });
+
+    /*
+     * v25 — `residential` becomes `apartment` (client decision 2026-09-20).
+     *
+     * The project type list grew two land-sale shapes, `land_share` and
+     * `plot_development`, because a plot the company wants to sell is linked
+     * to a project first and the type is where that sale is declared — the
+     * Land module sells nothing. Next to "plot development", "residential" no
+     * longer said which of the two it was, so it is now `apartment`.
+     *
+     * No index changes; like v19 and v24 the block exists to hang the row
+     * rewrite off. Rows already on another type are untouched, so re-running
+     * is a no-op.
+     */
+    this.version(25).stores({}).upgrade(async (tx) => {
+      const projects = await tx.table('projects').toArray();
+      for (const project of projects) {
+        if (project.project_type === 'residential') {
+          await tx.table('projects').update(project.id, { project_type: 'apartment' });
+        }
+      }
+    });
   }
 }
 

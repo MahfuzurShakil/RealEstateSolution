@@ -166,6 +166,22 @@ export const DEMO_OWNERS: DemoOwner[] = [
     address: 'Comilla Sadar, Cumilla',
     notes: 'Owns adjoining plots, open to future deals',
   },
+  {
+    key: 'anwara',
+    name: 'Anwara Khatun',
+    phone: '01822 445566',
+    nid: '1968554433221',
+    address: 'Mirzapur, Tangail',
+    notes: 'Widow; her son Shahin handles the paperwork on her behalf',
+  },
+  {
+    key: 'nazrul',
+    name: 'Kazi Nazrul Haque',
+    phone: '01533 998877',
+    nid: '1981667788990',
+    address: 'Madhabdi, Narsingdi',
+    notes: 'Textile mill owner; sold to raise working capital',
+  },
 ];
 
 export const DEMO_LANDS: DemoLand[] = [
@@ -855,6 +871,173 @@ export const DEMO_LANDS: DemoLand[] = [
         amount: 4000000,
         reference_no: 'JV-2026-011',
         remarks: 'JV agreement signed at the Bashundhara office.',
+        source: 'manual',
+      },
+    ],
+  },
+  /*
+   * The plain `acquired` case, and the reason it was added (review 2026-09-20).
+   *
+   * Every other held plot in this dataset either needs no development or has
+   * activities on it, so the pipeline moved all of them straight past
+   * `acquired` to Under Development or Ready for Project the moment the seed
+   * ran - the status filter "Acquired" returned nothing, and the one thing a
+   * land team actually looks at ("registered, and nobody has planned the
+   * filling yet") had no example. This plot is registered, needs work, and has
+   * none scheduled: it sits at Acquired waiting on land development.
+   *
+   * Deliberately has NO development activity in `demo-development.ts` and is
+   * NOT in `DEMO_NO_DEVELOPMENT_LANDS`. Adding it to either breaks this case.
+   */
+  {
+    name: 'Tangail Mirzapur roadside plot',
+    land_classification: 'Nal (paddy land)',
+    source: 'Direct Owner Contact',
+    location_division: 'Dhaka',
+    location_district: 'Tangail',
+    location_upazila: 'Mirzapur',
+    location_area: 'Mirzapur',
+    road: 'Dhaka-Tangail Highway service road',
+    road_access: '22 ft brick road off the highway service lane',
+    mouza: 'Gorai',
+    dag_number: '1183',
+    khatian_number: '447',
+    land_size: 24,
+    land_size_unit: 'katha',
+    asking_price: 33_000_000,
+    final_agreed_amount: 30_500_000,
+    gps_lat: 24.1033,
+    gps_lng: 90.0997,
+    nearby_facilities: 'Gorai bus stand 1km, Mirzapur Kumudini Hospital 6km, highway frontage',
+    acquisition_type: 'direct_purchase',
+    status: 'acquired',
+    remarks:
+      'Registered in July. Paddy land about 5ft below the service road - the filling estimate has not been taken yet, so no development is scheduled.',
+    created_at: '2026-01-22T06:40:00.000Z',
+    owners: [{ key: 'anwara', share: 100, primary: true, area: 24, amount: 30_500_000 }],
+    history: [
+      {
+        to_status: 'under_review',
+        event_date: '2026-02-04',
+        performed_by: 'Shafiq Rahman (Land Team)',
+        remarks: 'Highway-adjacent and cheap per katha. Low land - fill depth is the open question.',
+        source: 'automatic',
+      },
+      {
+        to_status: 'dd_in_progress',
+        event_date: '2026-03-02',
+        performed_by: 'Adv. Tanvir Alam',
+        remarks: 'Single owner, clean khatian. Mutation already in her name.',
+        source: 'automatic',
+      },
+      {
+        to_status: 'negotiation',
+        event_date: '2026-04-18',
+        amount: 31_000_000,
+        performed_by: 'Rifat Ahmed',
+        source: 'automatic',
+      },
+      {
+        to_status: 'agreed',
+        event_date: '2026-05-26',
+        amount: 30_500_000,
+        remarks: 'Round 2 accepted, 25 lakh below asking.',
+        source: 'automatic',
+      },
+      {
+        to_status: 'acquired',
+        event_date: '2026-07-09',
+        amount: 30_500_000,
+        reference_no: '4471/2026',
+        performed_by: 'Sub-Registry Office, Mirzapur',
+        remarks: 'Sale deed registered. Mutation applied for the same week.',
+        source: 'manual',
+      },
+    ],
+  },
+  /*
+   * The `disposed` case (review 2026-09-20) - a plot the company held and no
+   * longer holds.
+   *
+   * Added because the status existed with no example, and because the wording
+   * around it changed in the same review: this is an **exit from a plot, not a
+   * sale of land**. Selling land to customers is a `land_share` or
+   * `plot_development` project, and the Land module has no sale of its own.
+   * Here the company bought the plot, the access road it was priced on was
+   * cancelled in the revised DAP, and the plot was transferred to a local
+   * developer at a loss.
+   *
+   * Not synced by the seeder: `landIsHeld('disposed')` is false, so the
+   * pipeline leaves it where its history puts it.
+   */
+  {
+    name: 'Narsingdi Madhabdi plot',
+    land_classification: 'Bhiti (homestead land)',
+    source: 'Broker / Dalal',
+    location_division: 'Dhaka',
+    location_district: 'Narayanganj',
+    location_upazila: 'Madhabdi',
+    location_area: 'Madhabdi',
+    road: 'Madhabdi Bazar Road',
+    road_access: '18 ft road, widening was promised and never happened',
+    mouza: 'Nuralapur',
+    dag_number: '2290',
+    khatian_number: '813',
+    land_size: 11,
+    land_size_unit: 'katha',
+    asking_price: 26_000_000,
+    final_agreed_amount: 24_000_000,
+    nearby_facilities: 'Madhabdi textile market 2km, Dhaka-Sylhet highway 4km',
+    acquisition_type: 'direct_purchase',
+    status: 'disposed',
+    remarks:
+      'Bought on the strength of a planned 40ft access road. The revised DAP dropped the road, the plot no longer supported the tower we had costed, and it was transferred on.',
+    created_at: '2025-11-14T05:20:00.000Z',
+    owners: [{ key: 'nazrul', share: 100, primary: true, area: 11, amount: 24_000_000 }],
+    history: [
+      {
+        to_status: 'under_review',
+        event_date: '2025-11-28',
+        performed_by: 'Shafiq Rahman (Land Team)',
+        source: 'automatic',
+      },
+      {
+        to_status: 'dd_in_progress',
+        event_date: '2025-12-15',
+        performed_by: 'Adv. Tanvir Alam',
+        remarks: 'Title clean. The access road was checked against the then-current DAP and cleared.',
+        source: 'automatic',
+      },
+      {
+        to_status: 'negotiation',
+        event_date: '2026-01-09',
+        amount: 25_000_000,
+        performed_by: 'Rifat Ahmed',
+        source: 'automatic',
+      },
+      {
+        to_status: 'agreed',
+        event_date: '2026-01-27',
+        amount: 24_000_000,
+        source: 'automatic',
+      },
+      {
+        to_status: 'acquired',
+        event_date: '2026-02-19',
+        amount: 24_000_000,
+        reference_no: '1104/2026',
+        performed_by: 'Sub-Registry Office, Madhabdi',
+        remarks: 'Sale deed registered.',
+        source: 'manual',
+      },
+      {
+        to_status: 'disposed',
+        event_date: '2026-08-14',
+        amount: 22_600_000,
+        reference_no: '6620/2026',
+        performed_by: 'Management committee',
+        remarks:
+          'Transferred to Shetu Builders Ltd. after the revised DAP dropped the 40ft access road. The board accepted a 14 lakh loss rather than hold a plot that could not carry the costed tower.',
         source: 'manual',
       },
     ],

@@ -38,6 +38,7 @@ import {
   landStatusEventRepository,
 } from './land.repository';
 import { landNegotiationRepository } from './negotiation.repository';
+import { ownerSettlementRepository } from './owner-settlement.repository';
 import { landFeasibilityRepository, siteVisitRepository } from './site-visit.repository';
 
 /** A rule stopped the change. `message` is the sentence to show the user. */
@@ -208,6 +209,8 @@ class LandPipelineRepository {
     const roundsBy = byLand(rounds);
     const activitiesBy = byLand(activities);
     const scheduleFor = new Set(schedules.map((s) => s.entity_id));
+    // lands whose settlement is scheduled owner by owner rather than land-wide
+    const ownerPlanLands = await ownerSettlementRepository.landsCoveredByOwnerPlans();
 
     const out = new Map<string, { key: WaitingKey; text: string }>();
     for (const land of lands) {
@@ -233,7 +236,8 @@ class LandPipelineRepository {
           },
           openRound: landRounds.find((r) => r.status === 'open'),
           roundCount: landRounds.length,
-          hasSchedule: scheduleFor.has(land.id),
+          // either plan settles the land — see `hasOwnerPlanCoverage`
+          hasSchedule: scheduleFor.has(land.id) || ownerPlanLands.has(land.id),
           development: {
             total: landActivities.length,
             outstanding: landActivities.filter(
@@ -403,15 +407,18 @@ class LandPipelineRepository {
   async closingBlockReason(landId: string): Promise<string | null> {
     const land = await landRepository.getById(landId);
     if (!land) return 'This land no longer exists.';
-    const [dd, schedule] = await Promise.all([
+    const [dd, schedule, ownerPlans] = await Promise.all([
       landDdRepository.progressForLand(landId),
       paymentScheduleRepository.withInstallmentsForLand(landId),
+      ownerSettlementRepository.hasOwnerPlanCoverage(landId),
     ]);
     return closingBlockReason({
       status: land.status,
       acquisitionType: land.acquisition_type,
       dd,
-      hasSchedule: Boolean(schedule),
+      // ACQ-003 is satisfied by either plan, and a multi-owner plot uses the
+      // per-owner one — refusing it here blocked a registration that was ready
+      hasSchedule: Boolean(schedule) || ownerPlans,
     });
   }
 

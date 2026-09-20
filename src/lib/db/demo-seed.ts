@@ -43,6 +43,7 @@ import {
   supplierRepository,
   supplierVoucherRepository,
   expenseRepository,
+  ownerSettlementRepository,
   paymentScheduleRepository,
   bankAccountRepository,
   projectBudgetRepository,
@@ -360,53 +361,176 @@ async function seedDemoNegotiation(
 }
 
 /**
- * Batch L5 — one owner's settlement, part-paid (BRD ACQ-003, BR-003).
+ * Batch L5 — per-owner settlement schedules and the payments against them
+ * (BRD ACQ-003, LAND-002, BR-003).
  *
- * The Savar plot is the multi-owner case: two heirs, agreed at 3,000,000 and
- * 2,000,000. The elder has taken his bayna and the younger has not, so the
- * Settlement by owner panel opens on a real split position rather than two
- * identical zeroes.
+ * Two lands, chosen to be opposite ends of the same feature (review
+ * 2026-09-20). Until that review this function wrote a single expense and no
+ * schedule at all, so `scheduledCount` was zero on every land in the demo and
+ * the Settlement by owner panel had nothing to show but two agreed amounts:
+ * the instalment planner, the oldest-first waterfall and the overdue
+ * arithmetic were all built and all invisible.
  *
- * The expense carries `owner_mapping_id`, which is the whole point of the
- * batch — the payment names the owner it settles, so it counts against his
- * balance and not against his sister's.
+ * - **Savar** is the multi-owner case, mid-settlement: two heirs agreed at
+ *   3,000,000 and 2,000,000 on the same day. The elder took his bayna and
+ *   nothing since, so his plan is part-paid with two lines past due; the
+ *   younger has been paid nothing at all, so hers is wholly overdue. One land,
+ *   two different positions, which is the thing a single land-level plan
+ *   cannot express and the reason this table is keyed on the mapping.
+ * - **Tangail** is the settled case: one owner, bayna at agreement and the
+ *   balance at registration, both paid in full. Its plan closes at zero, which
+ *   is what a finished settlement is supposed to look like.
+ *
+ * Every payment carries `owner_mapping_id`, which is the whole point of the
+ * batch — the money names the owner it settles, so it counts against that
+ * owner's balance and not against a co-owner's. `generateForMapping` runs the
+ * same planner the form runs, and `recalculateForOwner` (called inside it, and
+ * again after the payments land) does the allocation, so what the demo shows
+ * is what the feature produces.
  */
 async function seedDemoOwnerSettlement(
   landIds: Map<string, string>,
   ownerIds: Map<string, string>,
   createdBy: string | null,
 ): Promise<void> {
-  const landId = landIds.get('Savar highway-side land');
-  const ownerId = ownerIds.get('abdul');
-  if (!landId || !ownerId) return;
+  /** The mapping row for one owner of one land — what a settlement is keyed on. */
+  async function mappingFor(landName: string, ownerKey: string) {
+    const landId = landIds.get(landName);
+    const ownerId = ownerIds.get(ownerKey);
+    if (!landId || !ownerId) return undefined;
+    const mapping = (await landOwnerMappingRepository.listForLand(landId)).find(
+      (m) => m.owner_id === ownerId,
+    );
+    return mapping ? { landId, mapping } : undefined;
+  }
 
-  const mapping = (await landOwnerMappingRepository.listForLand(landId)).find(
-    (m) => m.owner_id === ownerId,
-  );
-  if (!mapping) return;
+  async function payOwner(
+    landId: string,
+    mappingId: string,
+    payment: {
+      amount: number;
+      expense_date: string;
+      cost_reason: string;
+      paid_to: string;
+      payment_method: 'bank' | 'cheque' | 'cash';
+      reference_no?: string;
+      notes?: string;
+    },
+  ): Promise<void> {
+    /*
+     * `createExpense`, not `create`. The base `create` writes the row as given,
+     * so the `code: ''` below stayed empty — which was invisible while this
+     * function wrote a single expense and became a ConstraintError on the
+     * unique `code` index the moment it wrote a second (review 2026-09-20).
+     * `createExpense` is also what generates EXP codes everywhere else, and it
+     * re-runs the owner waterfall for us.
+     */
+    await expenseRepository.createExpense(
+      {
+        code: '',
+        project_id: null,
+        land_id: landId,
+        owner_mapping_id: mappingId,
+        cost_category: 'land_payment',
+        cost_reason: payment.cost_reason,
+        amount: payment.amount,
+        expense_date: payment.expense_date,
+        paid_to: payment.paid_to,
+        payment_method: payment.payment_method,
+        account_id: null,
+        installment_id: null,
+        vat_amount: null,
+        ait_amount: null,
+        reference_no: payment.reference_no ?? null,
+        paid_by: createdBy,
+        notes: payment.notes ?? null,
+      },
+      createdBy,
+    );
+  }
 
-  await expenseRepository.create(
-    {
-      code: '',
-      project_id: null,
-      land_id: landId,
-      owner_mapping_id: mapping.id,
-      cost_category: 'land_payment',
-      cost_reason: 'Bayna against the joint venture agreement — elder brother’s share',
+  /* ---- Savar: two heirs, one paid in part, one not paid at all ---- */
+
+  const elder = await mappingFor('Savar highway-side land', 'abdul');
+  if (elder) {
+    await ownerSettlementRepository.generateForMapping(
+      elder.mapping.id,
+      {
+        agreementDate: '2026-06-10',
+        advanceAmount: 1_500_000,
+        monthlyCount: 2,
+        registrationAmount: 0,
+        registrationAfterMonths: 0,
+      },
+      createdBy,
+    );
+    await payOwner(elder.landId, elder.mapping.id, {
       amount: 1_500_000,
       expense_date: '2026-06-22',
+      cost_reason: 'Bayna against the joint venture agreement — elder brother’s share',
       paid_to: 'Abdul Karim Bhuiyan',
       payment_method: 'bank',
-      account_id: null,
-      installment_id: null,
-      vat_amount: null,
-      ait_amount: null,
       reference_no: 'CHQ-884213',
-      paid_by: createdBy,
-      notes: 'Signing money. The younger sister has not been paid yet.',
-    },
-    createdBy,
-  );
+      notes:
+        'Signing money only. Both monthly instalments have since fallen due and neither has been paid.',
+    });
+  }
+
+  const younger = await mappingFor('Savar highway-side land', 'shahida');
+  if (younger) {
+    await ownerSettlementRepository.generateForMapping(
+      younger.mapping.id,
+      {
+        agreementDate: '2026-06-10',
+        advanceAmount: 500_000,
+        monthlyCount: 3,
+        registrationAmount: 0,
+        registrationAfterMonths: 0,
+      },
+      createdBy,
+    );
+    // deliberately no payment: the sister's whole plan is outstanding
+  }
+
+  /* ---- Tangail: a single owner, settled in full ---- */
+
+  const sole = await mappingFor('Tangail Mirzapur roadside plot', 'anwara');
+  if (sole) {
+    await ownerSettlementRepository.generateForMapping(
+      sole.mapping.id,
+      {
+        agreementDate: '2026-05-26',
+        advanceAmount: 6_100_000,
+        monthlyCount: 0,
+        registrationAmount: 24_400_000,
+        registrationAfterMonths: 2,
+      },
+      createdBy,
+    );
+    await payOwner(sole.landId, sole.mapping.id, {
+      amount: 6_100_000,
+      expense_date: '2026-05-26',
+      cost_reason: 'Bayna on the sale agreement — Tangail Mirzapur plot',
+      paid_to: 'Anwara Khatun',
+      payment_method: 'cheque',
+      reference_no: 'CHQ 0022871',
+      notes: 'Paid at the agreement, 20% of the deed value.',
+    });
+    await payOwner(sole.landId, sole.mapping.id, {
+      amount: 24_400_000,
+      expense_date: '2026-07-09',
+      cost_reason: 'Balance at registration — Tangail Mirzapur plot',
+      paid_to: 'Anwara Khatun',
+      payment_method: 'bank',
+      reference_no: 'BEFTN 6614002',
+      notes: 'Paid at the sub-registry office on the day of registration. Settlement closed.',
+    });
+  }
+
+  /*
+   * No explicit recalculation here: every payment went through
+   * `createExpense`, which re-runs the owner waterfall for the land it names.
+   */
 }
 
 /**

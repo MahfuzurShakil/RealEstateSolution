@@ -326,6 +326,21 @@ export const DEMO_DD_FINDINGS: DemoDdFinding[] = [
   ...passAllMandatory('Dhanmondi Road 27 plot'),
   ...passAllMandatory('Ashulia Zirabo industrial plot'),
   ...passAllMandatory('Bashundhara Block J ready plot'),
+  ...passAllMandatory('Tangail Mirzapur roadside plot'),
+  /*
+   * Madhabdi passed every legal check and was still a bad buy (review
+   * 2026-09-20). Due diligence verifies title; it does not verify that the
+   * road the pricing rests on will ever be built. Worth one example in the
+   * dataset, so `land_use_clearance` carries the finding that later undid the
+   * plot rather than the usual "checked and clear".
+   */
+  ...passAllMandatory('Narsingdi Madhabdi plot', {
+    land_use_clearance: {
+      status: 'passed',
+      finding:
+        'DAP sheet shows the plot on a proposed 40ft access road; clearance issued on that basis. The road is proposed, not constructed.',
+    },
+  }),
 ];
 
 function passAllMandatory(

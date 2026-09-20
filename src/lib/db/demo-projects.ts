@@ -88,7 +88,7 @@ export interface DemoProject {
 export const DEMO_PROJECTS: DemoProject[] = [
   {
     name: 'Nokshi Green Residence',
-    project_type: 'residential',
+    project_type: 'apartment',
     total_land_area: 10,
     location_summary: 'Bashundhara R/A, Dhaka',
     expected_start_date: '2026-06-01',
@@ -241,7 +241,7 @@ export const DEMO_PROJECTS: DemoProject[] = [
   },
   {
     name: 'Nokshi Uttara Heights',
-    project_type: 'residential',
+    project_type: 'apartment',
     total_land_area: 7.5,
     location_summary: 'Sector 13, Uttara, Dhaka',
     expected_start_date: '2026-11-01',

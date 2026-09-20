@@ -24,7 +24,7 @@ import { todayLocal } from '@/lib/utils/format';
 
 /**
  * Records one real-world land event (L7): registration (Acquired), JV signing,
- * or a decision — Rejected, Disposed, Reopen.
+ * or a decision — Rejected, Divested, Reopen.
  *
  * The fields come from `statusStepConfig`; the write goes through
  * `landPipelineRepository`, which applies the BRD rules (DD-004, ACQ-003) and

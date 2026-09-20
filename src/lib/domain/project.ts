@@ -163,9 +163,25 @@ export function statusStartsConstruction(status: ProjectStatus): boolean {
 }
 
 export const PROJECT_TYPE_LABEL: Record<ProjectType, string> = {
-  residential: 'Residential',
+  land_share: 'Land Share',
+  plot_development: 'Plot Development',
+  apartment: 'Apartment',
   commercial: 'Commercial',
   mixed: 'Mixed Use',
+};
+
+/**
+ * The one-liner under each option in the project form.
+ *
+ * The two land types are the ones that need explaining: they are how a plot
+ * gets sold at all, since the Land module deliberately has no sale of its own.
+ */
+export const PROJECT_TYPE_HINT: Record<ProjectType, string> = {
+  land_share: 'Undivided shares in the plot are sold; nothing is built.',
+  plot_development: 'The plot is serviced and sold as individual plots.',
+  apartment: 'Residential flats in one or more towers.',
+  commercial: 'Shops, offices or other commercial space.',
+  mixed: 'Commercial floors below, flats above.',
 };
 
 export const TOWER_STATUS_META: Record<TowerStatus, { label: string; tone: BadgeTone }> = {

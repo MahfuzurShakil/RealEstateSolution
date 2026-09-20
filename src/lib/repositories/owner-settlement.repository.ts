@@ -87,6 +87,56 @@ class OwnerSettlementRepository extends BaseRepository<PaymentSchedule> {
   }
 
   /**
+   * Is this land's settlement scheduled by its owners' own plans?
+   *
+   * A land runs either the land-level plan or per-owner plans, never both (see
+   * the note at the top of this file). Everything that asks "has this land got
+   * a schedule" — the registration gate ACQ-003, the land list's "waiting on",
+   * the Progress card — was only ever reading the land-level one, so a
+   * purchase settled owner by owner read as unscheduled and the gate would
+   * refuse a registration whose plan was complete (review 2026-09-20). That
+   * was invisible until a land in the demo actually had owner plans.
+   *
+   * True only when *every* owner who has an agreed amount has a plan. A land
+   * where two of three owners are scheduled is mid-work: the third is exactly
+   * the payment the gate exists to stop being made blind.
+   */
+  async hasOwnerPlanCoverage(landId: string): Promise<boolean> {
+    const mappings = await db.land_owner_mapping.where('land_id').equals(landId).toArray();
+    const owing = mappings.filter((m) => (Number(m.agreed_amount) || 0) > 0);
+    if (owing.length === 0) return false;
+    const schedules = await Promise.all(owing.map((m) => this.forMapping(m.id)));
+    return schedules.every(Boolean);
+  }
+
+  /**
+   * The same question for every land at once, for the land list.
+   *
+   * Two full-table reads instead of two per land: the list asks this for every
+   * row it renders, and `hasOwnerPlanCoverage` in a loop is what made the old
+   * pipeline summary slow enough to notice.
+   */
+  async landsCoveredByOwnerPlans(): Promise<Set<string>> {
+    const [mappings, schedules] = await Promise.all([
+      db.land_owner_mapping.toArray(),
+      db.payment_schedules.where('entity_type').equals('land_owner').toArray(),
+    ]);
+    const scheduled = new Set(schedules.map((s) => s.entity_id));
+    const byLand = new Map<string, LandOwnerMapping[]>();
+    for (const m of mappings) {
+      if ((Number(m.agreed_amount) || 0) <= 0) continue;
+      const list = byLand.get(m.land_id);
+      if (list) list.push(m);
+      else byLand.set(m.land_id, [m]);
+    }
+    const covered = new Set<string>();
+    for (const [landId, owing] of byLand) {
+      if (owing.every((m) => scheduled.has(m.id))) covered.add(landId);
+    }
+    return covered;
+  }
+
+  /**
    * Builds one owner's settlement plan from their agreed amount.
    *
    * Reuses `planLandInstallments` rather than growing a second planner: an

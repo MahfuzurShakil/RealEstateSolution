@@ -18,6 +18,57 @@ full defect list is in `ANALYSIS-REPORT_2026-09-02.md`.
 
 ---
 
+## 0n. Land module wrap-up review — 2026-09-20
+
+Closed in this pass, recorded here because two of them change a documented
+contract.
+
+- **A land is never sold from the Land module.** Client decision. A plot the
+  company wants to sell is linked to a project first, and the project type
+  declares the shape of that sale. `PROJECT_TYPES` therefore grew two land-sale
+  values and lost its vaguest one:
+  `land_share | plot_development | apartment | commercial | mixed`.
+  This **supersedes** `Real-Estate-Developer-Platform_Scope-Document_v3.md`
+  §214, which still reads `residential | commercial | mixed`. Dexie **v25**
+  rewrites existing `residential` rows to `apartment`.
+  `joint_venture` was deliberately left out: whether a JV is involved is
+  `lands.acquisition_type`, which is what the Module 2 share allocation reads,
+  and a second place to say it is a second answer to give when they disagree.
+- **`disposed` is an exit, not a sale.** Same decision, other side. The status
+  stays — a plot transferred to another developer, or a JV unwound, still needs
+  somewhere to sit — but it is labelled **Divested**, its consideration is
+  optional, and its dialog points at the two land-sale project types. The key
+  is unchanged, so BRD LAND-004 DISPOSED still maps to it (BRD-ALIGNMENT-PLAN
+  §5.3 D1).
+- **`hasSchedule` ignored per-owner plans.** ACQ-003 is satisfied by either the
+  land-level plan or per-owner plans, but the registration gate, the land
+  list's "waiting on" and the Progress card all read only the land-level one.
+  A multi-owner purchase whose owners were each scheduled would have been
+  refused registration with "Record the owner settlement schedule". Latent
+  until the demo had a land with owner plans; fixed via
+  `ownerSettlementRepository.hasOwnerPlanCoverage` / `landsCoveredByOwnerPlans`.
+- **The demo's one owner-settlement expense had a blank `code`.** It went
+  through `expenseRepository.create` (the base method) instead of
+  `createExpense`, so no EXP code was generated. Invisible with one row; a
+  ConstraintError on the unique index with two.
+- **Demo coverage.** All twelve land statuses now have an example — `acquired`
+  and `disposed` had none, the first because every held plot in the dataset was
+  auto-advanced past it. Owner settlement schedules were seeded for the first
+  time (part-paid, wholly overdue, and settled in full), so the L5 planner and
+  waterfall are visible rather than merely built.
+
+Still open from this review:
+
+- **`TEST-SCENARIOS.md` 1.1 and 1.9 name the old status labels** ("JV Signed"
+  in the filter list, "Disposed" in the pipeline action). The filter has read
+  from `LAND_STATUS_META` since L7 and now says Divested; the scenarios need
+  re-recording against the current screen.
+- **The public portal does not filter by `project_type`.** Harmless today, but
+  `land_share` and `plot_development` are exactly the types a buyer would want
+  to filter on when P1–P4 land.
+
+---
+
 ## 0m. Land L7 redesign — open after 2026-09-16 (LAND-L7-PLAN.md)
 
 Deferred on purpose; none blocks the redesign.

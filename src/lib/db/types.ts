@@ -1005,8 +1005,38 @@ export const PROJECT_STATUSES = [
 ] as const;
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 
-export const PROJECT_TYPES = ['residential', 'commercial', 'mixed'] as const;
+/**
+ * What is being sold on the land (client decision 2026-09-20).
+ *
+ * The list used to be residential/commercial/mixed, which only described a
+ * building. It could not say "this plot is being sold as land", and that is
+ * the point of this field: **a land is never sold from the Land module.** A
+ * plot the company wants to sell is linked to a project first, and the project
+ * type is where the shape of that sale is declared. `land_share` (undivided
+ * shares in the plot) and `plot_development` (serviced plots sold as plots)
+ * are the two land-sale shapes; the rest are built product.
+ *
+ * `residential` became `apartment` in Dexie v25 — it was the same thing under
+ * a vaguer name, and beside `plot_development` the vagueness mattered.
+ *
+ * Deliberately NOT a type: `joint_venture`. Whether a JV is involved is
+ * `lands.acquisition_type`, and that is what the Module 2 share allocation and
+ * the landowner-unit checks read. A second place to say it is a second answer
+ * to give when the two disagree.
+ */
+export const PROJECT_TYPES = [
+  'land_share',
+  'plot_development',
+  'apartment',
+  'commercial',
+  'mixed',
+] as const;
 export type ProjectType = (typeof PROJECT_TYPES)[number];
+
+/** True when the project sells the land itself rather than built product. */
+export function projectSellsLand(type: ProjectType): boolean {
+  return type === 'land_share' || type === 'plot_development';
+}
 
 export interface Project extends BaseEntity {
   code: string;                       // PRJ-2026-001

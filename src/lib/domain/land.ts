@@ -30,7 +30,7 @@ export const LAND_STATUS_META: Record<LandStatus, { label: string; tone: BadgeTo
   linked_to_project: { label: 'Linked to Project', tone: 'teal' },
   on_hold: { label: 'On Hold', tone: 'amber' },
   rejected: { label: 'Rejected', tone: 'red' },
-  disposed: { label: 'Disposed', tone: 'neutral' },
+  disposed: { label: 'Divested', tone: 'neutral' },
 };
 
 /**
@@ -88,10 +88,14 @@ export function allowedNextStatuses(current: LandStatus): LandStatus[] {
     negotiation: ['on_hold', 'rejected'],
     agreed: ['on_hold', 'rejected'],
     /*
-     * A land we own can be sold on (BRD LAND-004 DISPOSED). It is not offered
-     * from `linked_to_project`: a plot a project is being built on is not
-     * something to dispose of from the land screen, and if it genuinely is,
-     * the project has to let go of it first.
+     * A land we own can be let go of (BRD LAND-004 DISPOSED) — transferred on,
+     * or the JV unwound. This is the only exit the land screen offers, and it
+     * is not a sale: selling a plot means linking it to a `land_share` or
+     * `plot_development` project, which is where units and bookings live.
+     *
+     * Not offered from `linked_to_project`: a plot a project already stands on
+     * is not something to let go of from the land screen, and if it genuinely
+     * is, the project has to release it first.
      */
     acquired: ['disposed'],
     under_development: ['disposed'],
@@ -570,7 +574,7 @@ export const STATUS_EXPECTS: Record<LandStatus, string> = {
   linked_to_project: 'Set by Module 2 when a project takes the land.',
   on_hold: 'Parked — recorded from the page header, with a reason.',
   rejected: 'Dropped. Never bought.',
-  disposed: 'Was ours and has been sold on.',
+  disposed: 'Was ours and is no longer held.',
 };
 
 /* ---------------------------- validations ---------------------------- */
@@ -775,7 +779,7 @@ const ATTACHMENTS: Partial<Record<LandStatus, StatusStepAttachment>> = {
   acquired: { documentType: 'dolil_deed', prompt: 'Registered deed, mutation papers, registration receipt' },
   on_hold: { documentType: 'other', customName: 'Hold note', prompt: 'Anything that records why this is parked' },
   rejected: { documentType: 'other', customName: 'Rejection note', prompt: 'Anything that records why this was dropped' },
-  disposed: { documentType: 'other', customName: 'Disposal record', prompt: 'Transfer deed, sale agreement, board approval' },
+  disposed: { documentType: 'other', customName: 'Divestment record', prompt: 'Transfer deed, cancellation deed, board approval' },
 };
 
 export function statusStepAttachment(
@@ -856,26 +860,43 @@ const BASE_STATUS_STEP_CONFIG: Partial<Record<LandStatus, StatusStepConfig>> = {
     ],
   },
   /*
-   * BRD LAND-004 DISPOSED — land the company owned and has sold on.
+   * BRD LAND-004 DISPOSED — the company no longer holds this plot.
+   *
+   * This is an **exit from a plot, not a sale of land** (client decision
+   * 2026-09-20). The Land module sells nothing: a plot the company wants to
+   * sell is linked to a project first, and a `land_share` or
+   * `plot_development` project is what carries the units, the bookings and the
+   * customers. What is left here is the other thing that happens to land the
+   * company holds — it is transferred to another developer, the JV is
+   * cancelled, the deal is unwound — and that had nowhere to sit.
+   *
+   * Worded accordingly: "Divested" on screen, consideration optional, because
+   * a cancelled JV returns the plot for nothing.
    *
    * The amount is what was *received*, and deliberately does NOT write
    * `final_agreed_amount` (see `amountUpdatesFinalAgreed`): that field is what
    * we paid for the plot, and the land's cost ledger and payment schedule are
-   * both built from it. Overwriting it with a sale price would make an
+   * both built from it. Overwriting it with an exit price would make an
    * acquisition that was settled years ago appear to have cost whatever the
-   * buyer paid.
+   * other side paid.
    */
   disposed: {
-    title: 'Mark as disposed',
-    question: 'Record that this land has been sold on. A reason is required.',
-    confirmLabel: 'Mark disposed',
+    title: 'Transfer or divest this land',
+    question:
+      'Record that the company no longer holds this land — transferred to another party, or the agreement unwound. To sell this land to customers, link it to a Land Share or Plot Development project instead. A reason is required.',
+    confirmLabel: 'Mark divested',
     tone: 'warning',
     fields: [
-      { key: 'event_date', label: 'Disposed on', placeholder: '', type: 'date', required: true },
-      { key: 'amount', label: 'Amount received (BDT)', placeholder: 'e.g. 52000000', type: 'number' },
+      { key: 'event_date', label: 'Divested on', placeholder: '', type: 'date', required: true },
+      {
+        key: 'amount',
+        label: 'Consideration received (BDT)',
+        placeholder: 'leave blank if nothing was received',
+        type: 'number',
+      },
       { key: 'reference_no', label: 'Deed / transfer reference', placeholder: 'e.g. 8812/2026', type: 'text' },
       { key: 'performed_by', label: 'Approved by', placeholder: 'e.g. Management committee', type: 'text' },
-      REMARKS(true, 'Why was this land disposed of, and to whom?'),
+      REMARKS(true, 'Why is the company letting this land go, and to whom?'),
     ],
   },
 };

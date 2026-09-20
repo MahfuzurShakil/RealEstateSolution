@@ -19,6 +19,7 @@ import {
   landNegotiationRepository,
   paymentScheduleRepository,
   siteVisitRepository,
+  ownerSettlementRepository,
 } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 
@@ -57,7 +58,16 @@ export function LandProgressCard({
       paymentScheduleRepository.withInstallmentsForLand(land.id),
       landDevelopmentRepository.readinessForLand(land.id),
     ]);
-    return { visits, studies, dd, rounds, schedule, dev };
+    /*
+     * A land runs either the land-level plan or per-owner plans, never both,
+     * so this step has to look at both. Reading only the land-level one left
+     * a fully scheduled multi-owner plot showing "Settlement schedule" as not
+     * done (review 2026-09-20).
+     */
+    const ownerPlans = schedule
+      ? false
+      : await ownerSettlementRepository.hasOwnerPlanCoverage(land.id);
+    return { visits, studies, dd, rounds, schedule, dev, ownerPlans };
   }, [land.id, land.status]);
 
   const isJv = land.acquisition_type === 'joint_venture';
@@ -65,7 +75,7 @@ export function LandProgressCard({
 
   let steps: Step[] = [];
   if (data) {
-    const { visits, studies, dd, rounds, schedule, dev } = data;
+    const { visits, studies, dd, rounds, schedule, dev, ownerPlans } = data;
     const doneVisits = visits.filter((v) => v.status !== 'planned').length;
     const planned = visits.length - doneVisits;
     const approved = studies.find((s) => s.status === 'approved');
@@ -104,12 +114,17 @@ export function LandProgressCard({
         key: 'settlement',
         label: 'Settlement schedule',
         // a JV paid only in units has no cash to schedule, once it is signed
-        done: Boolean(schedule) || (isJv && landIsHeld(land.status) && !(Number(land.final_agreed_amount) > 0)),
+        done:
+          Boolean(schedule) ||
+          ownerPlans ||
+          (isJv && landIsHeld(land.status) && !(Number(land.final_agreed_amount) > 0)),
         count: schedule
           ? plural(schedule.installments.length, 'instalment')
-          : isJv && landIsHeld(land.status) && !(Number(land.final_agreed_amount) > 0)
-            ? 'not needed'
-            : undefined,
+          : ownerPlans
+            ? 'per owner'
+            : isJv && landIsHeld(land.status) && !(Number(land.final_agreed_amount) > 0)
+              ? 'not needed'
+              : undefined,
         section: 'acquisition',
       },
       {
@@ -190,7 +205,7 @@ export function LandProgressCard({
             {isJv
               ? 'JV signing is recorded on the Joint Venture tab'
               : 'Registration is recorded under Negotiation & Acquisition'}
-            ; reject or dispose from the page header.
+            ; reject or divest from the page header.
           </Note>
         </>
       )}
