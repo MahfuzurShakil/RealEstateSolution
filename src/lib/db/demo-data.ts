@@ -182,6 +182,22 @@ export const DEMO_OWNERS: DemoOwner[] = [
     address: 'Madhabdi, Narsingdi',
     notes: 'Textile mill owner; sold to raise working capital',
   },
+  {
+    key: 'joynal',
+    name: 'Md. Joynal Abedin',
+    phone: '01715 662200',
+    nid: '1964889977665',
+    address: 'Kanchan, Rupganj, Narayanganj',
+    notes: 'Sold the family tract in one deal; four brothers signed together',
+  },
+  {
+    key: 'rehana',
+    name: 'Rehana Parvin',
+    phone: '01918 335577',
+    nid: '1986223344556',
+    address: 'Birulia, Savar, Dhaka',
+    notes: 'Lives in Canada; her brother holds the power of attorney',
+  },
 ];
 
 export const DEMO_LANDS: DemoLand[] = [
@@ -1038,6 +1054,154 @@ export const DEMO_LANDS: DemoLand[] = [
         performed_by: 'Management committee',
         remarks:
           'Transferred to Shetu Builders Ltd. after the revised DAP dropped the 40ft access road. The board accepted a 14 lakh loss rather than hold a plot that could not carry the costed tower.',
+        source: 'manual',
+      },
+    ],
+  },
+  /*
+   * The tract a plot project needs (review 2026-09-21,
+   * PROJECT-MODULE-PLAN.md section 2.4).
+   *
+   * Nothing in this dataset was big enough to cut plots out of — the largest
+   * plot was 3 bigha, which is one apartment site, not a housing project. A
+   * real Purbachal-fringe plot scheme starts from several bigha of farmland
+   * that is filled, roaded and drained before a single plot is sold, which is
+   * exactly the work the Land module's development activities already record.
+   */
+  {
+    name: 'Rupganj Kanchan tract',
+    land_classification: 'Nal (paddy land)',
+    source: 'Direct Owner Contact',
+    location_division: 'Dhaka',
+    location_district: 'Narayanganj',
+    location_upazila: 'Rupganj',
+    location_area: 'Kanchan',
+    road: 'Kanchan–Purbachal Link Road',
+    road_access: '30 ft link road; 300ft Purbachal highway 2km',
+    mouza: 'Golakandail',
+    dag_number: '7742',
+    khatian_number: '1908',
+    land_size: 5,
+    land_size_unit: 'bigha',
+    asking_price: 96_000_000,
+    final_agreed_amount: 90_000_000,
+    gps_lat: 23.8103,
+    gps_lng: 90.5372,
+    nearby_facilities: 'Purbachal 300ft highway 2km, Kanchan bridge 3km, Dhaka–Sylhet highway 6km',
+    acquisition_type: 'direct_purchase',
+    status: 'acquired',
+    remarks:
+      'Bought for a plot scheme. Four brothers held it jointly and signed one deed; the eldest took the whole payment and settled with the others privately.',
+    created_at: '2025-10-08T05:30:00.000Z',
+    owners: [{ key: 'joynal', share: 100, primary: true, area: 5, amount: 90_000_000 }],
+    history: [
+      {
+        to_status: 'under_review',
+        event_date: '2025-10-20',
+        performed_by: 'Shafiq Rahman (Land Team)',
+        remarks: 'Big enough for a scheme, and the link road is already built. Low land throughout.',
+        source: 'automatic',
+      },
+      {
+        to_status: 'dd_in_progress',
+        event_date: '2025-11-11',
+        performed_by: 'Adv. Tanvir Alam',
+        remarks: 'Four co-owners; partition deed and all four NIDs verified.',
+        source: 'automatic',
+      },
+      {
+        to_status: 'negotiation',
+        event_date: '2025-12-14',
+        amount: 92_000_000,
+        performed_by: 'Rifat Ahmed',
+        source: 'automatic',
+      },
+      {
+        to_status: 'agreed',
+        event_date: '2026-01-06',
+        amount: 90_000_000,
+        source: 'automatic',
+      },
+      {
+        to_status: 'acquired',
+        event_date: '2026-02-11',
+        amount: 90_000_000,
+        reference_no: '0917/2026',
+        performed_by: 'Sub-Registry Office, Rupganj',
+        remarks: 'Deed registered with all four brothers present.',
+        source: 'manual',
+      },
+    ],
+  },
+  /*
+   * The plot a land-share project is sold out of (review 2026-09-21,
+   * PROJECT-MODULE-PLAN.md section 2.5).
+   *
+   * Small, close to Dhaka and bought outright — which is what makes it worth
+   * selling as twenty shares rather than building on. The follow-on case the
+   * client described (the shareholders come back and commission construction)
+   * is Phase 3; this land is what it will start from.
+   */
+  {
+    name: 'Savar Birulia riverside plot',
+    land_classification: 'Bhiti (homestead land)',
+    source: 'Reference',
+    location_division: 'Dhaka',
+    location_district: 'Dhaka',
+    location_upazila: 'Savar',
+    location_area: 'Birulia',
+    road: 'Birulia–Ashulia Road',
+    road_access: '24 ft road, Turag riverside',
+    mouza: 'Birulia',
+    dag_number: '3318',
+    khatian_number: '702',
+    land_size: 24,
+    land_size_unit: 'katha',
+    asking_price: 52_000_000,
+    final_agreed_amount: 48_000_000,
+    gps_lat: 23.8967,
+    gps_lng: 90.3339,
+    nearby_facilities: 'Birulia bridge 1km, Ashulia 5km, Uttara 12km',
+    acquisition_type: 'direct_purchase',
+    status: 'acquired',
+    remarks:
+      'Bought outright to sell on as shares rather than build — riverside land near Dhaka moves faster in small holdings than as flats.',
+    created_at: '2025-12-02T06:00:00.000Z',
+    owners: [{ key: 'rehana', share: 100, primary: true, area: 24, amount: 48_000_000 }],
+    history: [
+      {
+        to_status: 'under_review',
+        event_date: '2025-12-16',
+        performed_by: 'Kamal Hossain (Land Team)',
+        source: 'automatic',
+      },
+      {
+        to_status: 'dd_in_progress',
+        event_date: '2026-01-13',
+        performed_by: 'Adv. Tanvir Alam',
+        remarks: 'Owner abroad; power of attorney to her brother verified at the mission.',
+        source: 'automatic',
+      },
+      {
+        to_status: 'negotiation',
+        event_date: '2026-02-09',
+        amount: 49_500_000,
+        performed_by: 'Rifat Ahmed',
+        source: 'automatic',
+      },
+      {
+        to_status: 'agreed',
+        event_date: '2026-03-03',
+        amount: 48_000_000,
+        source: 'automatic',
+      },
+      {
+        to_status: 'acquired',
+        event_date: '2026-04-07',
+        amount: 48_000_000,
+        reference_no: '2240/2026',
+        performed_by: 'Sub-Registry Office, Savar',
+        remarks: 'Registered under the power of attorney.',
         source: 'manual',
       },
     ],

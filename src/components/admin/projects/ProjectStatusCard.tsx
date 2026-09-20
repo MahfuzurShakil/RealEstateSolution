@@ -15,6 +15,7 @@ import {
   PROJECT_STATUS_META,
   PROJECT_STEP_CONFIG,
   allowedNextProjectStatuses,
+  projectShape,
   projectStatusBlockers,
   projectStatusWarnings,
   type ProjectStepField,
@@ -50,10 +51,12 @@ export function ProjectStatusCard({ project }: { project: Project }) {
    * allowed.
    */
   const readiness = useLiveQuery(() => projectRepository.readiness(project.id), [project.id]);
+  // v26 — a plot or share project reports no construction; the shape says so
+  const shape = projectShape(project.project_type);
   const blockersFor = (status: ProjectStatus) =>
-    readiness ? projectStatusBlockers(status, readiness) : [];
+    readiness ? projectStatusBlockers(status, readiness, shape) : [];
   const warningsFor = (status: ProjectStatus) =>
-    readiness ? projectStatusWarnings(status, readiness) : [];
+    readiness ? projectStatusWarnings(status, readiness, shape) : [];
 
   const targetBlockers = target ? blockersFor(target) : [];
   const targetWarnings = target ? warningsFor(target) : [];

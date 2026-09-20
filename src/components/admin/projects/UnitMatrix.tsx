@@ -50,12 +50,15 @@ export function UnitMatrix({
     const positionSet = new Set<string>();
 
     for (const unit of units) {
+      // v26 — only a tower shape has floors; the matrix is not rendered for the
+      // others, but a unit with none would otherwise land on floor NaN here
+      const floor = unit.floor ?? 0;
       // the position is what is left of the code after the floor number,
       // e.g. A-501 -> "1", A-5A -> "A". Falls back to the whole code.
-      const suffix = unit.code.replace(new RegExp(`^.*?${unit.floor}`), '') || unit.code;
-      floorSet.add(unit.floor);
+      const suffix = unit.code.replace(new RegExp(`^.*?${floor}`), '') || unit.code;
+      floorSet.add(floor);
       positionSet.add(suffix);
-      map.set(`${unit.floor}::${suffix}`, unit);
+      map.set(`${floor}::${suffix}`, unit);
     }
 
     return {

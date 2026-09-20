@@ -43,6 +43,37 @@ export interface DemoUnitPattern {
   }>;
 }
 
+/**
+ * A numbered run of plots inside one block (v26).
+ *
+ * Mirrors `PlotPatternInput` rather than the floor pattern above, because a
+ * plot schedule has no floors to repeat over — it is a run of numbers, and a
+ * block with two plot sizes is two runs.
+ */
+export interface DemoPlotPattern {
+  prefix: string;
+  separator: string;
+  start_number: number;
+  count: number;
+  unit_type: string;
+  land_size: number;
+  rate_per_katha: number;
+  road_width_ft: number;
+  corner_numbers?: number[];
+  corner_premium?: number;
+  facing: string;
+}
+
+/** A land-share register (v26) — how many shares, and the price of one. */
+export interface DemoShareRegister {
+  prefix: string;
+  separator: string;
+  count: number;
+  price_per_share: number;
+  unit_type: string;
+  total_land_size: number;
+}
+
 export interface DemoTower {
   name: string;
   floor_count: number;
@@ -53,6 +84,8 @@ export interface DemoTower {
   electricity_backup?: boolean;
   front_road_width_ft?: number;
   patterns: DemoUnitPattern[];
+  /** v26 — a block of plots instead of floors of flats */
+  plot_patterns?: DemoPlotPattern[];
 }
 
 export interface DemoProject {
@@ -74,6 +107,14 @@ export interface DemoProject {
   /** demo land names this project is built on */
   land_names: string[];
   towers: DemoTower[];
+  /**
+   * v26 — a land-share project's register.
+   *
+   * Sits on the project rather than inside a tower because a share register
+   * has no container: the single hidden row its units hang off is created by
+   * `towerRepository.ensureShareRegister`, exactly as the UI does it.
+   */
+  share_register?: DemoShareRegister;
   /**
    * Flats handed to the landowner: which unit codes, and which demo owner key
    * they belong to. Everything else stays developer share / company sale.
@@ -541,6 +582,165 @@ export const DEMO_PROJECTS: DemoProject[] = [
         event_date: '2026-08-15',
         reference_no: 'OC-2026-021',
         remarks: 'Occupancy certificate পাওয়া গেছে, প্রথম পাঁচটা ফ্ল্যাট হস্তান্তর হয়েছে।',
+      },
+    ],
+  },
+  /*
+   * The plot scheme (review 2026-09-21, PROJECT-MODULE-PLAN.md section 2.4).
+   *
+   * Five bigha at Rupganj, filled and roaded, cut into two blocks of plots and
+   * sold by the katha. Everything that makes it a different kind of project is
+   * visible here: no floors, no flats, a rate per katha rather than per sqft,
+   * and the corner plots carrying a premium. Its "construction progress" is the
+   * filling and the roads, which are recorded against the land in Module 1 —
+   * so the project page shows no Site Progress tab at all.
+   */
+  {
+    name: 'Nokshi Kanchan Model Town',
+    project_type: 'plot_development',
+    total_land_area: 100,
+    location_summary: 'Kanchan, Rupganj — 2km off the Purbachal 300ft highway',
+    expected_start_date: '2026-02-20',
+    expected_completion_date: '2027-06-30',
+    actual_start_date: '2026-02-20',
+    status: 'nearly_complete',
+    surroundings:
+      'Purbachal 300ft highway 2km, Kanchan bridge 3km, Dhaka–Sylhet highway 6km, Kanchan Bazar 1km',
+    amenities: ['Security', 'CCTV', 'Parking'],
+    is_public: true,
+    is_featured: false,
+    created_at: '2026-02-14T06:00:00.000Z',
+    land_names: ['Rupganj Kanchan tract'],
+    towers: [
+      {
+        name: 'Block A',
+        floor_count: 0,
+        status: 'complete',
+        front_road_width_ft: 40,
+        patterns: [],
+        plot_patterns: [
+          {
+            prefix: 'A',
+            separator: '-',
+            start_number: 1,
+            count: 8,
+            unit_type: 'Residential Plot',
+            land_size: 5,
+            rate_per_katha: 1_450_000,
+            road_width_ft: 40,
+            corner_numbers: [1, 8],
+            corner_premium: 700_000,
+            facing: 'South',
+          },
+        ],
+      },
+      {
+        name: 'Block B',
+        floor_count: 0,
+        status: 'complete',
+        front_road_width_ft: 25,
+        patterns: [],
+        plot_patterns: [
+          /* the cheaper block: a narrower road, and the smaller plots that
+             actually sell on it */
+          {
+            prefix: 'B',
+            separator: '-',
+            start_number: 1,
+            count: 10,
+            unit_type: 'Residential Plot',
+            land_size: 3,
+            rate_per_katha: 1_200_000,
+            road_width_ft: 25,
+            corner_numbers: [1, 10],
+            corner_premium: 400_000,
+            facing: 'East',
+          },
+        ],
+      },
+    ],
+    history: [
+      { to_status: 'design', event_date: '2026-02-18', remarks: 'Layout drawn: two blocks, 18 plots.' },
+      {
+        to_status: 'approval',
+        event_date: '2026-03-22',
+        reference_no: 'RAJUK/LSD/2026/4471',
+        remarks: 'Land subdivision approval applied for.',
+      },
+      {
+        to_status: 'under_construction',
+        event_date: '2026-02-20',
+        remarks: 'Filling started — development work is the construction here.',
+      },
+      {
+        to_status: 'nearly_complete',
+        event_date: '2026-09-12',
+        remarks: 'Roads and drains finished. Plots being pegged out for handover.',
+      },
+    ],
+  },
+  /*
+   * The share register (review 2026-09-21, PROJECT-MODULE-PLAN.md section 2.5).
+   *
+   * The client's own example, to the number: one plot, 20 shares, 100,000 taka
+   * each. A buyer owns a twentieth of the whole — nothing is built and nothing
+   * is demarcated — so there is no block, no floor, no size in sqft, and no
+   * site progress. What each share shows is its percentage and the 1.2 katha
+   * that percentage represents, because that is how buyers picture it.
+   *
+   * The follow-on the client described — the shareholders come back and
+   * commission construction on the land they now co-own — is Phase 3
+   * (`projects.succeeds_project_id`).
+   */
+  {
+    name: 'Birulia Riverside Share Project',
+    project_type: 'land_share',
+    total_land_area: 24,
+    location_summary: 'Birulia, Savar — on the Turag',
+    expected_start_date: '2026-04-15',
+    expected_completion_date: '2026-12-31',
+    actual_start_date: '2026-04-15',
+    status: 'handover_ongoing',
+    surroundings: 'Birulia bridge 1km, Ashulia 5km, Uttara 12km, riverside frontage',
+    amenities: [],
+    is_public: true,
+    is_featured: false,
+    created_at: '2026-04-10T05:45:00.000Z',
+    land_names: ['Savar Birulia riverside plot'],
+    towers: [],
+    share_register: {
+      prefix: 'SHARE',
+      separator: '-',
+      count: 20,
+      price_per_share: 100_000,
+      unit_type: 'Land Share',
+      total_land_size: 24,
+    },
+    history: [
+      {
+        to_status: 'design',
+        event_date: '2026-04-15',
+        remarks: 'Twenty equal shares agreed with the board. Nothing is built.',
+      },
+      {
+        to_status: 'approval',
+        event_date: '2026-04-28',
+        remarks: 'Share deed drafted and vetted.',
+      },
+      {
+        to_status: 'under_construction',
+        event_date: '2026-05-04',
+        remarks: 'Register opened for sale. No construction on this project.',
+      },
+      {
+        to_status: 'nearly_complete',
+        event_date: '2026-07-30',
+        remarks: 'Most of the register sold.',
+      },
+      {
+        to_status: 'handover_ongoing',
+        event_date: '2026-08-25',
+        remarks: 'Share deeds being registered buyer by buyer.',
       },
     ],
   },

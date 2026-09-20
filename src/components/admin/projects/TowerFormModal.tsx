@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Checkbox, Field, SelectInput, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { TOWER_STATUSES, type Tower, type TowerStatus } from '@/lib/db/types';
+import type { ProjectShape } from '@/lib/domain/project';
 import { TOWER_STATUS_META } from '@/lib/domain/project';
 import { towerRepository } from '@/lib/repositories';
 
@@ -38,15 +39,26 @@ const num = (v: string) => (v.trim() === '' ? null : Number(v));
  * Add / edit a tower (Section 3.5). A tower is small enough to live in a
  * dialog on the project page rather than a page of its own.
  */
+/**
+ * v26 — the same modal for a tower and for a plot block.
+ *
+ * A block groups plots; it has no floors, no units-per-floor and no lift, and
+ * the one thing it does have that a tower barely uses — the width of the road
+ * it fronts onto — is a price driver for every plot inside it. So the
+ * construction fields are hidden and the floor count stops being required,
+ * rather than a second near-identical modal being written for blocks.
+ */
 export function TowerFormModal({
   open,
   projectId,
   tower,
+  shape,
   onClose,
 }: {
   open: boolean;
   projectId: string;
   tower?: Tower;
+  shape: ProjectShape;
   onClose: () => void;
 }) {
   // mounted only while open, so the state starts from the tower being edited
@@ -66,6 +78,8 @@ export function TowerFormModal({
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const isTower = shape.container === 'tower';
+  const L = shape.labels;
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -73,7 +87,8 @@ export function TowerFormModal({
   async function save() {
     const next: Record<string, string> = {};
     if (!form.name.trim()) next.name = 'Required';
-    if (!form.floor_count.trim() || Number(form.floor_count) <= 0)
+    // a block has no floors, so there is nothing to require
+    if (isTower && (!form.floor_count.trim() || Number(form.floor_count) <= 0))
       next.floor_count = 'Enter a floor count above 0';
     setErrors(next);
     if (Object.keys(next).length > 0) return;
@@ -102,8 +117,12 @@ export function TowerFormModal({
   return (
     <Modal
       open={open}
-      title={tower ? `Edit ${tower.name}` : 'Add Tower'}
-      subtitle="Blocks, towers or a single main building"
+      title={tower ? `Edit ${tower.name}` : `Add ${L.container}`}
+      subtitle={
+        isTower
+          ? 'Blocks, towers or a single main building'
+          : 'A group of plots — usually one block of the layout'
+      }
       icon={Building2}
       size="md"
       onClose={onClose}
@@ -113,17 +132,17 @@ export function TowerFormModal({
             Cancel
           </Button>
           <Button onClick={save} disabled={saving}>
-            {saving ? 'Saving…' : tower ? 'Save changes' : 'Add tower'}
+            {saving ? 'Saving…' : tower ? 'Save changes' : `Add ${L.container.toLowerCase()}`}
           </Button>
         </>
       }
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Tower Name" required error={errors.name}>
+        <Field label={`${L.container} Name`} required error={errors.name}>
           <TextInput
             value={form.name}
             onChange={(e) => set('name', e.target.value)}
-            placeholder="e.g. Tower A"
+            placeholder={isTower ? 'e.g. Tower A' : 'e.g. Block C'}
             invalid={Boolean(errors.name)}
           />
         </Field>
@@ -139,42 +158,49 @@ export function TowerFormModal({
             ))}
           </SelectInput>
         </Field>
-        <Field label="Floor Count" required error={errors.floor_count}>
-          <TextInput
-            type="number"
-            min="1"
-            value={form.floor_count}
-            onChange={(e) => set('floor_count', e.target.value)}
-            placeholder="e.g. 12"
-            invalid={Boolean(errors.floor_count)}
-          />
-        </Field>
-        <Field label="Building Type" hint="Basement + Ground + floors">
-          <TextInput
-            value={form.building_type}
-            onChange={(e) => set('building_type', e.target.value)}
-            placeholder="e.g. B+G+10"
-          />
-        </Field>
-        <Field label="Units per Floor">
-          <TextInput
-            type="number"
-            min="0"
-            value={form.unit_per_floor}
-            onChange={(e) => set('unit_per_floor', e.target.value)}
-            placeholder="e.g. 4"
-          />
-        </Field>
-        <Field label="Lift Count">
-          <TextInput
-            type="number"
-            min="0"
-            value={form.lift_count}
-            onChange={(e) => set('lift_count', e.target.value)}
-            placeholder="e.g. 2"
-          />
-        </Field>
-        <Field label="Front Road Width (ft)">
+        {isTower && (
+          <>
+            <Field label="Floor Count" required error={errors.floor_count}>
+              <TextInput
+                type="number"
+                min="1"
+                value={form.floor_count}
+                onChange={(e) => set('floor_count', e.target.value)}
+                placeholder="e.g. 12"
+                invalid={Boolean(errors.floor_count)}
+              />
+            </Field>
+            <Field label="Building Type" hint="Basement + Ground + floors">
+              <TextInput
+                value={form.building_type}
+                onChange={(e) => set('building_type', e.target.value)}
+                placeholder="e.g. B+G+10"
+              />
+            </Field>
+            <Field label="Units per Floor">
+              <TextInput
+                type="number"
+                min="0"
+                value={form.unit_per_floor}
+                onChange={(e) => set('unit_per_floor', e.target.value)}
+                placeholder="e.g. 4"
+              />
+            </Field>
+            <Field label="Lift Count">
+              <TextInput
+                type="number"
+                min="0"
+                value={form.lift_count}
+                onChange={(e) => set('lift_count', e.target.value)}
+                placeholder="e.g. 2"
+              />
+            </Field>
+          </>
+        )}
+        <Field
+          label="Front Road Width (ft)"
+          hint={isTower ? undefined : 'What the plots in this block front onto'}
+        >
           <TextInput
             type="number"
             step="0.1"
@@ -184,13 +210,15 @@ export function TowerFormModal({
             placeholder="e.g. 40"
           />
         </Field>
-        <div className="flex items-center pt-6">
-          <Checkbox
-            label="Electricity backup (generator)"
-            checked={form.electricity_backup}
-            onChange={(e) => set('electricity_backup', e.target.checked)}
-          />
-        </div>
+        {isTower && (
+          <div className="flex items-center pt-6">
+            <Checkbox
+              label="Electricity backup (generator)"
+              checked={form.electricity_backup}
+              onChange={(e) => set('electricity_backup', e.target.checked)}
+            />
+          </div>
+        )}
       </div>
     </Modal>
   );

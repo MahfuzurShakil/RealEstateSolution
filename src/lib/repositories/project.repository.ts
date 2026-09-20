@@ -6,6 +6,7 @@ import type {
   Land,
   LandJvDetails,
   LandProjectMapping,
+  LandSizeUnit,
   Landowner,
   Project,
   ProjectStatus,
@@ -19,12 +20,15 @@ import {
   floorsInRange,
   jvAllocationSummary,
   priceOnFloor,
+  projectShape,
+  shapeIsBuilt,
   unitCode,
   type AllocationTotals,
   type JvAllocationSummary,
   type ProjectReadiness,
   type UnitPatternInput,
 } from '../domain/project';
+import { money } from '../domain/finance';
 import { nextCode } from '../utils/id';
 import { todayLocal } from '../utils/format';
 import { BaseRepository, type NewRecord } from './base.repository';
@@ -472,11 +476,51 @@ class TowerRepository extends BaseRepository<Tower> {
   /**
    * A new tower opens with the default WBS of Section 6.2, so Site Progress
    * has something to report against without anyone setting it up by hand.
+   *
+   * v26 — only when there is something to build. A `plot_development` block is
+   * a grouping of plots and a `land_share` register is not a place at all;
+   * seeding either with "Substructure, Superstructure, Finishing" would put a
+   * construction schedule on a project that will never report against it, and
+   * the weighted progress it produces would then be read as real by the
+   * project pipeline.
    */
   async create(input: NewRecord<Tower>, createdBy: string | null = null): Promise<Tower> {
     const tower = await super.create({ current_progress_pct: 0, ...input }, createdBy);
-    await towerWorkItemRepository.seedDefaultsForTower(tower.id, createdBy);
+    const project = await projectRepository.getById(input.project_id);
+    if (project && shapeIsBuilt(projectShape(project.project_type))) {
+      await towerWorkItemRepository.seedDefaultsForTower(tower.id, createdBy);
+    }
     return tower;
+  }
+
+  /**
+   * The single hidden container a `land_share` project's shares live in.
+   *
+   * `units.tower_id` stays required (PROJECT-MODULE-PLAN.md section 3): making
+   * it nullable would mean auditing every `where('tower_id')` in Modules 4, 5
+   * and 6 for a null case that exactly one project type can produce. One
+   * hidden row per share project is the cheaper side of that trade, and the
+   * share register UI never shows it.
+   *
+   * Idempotent — called whenever shares are generated.
+   */
+  async ensureShareRegister(projectId: string, createdBy: string | null = null): Promise<Tower> {
+    const existing = await this.listForProject(projectId);
+    if (existing[0]) return existing[0];
+    return this.create(
+      {
+        project_id: projectId,
+        name: 'Share Register',
+        floor_count: 0,
+        status: 'planning',
+        building_type: null,
+        unit_per_floor: null,
+        lift_count: null,
+        electricity_backup: null,
+        front_road_width_ft: null,
+      },
+      createdBy,
+    );
   }
 
   /** Deleting a tower takes its units and its WBS (with the site log) with it. */
@@ -500,6 +544,36 @@ export interface BulkGenerateResult {
   created: Unit[];
   /** codes already in use, left untouched so a second run is safe */
   skipped: string[];
+}
+
+/** One block's run of plots (v26) — see `bulkGeneratePlots`. */
+export interface PlotPatternInput {
+  /** usually the block letter: "C" gives C-1, C-2 … */
+  prefix: string;
+  separator: string;
+  start_number: number;
+  count: number;
+  unit_type: string;
+  land_size: number;
+  land_size_unit: LandSizeUnit;
+  rate_per_katha: number;
+  road_width_ft: number | string;
+  /** plot numbers in this run that sit on a corner */
+  corner_numbers: number[];
+  corner_premium: number | string;
+  facing: string;
+}
+
+/** A share register (v26) — see `bulkGenerateShares`. */
+export interface SharePatternInput {
+  prefix: string;
+  separator: string;
+  count: number;
+  price_per_share: number;
+  unit_type: string;
+  /** the whole plot, divided evenly across the shares; optional */
+  total_land_size?: number | null;
+  land_size_unit: LandSizeUnit;
 }
 
 class UnitRepository extends BaseRepository<Unit> {
@@ -587,6 +661,143 @@ class UnitRepository extends BaseRepository<Unit> {
   }
 
   /**
+   * Bulk generation of **plots** for one block (v26).
+   *
+   * Deliberately not folded into `bulkGenerate`: that one is a floor pattern
+   * repeated up a tower, and a plot schedule has no floors to repeat over. A
+   * block is a numbered run of plots whose sizes vary plot by plot, so what is
+   * given here is a starting number, a count, and the defaults every plot in
+   * the run shares.
+   *
+   * Price is `rate_per_katha x land_size`, computed per plot rather than typed,
+   * because that is how a plot schedule is actually quoted and a typed total
+   * that disagrees with the rate is the first thing a buyer catches. Corner
+   * plots take the premium on top.
+   */
+  async bulkGeneratePlots(
+    towerId: string,
+    input: PlotPatternInput,
+    createdBy: string | null = null,
+  ): Promise<BulkGenerateResult> {
+    const existing = new Set((await db.units.toArray()).map((u) => u.code));
+    const created: Unit[] = [];
+    const skipped: string[] = [];
+
+    const count = Math.max(0, Math.trunc(Number(input.count) || 0));
+    const start = Math.trunc(Number(input.start_number) || 1);
+    const size = Number(input.land_size) || 0;
+    const rate = Number(input.rate_per_katha) || 0;
+
+    for (let i = 0; i < count; i += 1) {
+      const number = start + i;
+      const code = `${input.prefix}${input.separator}${number}`;
+      if (existing.has(code)) {
+        skipped.push(code);
+        continue;
+      }
+      existing.add(code);
+      const isCorner = input.corner_numbers.includes(number);
+      created.push(
+        await this.create(
+          {
+            code,
+            tower_id: towerId,
+            floor: null,
+            unit_type: input.unit_type,
+            bedroom_count: null,
+            bathroom_count: null,
+            balcony_count: null,
+            size_sqft: null,
+            land_size: size,
+            land_size_unit: input.land_size_unit,
+            share_pct: null,
+            road_width_ft: numOrNull(input.road_width_ft),
+            is_corner: isCorner,
+            facing: input.facing.trim() || null,
+            base_price: money(size * rate + (isCorner ? Number(input.corner_premium) || 0 : 0)),
+            parking_allocated: 0,
+            status: 'available',
+            allocation_type: 'developer_share',
+            allocated_to_owner_id: null,
+            for_sale_by: 'company',
+          },
+          createdBy,
+        ),
+      );
+    }
+
+    return { created, skipped };
+  }
+
+  /**
+   * Bulk generation of a **share register** (v26).
+   *
+   * The client's own example: one plot, 20 shares, 100,000 taka each. Every
+   * share is the same price and the same fraction, so this takes a count and a
+   * price and nothing else — there is no pattern to describe.
+   *
+   * `share_pct` is stored per row rather than derived from the count, because
+   * shares are not always equal once they start trading: a buyer taking two is
+   * one row of 10% as often as two rows of 5%, and the register has to be able
+   * to say so afterwards. `land_size` rides along because buyers think in
+   * katha even when what they are buying is a percentage.
+   */
+  async bulkGenerateShares(
+    towerId: string,
+    input: SharePatternInput,
+    createdBy: string | null = null,
+  ): Promise<BulkGenerateResult> {
+    const existing = new Set((await db.units.toArray()).map((u) => u.code));
+    const created: Unit[] = [];
+    const skipped: string[] = [];
+
+    const count = Math.max(0, Math.trunc(Number(input.count) || 0));
+    if (count === 0) return { created, skipped };
+
+    const pct = money(100 / count);
+    const areaEach = input.total_land_size ? money((Number(input.total_land_size) || 0) / count) : null;
+    const width = String(count).length;
+
+    for (let i = 0; i < count; i += 1) {
+      const code = `${input.prefix}${input.separator}${String(i + 1).padStart(width, '0')}`;
+      if (existing.has(code)) {
+        skipped.push(code);
+        continue;
+      }
+      existing.add(code);
+      created.push(
+        await this.create(
+          {
+            code,
+            tower_id: towerId,
+            floor: null,
+            unit_type: input.unit_type,
+            bedroom_count: null,
+            bathroom_count: null,
+            balcony_count: null,
+            size_sqft: null,
+            land_size: areaEach,
+            land_size_unit: areaEach ? input.land_size_unit : null,
+            share_pct: pct,
+            road_width_ft: null,
+            is_corner: null,
+            facing: null,
+            base_price: money(Number(input.price_per_share) || 0),
+            parking_allocated: 0,
+            status: 'available',
+            allocation_type: 'developer_share',
+            allocated_to_owner_id: null,
+            for_sale_by: 'company',
+          },
+          createdBy,
+        ),
+      );
+    }
+
+    return { created, skipped };
+  }
+
+  /**
    * Bulk allocation — the second half of the decision: select units, mark them
    * landowner share and pick the owner. This is what feeds the JV check.
    */
@@ -623,14 +834,23 @@ class UnitRepository extends BaseRepository<Unit> {
   }
 }
 
-function numOrNull(value: string): number | null {
+function numOrNull(value: string | number): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   return value.trim() === '' ? null : Number(value);
 }
 
-/** Floor first, then code — the order a price list is read in. */
+/**
+ * Floor first, then code — the order a price list is read in.
+ *
+ * A plot and a share have no floor (v26), so they all sort as floor 0 and fall
+ * through to the code comparison, which is the order a plot schedule is read
+ * in anyway: C-1, C-2, C-10.
+ */
 function sortUnits(rows: Unit[]): Unit[] {
   return rows.sort(
-    (a, b) => a.floor - b.floor || a.code.localeCompare(b.code, undefined, { numeric: true }),
+    (a, b) =>
+      (a.floor ?? 0) - (b.floor ?? 0) ||
+      a.code.localeCompare(b.code, undefined, { numeric: true }),
   );
 }
 

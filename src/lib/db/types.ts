@@ -1070,6 +1070,21 @@ export interface Project extends BaseEntity {
    * (same precedent as `towers.current_progress_pct`).
    */
   cover_image_document_id?: UUID | null;
+  /**
+   * v26 — the land-share project this one grew out of
+   * (PROJECT-MODULE-PLAN.md section 2.5).
+   *
+   * The common next step after a plot is sold as shares: the buyers, now
+   * co-owners, come back to the same developer and ask him to build on it.
+   * That is a new project on the same land with a different contract,
+   * different money and different inventory — a successor, not a stage of the
+   * share project. This is what lets Phase 3 carry the shareholders across as
+   * known customers instead of re-entering twenty buyers by hand.
+   *
+   * Also covers partition: a share project whose co-owners divide the land
+   * becomes a `plot_development` project that succeeds it.
+   */
+  succeeds_project_id?: UUID | null;
   /** Public Portal P1 */
   is_public: boolean;
   is_featured: boolean;
@@ -1119,16 +1134,63 @@ export type AllocationType = (typeof ALLOCATION_TYPES)[number];
 export const FOR_SALE_BY = ['company', 'owner_direct'] as const;
 export type ForSaleBy = (typeof FOR_SALE_BY)[number];
 
+/**
+ * One saleable item: a flat, a plot, or a share (v26).
+ *
+ * The same row for all three, because `bookings.unit_id`, the payment
+ * schedules hanging off it, refunds, the allocation matrix and the public
+ * portal all already speak this language — a separate `plots` table would be a
+ * cleaner model bought with a second code path through every one of them, kept
+ * in sync forever. What the row *means* comes from `projectShape()`, which
+ * also says which of the optional columns below apply.
+ *
+ * `floor` and `size_sqft` became nullable in v26: a plot has no floor and a
+ * share has neither. They stay non-null in practice on the three tower shapes,
+ * which is where every existing row is.
+ */
 export interface Unit extends BaseEntity {
-  code: string;                       // A-501
+  code: string;                       // A-501, C-14, SHARE-07
   tower_id: UUID;
-  floor: number;
+  /** tower shapes only — a plot is not on a floor, and a share is nowhere */
+  floor?: number | null;
   unit_type: string;                  // lookup_values (category='unit_type')
   bedroom_count?: number | null;
   bathroom_count?: number | null;
   balcony_count?: number | null;
-  size_sqft: number;
+  /** tower shapes only; a plot is measured in katha and a share in percent */
+  size_sqft?: number | null;
   facing?: string | null;             // lookup_values (category='facing')
+  /**
+   * v26 — a plot's area, in `land_size_unit`.
+   *
+   * Separate from `size_sqft` rather than a converted value in it, because a
+   * plot is quoted, negotiated, deeded and mutated in katha. Storing 5 katha as
+   * 3,600 sqft would mean every screen converting back, and the conversion
+   * differs by district.
+   *
+   * Also carried on a `land_share` unit, where it is the area the share
+   * represents — buyers think in katha even when they are buying a percentage.
+   */
+  land_size?: number | null;
+  land_size_unit?: LandSizeUnit | null;
+  /**
+   * v26 — a land share's fraction of the whole plot, as a percentage.
+   *
+   * 20 shares at 100,000 each makes each one 5%. Stored rather than derived
+   * from the share count because shares are not always equal: a buyer taking
+   * two shares is one row of 10% as often as it is two rows of 5%.
+   */
+  share_pct?: number | null;
+  /**
+   * v26 — the two things that move a plot's price (PROJECT-MODULE-PLAN §2.4).
+   *
+   * A plot on a 40ft road is worth materially more than the same plot on a
+   * 20ft road, and a corner plot carries a premium. They are to a plot what
+   * floor and facing are to a flat, which is why they sit beside them here
+   * rather than in a plot-only table.
+   */
+  road_width_ft?: number | null;
+  is_corner?: boolean | null;
   base_price: number;
   parking_allocated: number;
   status: UnitStatus;

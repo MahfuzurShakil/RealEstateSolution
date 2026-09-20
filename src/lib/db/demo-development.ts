@@ -34,6 +34,8 @@ export interface DemoDevelopmentActivity {
 
 /** Lands that need no development at all (BRD DEV-004). */
 export const DEMO_NO_DEVELOPMENT_LANDS = [
+  // bought to be sold on as shares, not built on — nothing is developed
+  'Savar Birulia riverside plot',
   'Uttara Sector 13 residential plot',
   'Bashundhara Block K corner plot',
   // serviced from the day it was signed, so it goes straight to Ready for Project
@@ -41,6 +43,71 @@ export const DEMO_NO_DEVELOPMENT_LANDS = [
 ];
 
 export const DEMO_DEVELOPMENT: DemoDevelopmentActivity[] = [
+  /*
+   * Rupganj is the plot-scheme tract (PROJECT-MODULE-PLAN.md section 2.4).
+   *
+   * On a plot project this *is* the construction: the filling, the roads and
+   * the drains are what the buyer is paying for, and they are recorded here
+   * rather than as tower work items. Both activities are complete, so the land
+   * reaches Ready for Project and the scheme can be laid out on it — which is
+   * also gate G3 doing its job.
+   */
+  {
+    land: 'Rupganj Kanchan tract',
+    activity_type: 'Earth filling',
+    contractor: 'Nirman Construction Services',
+    unit: 'cft',
+    planned_qty: 640_000,
+    budget_amount: 24_500_000,
+    start_date: '2026-02-20',
+    target_date: '2026-06-30',
+    status: 'completed',
+    notes: 'Six feet across five bigha, dredged from the Shitalakshya.',
+    progress: [
+      {
+        progress_date: '2026-04-18',
+        qty_done: 300_000,
+        pct_complete: 47,
+        amount_incurred: 11_600_000,
+        remarks: 'Two dredgers running. Ahead of plan before the rains.',
+      },
+      {
+        progress_date: '2026-06-26',
+        qty_done: 640_000,
+        pct_complete: 100,
+        amount_incurred: 25_200_000,
+        remarks: 'Filling complete. Over budget on carting after fuel went up.',
+      },
+    ],
+  },
+  {
+    land: 'Rupganj Kanchan tract',
+    activity_type: 'Internal road & drain',
+    contractor: 'Nirman Construction Services',
+    unit: 'rft',
+    planned_qty: 2_200,
+    budget_amount: 9_800_000,
+    start_date: '2026-07-06',
+    target_date: '2026-09-15',
+    status: 'completed',
+    notes: '25ft internal roads with an RCC drain each side. One 40ft spine road.',
+    progress: [
+      {
+        progress_date: '2026-08-10',
+        qty_done: 1_300,
+        pct_complete: 59,
+        amount_incurred: 5_700_000,
+        remarks: 'Spine road done; block roads sub-base laid.',
+      },
+      {
+        progress_date: '2026-09-12',
+        qty_done: 2_200,
+        pct_complete: 100,
+        amount_incurred: 9_450_000,
+        remarks: 'Roads and drains finished. Plots can be pegged out.',
+      },
+    ],
+  },
   {
     land: 'Chattogram Agrabad commercial plot',
     activity_type: 'Site clearing',

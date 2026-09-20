@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Building2,
@@ -22,6 +22,7 @@ import {
   UNIT_STATUSES,
   type AllocationType,
   type Landowner,
+  type ProjectType,
   type Tower,
   type Unit,
   type UnitStatus,
@@ -31,22 +32,51 @@ import {
   FOR_SALE_BY_SHORT,
   TOWER_STATUS_META,
   UNIT_STATUS_META,
+  projectShape,
+  shapeUses,
+  unitSizeLabel,
 } from '@/lib/domain/project';
 import {
   landownerRepository,
   towerRepository,
   unitRepository,
 } from '@/lib/repositories';
+import { useMockSession } from '@/lib/auth/mock-session';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt } from '@/lib/utils/format';
 import { TowerFormModal } from './TowerFormModal';
 import { UnitMatrix } from './UnitMatrix';
 import { UnitBulkAllocateModal } from './UnitBulkAllocateModal';
+import { PlotShareGenerateModal } from './PlotShareGenerateModal';
 import { UnitBulkGenerateModal } from './UnitBulkGenerateModal';
 import { UnitEditModal } from './UnitEditModal';
 
-/** Towers of a project, and the unit list of whichever tower is selected. */
-export function TowersUnitsPanel({ projectId }: { projectId: string }) {
+/**
+ * A project's inventory: its containers, and the items inside the selected one.
+ *
+ * v26 — what a container and an item *are* comes from `projectShape`, not from
+ * this component. On an apartment project it reads as Towers and Units; on a
+ * plot project as Blocks and Plots, with no floor and no bedroom column; on a
+ * land-share project the container disappears entirely and what is left is one
+ * share register. Every label, every column and every empty state below asks
+ * the shape rather than testing `project_type`.
+ */
+export function TowersUnitsPanel({
+  projectId,
+  projectType,
+}: {
+  projectId: string;
+  projectType: ProjectType;
+}) {
+  const { userId } = useMockSession();
+  const shape = projectShape(projectType);
+  const L = shape.labels;
+  /*
+   * A share register has exactly one hidden container (see
+   * `towerRepository.ensureShareRegister`), so showing a card for it would be
+   * showing the user an implementation detail.
+   */
+  const showContainers = shape.container !== 'none';
   const [selectedTowerId, setSelectedTowerId] = useState<string | null>(null);
   const [towerModal, setTowerModal] = useState<{ open: boolean; tower?: Tower }>({ open: false });
   const [generateFor, setGenerateFor] = useState<Tower | null>(null);
@@ -63,6 +93,20 @@ export function TowersUnitsPanel({ projectId }: { projectId: string }) {
   const [view, setView] = useState<ViewMode>('grid');
 
   const towers = useLiveQuery(() => towerRepository.listForProject(projectId), [projectId]);
+
+  /*
+   * A share register's one container is created for it, not by the user.
+   *
+   * `units.tower_id` stays required (PROJECT-MODULE-PLAN.md section 3), so a
+   * share still needs a row to hang off — but asking someone to "add a tower"
+   * before they can enter a share register would be asking them to understand
+   * our schema. Idempotent, and only ever runs for `container: 'none'`.
+   */
+  useEffect(() => {
+    if (showContainers || towers === undefined || towers.length > 0) return;
+    void towerRepository.ensureShareRegister(projectId, userId);
+  }, [showContainers, towers, projectId, userId]);
+
   const unitCounts = useLiveQuery(
     () => towerRepository.unitCountsForProject(projectId),
     [projectId],
@@ -105,23 +149,24 @@ export function TowersUnitsPanel({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-5">
+      {showContainers && (
       <Card>
         <CardHeader
-          title={`Towers (${towers.length})`}
+          title={`${L.containerPlural} (${towers.length})`}
           action={
             <Button size="sm" onClick={() => setTowerModal({ open: true })}>
-              <Plus className="size-4" /> Add Tower
+              <Plus className="size-4" /> Add {L.container}
             </Button>
           }
         />
         {towers.length === 0 ? (
           <EmptyState
             icon={Building2}
-            title="No tower yet"
-            description="Add a tower or block first — units are generated inside it."
+            title={`No ${L.container.toLowerCase()} yet`}
+            description={`Add a ${L.container.toLowerCase()} first — ${L.itemPlural.toLowerCase()} are generated inside it.`}
             action={
               <Button onClick={() => setTowerModal({ open: true })}>
-                <Plus className="size-4" /> Add Tower
+                <Plus className="size-4" /> Add {L.container}
               </Button>
             }
           />
@@ -165,11 +210,23 @@ export function TowersUnitsPanel({ projectId }: { projectId: string }) {
                         {TOWER_STATUS_META[tower.status].label}
                       </Badge>
                     </div>
+                    {/* a block has no floors and no lifts; its road is what matters */}
                     <p className="mt-1 text-xs text-ink-muted">
-                      {tower.building_type ? `${tower.building_type} · ` : ''}
-                      {tower.floor_count} floors
-                      {tower.unit_per_floor ? ` · ${tower.unit_per_floor}/floor` : ''}
-                      {tower.lift_count ? ` · ${tower.lift_count} lift` : ''}
+                      {shape.container === 'tower'
+                        ? [
+                            tower.building_type,
+                            `${tower.floor_count} floors`,
+                            tower.unit_per_floor ? `${tower.unit_per_floor}/floor` : null,
+                            tower.lift_count ? `${tower.lift_count} lift` : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')
+                        : [
+                            tower.building_type,
+                            tower.front_road_width_ft ? `${tower.front_road_width_ft} ft road` : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ') || 'No details recorded'}
                     </p>
                     {generated !== undefined && (
                       <p
@@ -179,14 +236,14 @@ export function TowersUnitsPanel({ projectId }: { projectId: string }) {
                         )}
                       >
                         {expected === null
-                          ? `${generated} unit${generated === 1 ? '' : 's'}`
+                          ? `${generated} ${generated === 1 ? L.item.toLowerCase() : L.itemPlural.toLowerCase()}`
                           : `${generated} of ${expected} generated`}
                       </p>
                     )}
                   </button>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button size="sm" variant="outline" onClick={() => setGenerateFor(tower)}>
-                      <Layers className="size-4" /> Generate units
+                      <Layers className="size-4" /> Generate {L.itemPlural.toLowerCase()}
                     </Button>
                     <Button
                       size="sm"
@@ -211,16 +268,22 @@ export function TowersUnitsPanel({ projectId }: { projectId: string }) {
           </div>
         )}
       </Card>
+      )}
 
       {activeTower && (
         <Card>
           <CardHeader
-            title={`Units — ${activeTower.name} (${rows.length})`}
+            title={
+              showContainers
+                ? `${L.itemPlural} — ${activeTower.name} (${rows.length})`
+                : `${L.itemPlural} (${rows.length})`
+            }
             action={
               <div className="flex items-center gap-2">
-                <ViewToggle value={view} onChange={setView} />
+                {/* the floor × position grid only means something in a tower */}
+                {shape.container === 'tower' && <ViewToggle value={view} onChange={setView} />}
                 <Button size="sm" variant="outline" onClick={() => setGenerateFor(activeTower)}>
-                  <Layers className="size-4" /> Generate units
+                  <Layers className="size-4" /> Generate {L.itemPlural.toLowerCase()}
                 </Button>
               </div>
             }
@@ -230,7 +293,7 @@ export function TowersUnitsPanel({ projectId }: { projectId: string }) {
             <TextInput
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search code, type, facing…"
+              placeholder={`Search ${L.item.toLowerCase()} code or type…`}
               className="w-auto max-w-[16rem] flex-1"
             />
             <SelectInput
@@ -262,7 +325,8 @@ export function TowersUnitsPanel({ projectId }: { projectId: string }) {
           {view === 'list' && selection.length > 0 && (
             <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-admin-200 bg-admin-50 p-3">
               <p className="mr-auto text-sm font-medium text-admin-800">
-                {selection.length} unit{selection.length === 1 ? '' : 's'} selected
+                {selection.length}{' '}
+                {selection.length === 1 ? L.item.toLowerCase() : L.itemPlural.toLowerCase()} selected
               </p>
               <Button size="sm" onClick={() => setAllocateOpen(true)}>
                 <Handshake className="size-4" /> Allocate
@@ -279,15 +343,21 @@ export function TowersUnitsPanel({ projectId }: { projectId: string }) {
           {rows.length === 0 ? (
             <EmptyState
               icon={Layers}
-              title="No units here yet"
-              description="Generate a floor pattern across a floor range — a few runs cover the whole tower."
+              title={`No ${L.itemPlural.toLowerCase()} here yet`}
+              description={
+                shape.item === 'flat'
+                  ? 'Generate a floor pattern across a floor range — a few runs cover the whole tower.'
+                  : shape.item === 'plot'
+                    ? 'Generate a numbered run of plots — one run per size, so a block of 5-katha and 3-katha plots takes two.'
+                    : 'Generate the register — how many shares the plot is divided into, and the price of one.'
+              }
               action={
                 <Button onClick={() => setGenerateFor(activeTower)}>
-                  <Layers className="size-4" /> Generate units
+                  <Layers className="size-4" /> Generate {L.itemPlural.toLowerCase()}
                 </Button>
               }
             />
-          ) : view === 'grid' ? (
+          ) : view === 'grid' && shape.container === 'tower' ? (
             <UnitMatrix units={rows} onSelect={setEditUnit} />
           ) : (
             <div className="overflow-x-auto">
@@ -304,10 +374,11 @@ export function TowersUnitsPanel({ projectId }: { projectId: string }) {
                       />
                     </th>
                     <th className="py-2 pr-3">Code</th>
-                    <th className="py-2 pr-3">Floor</th>
+                    {shapeUses(shape, 'floor') && <th className="py-2 pr-3">Floor</th>}
                     <th className="py-2 pr-3">Type</th>
-                    <th className="py-2 pr-3">Size</th>
-                    <th className="py-2 pr-3">Facing</th>
+                    <th className="py-2 pr-3">{L.size}</th>
+                    {shapeUses(shape, 'road_width') && <th className="py-2 pr-3">Road</th>}
+                    {shapeUses(shape, 'facing') && <th className="py-2 pr-3">Facing</th>}
                     <th className="py-2 pr-3">Price</th>
                     <th className="py-2 pr-3">Status</th>
                     <th className="py-2 pr-3">Allocation</th>
@@ -326,17 +397,35 @@ export function TowersUnitsPanel({ projectId }: { projectId: string }) {
                           onChange={() => toggleOne(unit.id)}
                         />
                       </td>
-                      <td className="py-2.5 pr-3 font-medium text-ink">{unit.code}</td>
-                      <td className="py-2.5 pr-3 text-ink-muted">{unit.floor}</td>
+                      <td className="py-2.5 pr-3 font-medium text-ink">
+                        {unit.code}
+                        {unit.is_corner && (
+                          <span className="ml-1.5 rounded bg-admin-50 px-1.5 py-0.5 text-xs font-normal text-admin-700">
+                            corner
+                          </span>
+                        )}
+                      </td>
+                      {shapeUses(shape, 'floor') && (
+                        <td className="py-2.5 pr-3 text-ink-muted">{unit.floor ?? '—'}</td>
+                      )}
                       <td className="py-2.5 pr-3 text-ink-muted">
                         {unit.unit_type}
-                        <span className="ml-1 text-xs">
-                          ({unit.bedroom_count ?? '—'}B/{unit.bathroom_count ?? '—'}Ba/
-                          {unit.balcony_count ?? '—'}Bal)
-                        </span>
+                        {shapeUses(shape, 'bedrooms') && (
+                          <span className="ml-1 text-xs">
+                            ({unit.bedroom_count ?? '—'}B/{unit.bathroom_count ?? '—'}Ba/
+                            {unit.balcony_count ?? '—'}Bal)
+                          </span>
+                        )}
                       </td>
-                      <td className="py-2.5 pr-3 text-ink-muted">{unit.size_sqft} sqft</td>
-                      <td className="py-2.5 pr-3 text-ink-muted">{unit.facing ?? '—'}</td>
+                      <td className="py-2.5 pr-3 text-ink-muted">{unitSizeLabel(unit, shape)}</td>
+                      {shapeUses(shape, 'road_width') && (
+                        <td className="py-2.5 pr-3 text-ink-muted">
+                          {unit.road_width_ft ? `${unit.road_width_ft} ft` : '—'}
+                        </td>
+                      )}
+                      {shapeUses(shape, 'facing') && (
+                        <td className="py-2.5 pr-3 text-ink-muted">{unit.facing ?? '—'}</td>
+                      )}
                       <td className="py-2.5 pr-3 text-ink">{formatBdt(unit.base_price )}</td>
                       <td className="py-2.5 pr-3">
                         <Badge tone={UNIT_STATUS_META[unit.status].tone}>
@@ -377,6 +466,7 @@ export function TowersUnitsPanel({ projectId }: { projectId: string }) {
 
       {towerModal.open && (
         <TowerFormModal
+          shape={shape}
           open
           projectId={projectId}
           tower={towerModal.tower}
@@ -384,19 +474,32 @@ export function TowersUnitsPanel({ projectId }: { projectId: string }) {
         />
       )}
 
-      {generateFor && (
-        <UnitBulkGenerateModal
-          open
-          tower={generateFor}
-          onClose={() => {
-            setSelectedTowerId(generateFor.id);
-            setGenerateFor(null);
-          }}
-        />
-      )}
+      {/* v26 — a floor pattern for a tower, a numbered run or a register otherwise */}
+      {generateFor &&
+        (shape.item === 'flat' ? (
+          <UnitBulkGenerateModal
+            open
+            tower={generateFor}
+            onClose={() => {
+              setSelectedTowerId(generateFor.id);
+              setGenerateFor(null);
+            }}
+          />
+        ) : (
+          <PlotShareGenerateModal
+            open
+            tower={generateFor}
+            shape={shape}
+            onClose={() => {
+              setSelectedTowerId(generateFor.id);
+              setGenerateFor(null);
+            }}
+          />
+        ))}
 
       {editUnit && (
         <UnitEditModal
+          shape={shape}
           open
           projectId={projectId}
           unit={editUnit}

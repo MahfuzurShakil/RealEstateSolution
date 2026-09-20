@@ -899,6 +899,55 @@ async function seedDemoProjects(
         );
         for (const unit of created) unitIdByCode.set(unit.code, unit.id);
       }
+
+      /*
+       * v26 — a block of plots. Same generator the UI calls, so the demo
+       * cannot show a price the feature would not produce.
+       */
+      for (const pattern of demoTower.plot_patterns ?? []) {
+        const { created } = await unitRepository.bulkGeneratePlots(
+          tower.id,
+          {
+            prefix: pattern.prefix,
+            separator: pattern.separator,
+            start_number: pattern.start_number,
+            count: pattern.count,
+            unit_type: pattern.unit_type,
+            land_size: pattern.land_size,
+            land_size_unit: 'katha',
+            rate_per_katha: pattern.rate_per_katha,
+            road_width_ft: pattern.road_width_ft,
+            corner_numbers: pattern.corner_numbers ?? [],
+            corner_premium: pattern.corner_premium ?? 0,
+            facing: pattern.facing,
+          },
+          createdBy,
+        );
+        for (const unit of created) unitIdByCode.set(unit.code, unit.id);
+      }
+    }
+
+    /*
+     * v26 — a land-share register. Its single container is created the same
+     * way the panel creates it, so the demo exercises `ensureShareRegister`
+     * rather than asserting a tower the UI would never have asked for.
+     */
+    if (demo.share_register) {
+      const register = await towerRepository.ensureShareRegister(project.id, createdBy);
+      const { created } = await unitRepository.bulkGenerateShares(
+        register.id,
+        {
+          prefix: demo.share_register.prefix,
+          separator: demo.share_register.separator,
+          count: demo.share_register.count,
+          price_per_share: demo.share_register.price_per_share,
+          unit_type: demo.share_register.unit_type,
+          total_land_size: demo.share_register.total_land_size,
+          land_size_unit: 'katha',
+        },
+        createdBy,
+      );
+      for (const unit of created) unitIdByCode.set(unit.code, unit.id);
     }
 
     if (demo.landowner_allocation) {

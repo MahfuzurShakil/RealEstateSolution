@@ -20,7 +20,12 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { LAND_SIZE_UNIT_LABEL } from '@/lib/domain/land';
-import { PROJECT_TYPE_LABEL, UNIT_STATUS_META } from '@/lib/domain/project';
+import {
+  PROJECT_TYPE_LABEL,
+  UNIT_STATUS_META,
+  projectShape,
+  shapeIsBuilt,
+} from '@/lib/domain/project';
 import { projectRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatDate } from '@/lib/utils/format';
@@ -68,10 +73,25 @@ export default function ProjectDetailPage() {
     );
   }
 
+  /*
+   * v26 — the tab strip follows the project shape.
+   *
+   * "Towers & Units" is wrong on a plot project and meaningless on a share
+   * register, and Site Progress is a construction log: a share project reports
+   * none, and a plot project's filling and roads are land development recorded
+   * against the land in Module 1, not here. Hiding the tab is not hiding the
+   * work — it is not being in two places.
+   */
+  const shape = projectShape(project.project_type);
+  const inventoryLabel =
+    shape.container === 'none'
+      ? `${shape.labels.itemPlural} (${project.unit_total})`
+      : `${shape.labels.containerPlural} & ${shape.labels.itemPlural} (${project.unit_total})`;
+
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
-    { key: 'towers', label: `Towers & Units (${project.unit_total})` },
-    { key: 'progress', label: 'Site Progress' },
+    { key: 'towers', label: inventoryLabel },
+    ...(shapeIsBuilt(shape) ? [{ key: 'progress' as Tab, label: 'Site Progress' }] : []),
     { key: 'procurement', label: 'Finance & Cost' },
     { key: 'budget', label: 'Budget' },
     { key: 'allocation', label: 'JV Allocation' },
@@ -207,7 +227,9 @@ export default function ProjectDetailPage() {
             </div>
           )}
 
-          {tab === 'towers' && <TowersUnitsPanel projectId={project.id} />}
+          {tab === 'towers' && (
+            <TowersUnitsPanel projectId={project.id} projectType={project.project_type} />
+          )}
 
           {tab === 'progress' && <ProjectProgressSummary projectId={project.id} />}
 
@@ -256,12 +278,18 @@ export default function ProjectDetailPage() {
             <CardHeader title="Inventory" />
             {project.unit_total === 0 ? (
               <p className="text-sm text-ink-muted">
-                No units yet — add a tower and generate them.
+                No {shape.labels.itemPlural.toLowerCase()} yet
+                {shape.container === 'none'
+                  ? ' — generate the register.'
+                  : ` — add a ${shape.labels.container.toLowerCase()} and generate them.`}
               </p>
             ) : (
               <>
-                <Row label="Towers" value={project.towers.length} />
-                <Row label="Total units" value={project.unit_total} />
+                {/* a share register's single hidden container is not a count worth showing */}
+                {shape.container !== 'none' && (
+                  <Row label={shape.labels.containerPlural} value={project.towers.length} />
+                )}
+                <Row label={`Total ${shape.labels.itemPlural.toLowerCase()}`} value={project.unit_total} />
                 {UNIT_STATUSES.filter((s) => project.unit_counts[s]).map((s) => (
                   <Row
                     key={s}

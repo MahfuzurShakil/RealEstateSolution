@@ -570,6 +570,29 @@ export class AppDatabase extends Dexie {
         }
       }
     });
+
+    /*
+     * v26 — projects that do not sell flats (PROJECT-MODULE-PLAN.md).
+     *
+     * `plot_development` sells plots by the katha and `land_share` sells
+     * undivided shares, so `units` gains the columns those need: `land_size` /
+     * `land_size_unit`, `share_pct`, and the two plot price drivers
+     * `road_width_ft` and `is_corner`. `floor` and `size_sqft` become nullable
+     * in the type, since a plot has no floor and a share has neither.
+     *
+     * Only `projects` is restated, for the new `succeeds_project_id` index —
+     * Phase 3 looks up "what grew out of this share project" by it. None of the
+     * new `units` columns is queried on, so `units` keeps its v3 index line and
+     * Dexie needs no schema change there: existing flats simply have no value
+     * for them, which is what `projectShape()` already expects.
+     *
+     * No upgrade body. Every existing row is a tower-shape unit and is already
+     * correct; there is nothing to rewrite.
+     */
+    this.version(26).stores({
+      projects:
+        'id, &code, name, status, project_type, is_public, is_featured, succeeds_project_id, created_at',
+    });
   }
 }
 

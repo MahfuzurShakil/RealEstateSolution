@@ -18,6 +18,35 @@ full defect list is in `ANALYSIS-REPORT_2026-09-02.md`.
 
 ---
 
+## 0o. Module 2 Phase 1 — the project knows what it is (2026-09-21)
+
+Plan and the other two phases: `PROJECT-MODULE-PLAN.md`. Shipped here is
+Phase 1 only — the shape, the schema and the project page.
+
+Still open, and deliberately:
+
+- **Phase 2 (selling what is not a flat).** Module 4 still prices and words
+  everything as a flat: rate x sqft, floor and facing premiums, "Flat A-501".
+  A plot's price should come from rate x katha with road-width and corner
+  premiums, a share's from a flat per-share amount. Until then a plot *can* be
+  booked, but the booking's price breakdown and the printed money receipt name
+  the wrong things.
+- **Phase 3 (delivery and succession).** Plot possession/registration/mutation
+  instead of keys; the share deed; and the land-share -> construction successor
+  project (`projects.succeeds_project_id` exists and nothing reads it yet).
+- **`UnitMatrix` is tower-only.** The floor x position grid is hidden on the
+  other shapes rather than replaced, so a plot block has a list view and no
+  grid. A block layout grid would be a genuinely different drawing and is not
+  worth guessing at before someone asks.
+- **Plot development progress is not surfaced on the project page.** The
+  filling and roads are recorded against the *land* (Module 1), which is right,
+  but the project page does not yet show them — it just has no Site Progress
+  tab. Phase 3.
+- **`towers.floor_count` is still required by the table.** A block writes 0
+  into it. Harmless, and cheaper than a nullable column read in four modules.
+
+---
+
 ## 0n. Land module wrap-up review — 2026-09-20
 
 Closed in this pass, recorded here because two of them change a documented
@@ -28,9 +57,11 @@ contract.
   declares the shape of that sale. `PROJECT_TYPES` therefore grew two land-sale
   values and lost its vaguest one:
   `land_share | plot_development | apartment | commercial | mixed`.
-  This **supersedes** `Real-Estate-Developer-Platform_Scope-Document_v3.md`
-  §214, which still reads `residential | commercial | mixed`. Dexie **v25**
-  rewrites existing `residential` rows to `apartment`.
+  `Real-Estate-Developer-Platform_Scope-Document_v3.md` §3.3 was updated to
+  match, with the rule and the five values written out there; §2.2's land
+  pipeline was brought up to date in the same pass (it still showed `jv_signed`
+  and none of the L7 statuses). Dexie **v25** rewrites existing `residential`
+  rows to `apartment`.
   `joint_venture` was deliberately left out: whether a JV is involved is
   `lands.acquisition_type`, which is what the Module 2 share allocation reads,
   and a second place to say it is a second answer to give when they disagree.

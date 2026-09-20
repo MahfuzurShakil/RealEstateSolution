@@ -102,17 +102,36 @@ sourced
   → dd_in_progress         (legal due diligence)
   → negotiation
   → agreed
-      ├─ acquired          (direct purchase)
-      ├─ jv_signed
-      └─ rejected
-  → disposed               (owned land sold on — from acquired / jv_signed)
+  → acquired               (registered, or the JV signed — the land is ours)
+  → under_development      (land development running)
+  → ready_for_project      (serviced, or no development needed)
   → linked_to_project      (once mapped to a Project)
+
+  যেকোনো স্তর থেকে  → on_hold | rejected
+  আমাদের হয়ে গেলে   → disposed  (স্ক্রিনে "Divested")
 ```
 
-`jv_signed` আর `linked_to_project` BRD-র আট-টার তালিকায় নাই, কিন্তু রাখা হয়েছে:
-BRD জয়েন্ট ভেঞ্চারকে ACQUIRED-এর ভিতরে ধরে, অথচ আমাদের পুরো JV branch (share
-basis, unit allocation, owner inventory) এটাকে আলাদা outcome ধরেই চলে; আর
-`linked_to_project` Module 2 নিজে সেট করে, হাতে বাছা যায় না।
+**হালনাগাদ (client decision, 2026-09-18 ও 2026-09-20).**
+
+`jv_signed` আগে ছিল, এখন নাই। কিনে রেজিস্ট্রি করা আর JV সাইন করা — দুটোই
+"জমিটা আমাদের" একই অবস্থা; কীভাবে হলো সেটা `acquisition_type`-এর কাজ। দুটো স্ট্যাটাস
+রাখলে এর পরের প্রতিটা rule দুবার লিখতে হয়, আর একটা সবসময় বাদ পড়ে। Dexie v24 পুরনো
+row গুলাকে `acquired`-এ rewrite করেছে। JV হলে স্ক্রিনে "JV Signed" লেখা ওঠে — সেটা
+শুধু label, স্ট্যাটাস নয়।
+
+`under_development`, `ready_for_project` আর `on_hold` নতুন। আগে প্রথম দুটোই `acquired`
+ছিল, তাই "কোন জমিতে এখনও ভরাট চলছে" আর "কোনটায় project নেওয়া যায়" — project
+planning যে দুটো প্রশ্ন দিয়ে শুরু হয় — filter করা যেত না। দুটোই হাতে বাছা যায় না;
+land development নিজে সেট করে। `on_hold` সেই জমির জন্য যেটা মালিক চুপ হয়ে যাওয়ায় বা
+দাম ঠিক না হওয়ায় থেমে আছে — আগে সেটাকে হয় বাতিল দেখাতে হতো (ভুল), নয়তো চালু
+দেখাতে হতো (আরও খারাপ)।
+
+`disposed` **বিক্রয় নয়, exit** (দেখো ধারা 3.3)। অন্য ডেভেলপারকে হস্তান্তর, বা JV
+বাতিল — স্ক্রিনে "Divested", এবং টাকা পাওয়া optional (বাতিল JV-তে কিছু পাওয়া যায়
+না)। BRD LAND-004 DISPOSED এই key-এই map করে।
+
+`linked_to_project` BRD-র আট-টার তালিকায় নাই, কিন্তু রাখা হয়েছে: Module 2 নিজে সেট
+করে, হাতে বাছা যায় না।
 
 ### 2.3 `lands` table
 
@@ -211,7 +230,7 @@ projects
  - id                    UUID, PK
  - code                  VARCHAR, e.g. "PRJ-2026-001", auto
  - name                  VARCHAR
- - project_type          ENUM: residential | commercial | mixed
+ - project_type          ENUM: land_share | plot_development | apartment | commercial | mixed
  - total_land_area       DECIMAL, nullable   -- can be pulled/summed from linked lands, editable
  - location_summary       VARCHAR, nullable   -- addendum (Public Portal P2): marketing-friendly address (e.g. "Bashundhara R/A, Dhaka"), separate from linked land's cadastral location (mouza/dag/khatian stays internal)
  - expected_start_date   DATE
@@ -226,6 +245,29 @@ projects
  - is_public                BOOLEAN, default false   -- addendum (Public Portal P1): website-এ দেখানো হবে কিনা
  - is_featured               BOOLEAN, default false   -- addendum (Public Portal P1): Home page-এ highlight করা হবে কিনা
 ```
+
+#### `project_type` — হালনাগাদ (client decision, 2026-09-20)
+
+আগে ছিল `residential | commercial | mixed`। সেই তালিকা শুধু **building** বর্ণনা করতো;
+"এই জমিটা জমি হিসেবেই বিক্রি হচ্ছে" — এটা বলার উপায় ছিল না।
+
+**মূল নিয়ম: Land module থেকে কখনো জমি বিক্রি হয় না।** জমি বিক্রি করতে হলে আগে
+সেটাকে project-এ link করতে হবে, আর project তৈরির সময় `project_type` দিয়ে বলতে হবে
+বিক্রয়টা কোন ধরনের। units, bookings, customers — সব Module 2/4-এই থাকে।
+
+| value | কি বিক্রি হচ্ছে |
+|---|---|
+| `land_share` | জমির অবিভক্ত অংশ (undivided share); কিছু নির্মাণ হয় না |
+| `plot_development` | জমি serviced করে প্লট হিসেবে বিক্রি |
+| `apartment` | টাওয়ারে রেসিডেনসিয়াল ফ্ল্যাট (আগের `residential`) |
+| `commercial` | দোকান, অফিস, অন্যান্য বাণিজ্যিক স্পেস |
+| `mixed` | নিচে বাণিজ্যিক ফ্লোর, উপরে ফ্ল্যাট |
+
+`joint_venture` তালিকায় **ইচ্ছা করেই নেই**: JV কিনা সেটা `lands.acquisition_type` বলে,
+আর Module 2-এর share allocation ও landowner-unit check ওই field-ই পড়ে। দ্বিতীয় একটা
+জায়গায় একই কথা লিখলে, দুটো অমিল হলে কোনটা সত্য তার উত্তর থাকবে না।
+
+Dexie **v25** পুরনো `residential` row গুলাকে `apartment`-এ rewrite করে।
 
 ### 3.4 `land_project_mapping` table (many-to-many: land ↔ project)
 

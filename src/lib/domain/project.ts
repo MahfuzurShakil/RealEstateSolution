@@ -82,6 +82,7 @@ export interface ProjectReadiness {
 export function projectStatusBlockers(
   target: ProjectStatus,
   facts: ProjectReadiness,
+  shape: ProjectShape = PROJECT_SHAPE.apartment,
 ): string[] {
   const blockers: string[] = [];
   const buildStages: ProjectStatus[] = [
@@ -90,12 +91,25 @@ export function projectStatusBlockers(
     'handover_ongoing',
     'closed',
   ];
+  /*
+   * v26 — the construction checks only apply where something is built.
+   *
+   * A `land_share` project is never built and a `plot_development` project's
+   * work is land development recorded in Module 1, so neither reports
+   * construction progress against a tower. Asking them for it would have made
+   * every plot and share project permanently unclosable, with a blocker naming
+   * a tower the project does not have.
+   */
+  const built = shapeIsBuilt(shape);
 
-  if (buildStages.includes(target) && facts.tower_count === 0) {
-    blockers.push('No tower has been added yet, so there is nothing to build');
+  if (built && buildStages.includes(target) && facts.tower_count === 0) {
+    blockers.push(
+      `No ${shape.labels.container.toLowerCase()} has been added yet, so there is nothing to build`,
+    );
   }
 
   if (
+    built &&
     (target === 'handover_ongoing' || target === 'closed') &&
     facts.tower_count > 0 &&
     facts.progress_pct <= 0
@@ -105,8 +119,14 @@ export function projectStatusBlockers(
     );
   }
 
+  /*
+   * This one holds for every shape: closing a project nobody has taken
+   * delivery of is wrong whether delivery is keys, possession or a deed.
+   */
   if (target === 'closed' && facts.unit_count > 0 && facts.units_handed_over === 0) {
-    blockers.push('No unit has been handed over, so the project cannot be closed');
+    blockers.push(
+      `No ${shape.labels.item.toLowerCase()} has been handed over, so the project cannot be closed`,
+    );
   }
 
   return blockers;
@@ -119,28 +139,31 @@ export function projectStatusBlockers(
 export function projectStatusWarnings(
   target: ProjectStatus,
   facts: ProjectReadiness,
+  shape: ProjectShape = PROJECT_SHAPE.apartment,
 ): string[] {
   const warnings: string[] = [];
+  // the progress warnings mean nothing where no construction is reported
+  const built = shapeIsBuilt(shape);
 
-  if (target === 'nearly_complete' && facts.progress_pct < 75) {
+  if (built && target === 'nearly_complete' && facts.progress_pct < 75) {
     warnings.push(
       `Construction is reported at ${facts.progress_pct.toFixed(1)}%, which is not what "nearly complete" usually means`,
     );
   }
 
-  if (target === 'handover_ongoing' && facts.progress_pct < 95) {
+  if (built && target === 'handover_ongoing' && facts.progress_pct < 95) {
     warnings.push(
       `Construction is reported at ${facts.progress_pct.toFixed(1)}% — handover normally waits for the building to be finished`,
     );
   }
 
-  if (target === 'closed' && facts.progress_pct < 100) {
+  if (built && target === 'closed' && facts.progress_pct < 100) {
     warnings.push(`Construction is reported at ${facts.progress_pct.toFixed(1)}%, not 100%`);
   }
 
   if (target === 'closed' && facts.unit_count > 0 && facts.units_handed_over < facts.unit_count) {
     warnings.push(
-      `${facts.unit_count - facts.units_handed_over} of ${facts.unit_count} units have not been handed over`,
+      `${facts.unit_count - facts.units_handed_over} of ${facts.unit_count} ${shape.labels.itemPlural.toLowerCase()} have not been handed over`,
     );
   }
 
@@ -150,8 +173,10 @@ export function projectStatusWarnings(
     );
   }
 
-  if (target === 'under_construction' && facts.unit_count === 0) {
-    warnings.push('No units have been generated yet, so nothing can be sold while it is built');
+  if (built && target === 'under_construction' && facts.unit_count === 0) {
+    warnings.push(
+      `No ${shape.labels.itemPlural.toLowerCase()} have been generated yet, so nothing can be sold while it is built`,
+    );
   }
 
   return warnings;
@@ -183,6 +208,225 @@ export const PROJECT_TYPE_HINT: Record<ProjectType, string> = {
   commercial: 'Shops, offices or other commercial space.',
   mixed: 'Commercial floors below, flats above.',
 };
+
+/* ------------------------------------------------------------------ *
+ * Project shape — what a project's towers and units actually mean
+ * (PROJECT-MODULE-PLAN.md section 3)
+ * ------------------------------------------------------------------ */
+
+/**
+ * The five project types are not five labels on one flow.
+ *
+ * Three of them — apartment, commercial, mixed — are a tower of floors sold by
+ * rate per sqft, which is the only thing Module 2 was built for. The other two
+ * are genuinely different work:
+ *
+ * - **plot_development** sells serviced plots by the katha. There is no floor,
+ *   no bedroom and no sqft; what moves the price is road width and whether the
+ *   plot is on a corner. Its "construction progress" is the land development
+ *   the Land module already records.
+ * - **land_share** sells undivided shares in a plot — 20 shares at 100,000
+ *   each, one buyer owning a twentieth of the whole. Nothing is built, nothing
+ *   is demarcated, and there is no container to put the shares in.
+ *
+ * `towers` and `units` stay the tables for all five, because `bookings`, site
+ * progress, procurement and the public portal already speak that language and
+ * a second set of tables would mean a second code path through four modules
+ * kept in sync forever. What changes is what those rows *mean*, and that is
+ * what this map holds.
+ *
+ * Derived from `project_type`, never stored. A `project_type` of
+ * `plot_development` *is* the statement that this sells plots; a second stored
+ * flag saying the same thing is a second answer to give when they disagree —
+ * the same reasoning that kept `joint_venture` out of `PROJECT_TYPES`.
+ *
+ * Screens ask the shape rather than testing `project_type` inline, so a sixth
+ * type is one entry here rather than a search through the module.
+ */
+
+/** What holds the saleable items. `none` = a flat register with no grouping. */
+export type ContainerKind = 'tower' | 'block' | 'none';
+/** What is sold. */
+export type ItemKind = 'flat' | 'plot' | 'share';
+/** What the item's size is measured in, which decides how it is priced. */
+export type SizeBasis = 'sqft' | 'land' | 'share';
+/** Which optional `units` fields this shape actually uses. */
+export type UnitField =
+  | 'floor'
+  | 'size_sqft'
+  | 'bedrooms'
+  | 'facing'
+  | 'parking'
+  | 'land_size'
+  | 'share_pct'
+  | 'road_width'
+  | 'corner';
+
+export interface ProjectShape {
+  container: ContainerKind;
+  item: ItemKind;
+  sizeBasis: SizeBasis;
+  /** the applicable subset of the `units` columns */
+  fields: readonly UnitField[];
+  /** what a progress report against this project means */
+  progress: 'construction' | 'development' | 'none';
+  /** what delivering one item to its buyer is */
+  handover: 'keys' | 'possession' | 'deed';
+  labels: {
+    /** "Tower" / "Block" */
+    container: string;
+    containerPlural: string;
+    /** "Flat" / "Plot" / "Share" */
+    item: string;
+    itemPlural: string;
+    /** the column heading for size: "Size (sqft)" / "Size (katha)" / "Share" */
+    size: string;
+    /** how the rate is quoted, for the price breakdown */
+    rate: string;
+  };
+}
+
+const TOWER_SHAPE: Omit<ProjectShape, 'labels'> & { labels: ProjectShape['labels'] } = {
+  container: 'tower',
+  item: 'flat',
+  sizeBasis: 'sqft',
+  fields: ['floor', 'size_sqft', 'bedrooms', 'facing', 'parking'],
+  progress: 'construction',
+  handover: 'keys',
+  labels: {
+    container: 'Tower',
+    containerPlural: 'Towers',
+    item: 'Unit',
+    itemPlural: 'Units',
+    size: 'Size (sqft)',
+    rate: 'per sqft',
+  },
+};
+
+export const PROJECT_SHAPE: Record<ProjectType, ProjectShape> = {
+  apartment: TOWER_SHAPE,
+  /*
+   * Commercial and mixed are the same machinery as an apartment project: a
+   * tower of floors priced by the sqft. What differs is the price *curve* — a
+   * ground-floor shop can be several times the rate of the same area three
+   * floors up — and the floor premium already expresses that. Only the words
+   * change, so that a shop is not called a flat.
+   */
+  commercial: {
+    ...TOWER_SHAPE,
+    // no bedrooms in a shop; facing still matters for a streetfront unit
+    fields: ['floor', 'size_sqft', 'facing', 'parking'],
+    labels: { ...TOWER_SHAPE.labels, item: 'Space', itemPlural: 'Spaces' },
+  },
+  mixed: TOWER_SHAPE,
+  plot_development: {
+    container: 'block',
+    item: 'plot',
+    sizeBasis: 'land',
+    fields: ['land_size', 'road_width', 'corner', 'facing'],
+    // the filling, roads and drains are land development, recorded in Module 1
+    progress: 'development',
+    handover: 'possession',
+    labels: {
+      container: 'Block',
+      containerPlural: 'Blocks',
+      item: 'Plot',
+      itemPlural: 'Plots',
+      size: 'Size (katha)',
+      rate: 'per katha',
+    },
+  },
+  land_share: {
+    /*
+     * No container at all. A share is not in a block and not on a floor — it is
+     * a fraction of the whole plot. The project page hides the container UI and
+     * shows one flat share register.
+     */
+    container: 'none',
+    item: 'share',
+    sizeBasis: 'share',
+    // the katha figure rides along because buyers think in katha, not percent
+    fields: ['share_pct', 'land_size'],
+    progress: 'none',
+    handover: 'deed',
+    labels: {
+      container: 'Register',
+      containerPlural: 'Register',
+      item: 'Share',
+      itemPlural: 'Shares',
+      size: 'Share',
+      rate: 'per share',
+    },
+  },
+};
+
+/**
+ * How big this item is, in the words its shape uses.
+ *
+ * One function rather than a ternary at each call site, because the list, the
+ * grid, the edit modal, the allocation matrix and (in Phase 2) the booking form
+ * and the money receipt all have to say it the same way. A plot described as
+ * "5 sqft" on one screen and "5 katha" on another is the kind of thing a buyer
+ * notices before we do.
+ */
+export function unitSizeLabel(
+  unit: {
+    size_sqft?: number | null;
+    land_size?: number | null;
+    land_size_unit?: string | null;
+    share_pct?: number | null;
+  },
+  shape: ProjectShape,
+): string {
+  if (shape.sizeBasis === 'sqft') {
+    return unit.size_sqft ? `${unit.size_sqft.toLocaleString('en-US')} sqft` : '—';
+  }
+  const land =
+    unit.land_size != null ? `${trimNumber(unit.land_size)} ${unit.land_size_unit ?? ''}`.trim() : null;
+  if (shape.sizeBasis === 'land') return land ?? '—';
+  // a share: the percentage is the thing sold, the area is how buyers picture it
+  const pct = unit.share_pct != null ? `${trimNumber(unit.share_pct)}%` : null;
+  return [pct, land].filter(Boolean).join(' · ') || '—';
+}
+
+/** 5 -> "5", 5.5 -> "5.5", 5.00 -> "5" — katha are quoted without dead zeros. */
+function trimNumber(n: number): string {
+  return String(Number(n.toFixed(2)));
+}
+
+export function projectShape(type: ProjectType): ProjectShape {
+  return PROJECT_SHAPE[type];
+}
+
+/** Does this shape use that `units` column? Drives every form field's visibility. */
+export function shapeUses(shape: ProjectShape, field: UnitField): boolean {
+  return shape.fields.includes(field);
+}
+
+/**
+ * Is there anything to build on this project?
+ *
+ * Gates the construction-shaped parts of the module — the status pipeline's
+ * build stages, tower work items, site progress. A share project is never
+ * built, and a plot project's work is land development recorded in Module 1,
+ * so neither should be asked for a tower before it can move on.
+ */
+export function shapeIsBuilt(shape: ProjectShape): boolean {
+  return shape.progress === 'construction';
+}
+
+/**
+ * The default code pattern for a new item, as a hint on the generator.
+ *
+ * `units.code` is globally unique, so a second project reusing `A-501` is
+ * skipped rather than created — which is why the plot and share patterns lead
+ * with something project-specific.
+ */
+export function defaultCodePrefix(shape: ProjectShape, containerName: string): string {
+  if (shape.item === 'share') return 'SHARE';
+  // "Block C" -> "C"; a tower's own prefix is chosen by the user
+  return containerName.replace(/^(block|tower)\s+/i, '').trim() || containerName;
+}
 
 export const TOWER_STATUS_META: Record<TowerStatus, { label: string; tone: BadgeTone }> = {
   planning: { label: 'Planning', tone: 'neutral' },

@@ -327,6 +327,8 @@ export const DEMO_DD_FINDINGS: DemoDdFinding[] = [
   ...passAllMandatory('Ashulia Zirabo industrial plot'),
   ...passAllMandatory('Bashundhara Block J ready plot'),
   ...passAllMandatory('Tangail Mirzapur roadside plot'),
+  ...passAllMandatory('Rupganj Kanchan tract'),
+  ...passAllMandatory('Savar Birulia riverside plot'),
   /*
    * Madhabdi passed every legal check and was still a bad buy (review
    * 2026-09-20). Due diligence verifies title; it does not verify that the

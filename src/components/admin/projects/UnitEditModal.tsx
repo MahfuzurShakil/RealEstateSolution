@@ -6,7 +6,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Home, Lock } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { Field, MoneyInput, SelectInput, TextInput } from '@/components/ui/Field';
+import { Checkbox, Field, MoneyInput, SelectInput, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import {
   ALLOCATION_TYPES,
@@ -24,7 +24,11 @@ import {
   UNIT_STATUS_META,
   isManualUnitStatus,
   isUnitEditable,
+  shapeUses,
+  unitSizeLabel,
   unitStatusOptions,
+  type ProjectShape,
+  type UnitField,
 } from '@/lib/domain/project';
 import { BOOKING_STATUS_META } from '@/lib/domain/booking';
 import {
@@ -38,7 +42,12 @@ const str = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 const num = (v: string) => (v.trim() === '' ? null : Number(v));
 
 /**
- * Edit one unit — the odd floor the bulk generator could not cover.
+ * Edit one item — the odd floor the bulk generator could not cover.
+ *
+ * v26 — which fields appear comes from `projectShape`. A plot has no floor,
+ * no bedrooms and no sqft but does have an area in katha, a road width and a
+ * corner flag; a share has a percentage and nothing else. Asking a plot for
+ * its balcony count is not merely noise — it makes the screen unusable.
  * Mounted only while open, so the form starts from the unit it was given.
  *
  * A sold or handed-over unit opens read-only: its price and allocation are
@@ -49,14 +58,18 @@ export function UnitEditModal({
   open,
   projectId,
   unit,
+  shape,
   onClose,
 }: {
   open: boolean;
   /** scopes the landowner list to the owners of this project's own land */
   projectId: string;
   unit: Unit;
+  shape: ProjectShape;
   onClose: () => void;
 }) {
+  /** one place the field list is asked, so the form and the save agree */
+  const uses = (field: UnitField) => shapeUses(shape, field);
   const [form, setForm] = useState<Unit>(() => ({ ...unit }));
   const [owners, setOwners] = useState<
     Array<{ owner: Landowner; lands: Array<{ land: Land; share_pct: number }> }>
@@ -90,20 +103,27 @@ export function UnitEditModal({
       return setError(`Unit code ${form.code.trim()} is already used`);
     }
     if (form.allocation_type === 'landowner_share' && !form.allocated_to_owner_id) {
-      return setError('Pick the landowner this flat belongs to');
+      return setError(`Pick the landowner this ${shape.labels.item.toLowerCase()} belongs to`);
     }
 
     setSaving(true);
     try {
       await unitRepository.update(unit.id, {
         code: form.code.trim(),
-        floor: Number(form.floor),
+        // only write back what this shape actually uses, so a plot never
+        // acquires a floor 0 and a share never acquires 0 sqft
+        floor: uses('floor') ? Number(form.floor) : null,
         unit_type: form.unit_type,
-        bedroom_count: num(str(form.bedroom_count)),
-        bathroom_count: num(str(form.bathroom_count)),
-        balcony_count: num(str(form.balcony_count)),
-        size_sqft: Number(form.size_sqft),
-        facing: form.facing?.trim() || null,
+        bedroom_count: uses('bedrooms') ? num(str(form.bedroom_count)) : null,
+        bathroom_count: uses('bedrooms') ? num(str(form.bathroom_count)) : null,
+        balcony_count: uses('bedrooms') ? num(str(form.balcony_count)) : null,
+        size_sqft: uses('size_sqft') ? Number(form.size_sqft) : null,
+        land_size: uses('land_size') ? num(str(form.land_size)) : null,
+        land_size_unit: uses('land_size') ? (form.land_size_unit ?? 'katha') : null,
+        share_pct: uses('share_pct') ? num(str(form.share_pct)) : null,
+        road_width_ft: uses('road_width') ? num(str(form.road_width_ft)) : null,
+        is_corner: uses('corner') ? Boolean(form.is_corner) : null,
+        facing: uses('facing') ? form.facing?.trim() || null : null,
         base_price: Number(form.base_price),
         parking_allocated: Number(form.parking_allocated) || 0,
         status: form.status,
@@ -121,8 +141,8 @@ export function UnitEditModal({
   return (
     <Modal
       open={open}
-      title={`Edit unit ${unit.code}`}
-      subtitle={`Floor ${unit.floor}`}
+      title={`Edit ${shape.labels.item.toLowerCase()} ${unit.code}`}
+      subtitle={uses('floor') ? `Floor ${unit.floor}` : unitSizeLabel(unit, shape)}
       icon={Home}
       size="lg"
       onClose={onClose}
@@ -166,17 +186,19 @@ export function UnitEditModal({
       )}
       <fieldset disabled={locked} className={locked ? 'opacity-70' : undefined}>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Field label="Unit Code" required>
+        <Field label={`${shape.labels.item} Code`} required>
           <TextInput value={form.code} onChange={(e) => set('code', e.target.value)} />
         </Field>
-        <Field label="Floor" required>
-          <TextInput
-            type="number"
-            value={str(form.floor)}
-            onChange={(e) => set('floor', Number(e.target.value))}
-          />
-        </Field>
-        <Field label="Unit Type">
+        {uses('floor') && (
+          <Field label="Floor" required>
+            <TextInput
+              type="number"
+              value={str(form.floor)}
+              onChange={(e) => set('floor', Number(e.target.value))}
+            />
+          </Field>
+        )}
+        <Field label={`${shape.labels.item} Type`}>
           <SelectInput value={form.unit_type} onChange={(e) => set('unit_type', e.target.value)}>
             {[...new Set([form.unit_type, ...unitTypes])].map((t) => (
               <option key={t} value={t}>
@@ -185,58 +207,112 @@ export function UnitEditModal({
             ))}
           </SelectInput>
         </Field>
-        <Field label="Facing">
-          <SelectInput value={form.facing ?? ''} onChange={(e) => set('facing', e.target.value)}>
-            <option value="">—</option>
-            {[...new Set([form.facing ?? '', ...facings])].filter(Boolean).map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </SelectInput>
-        </Field>
+        {uses('facing') && (
+          <Field label="Facing">
+            <SelectInput value={form.facing ?? ''} onChange={(e) => set('facing', e.target.value)}>
+              <option value="">—</option>
+              {[...new Set([form.facing ?? '', ...facings])].filter(Boolean).map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </SelectInput>
+          </Field>
+        )}
 
-        <Field label="Bedrooms">
-          <TextInput
-            type="number"
-            min="0"
-            value={str(form.bedroom_count)}
-            onChange={(e) => set('bedroom_count', num(e.target.value))}
-          />
-        </Field>
-        <Field label="Bathrooms">
-          <TextInput
-            type="number"
-            min="0"
-            value={str(form.bathroom_count)}
-            onChange={(e) => set('bathroom_count', num(e.target.value))}
-          />
-        </Field>
-        <Field label="Balconies">
-          <TextInput
-            type="number"
-            min="0"
-            value={str(form.balcony_count)}
-            onChange={(e) => set('balcony_count', num(e.target.value))}
-          />
-        </Field>
-        <Field label="Parking">
-          <TextInput
-            type="number"
-            min="0"
-            value={str(form.parking_allocated)}
-            onChange={(e) => set('parking_allocated', Number(e.target.value))}
-          />
-        </Field>
+        {uses('bedrooms') && (
+          <>
+            <Field label="Bedrooms">
+              <TextInput
+                type="number"
+                min="0"
+                value={str(form.bedroom_count)}
+                onChange={(e) => set('bedroom_count', num(e.target.value))}
+              />
+            </Field>
+            <Field label="Bathrooms">
+              <TextInput
+                type="number"
+                min="0"
+                value={str(form.bathroom_count)}
+                onChange={(e) => set('bathroom_count', num(e.target.value))}
+              />
+            </Field>
+            <Field label="Balconies">
+              <TextInput
+                type="number"
+                min="0"
+                value={str(form.balcony_count)}
+                onChange={(e) => set('balcony_count', num(e.target.value))}
+              />
+            </Field>
+          </>
+        )}
+        {uses('parking') && (
+          <Field label="Parking">
+            <TextInput
+              type="number"
+              min="0"
+              value={str(form.parking_allocated)}
+              onChange={(e) => set('parking_allocated', Number(e.target.value))}
+            />
+          </Field>
+        )}
 
-        <Field label="Size (sqft)" required>
-          <TextInput
-            type="number"
-            min="0"
-            value={str(form.size_sqft)}
-            onChange={(e) => set('size_sqft', Number(e.target.value))}
-          />
-        </Field>
+        {uses('size_sqft') && (
+          <Field label="Size (sqft)" required>
+            <TextInput
+              type="number"
+              min="0"
+              value={str(form.size_sqft)}
+              onChange={(e) => set('size_sqft', Number(e.target.value))}
+            />
+          </Field>
+        )}
+        {uses('land_size') && (
+          <Field
+            label={`Area (${form.land_size_unit ?? 'katha'})`}
+            hint={uses('share_pct') ? 'What this share represents on the ground' : undefined}
+          >
+            <TextInput
+              type="number"
+              min="0"
+              step="0.01"
+              value={str(form.land_size)}
+              onChange={(e) => set('land_size', num(e.target.value))}
+            />
+          </Field>
+        )}
+        {uses('share_pct') && (
+          <Field label="Share (%)" required hint="Two shares held as one → double this">
+            <TextInput
+              type="number"
+              min="0"
+              step="0.01"
+              value={str(form.share_pct)}
+              onChange={(e) => set('share_pct', num(e.target.value))}
+            />
+          </Field>
+        )}
+        {uses('road_width') && (
+          <Field label="Road width (ft)" hint="A wider road is worth real money here">
+            <TextInput
+              type="number"
+              min="0"
+              value={str(form.road_width_ft)}
+              onChange={(e) => set('road_width_ft', num(e.target.value))}
+            />
+          </Field>
+        )}
+        {uses('corner') && (
+          <div className="flex items-center pt-6">
+            <Checkbox
+              label="Corner plot"
+              checked={Boolean(form.is_corner)}
+              onChange={(e) => set('is_corner', e.target.checked)}
+            />
+          </div>
+        )}
         <Field label="Base Price (BDT)" required>
           <MoneyInput
             value={str(form.base_price)}
