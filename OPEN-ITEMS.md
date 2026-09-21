@@ -18,6 +18,28 @@ full defect list is in `ANALYSIS-REPORT_2026-09-02.md`.
 
 ---
 
+## 0q. Module 2 Phase 3 — delivery and succession (2026-09-21)
+
+Dexie **v28** (`unit_deliveries`). All three phases of `PROJECT-MODULE-PLAN.md`
+are now shipped.
+
+Still open:
+
+- **Units never pass through `sold`.** Delivery moves a unit from `booked`
+  straight to `handed_over`. `sold` still has no writer — deciding what it
+  means (fully paid? deed registered?) is a Module 4 question.
+- **A delivery step cannot be undone from the screen.** A wrong date needs a
+  record-level correction; there is no "Correct" action yet, by the same logic
+  as land status corrections.
+- **The successor does not allocate units to shareholders.** It knows who they
+  are (`shareholders(predecessor)`), but JV-style allocation of the new flats to
+  them would need `allocated_to_owner_id` to point at customers as well as
+  landowners.
+- **Partition is only the plot-type successor.** Nothing yet maps each
+  shareholder's percentage onto a specific demarcated plot.
+
+---
+
 ## 0p. Module 2 Phase 2 — selling what is not a flat (2026-09-21)
 
 Dexie **v27**. See `PROJECT-MODULE-PLAN.md` §4.

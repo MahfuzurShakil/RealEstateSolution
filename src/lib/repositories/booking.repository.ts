@@ -753,6 +753,9 @@ class BookingRepository extends BaseRepository<Booking> {
       await refundRepository.removeCascade(refund.id);
     }
     await paymentRepository.removeForBooking(id);
+    // Phase 3 — the delivery record is this booking's too
+    const deliveries = await db.unit_deliveries.where('booking_id').equals(id).toArray();
+    await db.unit_deliveries.bulkDelete(deliveries.map((d) => d.id));
     await documentRepository.removeForEntity('booking', id);
     await this.remove(id);
   }

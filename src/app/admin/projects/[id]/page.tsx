@@ -10,6 +10,8 @@ import { JvAllocationCard } from '@/components/admin/projects/JvAllocationCard';
 import { ProjectGalleryPanel } from '@/components/admin/projects/ProjectGalleryPanel';
 import { ProjectStatusCard } from '@/components/admin/projects/ProjectStatusCard';
 import { ProjectTimeline } from '@/components/admin/projects/ProjectTimeline';
+import { PlotDevelopmentCard } from '@/components/admin/projects/PlotDevelopmentCard';
+import { SuccessionCard } from '@/components/admin/projects/SuccessionCard';
 import { TowersUnitsPanel } from '@/components/admin/projects/TowersUnitsPanel';
 import { ProjectProcurementSummary } from '@/components/admin/procurement/ProjectProcurementSummary';
 import { ProjectBudgetPanel } from '@/components/admin/finance/ProjectBudgetPanel';
@@ -224,6 +226,10 @@ export default function ProjectDetailPage() {
                   )}
                 </Card>
               )}
+              {/* Phase 3 — a plot scheme's progress is its land development */}
+              {shape.progress === 'development' && <PlotDevelopmentCard projectId={project.id} />}
+              {/* Phase 3 — the share register's holders, or the one this grew out of */}
+              <SuccessionCard project={project} />
             </div>
           )}
 

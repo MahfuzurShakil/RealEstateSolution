@@ -54,6 +54,7 @@ import type {
   Project,
   ProjectBudgetLine,
   ProjectStatusEvent,
+  UnitDelivery,
   Tower,
   Unit,
   User,
@@ -98,6 +99,7 @@ export class AppDatabase extends Dexie {
   land_project_mapping!: EntityTable<LandProjectMapping, 'id'>;
   towers!: EntityTable<Tower, 'id'>;
   project_status_history!: EntityTable<ProjectStatusEvent, 'id'>;
+  unit_deliveries!: EntityTable<UnitDelivery, 'id'>;
   units!: EntityTable<Unit, 'id'>;
 
   // Users (Section 9.4) — Module 8 owns the UI, Module 3 needs the rows
@@ -605,6 +607,18 @@ export class AppDatabase extends Dexie {
      * shape of a booking changed.
      */
     this.version(27).stores({});
+
+    /*
+     * v28 — Phase 3: delivery (PROJECT-MODULE-PLAN.md §4).
+     *
+     * `unit_deliveries` is new: one row per delivery step done on a unit, so a
+     * plot's possession, deed and mutation are each dated and referenced. It
+     * is looked up by unit (the booking page) and by booking (the cancel and
+     * delete cascades), hence both indexes.
+     */
+    this.version(28).stores({
+      unit_deliveries: 'id, unit_id, booking_id, step, event_date',
+    });
   }
 }
 

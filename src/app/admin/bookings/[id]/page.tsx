@@ -7,6 +7,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { ArrowLeft, Building2, Pencil, Printer, Trash2, Undo2, UserRound } from 'lucide-react';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { BookingStatusCard } from '@/components/admin/bookings/BookingStatusCard';
+import { DeliveryCard } from '@/components/admin/bookings/DeliveryCard';
 import { InstallmentSchedulePanel } from '@/components/admin/finance/InstallmentSchedulePanel';
 import { RefundModal } from '@/components/admin/finance/RefundModal';
 import { PaymentPanel } from '@/components/admin/bookings/PaymentPanel';
@@ -317,6 +318,9 @@ export default function BookingDetailPage() {
 
         <aside className="min-w-0 space-y-5 lg:order-2">
           <BookingStatusCard booking={booking} />
+
+          {/* Phase 3 — delivery, once the booking is real */}
+          {booking.status === 'confirmed' && <DeliveryCard bookingId={booking.id} />}
 
           {/*
             Section 8.2 — a cancelled booking is not finished until the money

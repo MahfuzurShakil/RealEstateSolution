@@ -273,9 +273,20 @@ money — otherwise the lines stop adding up to the total underneath them.
 the placeholder page, so there is nothing to carry the shape into. Type filters
 and plot/share display belong with P1–P4 when those are built.
 
-### Phase 3 — Delivery, and what happens next
+### Phase 3 — Delivery, and what happens next *(done 2026-09-21)*
 
-The two flows that have no equivalent today.
+Shipped: `unit_deliveries` (Dexie **v28**) and `deliveryRepository` — the first
+thing in the system that ever moves a unit to `handed_over`. Steps per shape
+(`deliverySteps`), guarded by `deliveryBlockReason`: confirmed booking only,
+steps in order, no deed while money is owed, no plot possession while the
+land's development is open. Per-shape pipeline (`pipelineSteps`,
+`projectStatusLabel`) — a share register walks Register Open → Sold Out → Deeds
+Registering → Closed. `projectRepository.shareholders` / `startSuccessor` and
+the Succession card; `PlotDevelopmentCard` shows a plot scheme's progress from
+the land. Demo: four Birulia shares (three deeds done), plot B-3 mid-delivery,
+and *Birulia Shareholders' Court* succeeding the register.
+
+The two flows that had no equivalent before.
 
 - **Plot delivery**: development milestones → possession → registration →
   mutation, replacing the keys-and-deed handover. Reads the Land module's

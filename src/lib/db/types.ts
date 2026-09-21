@@ -1201,6 +1201,41 @@ export interface Unit extends BaseEntity {
 }
 
 /**
+ * Phase 3 — how an item reaches its buyer (PROJECT-MODULE-PLAN.md §4).
+ *
+ * Until now nothing in the system ever moved a unit to `handed_over`: the
+ * status existed, the project pipeline counted it, and no screen could set it.
+ * Delivery is also where the five project types differ most, so the steps are
+ * per shape (`deliverySteps()`), not one list:
+ *
+ * - a flat:  keys handed over → deed registered → mutation done
+ * - a plot:  possession (plot pegged out and handed) → deed → mutation
+ * - a share: share certificate → deed registered
+ *
+ * One row per step actually done, so the history of a delivery is the table
+ * itself and nothing is overwritten.
+ */
+export const DELIVERY_STEPS = [
+  'keys_handed_over',
+  'possession_given',
+  'share_certificate',
+  'deed_registered',
+  'mutation_done',
+] as const;
+export type DeliveryStep = (typeof DELIVERY_STEPS)[number];
+
+export interface UnitDelivery extends BaseEntity {
+  unit_id: UUID;
+  booking_id: UUID;
+  step: DeliveryStep;
+  event_date: ISODate;
+  /** deed number, certificate number, mutation case number */
+  reference_no?: string | null;
+  performed_by?: string | null;
+  remarks?: string | null;
+}
+
+/**
  * Status-change log for a project (addendum, same pattern as
  * `land_status_history` in Module 1). Section 3.2 gives the pipeline but no
  * audit trail; without one nobody can answer "when did RAJUK approve this, and

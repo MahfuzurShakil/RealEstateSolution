@@ -3,6 +3,7 @@
 import { db } from '../db/database';
 import type {
   AllocationType,
+  Customer,
   Land,
   LandJvDetails,
   LandProjectMapping,
@@ -55,6 +56,17 @@ export interface ProjectWithRelations extends Project {
 }
 
 /** Per-land JV terms attached to a project, for the allocation card. */
+/** One holder in a land-share register — see `projectRepository.shareholders`. */
+export interface Shareholder {
+  customer: Customer;
+  unit_codes: string[];
+  /** the fraction of the whole plot held, summed across their shares */
+  share_pct: number;
+  holdings: number;
+  /** how many of their shares have been delivered (deed registered) */
+  delivered: number;
+}
+
 export interface ProjectJvLand {
   land: Land;
   jv: LandJvDetails;
@@ -369,6 +381,112 @@ class ProjectRepository extends BaseRepository<Project> {
     const summary = jv_lands.length === 1 ? jvAllocationSummary(totals, jv_lands[0].jv) : null;
 
     return { totals, by_owner: by_owner.sort((a, b) => b.flat_count - a.flat_count), unassigned, jv_lands, summary };
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Succession — the land-share project the buyers build on (Phase 3)
+   * ------------------------------------------------------------------ */
+
+  /**
+   * Who holds shares in a land-share project: every customer with a confirmed
+   * booking on it, with the fraction they bought.
+   *
+   * Read from bookings rather than stored, because the bookings are what makes
+   * someone a shareholder — a separate register would be a second answer to
+   * "who owns this plot" that could drift from the money.
+   */
+  async shareholders(projectId: string): Promise<Shareholder[]> {
+    const towers = await db.towers.where('project_id').equals(projectId).toArray();
+    const towerIds = new Set(towers.map((t) => t.id));
+    const units = (await db.units.toArray()).filter((u) => towerIds.has(u.tower_id));
+    const unitById = new Map(units.map((u) => [u.id, u]));
+    const bookings = (await db.bookings.toArray()).filter(
+      (b) => b.status === 'confirmed' && unitById.has(b.unit_id),
+    );
+
+    const byCustomer = new Map<string, Shareholder>();
+    for (const b of bookings) {
+      const unit = unitById.get(b.unit_id)!;
+      const current = byCustomer.get(b.customer_id);
+      const customer = current?.customer ?? (await db.customers.get(b.customer_id));
+      if (!customer) continue;
+      const entry = current ?? { customer, unit_codes: [], share_pct: 0, delivered: 0, holdings: 0 };
+      entry.unit_codes.push(unit.code);
+      entry.share_pct = money(entry.share_pct + (Number(unit.share_pct) || 0));
+      entry.holdings += 1;
+      if (unit.status === 'handed_over') entry.delivered += 1;
+      byCustomer.set(b.customer_id, entry);
+    }
+    return [...byCustomer.values()].sort((a, b) => b.share_pct - a.share_pct);
+  }
+
+  /** The projects that grew out of this one, oldest first. */
+  async successorsOf(projectId: string): Promise<Project[]> {
+    const rows = await db.projects.where('succeeds_project_id').equals(projectId).toArray();
+    return rows.sort((a, b) => a.created_at.localeCompare(b.created_at));
+  }
+
+  /**
+   * Starts the project a land-share project's buyers commission
+   * (PROJECT-MODULE-PLAN.md §2.5).
+   *
+   * Two real cases, one mechanism. The shareholders, now co-owners, ask the
+   * developer to build on the plot they hold — an apartment project. Or they
+   * partition it and each takes a demarcated piece — a plot project. Either
+   * way it is a **new project** on the same land with its own contract, money
+   * and inventory, not a later stage of the share project, whose units would
+   * otherwise change meaning halfway through.
+   *
+   * The same land is linked to both: `land_project_mapping` is many-to-many
+   * exactly so a plot can carry two projects. The shareholders are not copied
+   * anywhere — `shareholders(predecessor)` stays the one source, and the
+   * successor reads it through `succeeds_project_id`.
+   */
+  async startSuccessor(
+    predecessorId: string,
+    input: { name: string; project_type: ProjectType; expected_start_date: string; expected_completion_date: string },
+    createdBy: string | null = null,
+  ): Promise<Project> {
+    const predecessor = await this.getById(predecessorId);
+    if (!predecessor) throw new Error('That project no longer exists.');
+    if (predecessor.project_type !== 'land_share') {
+      throw new Error('Only a land-share project is succeeded by the project its shareholders commission.');
+    }
+    if (input.project_type === 'land_share') {
+      throw new Error('A land-share project is succeeded by a project that builds or partitions — not by another share register.');
+    }
+    if (!input.name.trim()) throw new Error('Give the new project a name.');
+
+    const successor = await this.create(
+      {
+        code: '',
+        name: input.name.trim(),
+        project_type: input.project_type,
+        total_land_area: predecessor.total_land_area ?? null,
+        total_land_area_unit: predecessor.total_land_area_unit ?? 'katha',
+        location_summary: predecessor.location_summary ?? null,
+        expected_start_date: input.expected_start_date,
+        expected_completion_date: input.expected_completion_date,
+        actual_start_date: null,
+        status: 'planning',
+        project_manager: null,
+        architect: null,
+        surroundings: predecessor.surroundings ?? null,
+        amenities: [],
+        cover_image_url: null,
+        succeeds_project_id: predecessorId,
+        is_public: false,
+        is_featured: false,
+      },
+      createdBy,
+    );
+
+    // the plot is the same plot: link it to the successor as well
+    const lands = await landProjectMappingRepository.listForProject(predecessorId);
+    for (const m of lands) {
+      await landProjectMappingRepository.create({ land_id: m.land_id, project_id: successor.id }, createdBy);
+    }
+    return successor;
   }
 
   /** Removes the project with its land links, towers, units and documents. */

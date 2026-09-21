@@ -15,6 +15,8 @@ import {
   PROJECT_STATUS_META,
   PROJECT_STEP_CONFIG,
   allowedNextProjectStatuses,
+  pipelineSteps,
+  projectStatusLabel,
   projectShape,
   projectStatusBlockers,
   projectStatusWarnings,
@@ -39,9 +41,20 @@ export function ProjectStatusCard({ project }: { project: Project }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const currentIndex = PROJECT_PIPELINE_STEPS.indexOf(project.status);
-  const nextStatuses = allowedNextProjectStatuses(project.status);
+  // v26 — a plot or share project reports no construction; the shape says so
+  const shape = projectShape(project.project_type);
+  /*
+   * Phase 3 — the stages this shape walks: a share register has no design,
+   * approval or construction, and a plot scheme calls construction what it is.
+   * Positions are compared on the global order so a project still sitting on a
+   * status its shape skips reads as "between" steps, not off the end.
+   */
+  const steps = pipelineSteps(shape);
+  const order = (s: ProjectStatus) => PROJECT_PIPELINE_STEPS.indexOf(s);
+  const currentOrder = order(project.status);
+  const nextStatuses = allowedNextProjectStatuses(project.status, shape);
   const config = target ? PROJECT_STEP_CONFIG[target] : null;
+  const label = (s: ProjectStatus) => projectStatusLabel(s, shape);
 
   /*
    * The pipeline used to ask only for a date and remarks, so a project with no
@@ -51,8 +64,6 @@ export function ProjectStatusCard({ project }: { project: Project }) {
    * allowed.
    */
   const readiness = useLiveQuery(() => projectRepository.readiness(project.id), [project.id]);
-  // v26 — a plot or share project reports no construction; the shape says so
-  const shape = projectShape(project.project_type);
   const blockersFor = (status: ProjectStatus) =>
     readiness ? projectStatusBlockers(status, readiness, shape) : [];
   const warningsFor = (status: ProjectStatus) =>
@@ -137,15 +148,15 @@ export function ProjectStatusCard({ project }: { project: Project }) {
           title="Project Status"
           action={
             <Badge tone={PROJECT_STATUS_META[project.status].tone}>
-              {PROJECT_STATUS_META[project.status].label}
+              {label(project.status)}
             </Badge>
           }
         />
 
         <ol className="mb-4 space-y-2">
-          {PROJECT_PIPELINE_STEPS.map((step, i) => {
-            const done = i < currentIndex;
-            const current = i === currentIndex;
+          {steps.map((step, i) => {
+            const done = order(step) < currentOrder;
+            const current = step === project.status;
             return (
               <li key={step} className="flex items-center gap-2.5">
                 <span
@@ -164,7 +175,7 @@ export function ProjectStatusCard({ project }: { project: Project }) {
                     current ? 'font-medium text-ink' : done ? 'text-ink-muted' : 'text-slate-400',
                   )}
                 >
-                  {PROJECT_STATUS_META[step].label}
+                  {label(step)}
                 </span>
               </li>
             );
@@ -176,7 +187,7 @@ export function ProjectStatusCard({ project }: { project: Project }) {
         ) : (
           <div className="space-y-2">
             {nextStatuses.map((status) => {
-              const forward = PROJECT_PIPELINE_STEPS.indexOf(status) > currentIndex;
+              const forward = order(status) > currentOrder;
               const blocked = blockersFor(status);
               return (
                 <div key={status}>
@@ -192,7 +203,7 @@ export function ProjectStatusCard({ project }: { project: Project }) {
                     ) : (
                       <GitBranch className="size-4" />
                     )}
-                    {forward ? 'Move to' : 'Back to'} {PROJECT_STATUS_META[status].label}
+                    {forward ? 'Move to' : 'Back to'} {label(status)}
                   </Button>
                   {blocked.length > 0 && (
                     <ul className="mt-1.5 space-y-1 text-xs text-amber-700">
@@ -210,11 +221,16 @@ export function ProjectStatusCard({ project }: { project: Project }) {
 
       <ConfirmDialog
         open={target !== null && config !== null}
-        title={config?.title ?? ''}
+        // on a tower shape the step's own title; elsewhere the shape's name for it
+        title={
+          target && shape.container === 'tower' ? (config?.title ?? '') : target ? `Move to ${label(target)}` : ''
+        }
         subtitle={`${project.code} · ${project.name}`}
         tone={config?.tone ?? 'default'}
         icon={GitBranch}
-        confirmLabel={config?.confirmLabel ?? 'Confirm'}
+        confirmLabel={
+          shape.container === 'tower' ? (config?.confirmLabel ?? 'Confirm') : target ? label(target) : 'Confirm'
+        }
         message={config?.question}
         busy={busy}
         onCancel={() => setTarget(null)}

@@ -44,13 +44,19 @@ import {
   supplierVoucherRepository,
   expenseRepository,
   ownerSettlementRepository,
+  deliveryRepository,
   paymentScheduleRepository,
   bankAccountRepository,
   projectBudgetRepository,
   refundRepository,
   userProjectAssignmentRepository,
 } from '../repositories';
-import type { LandStatus, MaterialRequestStatus, ProjectStatus } from './types';
+import type {
+  DeliveryStep,
+  LandStatus,
+  MaterialRequestStatus,
+  ProjectStatus,
+} from './types';
 import { PROCUREMENT_BUDGET_HEAD } from './types';
 import { getDb } from './database';
 import { landIsHeld } from '../domain/land';
@@ -782,6 +788,8 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
   await backfillMaterialItems(getDb());
   // after procurement: a development activity names a contractor from the vendor master
   await seedDemoDevelopment(landIds, createdBy);
+  // after development: a plot is only possessed once its land work is finished
+  await seedDemoDelivery(projectIds, bookingIds, createdBy);
 
   /*
    * L7 — let the pipeline settle the held plots' statuses from their own
@@ -800,6 +808,72 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
   await seedDemoUserAccess(projectIds, userIds, createdBy);
 
   setClearedFlag(false);
+}
+
+/**
+ * Phase 3 — delivery and succession (PROJECT-MODULE-PLAN.md §4).
+ *
+ * Everything goes through `deliveryRepository.record`, so the demo is held to
+ * the same rules as a person: confirmed booking, steps in order, no deed on
+ * money still owed, no possession before the land work is done. A step the
+ * rules refuse is a bug in this data, not something to force through.
+ *
+ * - Four Birulia shares: every certificate issued, three deeds registered and
+ *   one pending — so the register shows both states.
+ * - Plot B-3 at Rupganj: possession and deed done, mutation still open.
+ * - The Birulia shareholders then commission a building: a successor project
+ *   on the same land, started through `startSuccessor` exactly as the button
+ *   does it.
+ */
+async function seedDemoDelivery(
+  projectIds: Map<string, string>,
+  bookingIds: Map<string, string>,
+  createdBy: string | null,
+): Promise<void> {
+  const step = async (
+    key: string,
+    s: DeliveryStep,
+    event_date: string,
+    reference_no: string,
+    performed_by: string,
+  ) => {
+    const bookingId = bookingIds.get(key);
+    if (!bookingId) return;
+    await deliveryRepository.record(
+      bookingId,
+      s,
+      { event_date, reference_no, performed_by, remarks: null },
+      createdBy,
+    );
+  };
+
+  const registry = 'Sub-Registry Office, Savar';
+  await step('rumana::SHARE-03', 'share_certificate', daysFromToday(-40).slice(0, 10), 'BRS-CERT-003', 'Nokshi Properties');
+  await step('rumana::SHARE-03', 'deed_registered', daysFromToday(-18).slice(0, 10), '5512/2026', registry);
+  await step('saiful::SHARE-07', 'share_certificate', daysFromToday(-38).slice(0, 10), 'BRS-CERT-007', 'Nokshi Properties');
+  await step('saiful::SHARE-07', 'deed_registered', daysFromToday(-16).slice(0, 10), '5540/2026', registry);
+  await step('afsana::SHARE-11', 'share_certificate', daysFromToday(-36).slice(0, 10), 'BRS-CERT-011', 'Nokshi Properties');
+  await step('afsana::SHARE-11', 'deed_registered', daysFromToday(-15).slice(0, 10), '5561/2026', registry);
+  // Zubair's deed is still pending — his certificate is the only step so far
+  await step('zubair::SHARE-15', 'share_certificate', daysFromToday(-33).slice(0, 10), 'BRS-CERT-015', 'Nokshi Properties');
+
+  await step('rownak::B-3', 'possession_given', daysFromToday(-14).slice(0, 10), 'POS-B3', 'Site office, Kanchan');
+  await step('rownak::B-3', 'deed_registered', daysFromToday(-9).slice(0, 10), '6118/2026', 'Sub-Registry Office, Rupganj');
+
+  const register = projectIds.get('Birulia Riverside Share Project');
+  if (register) {
+    const successor = await projectRepository.startSuccessor(
+      register,
+      {
+        name: "Birulia Shareholders' Court",
+        project_type: 'apartment',
+        expected_start_date: daysFromToday(60).slice(0, 10),
+        expected_completion_date: daysFromToday(60 + 36 * 30).slice(0, 10),
+      },
+      createdBy,
+    );
+    projectIds.set(successor.name, successor.id);
+  }
 }
 
 /**
@@ -1989,6 +2063,7 @@ export async function clearDemoData(): Promise<void> {
     db.land_project_mapping.clear(),
     db.towers.clear(),
     db.project_status_history.clear(),
+    db.unit_deliveries.clear(),
     db.units.clear(),
     db.users.clear(),
     db.leads.clear(),

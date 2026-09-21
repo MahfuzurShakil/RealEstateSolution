@@ -74,6 +74,7 @@ export {
   unitRepository,
   type ProjectFilters,
   type ProjectWithRelations,
+  type Shareholder,
   type ProjectAllocation,
   type ProjectJvLand,
   type UnitFilters,
@@ -182,3 +183,8 @@ export {
   type UserFilters,
   type UserWithAccess,
 } from './user.repository';
+export {
+  deliveryRepository,
+  DeliveryBlockedError,
+  type DeliveryState,
+} from './delivery.repository';

@@ -623,4 +623,91 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
       },
     ],
   },
+  /*
+   * Phase 3 — three more shareholders, so the register has co-owners to carry
+   * into the project they later commission. Paid in full, which is what lets
+   * their deeds be registered at all.
+   */
+  {
+    customer_key: 'saiful',
+    project_name: 'Birulia Riverside Share Project',
+    unit_code: 'SHARE-07',
+    booked_by_key: 'nishat',
+    days_ago: 48,
+    floor_premium: 0,
+    facing_premium: 0,
+    parking_charge: 0,
+    other_charges: 18000,
+    discount_amount: 0,
+    booking_amount: 20000,
+    installment_tenure_months: 6,
+    payments: [
+      { amount: 118_000, days_ago: 48, method: 'bank', reference_no: 'BEFTN 6620590' },
+    ],
+  },
+  {
+    customer_key: 'afsana',
+    project_name: 'Birulia Riverside Share Project',
+    unit_code: 'SHARE-11',
+    booked_by_key: 'nishat',
+    days_ago: 45,
+    floor_premium: 0,
+    facing_premium: 0,
+    parking_charge: 0,
+    other_charges: 18000,
+    discount_amount: 0,
+    booking_amount: 20000,
+    installment_tenure_months: 6,
+    payments: [
+      { amount: 118_000, days_ago: 45, method: 'bank', reference_no: 'BEFTN 6620733' },
+    ],
+  },
+  {
+    customer_key: 'zubair',
+    project_name: 'Birulia Riverside Share Project',
+    unit_code: 'SHARE-15',
+    booked_by_key: 'nishat',
+    days_ago: 41,
+    floor_premium: 0,
+    facing_premium: 0,
+    parking_charge: 0,
+    other_charges: 18000,
+    discount_amount: 0,
+    booking_amount: 20000,
+    installment_tenure_months: 6,
+    payments: [
+      { amount: 118_000, days_ago: 41, method: 'bank', reference_no: 'BEFTN 6620811' },
+    ],
+  },
+  /*
+   * Phase 3 — a plot paid in full and mid-delivery: possession given and the
+   * deed registered, mutation still with the AC Land office. Possession is only
+   * allowed because the Rupganj filling and roads are finished.
+   */
+  {
+    customer_key: 'rownak',
+    project_name: 'Nokshi Kanchan Model Town',
+    unit_code: 'B-3',
+    booked_by_key: 'arif',
+    days_ago: 70,
+    floor_premium: 0,
+    facing_premium: 0,
+    parking_charge: 0,
+    road_premium: 0,
+    corner_premium: 0,
+    other_charges: 250000,
+    discount_amount: 0,
+    booking_amount: 400000,
+    installment_tenure_months: 48,
+    payments: [
+      { amount: 400000, days_ago: 70, method: 'cheque', reference_no: 'CHQ 5530117' },
+      {
+        amount: 3_450_000,
+        days_ago: 20,
+        method: 'bank',
+        reference_no: 'BEFTN 7790044',
+        notes: 'Paid off in one go ahead of registration.',
+      },
+    ],
+  },
 ];

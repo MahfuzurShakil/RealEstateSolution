@@ -7,6 +7,8 @@ import {
 import type {
   AllocationType,
   Booking,
+  BookingStatus,
+  DeliveryStep,
   ForSaleBy,
   JvShareBasis,
   ProjectStatus,
@@ -45,12 +47,66 @@ export const PROJECT_PIPELINE_STEPS: ProjectStatus[] = [
   'closed',
 ];
 
-/** One step forward, or one step back to correct a premature move. */
-export function allowedNextProjectStatuses(current: ProjectStatus): ProjectStatus[] {
-  const i = PROJECT_PIPELINE_STEPS.indexOf(current);
-  return [PROJECT_PIPELINE_STEPS[i + 1], PROJECT_PIPELINE_STEPS[i - 1]].filter(
-    (s): s is ProjectStatus => Boolean(s),
-  );
+/**
+ * The stages this shape actually walks through (Phase 3).
+ *
+ * A land-share project has no design, no approval and no construction: the
+ * register opens, the shares sell, the deeds are registered, it closes. Making
+ * it click through three stages that describe nothing is how a pipeline stops
+ * being believed. A plot scheme keeps every stage — it is designed, gets a
+ * subdivision approval, and is developed — but "construction" is the filling
+ * and the roads, so it is called that (`projectStatusLabel`).
+ *
+ * The status *keys* are shared on purpose, so reports and filters across
+ * projects keep working; only which of them a shape uses, and what they are
+ * called, differ.
+ */
+export function pipelineSteps(shape: ProjectShape): ProjectStatus[] {
+  if (shape.item === 'share') return ['planning', 'nearly_complete', 'handover_ongoing', 'closed'];
+  return PROJECT_PIPELINE_STEPS;
+}
+
+/** What a status is called on this shape. */
+export function projectStatusLabel(status: ProjectStatus, shape: ProjectShape): string {
+  if (shape.item === 'share') {
+    const share: Partial<Record<ProjectStatus, string>> = {
+      planning: 'Register Open',
+      nearly_complete: 'Sold Out',
+      handover_ongoing: 'Deeds Registering',
+    };
+    if (share[status]) return share[status];
+  }
+  if (shape.item === 'plot') {
+    const plot: Partial<Record<ProjectStatus, string>> = {
+      approval: 'Subdivision Approval',
+      under_construction: 'Under Development',
+      handover_ongoing: 'Possession Ongoing',
+    };
+    if (plot[status]) return plot[status];
+  }
+  return PROJECT_STATUS_META[status].label;
+}
+
+/**
+ * One step forward, or one step back to correct a premature move.
+ *
+ * Phase 3 — along this shape's own steps. A project sitting on a status its
+ * shape skips (a share project created before the shapes existed, still at
+ * `design`) moves on to the next stage the shape does use, so no project is
+ * ever stranded on a status it can no longer leave.
+ */
+export function allowedNextProjectStatuses(
+  current: ProjectStatus,
+  shape: ProjectShape = PROJECT_SHAPE.apartment,
+): ProjectStatus[] {
+  const steps = pipelineSteps(shape);
+  const i = steps.indexOf(current);
+  if (i === -1) {
+    const order = PROJECT_PIPELINE_STEPS.indexOf(current);
+    const next = steps.find((s) => PROJECT_PIPELINE_STEPS.indexOf(s) > order);
+    return next ? [next] : [];
+  }
+  return [steps[i + 1], steps[i - 1]].filter((s): s is ProjectStatus => Boolean(s));
 }
 
 /**
@@ -493,6 +549,84 @@ export function unitDescription(
   return [`${shape.labels.item} ${unit.code}`, unit.unit_type, unitSizeLabel(unit, shape)]
     .filter((part) => part && part !== '\u2014')
     .join(' \u00b7 ');
+}
+
+/* ------------------------------------------------------------------ *
+ * Delivery — how an item reaches its buyer (Phase 3)
+ * ------------------------------------------------------------------ */
+
+export const DELIVERY_STEP_LABEL: Record<DeliveryStep, string> = {
+  keys_handed_over: 'Keys handed over',
+  possession_given: 'Possession given',
+  share_certificate: 'Share certificate issued',
+  deed_registered: 'Deed registered',
+  mutation_done: 'Mutation (namjari) done',
+};
+
+export const DELIVERY_STEP_HINT: Record<DeliveryStep, string> = {
+  keys_handed_over: 'The flat is physically handed to the buyer',
+  possession_given: 'The plot is pegged out on the ground and handed over',
+  share_certificate: 'Issued before the deed, as proof of the holding',
+  deed_registered: 'Sale deed registered at the sub-registry office',
+  mutation_done: 'The buyer\u2019s name is on the khatian',
+};
+
+/**
+ * The steps that deliver one item on this shape, in order.
+ *
+ * The last one completes the delivery and moves the unit to `handed_over`.
+ * A share has no mutation step: the buyer holds an undivided fraction, and a
+ * khatian is mutated for the whole plot at partition, not share by share.
+ */
+export function deliverySteps(shape: ProjectShape): DeliveryStep[] {
+  if (shape.item === 'share') return ['share_certificate', 'deed_registered'];
+  if (shape.item === 'plot') return ['possession_given', 'deed_registered', 'mutation_done'];
+  return ['keys_handed_over', 'deed_registered', 'mutation_done'];
+}
+
+/** Facts a delivery step is checked against — read once, passed in. */
+export interface DeliveryFacts {
+  bookingStatus: BookingStatus;
+  /** what the buyer still owes on this booking */
+  outstanding: number;
+  /** steps already recorded on this unit */
+  done: DeliveryStep[];
+  /** for a plot: development activities still open on the project's land */
+  developmentOutstanding: number;
+}
+
+/**
+ * Why the next delivery step cannot be recorded, or null.
+ *
+ * Three rules, each one a thing that cannot be true rather than a judgement:
+ * nothing is delivered on a booking that is not confirmed; steps happen in
+ * order; and **the deed is not registered while money is owed** — in this
+ * market registration is the buyer's leverage and the developer's last, so a
+ * deed on an unpaid plot is money the company will not see. A plot adds one
+ * more: it is not possessed while the filling and roads under it are still
+ * open, which is the Land module's development record doing its job here.
+ */
+export function deliveryBlockReason(
+  step: DeliveryStep,
+  shape: ProjectShape,
+  facts: DeliveryFacts,
+): string | null {
+  if (facts.bookingStatus !== 'confirmed') {
+    return 'Only a confirmed booking can be delivered.';
+  }
+  const steps = deliverySteps(shape);
+  const i = steps.indexOf(step);
+  if (i === -1) return `${DELIVERY_STEP_LABEL[step]} is not part of delivering a ${shape.labels.item.toLowerCase()}.`;
+  if (facts.done.includes(step)) return `${DELIVERY_STEP_LABEL[step]} is already recorded.`;
+  const missing = steps.slice(0, i).find((s) => !facts.done.includes(s));
+  if (missing) return `Record \u201c${DELIVERY_STEP_LABEL[missing]}\u201d first.`;
+  if (step === 'possession_given' && facts.developmentOutstanding > 0) {
+    return `${facts.developmentOutstanding} land development ${facts.developmentOutstanding === 1 ? 'activity is' : 'activities are'} still open on this project's land \u2014 a plot is not handed over before its filling and roads are finished.`;
+  }
+  if (step === 'deed_registered' && facts.outstanding > 0.009) {
+    return 'The buyer still owes money on this booking \u2014 the deed is registered only once it is paid in full.';
+  }
+  return null;
 }
 
 export function projectShape(type: ProjectType): ProjectShape {

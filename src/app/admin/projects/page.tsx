@@ -23,7 +23,12 @@ import { Pagination, usePagination } from '@/components/ui/Pagination';
 import { ResultCard } from '@/components/ui/ResultCard';
 import { ResultsLayout, ViewToggle, type ViewMode } from '@/components/ui/ViewToggle';
 import { PROJECT_STATUSES, PROJECT_TYPES, type ProjectStatus, type ProjectType } from '@/lib/db/types';
-import { PROJECT_STATUS_META, PROJECT_TYPE_LABEL } from '@/lib/domain/project';
+import {
+  PROJECT_STATUS_META,
+  PROJECT_TYPE_LABEL,
+  projectShape,
+  projectStatusLabel,
+} from '@/lib/domain/project';
 import { projectRepository, unitRepository } from '@/lib/repositories';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
@@ -241,7 +246,9 @@ export default function ProjectsListPage() {
                       title={project.name}
                       status={
                         <>
-                          <Badge tone={meta.tone}>{meta.label}</Badge>
+                          <Badge tone={meta.tone}>
+                            {projectStatusLabel(project.status, projectShape(project.project_type))}
+                          </Badge>
                           {project.is_featured && (
                             <Badge tone="amber">
                               <Star className="size-3.5" /> Featured
