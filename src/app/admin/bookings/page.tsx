@@ -27,10 +27,12 @@ import {
   DISCOUNT_APPROVAL_META,
   discountPct,
 } from '@/lib/domain/booking';
+import { projectShape, unitSizeLabel } from '@/lib/domain/project';
 import {
   bookingRepository,
   customerRepository,
   projectRepository,
+  towerRepository,
   unitRepository,
   userRepository,
 } from '@/lib/repositories';
@@ -71,6 +73,24 @@ export default function BookingsListPage() {
     [customers],
   );
   const unitById = useMemo(() => new Map((units ?? []).map((u) => [u.id, u])), [units]);
+
+  /*
+   * v27 — the shape each unit is sold under, so the list shows a plot's katha
+   * rather than a blank sqft. Resolved through the tower because that is the
+   * only link a `units` row has to its project.
+   */
+  const towers = useLiveQuery(() => towerRepository.getAll(), []);
+  const shapeByUnitId = useMemo(() => {
+    const typeByTower = new Map(
+      (towers ?? []).map((t) => [
+        t.id,
+        (projects ?? []).find((p) => p.id === t.project_id)?.project_type ?? 'apartment',
+      ]),
+    );
+    return new Map(
+      (units ?? []).map((u) => [u.id, projectShape(typeByTower.get(u.tower_id) ?? 'apartment')]),
+    );
+  }, [towers, projects, units]);
   const sellerById = useMemo(
     () => new Map((salesTeam ?? []).map((u) => [u.id, u])),
     [salesTeam],
@@ -294,7 +314,12 @@ export default function BookingsListPage() {
                           {unit && (
                             <Badge tone="teal">
                               <Building2 className="size-3.5" />
-                              {unit.code} · {unit.size_sqft} sqft
+                              {/* v27 — katha on a plot, a percentage on a share */}
+                              {unit.code} ·{' '}
+                              {unitSizeLabel(
+                                unit,
+                                shapeByUnitId.get(unit.id) ?? projectShape('apartment'),
+                              )}
                             </Badge>
                           )}
                           <Badge>

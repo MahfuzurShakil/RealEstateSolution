@@ -4,6 +4,14 @@ import { use } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { PrintField, PrintSheet, SignatureRow } from '@/components/print/PrintSheet';
 import { amountInWords } from '@/lib/domain/document';
+import {
+  PREMIUM_FIELD,
+  PREMIUM_LABEL,
+  projectShape,
+  shapeUses,
+  unitSizeLabel,
+  type PremiumKind,
+} from '@/lib/domain/project';
 import { printRepository } from '@/lib/repositories';
 import { formatBdt, formatDate, formatPhone, humanize } from '@/lib/utils/format';
 
@@ -25,11 +33,28 @@ export default function BookingFormPrintPage({ params }: { params: Promise<{ id:
   const { company, booking, allocated_owner_name } = data;
   const currency = company?.default_currency ?? 'BDT';
 
+  /*
+   * v27 — the form names what was actually sold.
+   *
+   * A buyer of Plot C-14 should not be handed a sheet headed "Unit" listing a
+   * floor and a size in sqft. The shape supplies the words; the *amounts*
+   * still come from the booking's own snapshot columns, so a repricing of the
+   * plot after the fact cannot contradict the copy the buyer signed.
+   *
+   * A premium the shape no longer uses is still printed when it carries money,
+   * because the lines have to add up to the total payable underneath them.
+   */
+  const shape = projectShape(booking.project?.project_type ?? 'apartment');
+  const premiumLines = (['floor', 'facing', 'parking', 'road', 'corner'] as PremiumKind[])
+    .filter((kind) => shape.premiums.includes(kind) || Number(booking[PREMIUM_FIELD[kind]]) > 0)
+    .map((kind) => ({
+      label: PREMIUM_LABEL[kind],
+      amount: Number(booking[PREMIUM_FIELD[kind]]) || 0,
+    }));
+
   const priceLines: { label: string; amount: number; negative?: boolean }[] = [
     { label: 'Base price', amount: booking.base_price },
-    { label: 'Floor premium', amount: booking.floor_premium },
-    { label: 'Facing premium', amount: booking.facing_premium },
-    { label: 'Parking charge', amount: booking.parking_charge },
+    ...premiumLines,
     { label: 'Other charges', amount: booking.other_charges },
     { label: 'Less: discount', amount: booking.discount_amount, negative: true },
   ];
@@ -39,7 +64,11 @@ export default function BookingFormPrintPage({ params }: { params: Promise<{ id:
       company={company}
       title="Booking Form"
       subtitle={booking.code}
-      footnote="This form records the agreed terms at the time of booking. It is not a deed of sale."
+      footnote={
+        shape.item === 'share'
+          ? 'This form records the agreed terms at the time of booking. Title passes only on registration of the share deed.'
+          : 'This form records the agreed terms at the time of booking. It is not a deed of sale.'
+      }
     >
       <section className="print-nobreak">
         <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
@@ -56,20 +85,43 @@ export default function BookingFormPrintPage({ params }: { params: Promise<{ id:
 
       <section className="print-nobreak">
         <h2 className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-          Unit
+          {shape.labels.item}
         </h2>
         <div className="grid grid-cols-3 gap-4 border-b border-hairline pb-4">
           <PrintField label="Project" value={booking.project?.name ?? '—'} />
-          <PrintField label="Tower" value={booking.tower?.name ?? '—'} />
-          <PrintField label="Unit" value={booking.unit?.code ?? '—'} />
-          <PrintField label="Floor" value={booking.unit ? String(booking.unit.floor) : '—'} />
-          <PrintField label="Size" value={booking.unit ? `${booking.unit.size_sqft} sqft` : '—'} />
-          <PrintField label="Facing" value={humanize(booking.unit?.facing) } />
-          <PrintField label="Type" value={humanize(booking.unit?.unit_type)} />
+          {shape.container !== 'none' && (
+            <PrintField label={shape.labels.container} value={booking.tower?.name ?? '—'} />
+          )}
+          <PrintField label={shape.labels.item} value={booking.unit?.code ?? '—'} />
+          {shapeUses(shape, 'floor') && (
+            <PrintField
+              label="Floor"
+              value={booking.unit?.floor != null ? String(booking.unit.floor) : '—'}
+            />
+          )}
           <PrintField
-            label="Parking"
-            value={booking.unit ? String(booking.unit.parking_allocated) : '—'}
+            label={shape.labels.size}
+            value={booking.unit ? unitSizeLabel(booking.unit, shape) : '—'}
           />
+          {shapeUses(shape, 'road_width') && (
+            <PrintField
+              label="Road width"
+              value={booking.unit?.road_width_ft ? `${booking.unit.road_width_ft} ft` : '—'}
+            />
+          )}
+          {shapeUses(shape, 'corner') && (
+            <PrintField label="Corner" value={booking.unit?.is_corner ? 'Yes' : 'No'} />
+          )}
+          {shapeUses(shape, 'facing') && (
+            <PrintField label="Facing" value={humanize(booking.unit?.facing)} />
+          )}
+          <PrintField label="Type" value={humanize(booking.unit?.unit_type)} />
+          {shapeUses(shape, 'parking') && (
+            <PrintField
+              label="Parking"
+              value={booking.unit ? String(booking.unit.parking_allocated) : '—'}
+            />
+          )}
           <PrintField label="Booking date" value={formatDate(booking.booking_date)} />
         </div>
         {/*
@@ -79,7 +131,8 @@ export default function BookingFormPrintPage({ params }: { params: Promise<{ id:
         */}
         {allocated_owner_name ? (
           <p className="mt-2 text-xs text-ink-muted">
-            Landowner share unit — allocated to {allocated_owner_name}.
+            Landowner share {shape.labels.item.toLowerCase()} — allocated to{' '}
+            {allocated_owner_name}.
           </p>
         ) : null}
       </section>

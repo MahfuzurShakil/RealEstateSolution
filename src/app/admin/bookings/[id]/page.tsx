@@ -17,7 +17,15 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { BOOKING_STATUS_META } from '@/lib/domain/booking';
 import { LEAD_STATUS_META } from '@/lib/domain/lead';
-import { UNIT_STATUS_META } from '@/lib/domain/project';
+import {
+  PREMIUM_FIELD,
+  PREMIUM_LABEL,
+  UNIT_STATUS_META,
+  projectShape,
+  shapeUses,
+  unitSizeLabel,
+  type PremiumKind,
+} from '@/lib/domain/project';
 import { bookingRepository, refundRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate, formatPhone } from '@/lib/utils/format';
@@ -67,11 +75,23 @@ export default function BookingDetailPage() {
     { key: 'documents', label: 'Documents' },
   ];
 
+  /*
+   * v27 — the breakdown lists the premiums this project's shape uses, so a
+   * plot booking shows road width and corner where a flat shows floor and
+   * facing. A booking carrying a premium its shape no longer uses is still
+   * listed, because it is still in the total and hiding it would make the
+   * rows stop adding up to the final price.
+   */
+  const shape = projectShape(booking.project?.project_type ?? 'apartment');
+  const premiumRows: Array<[string, number]> = (
+    ['floor', 'facing', 'parking', 'road', 'corner'] as PremiumKind[]
+  )
+    .filter((kind) => shape.premiums.includes(kind) || Number(booking[PREMIUM_FIELD[kind]]) > 0)
+    .map((kind) => [PREMIUM_LABEL[kind], Number(booking[PREMIUM_FIELD[kind]]) || 0]);
+
   const priceRows: Array<[string, number, boolean?]> = [
     ['Base price', booking.base_price],
-    ['Floor premium', booking.floor_premium],
-    ['Facing premium', booking.facing_premium],
-    ['Parking charge', booking.parking_charge],
+    ...premiumRows,
     ['Other charges', booking.other_charges],
     ['Discount', -booking.discount_amount, true],
   ];
@@ -214,7 +234,7 @@ export default function BookingDetailPage() {
               </Card>
 
               <Card>
-                <CardHeader title="Unit" />
+                <CardHeader title={shape.labels.item} />
                 {booking.unit ? (
                   <>
                     <Link
@@ -226,7 +246,10 @@ export default function BookingDetailPage() {
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-ink">
-                          {booking.unit.code} · {booking.tower?.name}
+                          {booking.unit.code}
+                          {shape.container !== 'none' && booking.tower?.name
+                            ? ` · ${booking.tower.name}`
+                            : ''}
                         </p>
                         <p className="text-xs text-ink-muted">
                           {booking.project?.name}
@@ -238,16 +261,37 @@ export default function BookingDetailPage() {
                         {UNIT_STATUS_META[booking.unit.status].label}
                       </Badge>
                     </Link>
+                    {/* v27 — only what this shape has: a plot is not on a
+                        floor and a share is not anywhere */}
                     <div className="mt-3">
                       <Row label="Type" value={booking.unit.unit_type} />
-                      <Row label="Floor" value={booking.unit.floor} />
-                      <Row label="Size" value={`${booking.unit.size_sqft} sqft`} />
-                      <Row label="Facing" value={booking.unit.facing} />
-                      <Row label="Parking" value={booking.unit.parking_allocated} />
+                      {shapeUses(shape, 'floor') && (
+                        <Row label="Floor" value={booking.unit.floor} />
+                      )}
+                      <Row label={shape.labels.size} value={unitSizeLabel(booking.unit, shape)} />
+                      {shapeUses(shape, 'road_width') && (
+                        <Row
+                          label="Road width"
+                          value={
+                            booking.unit.road_width_ft ? `${booking.unit.road_width_ft} ft` : null
+                          }
+                        />
+                      )}
+                      {shapeUses(shape, 'corner') && (
+                        <Row label="Corner" value={booking.unit.is_corner ? 'Yes' : 'No'} />
+                      )}
+                      {shapeUses(shape, 'facing') && (
+                        <Row label="Facing" value={booking.unit.facing} />
+                      )}
+                      {shapeUses(shape, 'parking') && (
+                        <Row label="Parking" value={booking.unit.parking_allocated} />
+                      )}
                     </div>
                   </>
                 ) : (
-                  <p className="text-sm text-ink-muted">Unit record is missing.</p>
+                  <p className="text-sm text-ink-muted">
+                    {shape.labels.item} record is missing.
+                  </p>
                 )}
               </Card>
             </div>

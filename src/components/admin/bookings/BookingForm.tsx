@@ -23,7 +23,16 @@ import {
   finalPrice,
   needsDiscountApproval,
 } from '@/lib/domain/booking';
-import { isUnitSellable, UNIT_STATUS_META } from '@/lib/domain/project';
+import {
+  PREMIUM_HINT,
+  PREMIUM_LABEL,
+  isUnitSellable,
+  projectShape,
+  unitDescription,
+  unitSizeLabel,
+  UNIT_STATUS_META,
+  type PremiumKind,
+} from '@/lib/domain/project';
 import {
   bookingRepository,
   customerRepository,
@@ -45,6 +54,8 @@ interface FormState {
   floor_premium: string;
   facing_premium: string;
   parking_charge: string;
+  road_premium: string;
+  corner_premium: string;
   other_charges: string;
   discount_amount: string;
   booking_amount: string;
@@ -65,6 +76,8 @@ const EMPTY: FormState = {
   floor_premium: '0',
   facing_premium: '0',
   parking_charge: '0',
+  road_premium: '0',
+  corner_premium: '0',
   other_charges: '0',
   discount_amount: '0',
   booking_amount: '',
@@ -85,6 +98,25 @@ const n = (v: string) => Number(v) || 0;
  * gating facts (Section 5.2), and the form shows in advance what the discount
  * will trigger, so nobody is surprised by a `pending_approval` after saving.
  */
+/**
+ * Where each premium lives in this form, and in the computed price parts.
+ *
+ * Two maps rather than one because the form holds strings and the parts hold
+ * numbers; both are keyed off `PremiumKind`, so a premium can never be shown
+ * under one name and saved under another.
+ */
+const PREMIUM_FORM_KEY = {
+  floor: 'floor_premium',
+  facing: 'facing_premium',
+  parking: 'parking_charge',
+  road: 'road_premium',
+  corner: 'corner_premium',
+  // the literal types matter: `keyof FormState` would widen these to include
+  // the boolean field and `form[key]` would stop being a string
+} as const satisfies Record<PremiumKind, keyof FormState>;
+
+const PREMIUM_PART_KEY = PREMIUM_FORM_KEY;
+
 export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -125,6 +157,14 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
 
   const selectedUnit = projectUnits.find((u) => u.id === form.unit_id);
 
+  /*
+   * v27 — what is being sold. Until a project is picked there is nothing to
+   * ask the shape about, so the form opens on the flat wording, which is what
+   * it always said.
+   */
+  const selectedProject = projects.find((p) => p.id === form.project_id);
+  const shape = projectShape(selectedProject?.project_type ?? 'apartment');
+
   /** the project plan template - drives the tenure default and the preview */
   const plan = useLiveQuery(
     () =>
@@ -142,9 +182,16 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
 
   const parts = {
     base_price: n(form.base_price),
+    /*
+     * v27 — every premium is read, but only the ones this shape uses are
+     * ever asked for (see `shape.premiums`). A booking edited after its
+     * project changed shape would otherwise lose whatever it already carried.
+     */
     floor_premium: n(form.floor_premium),
     facing_premium: n(form.facing_premium),
     parking_charge: n(form.parking_charge),
+    road_premium: n(form.road_premium),
+    corner_premium: n(form.corner_premium),
     other_charges: n(form.other_charges),
     discount_amount: n(form.discount_amount),
   };
@@ -182,9 +229,10 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
   function validate(): boolean {
     const next: Record<string, string> = {};
     if (!form.customer_id) next.customer_id = 'Pick the customer';
-    if (!form.unit_id) next.unit_id = 'Pick the unit being booked';
+    if (!form.unit_id) next.unit_id = `Pick the ${shape.labels.item.toLowerCase()} being booked`;
     if (!form.booking_date) next.booking_date = 'Required';
-    if (n(form.base_price) <= 0) next.base_price = 'Enter the unit price';
+    if (n(form.base_price) <= 0)
+      next.base_price = `Enter the ${shape.labels.item.toLowerCase()} price`;
     if (parts.discount_amount < 0) next.discount_amount = 'Discount cannot be negative';
     if (parts.discount_amount > parts.base_price) {
       next.discount_amount = 'Discount cannot exceed the base price';
@@ -213,6 +261,8 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
         floor_premium: parts.floor_premium,
         facing_premium: parts.facing_premium,
         parking_charge: parts.parking_charge,
+        road_premium: parts.road_premium,
+        corner_premium: parts.corner_premium,
         other_charges: parts.other_charges,
         discount_amount: parts.discount_amount,
         booking_amount: n(form.booking_amount),
@@ -338,10 +388,10 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
             className="xl:col-span-2"
             hint={
               selectedUnit
-                ? `${selectedUnit.unit_type} · ${selectedUnit.size_sqft} sqft · ${UNIT_STATUS_META[selectedUnit.status].label}`
+                ? `${selectedUnit.unit_type} · ${unitSizeLabel(selectedUnit, shape)} · ${UNIT_STATUS_META[selectedUnit.status].label}`
                 : isEdit
                   ? undefined
-                  : 'Only available or on-hold units can be booked.'
+                  : `Only available or on-hold ${shape.labels.itemPlural.toLowerCase()} can be booked.`
             }
           >
             <SelectInput
@@ -350,10 +400,10 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
               onChange={(e) => pickUnit(e.target.value)}
               invalid={Boolean(errors.unit_id)}
             >
-              <option value="">Pick a unit</option>
+              <option value="">Pick a {shape.labels.item.toLowerCase()}</option>
               {selectableUnits.map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.code} · {u.unit_type} · {u.size_sqft} sqft · {formatBdt(u.base_price )}
+                  {unitDescription(u, shape)} · {formatBdt(u.base_price)}
                 </option>
               ))}
             </SelectInput>
@@ -363,8 +413,8 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
         {isEdit && (
           <p className="mt-3 flex items-start gap-2 text-xs text-ink-muted">
             <Info className="mt-0.5 size-3.5 shrink-0" />
-            Customer, unit and sales person are fixed once a booking exists — cancel and rebook if
-            they are wrong.
+            Customer, {shape.labels.item.toLowerCase()} and sales person are fixed once a booking
+            exists — cancel and rebook if they are wrong.
           </p>
         )}
       </Card>
@@ -372,32 +422,33 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
       <Card>
         <CardHeader title="Pricing (BDT)" />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Field label="Base Price" required error={errors.base_price} hint="Snapshot of the unit price">
+          <Field label="Base Price" required error={errors.base_price} hint={`Snapshot of the ${shape.labels.item.toLowerCase()} price`}>
             <MoneyInput
               value={form.base_price}
               onChange={(e) => set('base_price', e.target.value)}
               invalid={Boolean(errors.base_price)}
             />
           </Field>
-          <Field label="Floor Premium">
-            <MoneyInput
-              value={form.floor_premium}
-              onChange={(e) => set('floor_premium', e.target.value)}
-            />
-          </Field>
-          <Field label="Facing Premium">
-            <MoneyInput
-              value={form.facing_premium}
-              onChange={(e) => set('facing_premium', e.target.value)}
-            />
-          </Field>
-          <Field label="Parking Charge">
-            <MoneyInput
-              value={form.parking_charge}
-              onChange={(e) => set('parking_charge', e.target.value)}
-            />
-          </Field>
-          <Field label="Other Charges" hint="Utility connection, corner charge…">
+          {/* v27 — floor and facing on a flat, road and corner on a plot,
+              neither on a share: every share of one plot is worth the same */}
+          {shape.premiums.map((kind) => (
+            <Field key={kind} label={PREMIUM_LABEL[kind]} hint={PREMIUM_HINT[kind]}>
+              <MoneyInput
+                value={form[PREMIUM_FORM_KEY[kind]]}
+                onChange={(e) => set(PREMIUM_FORM_KEY[kind], e.target.value)}
+              />
+            </Field>
+          ))}
+          <Field
+            label="Other Charges"
+            hint={
+              shape.item === 'flat'
+                ? 'Utility connection, transformer…'
+                : shape.item === 'plot'
+                  ? 'Registration cost, mutation, club charge…'
+                  : 'Deed and registration cost…'
+            }
+          >
             <MoneyInput
               value={form.other_charges}
               onChange={(e) => set('other_charges', e.target.value)}
@@ -419,11 +470,11 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
         <div className="mt-4 rounded-xl border border-hairline bg-canvas/60 p-4">
           <dl className="space-y-1.5 text-sm">
             {[
-              ['Base price', parts.base_price],
-              ['Floor premium', parts.floor_premium],
-              ['Facing premium', parts.facing_premium],
-              ['Parking charge', parts.parking_charge],
-              ['Other charges', parts.other_charges],
+              ['Base price', parts.base_price] as const,
+              ...shape.premiums.map(
+                (kind) => [PREMIUM_LABEL[kind], parts[PREMIUM_PART_KEY[kind]] ?? 0] as const,
+              ),
+              ['Other charges', parts.other_charges] as const,
             ].map(([label, value]) => (
               <div key={String(label)} className="flex justify-between gap-4">
                 <dt className="text-ink-muted">{label}</dt>
@@ -625,6 +676,8 @@ function toFormState(booking: BookingWithRelations): FormState {
     booking_date: booking.booking_date,
     base_price: String(booking.base_price),
     floor_premium: String(booking.floor_premium),
+    road_premium: String(booking.road_premium ?? 0),
+    corner_premium: String(booking.corner_premium ?? 0),
     facing_premium: String(booking.facing_premium),
     parking_charge: String(booking.parking_charge),
     other_charges: String(booking.other_charges),

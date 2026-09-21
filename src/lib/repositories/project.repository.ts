@@ -20,6 +20,7 @@ import {
   floorsInRange,
   jvAllocationSummary,
   priceOnFloor,
+  defaultInstallmentPlan,
   projectShape,
   shapeIsBuilt,
   unitCode,
@@ -86,8 +87,17 @@ class ProjectRepository extends BaseRepository<Project> {
   async create(input: NewRecord<Project>, createdBy: string | null = null): Promise<Project> {
     const code = input.code?.trim() ? input.code : await this.generateCode();
     const project = await super.create({ ...input, code }, createdBy);
-    // every project starts on the system default payment plan (Section 8.2)
-    await installmentPlanTemplateRepository.seedForProject(project.id, createdBy);
+    /*
+     * Every project starts on a default payment plan (Section 8.2), and v27
+     * picks it by shape: a plot runs 48 months with no construction milestone
+     * and a final slice at registration, a share runs six with the balance at
+     * the deed. Editable afterwards, as it always was.
+     */
+    await installmentPlanTemplateRepository.seedForProject(
+      project.id,
+      createdBy,
+      defaultInstallmentPlan(projectShape(project.project_type)),
+    );
     return project;
   }
 

@@ -31,7 +31,7 @@ import {
   LEAD_STATUS_META,
   followUpState,
 } from '@/lib/domain/lead';
-import { UNIT_STATUS_META } from '@/lib/domain/project';
+import { UNIT_STATUS_META, projectShape, unitSizeLabel } from '@/lib/domain/project';
 import { customerRepository, leadRepository, userRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate, formatPhone, todayLocal } from '@/lib/utils/format';
@@ -198,15 +198,23 @@ export default function LeadDetailPage() {
                 {lead.unit && (
                   <div className="mt-3 rounded-xl border border-hairline p-3">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium text-ink">Unit {lead.unit.code}</p>
+                      <p className="text-sm font-medium text-ink">
+                        {projectShape(lead.project?.project_type ?? 'apartment').labels.item}{' '}
+                        {lead.unit.code}
+                      </p>
                       <Badge tone={UNIT_STATUS_META[lead.unit.status].tone}>
                         {UNIT_STATUS_META[lead.unit.status].label}
                       </Badge>
                     </div>
                     <p className="mt-1 text-xs text-ink-muted">
-                      {lead.unit.unit_type} · {lead.unit.size_sqft} sqft
+                      {/* v27 — katha on a plot, a percentage on a share */}
+                      {lead.unit.unit_type} ·{' '}
+                      {unitSizeLabel(
+                        lead.unit,
+                        projectShape(lead.project?.project_type ?? 'apartment'),
+                      )}
                       {lead.unit.facing && ` · ${lead.unit.facing} facing`} ·{' '}
-                      {formatBdt(lead.unit.base_price )}
+                      {formatBdt(lead.unit.base_price)}
                     </p>
                   </div>
                 )}

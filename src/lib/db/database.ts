@@ -593,6 +593,18 @@ export class AppDatabase extends Dexie {
       projects:
         'id, &code, name, status, project_type, is_public, is_featured, succeeds_project_id, created_at',
     });
+
+    /*
+     * v27 — Phase 2: selling what is not a flat (PROJECT-MODULE-PLAN.md).
+     *
+     * A booking gains `road_premium` and `corner_premium`, which are to a plot
+     * what floor and facing are to a flat. Neither is indexed — nothing
+     * queries on a premium — so no table line changes and there is nothing to
+     * migrate: every existing booking is a flat and already has the two
+     * columns it uses. The block exists so the version number records when the
+     * shape of a booking changed.
+     */
+    this.version(27).stores({});
   }
 }
 

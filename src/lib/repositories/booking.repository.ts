@@ -244,6 +244,13 @@ export interface BookingInput {
   floor_premium: number;
   facing_premium: number;
   parking_charge: number;
+  /**
+   * v27 — the plot premiums (PROJECT-MODULE-PLAN.md Phase 2). Optional, so
+   * every existing caller that only knows about flats still compiles and
+   * writes nothing for them.
+   */
+  road_premium?: number | null;
+  corner_premium?: number | null;
   other_charges: number;
   discount_amount: number;
   booking_amount: number;
@@ -311,6 +318,9 @@ class BookingRepository extends BaseRepository<Booking> {
         floor_premium: input.floor_premium,
         facing_premium: input.facing_premium,
         parking_charge: input.parking_charge,
+        // v27 — zero rather than null on a flat, so the columns always sum
+        road_premium: input.road_premium ?? 0,
+        corner_premium: input.corner_premium ?? 0,
         other_charges: input.other_charges,
         discount_amount: input.discount_amount,
         final_price: finalPrice(input),

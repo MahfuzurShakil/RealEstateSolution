@@ -1413,9 +1413,21 @@ export interface Booking extends BaseEntity {
   booking_date: ISODate;
   /** snapshot of unit.base_price at booking time — the unit may be repriced */
   base_price: number;
+  /** tower shapes — height is priced in this market */
   floor_premium: number;
   facing_premium: number;
   parking_charge: number;
+  /**
+   * v27 — what moves a plot's price instead (PROJECT-MODULE-PLAN.md §2.4).
+   *
+   * Added beside `floor_premium` rather than reusing it. A corner premium
+   * stored in a column called `floor_premium` is a lie in the data, and the
+   * first report that sums floor premiums across projects would be quietly
+   * wrong. Nullable and left alone on a flat, exactly as `floor_premium` is
+   * left alone on a plot — the same additive pattern `units` took in v26.
+   */
+  road_premium?: number | null;
+  corner_premium?: number | null;
   other_charges: number;
   discount_amount: number;
   /** base + premiums + charges − discount (Section 5.6) */
@@ -1521,6 +1533,36 @@ export const DEFAULT_INSTALLMENT_PLAN: Array<{
   { sequence_no: 2, label: 'Monthly Installment', percentage: 60, schedule_type: 'monthly', month_count: 24 },
   { sequence_no: 3, label: 'Construction Milestone', percentage: 20, schedule_type: 'manual', month_count: null },
   { sequence_no: 4, label: 'Handover', percentage: 10, schedule_type: 'on_handover', month_count: null },
+];
+
+/**
+ * A plot scheme's default plan (v27, PROJECT-MODULE-PLAN.md section 2.4).
+ *
+ * Two things differ from a flat's, and both are how the market actually works:
+ * the tenure is much longer — 36 to 60 months is ordinary on a plot against
+ * 24 on a flat — and there is no construction milestone, because nothing is
+ * built on the plot. The money that a flat holds back for construction goes
+ * into the monthly run instead, and the last slice is released at registration
+ * rather than at a handover of keys.
+ */
+export const PLOT_INSTALLMENT_PLAN: typeof DEFAULT_INSTALLMENT_PLAN = [
+  { sequence_no: 1, label: 'Booking Amount', percentage: 10, schedule_type: 'on_booking', month_count: null },
+  { sequence_no: 2, label: 'Down Payment', percentage: 20, schedule_type: 'manual', month_count: null },
+  { sequence_no: 3, label: 'Monthly Installment', percentage: 55, schedule_type: 'monthly', month_count: 48 },
+  { sequence_no: 4, label: 'On Registration', percentage: 15, schedule_type: 'on_handover', month_count: null },
+];
+
+/**
+ * A land-share register's default plan (v27, section 2.5).
+ *
+ * The client's own example is 100,000 a share, which nobody spreads over four
+ * years. It is a booking amount and the balance at the deed, and the deed is
+ * the whole delivery — there is no construction and no handover of keys.
+ */
+export const SHARE_INSTALLMENT_PLAN: typeof DEFAULT_INSTALLMENT_PLAN = [
+  { sequence_no: 1, label: 'Booking Amount', percentage: 20, schedule_type: 'on_booking', month_count: null },
+  { sequence_no: 2, label: 'Monthly Installment', percentage: 40, schedule_type: 'monthly', month_count: 6 },
+  { sequence_no: 3, label: 'On Deed Registration', percentage: 40, schedule_type: 'on_handover', month_count: null },
 ];
 
 /** Document types for entity_type = 'payment' (Section 8.2) */

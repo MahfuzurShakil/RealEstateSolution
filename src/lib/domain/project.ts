@@ -1,6 +1,12 @@
 import type { BadgeTone } from '@/components/ui/Badge';
+import {
+  DEFAULT_INSTALLMENT_PLAN,
+  PLOT_INSTALLMENT_PLAN,
+  SHARE_INSTALLMENT_PLAN,
+} from '@/lib/db/types';
 import type {
   AllocationType,
+  Booking,
   ForSaleBy,
   JvShareBasis,
   ProjectStatus,
@@ -262,12 +268,55 @@ export type UnitField =
   | 'road_width'
   | 'corner';
 
+/**
+ * A price line on a booking that comes from what the item *is* (v27).
+ *
+ * A flat is worth more higher up and facing south; a plot is worth more on a
+ * wider road and on a corner; a share is worth exactly what a share is worth.
+ * These map one-to-one onto `bookings` columns, and the shape says which of
+ * them the booking form asks for.
+ */
+export type PremiumKind = 'floor' | 'facing' | 'parking' | 'road' | 'corner';
+
+export const PREMIUM_LABEL: Record<PremiumKind, string> = {
+  floor: 'Floor Premium',
+  facing: 'Facing Premium',
+  parking: 'Parking Charge',
+  road: 'Road-width Premium',
+  corner: 'Corner Premium',
+};
+
+/**
+ * The `bookings` column each one is stored in.
+ *
+ * The booking form and the price breakdown both index by it, so a premium
+ * cannot be shown under one name and saved into another.
+ */
+export const PREMIUM_FIELD: Record<PremiumKind, keyof Booking> = {
+  floor: 'floor_premium',
+  facing: 'facing_premium',
+  parking: 'parking_charge',
+  road: 'road_premium',
+  corner: 'corner_premium',
+};
+
+/** Why this line exists, for the salesperson who has to justify it. */
+export const PREMIUM_HINT: Record<PremiumKind, string> = {
+  floor: 'Height is priced — what this floor adds over the list price',
+  facing: 'South-facing carries a premium in this market',
+  parking: 'Charged separately from the flat price',
+  road: 'A wider road in front is worth real money',
+  corner: 'Two frontages — the usual premium on a plot scheme',
+};
+
 export interface ProjectShape {
   container: ContainerKind;
   item: ItemKind;
   sizeBasis: SizeBasis;
   /** the applicable subset of the `units` columns */
   fields: readonly UnitField[];
+  /** v27 — the price lines a booking on this shape asks for */
+  premiums: readonly PremiumKind[];
   /** what a progress report against this project means */
   progress: 'construction' | 'development' | 'none';
   /** what delivering one item to its buyer is */
@@ -291,6 +340,7 @@ const TOWER_SHAPE: Omit<ProjectShape, 'labels'> & { labels: ProjectShape['labels
   item: 'flat',
   sizeBasis: 'sqft',
   fields: ['floor', 'size_sqft', 'bedrooms', 'facing', 'parking'],
+  premiums: ['floor', 'facing', 'parking'],
   progress: 'construction',
   handover: 'keys',
   labels: {
@@ -316,6 +366,7 @@ export const PROJECT_SHAPE: Record<ProjectType, ProjectShape> = {
     ...TOWER_SHAPE,
     // no bedrooms in a shop; facing still matters for a streetfront unit
     fields: ['floor', 'size_sqft', 'facing', 'parking'],
+    premiums: ['floor', 'facing', 'parking'],
     labels: { ...TOWER_SHAPE.labels, item: 'Space', itemPlural: 'Spaces' },
   },
   mixed: TOWER_SHAPE,
@@ -324,6 +375,8 @@ export const PROJECT_SHAPE: Record<ProjectType, ProjectShape> = {
     item: 'plot',
     sizeBasis: 'land',
     fields: ['land_size', 'road_width', 'corner', 'facing'],
+    // no parking on a plot: the buyer parks on their own land
+    premiums: ['road', 'corner'],
     // the filling, roads and drains are land development, recorded in Module 1
     progress: 'development',
     handover: 'possession',
@@ -347,6 +400,13 @@ export const PROJECT_SHAPE: Record<ProjectType, ProjectShape> = {
     sizeBasis: 'share',
     // the katha figure rides along because buyers think in katha, not percent
     fields: ['share_pct', 'land_size'],
+    /*
+     * None. A share is a fraction of one plot, so every share of that plot is
+     * worth the same — there is no floor, no corner and no frontage to price.
+     * A negotiated difference goes in `other_charges` or the discount, where
+     * it is visible as a negotiation rather than dressed up as an attribute.
+     */
+    premiums: [],
     progress: 'none',
     handover: 'deed',
     labels: {
@@ -354,7 +414,12 @@ export const PROJECT_SHAPE: Record<ProjectType, ProjectShape> = {
       containerPlural: 'Register',
       item: 'Share',
       itemPlural: 'Shares',
-      size: 'Share',
+      /*
+       * Not "Share": the booking form prints the code and the size side by
+       * side, and two fields both labelled SHARE told the buyer nothing about
+       * which was which.
+       */
+      size: 'Holding',
       rate: 'per share',
     },
   },
@@ -392,6 +457,42 @@ export function unitSizeLabel(
 /** 5 -> "5", 5.5 -> "5.5", 5.00 -> "5" — katha are quoted without dead zeros. */
 function trimNumber(n: number): string {
   return String(Number(n.toFixed(2)));
+}
+
+/**
+ * The instalment plan a new project of this shape starts from (v27).
+ *
+ * Seeded onto the project at creation and editable afterwards, exactly as the
+ * flat default always was — what changes is that a plot no longer starts life
+ * with a 24-month tenure and a construction milestone it will never reach.
+ */
+export function defaultInstallmentPlan(shape: ProjectShape): typeof DEFAULT_INSTALLMENT_PLAN {
+  if (shape.item === 'plot') return PLOT_INSTALLMENT_PLAN;
+  if (shape.item === 'share') return SHARE_INSTALLMENT_PLAN;
+  return DEFAULT_INSTALLMENT_PLAN;
+}
+
+/**
+ * One line describing an item, for a dropdown, a receipt or a booking form.
+ *
+ * "Flat A-501 · 3 Bed · 1,450 sqft", "Plot C-14 · 5 katha", "Share 07 · 5%".
+ * Printed paperwork and the unit picker both go through here so a buyer never
+ * sees their plot called a flat on one document and a plot on the next.
+ */
+export function unitDescription(
+  unit: {
+    code: string;
+    unit_type?: string | null;
+    size_sqft?: number | null;
+    land_size?: number | null;
+    land_size_unit?: string | null;
+    share_pct?: number | null;
+  },
+  shape: ProjectShape,
+): string {
+  return [`${shape.labels.item} ${unit.code}`, unit.unit_type, unitSizeLabel(unit, shape)]
+    .filter((part) => part && part !== '\u2014')
+    .join(' \u00b7 ');
 }
 
 export function projectShape(type: ProjectType): ProjectShape {

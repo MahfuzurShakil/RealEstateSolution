@@ -19,7 +19,12 @@ import {
   type User,
 } from '@/lib/db/types';
 import { LEAD_SOURCE_LABEL } from '@/lib/domain/lead';
-import { UNIT_STATUS_META } from '@/lib/domain/project';
+import {
+  UNIT_STATUS_META,
+  projectShape,
+  unitDescription,
+  unitSizeLabel,
+} from '@/lib/domain/project';
 import {
   leadRepository,
   normalizePhone,
@@ -104,6 +109,14 @@ export function LeadForm({ lead }: { lead?: LeadWithRelations }) {
   const selectedUnit = useMemo(
     () => units.find((u) => u.id === form.interested_unit_id),
     [units, form.interested_unit_id],
+  );
+
+  /*
+   * v27 — what the picked project sells. Before one is picked the field says
+   * "Unit", which is what it always said and is the right generic word.
+   */
+  const shape = projectShape(
+    projects.find((p) => p.id === form.interested_project_id)?.project_type ?? 'apartment',
   );
 
   function validate(): boolean {
@@ -263,11 +276,12 @@ export function LeadForm({ lead }: { lead?: LeadWithRelations }) {
               ))}
             </SelectInput>
           </Field>
+          {/* v27 — a lead can be interested in a plot or a share too */}
           <Field
-            label="Interested Unit"
+            label={`Interested ${shape.labels.item}`}
             hint={
               selectedUnit
-                ? `${selectedUnit.size_sqft} sqft · ${UNIT_STATUS_META[selectedUnit.status].label}`
+                ? `${unitSizeLabel(selectedUnit, shape)} · ${UNIT_STATUS_META[selectedUnit.status].label}`
                 : undefined
             }
           >
@@ -279,7 +293,7 @@ export function LeadForm({ lead }: { lead?: LeadWithRelations }) {
               <option value="">Not decided</option>
               {units.map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.code} · {u.unit_type} · {u.size_sqft} sqft
+                  {unitDescription(u, shape)}
                 </option>
               ))}
             </SelectInput>

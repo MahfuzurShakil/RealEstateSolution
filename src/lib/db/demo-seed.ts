@@ -1187,6 +1187,9 @@ async function seedDemoBookings(
         floor_premium: demo.floor_premium,
         facing_premium: demo.facing_premium,
         parking_charge: demo.parking_charge,
+        // v27 — zero on a flat, where the plot premiums do not apply
+        road_premium: demo.road_premium ?? 0,
+        corner_premium: demo.corner_premium ?? 0,
         other_charges: demo.other_charges,
         discount_amount: demo.discount_amount,
         booking_amount: demo.booking_amount,

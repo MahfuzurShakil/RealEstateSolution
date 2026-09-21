@@ -49,11 +49,23 @@ export const BOOKING_PIPELINE_STEPS: BookingStatus[] = ['hold', 'pending_approva
  * Pricing (Section 5.6)
  * ------------------------------------------------------------------ */
 
+/**
+ * Every price line a booking can carry.
+ *
+ * v27 — the premiums a booking actually *asks* for come from the project
+ * shape (`ProjectShape.premiums`): floor, facing and parking on a flat, road
+ * width and corner on a plot, none on a land share. They all live here and all
+ * default to zero, so the sum below stays one expression rather than a branch
+ * per shape, and a booking carrying a premium its shape no longer uses still
+ * totals correctly instead of quietly losing money.
+ */
 export interface PriceParts {
   base_price: number;
   floor_premium: number;
   facing_premium: number;
   parking_charge: number;
+  road_premium?: number | null;
+  corner_premium?: number | null;
   other_charges: number;
   discount_amount: number;
 }
@@ -64,6 +76,8 @@ export function finalPrice(parts: PriceParts): number {
     Number(parts.floor_premium || 0) +
     Number(parts.facing_premium || 0) +
     Number(parts.parking_charge || 0) +
+    Number(parts.road_premium || 0) +
+    Number(parts.corner_premium || 0) +
     Number(parts.other_charges || 0) -
     Number(parts.discount_amount || 0)
   );

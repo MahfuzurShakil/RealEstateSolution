@@ -145,6 +145,24 @@ export const DEMO_CUSTOMERS: DemoCustomer[] = [
     profession: 'IT Consultant',
     created_days_ago: 12,
   },
+  {
+    key: 'belal',
+    name: 'Md. Belal Hossain',
+    phone: '01717 445588',
+    nid: '1979334455112',
+    address: 'Demra, Dhaka',
+    profession: 'Transport business',
+    created_days_ago: 40,
+  },
+  {
+    key: 'rumana',
+    name: 'Rumana Akter',
+    phone: '01811 993322',
+    nid: '1990776655443',
+    address: 'Mirpur 11, Dhaka',
+    profession: 'Schoolteacher',
+    created_days_ago: 58,
+  },
 ];
 
 export interface DemoBooking {
@@ -158,6 +176,9 @@ export interface DemoBooking {
   floor_premium: number;
   facing_premium: number;
   parking_charge: number;
+  /** v27 — what moves a plot's price instead of floor and facing */
+  road_premium?: number;
+  corner_premium?: number;
   other_charges: number;
   discount_amount: number;
   booking_amount: number;
@@ -527,6 +548,78 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
         method: 'mfs',
         reference_no: 'NGD9K2P41ZX',
         notes: 'Part of the booking money over Nagad — balance promised this month',
+      },
+    ],
+  },
+  /*
+   * v27 — a plot sale (PROJECT-MODULE-PLAN.md Phase 2).
+   *
+   * A corner plot on the 40ft road, so the two premiums that price a plot both
+   * carry money and `floor_premium` / `facing_premium` are zero — which is
+   * what the booking form now asks for on a plot project. The tenure is 48
+   * months, not 24: a plot scheme is paid off over four to five years in this
+   * market, and that is the project default the shape seeds.
+   */
+  {
+    customer_key: 'belal',
+    project_name: 'Nokshi Kanchan Model Town',
+    unit_code: 'A-1',
+    booked_by_key: 'arif',
+    days_ago: 34,
+    floor_premium: 0,
+    facing_premium: 0,
+    parking_charge: 0,
+    road_premium: 350000,
+    corner_premium: 700000,
+    other_charges: 420000,
+    discount_amount: 200000,
+    booking_amount: 900000,
+    installment_tenure_months: 48,
+    payments: [
+      {
+        amount: 900000,
+        days_ago: 34,
+        method: 'cheque',
+        reference_no: 'CHQ 4410982',
+        notes: 'Booking money on the corner plot, taken at the site office.',
+      },
+      {
+        amount: 1_600_000,
+        days_ago: 12,
+        method: 'bank',
+        reference_no: 'BEFTN 7781203',
+        notes: 'Down payment.',
+      },
+    ],
+  },
+  /*
+   * v27 — a land share.
+   *
+   * 100,000 flat, no premiums at all: every share of one plot is worth the
+   * same, so there is no attribute to price. Paid in full at booking, which is
+   * how a share this size usually goes — and it leaves the register showing
+   * one share gone and nineteen available.
+   */
+  {
+    customer_key: 'rumana',
+    project_name: 'Birulia Riverside Share Project',
+    unit_code: 'SHARE-03',
+    booked_by_key: 'nishat',
+    days_ago: 52,
+    floor_premium: 0,
+    facing_premium: 0,
+    parking_charge: 0,
+    other_charges: 18000,
+    discount_amount: 0,
+    booking_amount: 20000,
+    installment_tenure_months: 6,
+    payments: [
+      {
+        amount: 118_000,
+        days_ago: 52,
+        method: 'bank',
+        reference_no: 'BEFTN 6620411',
+        notes: 'Paid the share and the registration cost together in one transfer.',
       },
     ],
   },

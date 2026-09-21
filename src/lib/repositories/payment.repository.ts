@@ -101,10 +101,20 @@ class InstallmentPlanTemplateRepository extends BaseRepository<InstallmentPlanTe
     return rows.sort((a, b) => a.sequence_no - b.sequence_no);
   }
 
-  /** Copies the system default onto a project, unless it already has one. */
-  async seedForProject(projectId: string, createdBy: string | null = null): Promise<void> {
+  /**
+   * Copies a default plan onto a project, unless it already has one.
+   *
+   * v27 — which default is the caller's to decide, because it depends on the
+   * project shape and this repository has no business knowing about shapes.
+   * Omitted, it stays the flat plan of Section 8.2.
+   */
+  async seedForProject(
+    projectId: string,
+    createdBy: string | null = null,
+    plan: typeof DEFAULT_INSTALLMENT_PLAN = DEFAULT_INSTALLMENT_PLAN,
+  ): Promise<void> {
     if ((await this.listForProject(projectId)).length > 0) return;
-    for (const row of DEFAULT_INSTALLMENT_PLAN) {
+    for (const row of plan) {
       await this.create({ ...row, project_id: projectId }, createdBy);
     }
   }

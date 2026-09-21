@@ -5,6 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { PrintField, PrintSheet, SignatureRow } from '@/components/print/PrintSheet';
 import { PAYMENT_METHOD_LABEL } from '@/lib/domain/booking';
 import { amountInWords } from '@/lib/domain/document';
+import { projectShape, unitDescription } from '@/lib/domain/project';
 import { printRepository } from '@/lib/repositories';
 import { formatBdt, formatDate, formatPhone } from '@/lib/utils/format';
 
@@ -31,7 +32,18 @@ export default function MoneyReceiptPrintPage({
 
   const { company, payment, booking, received_by_name, paid_to_date, balance } = data;
   const currency = company?.default_currency ?? 'BDT';
-  const unitLabel = [booking.project?.name, booking.tower?.name, booking.unit?.code]
+  /*
+   * v27 — the receipt names what the money is against, in that project's own
+   * words: "Plot C-14 · 5 katha", "Share 07 · 5%", "Unit A-501 · 1,450 sqft".
+   * A buyer paying for a plot should not be handed a receipt headed "Against
+   * unit", and the container is left out where there is none.
+   */
+  const shape = projectShape(booking.project?.project_type ?? 'apartment');
+  const unitLabel = [
+    booking.project?.name,
+    shape.container === 'none' ? null : booking.tower?.name,
+    booking.unit ? unitDescription(booking.unit, shape) : booking.unit_id,
+  ]
     .filter(Boolean)
     .join(' · ');
 
@@ -51,7 +63,11 @@ export default function MoneyReceiptPrintPage({
       </div>
 
       <div className="grid grid-cols-2 gap-4 border-b border-hairline py-4">
-        <PrintField label="Against unit" value={unitLabel || '—'} className="col-span-2" />
+        <PrintField
+          label={`Against ${shape.labels.item.toLowerCase()}`}
+          value={unitLabel || '—'}
+          className="col-span-2"
+        />
         <PrintField label="Payment method" value={PAYMENT_METHOD_LABEL[payment.payment_method]} />
         <PrintField label="Reference" value={payment.reference_no || '—'} />
       </div>
@@ -78,7 +94,9 @@ export default function MoneyReceiptPrintPage({
       <table className="print-nobreak w-full border-collapse text-sm">
         <tbody>
           <tr className="border-b border-hairline">
-            <td className="py-1.5 text-ink-muted">Agreed unit price</td>
+            <td className="py-1.5 text-ink-muted">
+              Agreed {shape.labels.item.toLowerCase()} price
+            </td>
             <td className="py-1.5 text-right">{formatBdt(booking.final_price)}</td>
           </tr>
           <tr className="border-b border-hairline">

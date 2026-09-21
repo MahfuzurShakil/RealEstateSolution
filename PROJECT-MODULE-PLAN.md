@@ -242,23 +242,36 @@ Make the shape real, and make the project page correct for all five types.
 inventory generated, and read correctly end to end on the project page — with
 no floor, no bedroom and no sqft anywhere they do not belong.
 
-### Phase 2 — Selling what is not a flat
+### Phase 2 — Selling what is not a flat *(done 2026-09-21)*
 
-Carry the shape into Module 4, which currently prices and words everything as a
-flat.
+The shape carried into Module 4, which priced and worded everything as a flat.
 
-- Pricing by basis: rate × sqft, rate × katha, flat per share. The booking's
-  price breakdown follows.
-- Plot premiums: road width and corner, replacing floor and facing on a plot
-  project's booking.
-- Long instalment plans — a plot's 48-month schedule against a flat's 24.
-- Booking form, money receipt and booking form wording per shape ("Plot C-14,
-  5 katha" and "Share 07 of 20" instead of "Flat A-501, 1,250 sqft").
-- The unit picker and availability list read the shape.
-- Public portal: filter by type, and show plots and shares correctly.
+- **Premiums by shape.** `bookings` gained `road_premium` and `corner_premium`
+  (Dexie **v27**), added *beside* `floor_premium` rather than reusing it: a
+  corner premium stored in a column called `floor_premium` is a lie in the
+  data, and the first report summing floor premiums across projects would be
+  quietly wrong. `ProjectShape.premiums` says which the booking form asks for
+  — floor/facing/parking on a flat, road/corner on a plot, **none** on a
+  share, because every share of one plot is worth the same.
+- **Instalment plans by shape.** A plot seeds 48 months with a down payment and
+  a final slice at registration, and no construction milestone — nothing is
+  built on it. A share seeds six months with the balance at the deed. Flats are
+  unchanged. `installmentPlanTemplateRepository.seedForProject` now takes the
+  plan; picking it is the caller's job, since that repository has no business
+  knowing about shapes.
+- **Wording everywhere the buyer sees it.** Booking form, booking detail, the
+  unit picker, the bookings list, the lead form and lead detail, the printed
+  booking form and the money receipt. A receipt now reads "Against plot —
+  Plot A-1 · 5 katha" and "Agreed plot price".
+- **Demo.** A corner plot on the 40ft road at 48 months, and a land share paid
+  in full at booking.
 
-**Done when** a plot and a share can be booked, paid against and receipted, with
-every printed document naming the right thing.
+A premium a shape no longer uses is still shown and printed when it carries
+money — otherwise the lines stop adding up to the total underneath them.
+
+**Not done, and deliberately: the public portal.** `src/app/(public)` is still
+the placeholder page, so there is nothing to carry the shape into. Type filters
+and plot/share display belong with P1–P4 when those are built.
 
 ### Phase 3 — Delivery, and what happens next
 

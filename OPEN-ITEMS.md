@@ -18,6 +18,30 @@ full defect list is in `ANALYSIS-REPORT_2026-09-02.md`.
 
 ---
 
+## 0p. Module 2 Phase 2 — selling what is not a flat (2026-09-21)
+
+Dexie **v27**. See `PROJECT-MODULE-PLAN.md` §4.
+
+Still open:
+
+- **The public portal never got its half of Phase 2.** `src/app/(public)` is a
+  placeholder, so there was nothing to change. When P1–P4 are built they need
+  a `project_type` filter and plot/share display — `land_share` and
+  `plot_development` are exactly what a buyer would filter on.
+- **`other_charges` is still one box.** On a plot it holds the registration
+  cost, mutation and club charge together; on a flat, utility connection and
+  transformer. Itemising it is a Module 4 change of its own and nobody has
+  asked.
+- **A plot's price is not recomputed from rate × katha at booking.** The
+  booking snapshots `unit.base_price`, exactly as a flat does, and the
+  generator is what applied the rate. That is right — a repricing must not
+  rewrite signed paperwork — but it means an edited plot size does not move
+  the booking price, which is the same behaviour flats have always had.
+- **Phase 3 is untouched.** Plot possession/registration/mutation, the share
+  deed, and the land-share → construction successor project.
+
+---
+
 ## 0o. Module 2 Phase 1 — the project knows what it is (2026-09-21)
 
 Plan and the other two phases: `PROJECT-MODULE-PLAN.md`. Shipped here is
