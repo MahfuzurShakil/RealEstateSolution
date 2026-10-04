@@ -95,6 +95,20 @@ export const DEMO_USERS: DemoUser[] = [
     status: 'active',
     projects: ['Nokshi Green Residence', 'Nokshi Dhanmondi Court'],
   },
+  /*
+   * The land team (2026-10-04). `land_team` is in USER_ROLES and the
+   * permission matrix, and until now no demo user held it — so the role could
+   * not be shown, and `lands.assigned_to` had nobody to point at. Shafiq is
+   * already the name on the demo site visits, so the records line up.
+   */
+  {
+    key: 'shafiq',
+    name: 'Shafiq Rahman',
+    phone: '01713 445566',
+    email: 'shafiq@nokshiproperties.com.bd',
+    role: 'land_team',
+    status: 'active',
+  },
   {
     key: 'faruk',
     name: 'Faruk Ahmed',

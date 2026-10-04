@@ -27,12 +27,14 @@ import {
   finalAmountLabel,
   landUsesPurchasePricing,
 } from '@/lib/domain/land';
+import { USER_ROLE_META } from '@/lib/domain/access';
 import {
   landJvRepository,
   lookupRepository,
   landOwnerMappingRepository,
   landRepository,
   landownerRepository,
+  userRepository,
   type LandWithRelations,
 } from '@/lib/repositories';
 
@@ -77,6 +79,7 @@ interface FormState {
   gps_lng: string;
   nearby_facilities: string;
   acquisition_type: AcquisitionType;
+  assigned_to: string;
   remarks: string;
   // JV block — only used when acquisition_type = joint_venture (Section 2.6)
   developer_share_pct: string;
@@ -108,6 +111,7 @@ const EMPTY: FormState = {
   gps_lng: '',
   nearby_facilities: '',
   acquisition_type: 'direct_purchase',
+  assigned_to: '',
   remarks: '',
   developer_share_pct: '',
   landowner_share_pct: '',
@@ -143,6 +147,7 @@ function toFormState(land: LandWithRelations): FormState {
     gps_lng: str(land.gps_lng),
     nearby_facilities: str(land.nearby_facilities),
     acquisition_type: land.acquisition_type,
+    assigned_to: str(land.assigned_to),
     remarks: str(land.remarks),
     developer_share_pct: str(land.jv?.developer_share_pct),
     landowner_share_pct: str(land.jv?.landowner_share_pct),
@@ -164,6 +169,14 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
   const isEdit = Boolean(land);
 
   const [form, setForm] = useState<FormState>(land ? toFormState(land) : EMPTY);
+  /*
+   * Who a land can be assigned to: the land team, plus the roles that stand in
+   * for them on a small office. Not every active user — a land assigned to an
+   * accountant is a typo, not a workflow.
+   */
+  const landOfficers =
+    useLiveQuery(() => userRepository.listByRole(['land_team', 'management', 'super_admin']), []) ??
+    [];
   const [owners, setOwners] = useState<OwnerRow[]>(
     land?.owners.map((o) => ({
       owner_id: o.owner_id,
@@ -350,6 +363,9 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
         gps_lng: num(form.gps_lng),
         nearby_facilities: form.nearby_facilities.trim() || null,
         acquisition_type: form.acquisition_type,
+        // BRD LAND-001 — the land officer this plot is on. The column existed
+        // from the start and nothing ever set it (2026-10-04).
+        assigned_to: form.assigned_to || null,
         remarks: form.remarks.trim() || null,
       };
 
@@ -361,7 +377,6 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
           ...payload,
           code: '',
           status: 'sourced',
-          assigned_to: null,
         });
       }
 
@@ -855,6 +870,24 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
               onChange={(e) => set('nearby_facilities', e.target.value)}
               placeholder="School, hospital, market, main road distance…"
             />
+          </Field>
+          {/*
+            BRD LAND-001 — who on the land team owns this opportunity. The
+            column has been on `lands` from the start and nothing ever set it,
+            so every land read as unassigned (2026-10-04).
+          */}
+          <Field label="Assigned To" hint="The land officer chasing this plot">
+            <SelectInput
+              value={form.assigned_to}
+              onChange={(e) => set('assigned_to', e.target.value)}
+            >
+              <option value="">Nobody yet</option>
+              {landOfficers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name} — {USER_ROLE_META[u.role].label}
+                </option>
+              ))}
+            </SelectInput>
           </Field>
           <Field label="Remarks">
             <TextArea

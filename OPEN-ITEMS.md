@@ -18,6 +18,47 @@ full defect list is in `ANALYSIS-REPORT_2026-09-02.md`.
 
 ---
 
+## 0r. The complete demo record — Modules 1 and 2 (2026-10-04)
+
+`Uttara Sector 18 lake-facing site` (LND-2026-018) and
+`Nokshi Lakeview Residence` (PRJ-2026-007) are the pair the Land and Project
+demo is given on. Every other demo land is deliberately partial — each sits at
+a different pipeline status — so none of them showed what a *finished* record
+looks like. These two fill every optional column on `lands` and `projects`.
+
+**Keep them complete.** A new column on either table should get a value here in
+the same change, or the pair stops answering "what can this module hold?".
+
+Closed on the way:
+
+- **`lands.assigned_to` and `projects.project_manager` were dead columns.**
+  Both were on the schema from the start, both hardcoded to `null` by their
+  forms, and neither was displayed. They now have a picker on the form and a
+  row on the detail page.
+- **`land_team` had no user.** The role is in `USER_ROLES` and the permission
+  matrix, so it could not be demonstrated and `assigned_to` had nobody to
+  point at. Shafiq Rahman (already the name on the demo site visits) now holds
+  it.
+- **`projects.cover_image_document_id` was never set anywhere.** The showcase
+  project points it at its own gallery image by title.
+- **Demo documents had no names.** Every attachment was
+  `architectural_plan-prj-2026-001.png`. A demo land or project may now list
+  its own `documents` with a title, which becomes the file name *and* the
+  caption drawn on the generated sample file.
+
+Still open:
+
+- **The land feasibility study has no construction-cost line.** It carries
+  acquisition, land development and "other" only, so a building project's
+  margin reads implausibly high (91% on the showcase record, 86% on
+  Bashundhara Block K). Consistent across the demo because the field set is
+  the same, but it is a modelling gap, not a data one — the study is taken at
+  land stage and the build cost lands in the project budget later.
+- **`units.parking_allocated` is a count, not a charge.** The showcase project
+  allocates 1–2 spaces a flat; what a space costs is typed on the booking.
+
+---
+
 ## 0q. Module 2 Phase 3 — delivery and succession (2026-09-21)
 
 Dexie **v28** (`unit_deliveries`). All three phases of `PROJECT-MODULE-PLAN.md`

@@ -327,6 +327,45 @@ export const DEMO_DD_FINDINGS: DemoDdFinding[] = [
   ...passAllMandatory('Ashulia Zirabo industrial plot'),
   ...passAllMandatory('Bashundhara Block J ready plot'),
   ...passAllMandatory('Tangail Mirzapur roadside plot'),
+  /*
+   * The complete record (2026-10-04) — all seventeen items, including the four
+   * that are not mandatory, and one of every outcome the checklist can carry:
+   * passed, conditionally approved, waived, and not applicable.
+   */
+  { land: 'Uttara Sector 18 lake-facing site', code: 'ownership_proof', status: 'passed', finding: 'All three siblings are on the BS khatian and all three are party to the agreement.' },
+  { land: 'Uttara Sector 18 lake-facing site', code: 'heir_consent', status: 'passed', finding: 'Warisan certificate from Uttara Thana; written consent from each sibling on file.' },
+  { land: 'Uttara Sector 18 lake-facing site', code: 'poa_validity', status: 'passed', finding: 'POA-2026/0144 registered at Uttara Sub-Registry, attested in Ottawa, unrevoked as of search date.' },
+  { land: 'Uttara Sector 18 lake-facing site', code: 'deed_chain', status: 'passed', finding: 'Chain traced to the 1972 CS record — unbroken over 53 years.' },
+  { land: 'Uttara Sector 18 lake-facing site', code: 'khatian_verified', status: 'passed', finding: 'CS, SA, RS and BS khatian agree on area and boundary.' },
+  { land: 'Uttara Sector 18 lake-facing site', code: 'mutation_done', status: 'passed', finding: 'Namjari case 1142/2024 disposed; DCR and mutation khatian collected.' },
+  { land: 'Uttara Sector 18 lake-facing site', code: 'encumbrance_search', status: 'passed', finding: '12-year search at Uttara Sub-Registry returned clear.' },
+  { land: 'Uttara Sector 18 lake-facing site', code: 'mortgage_clear', status: 'passed', finding: 'No subsisting mortgage; the 2016 bank charge was redeemed and released in 2019.' },
+  { land: 'Uttara Sector 18 lake-facing site', code: 'litigation_clear', status: 'passed', finding: 'Civil court and land survey tribunal searches clear.' },
+  { land: 'Uttara Sector 18 lake-facing site', code: 'land_tax_paid', status: 'passed', finding: 'Land development tax paid to 1432 Bangla; receipt on file.' },
+  {
+    land: 'Uttara Sector 18 lake-facing site',
+    code: 'holding_tax_paid',
+    status: 'conditionally_approved',
+    finding:
+      'Holding tax paid to FY 2024-25. The 2025-26 bill is not yet issued by the city corporation — cleared on the owners\u2019 undertaking to settle it before registration.',
+  },
+  { land: 'Uttara Sector 18 lake-facing site', code: 'acquisition_check', status: 'passed', finding: 'Not listed in any RAJUK or LA office acquisition notice for Sector 18.' },
+  { land: 'Uttara Sector 18 lake-facing site', code: 'boundary_survey', status: 'passed', finding: 'Amin survey measured 18.02 katha against 18 katha on the deed — within tolerance.' },
+  { land: 'Uttara Sector 18 lake-facing site', code: 'possession_clear', status: 'passed', finding: 'Vacant. The caretaker\u2019s shed was removed before the agreement.' },
+  {
+    land: 'Uttara Sector 18 lake-facing site',
+    code: 'access_right',
+    status: 'not_applicable',
+    finding: 'The plot fronts a public RAJUK road directly, so no right of way over anyone else\u2019s land arises.',
+  },
+  { land: 'Uttara Sector 18 lake-facing site', code: 'land_use_clearance', status: 'passed', finding: 'RAJUK DAP shows residential use, FAR 4.0 on a 60 ft road.' },
+  {
+    land: 'Uttara Sector 18 lake-facing site',
+    code: 'authority_noc',
+    status: 'waived',
+    waiver_reason:
+      'Fire service and environment NOCs are taken at the building approval stage, not at acquisition. Waived by the Management committee on 2026-01-10.',
+  },
   ...passAllMandatory('Rupganj Kanchan tract'),
   ...passAllMandatory('Savar Birulia riverside plot'),
   /*

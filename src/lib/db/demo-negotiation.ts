@@ -30,6 +30,59 @@ export interface DemoAcquisitionCost {
 }
 
 export const DEMO_NEGOTIATION_ROUNDS: DemoNegotiationRound[] = [
+  /*
+   * The complete record (2026-10-04) — a four-round ladder with both sides
+   * making offers, broker details, terms and conditions on every round.
+   */
+  {
+    land: 'Uttara Sector 18 lake-facing site',
+    party: 'owner',
+    amount: 215_000_000,
+    offer_date: '2025-12-02',
+    terms: 'Outright sale at 1,19,44,444 per katha, full payment at registration',
+    conditions: 'Owners keep possession until the last payment clears',
+    broker_name: 'Uttara Land Link',
+    broker_commission: 1.0,
+    status: 'superseded',
+    remarks: 'Opening ask. Outright at this rate leaves no margin — countered with a JV instead.',
+  },
+  {
+    land: 'Uttara Sector 18 lake-facing site',
+    party: 'us',
+    amount: 24_000_000,
+    offer_date: '2025-12-14',
+    terms: '55:45 joint venture on flat count, 2,40,00,000 signing money',
+    conditions: 'Developer bears RAJUK approval and utility connection cost',
+    broker_name: 'Uttara Land Link',
+    broker_commission: 1.0,
+    status: 'superseded',
+    remarks: 'First JV structure put to the owners. The board later rejected this split itself.',
+  },
+  {
+    land: 'Uttara Sector 18 lake-facing site',
+    party: 'owner',
+    amount: 22_000_000,
+    offer_date: '2025-12-29',
+    terms: '50:50 on flat count, 2,20,00,000 signing money, 3 parking spaces to the owners',
+    conditions: 'Owners pick their flats first on every floor',
+    broker_name: 'Uttara Land Link',
+    broker_commission: 1.0,
+    status: 'rejected',
+    remarks: 'Rejected — first pick on every floor would leave us the unsellable corners.',
+  },
+  {
+    land: 'Uttara Sector 18 lake-facing site',
+    party: 'us',
+    amount: 18_000_000,
+    offer_date: '2026-01-12',
+    terms: '52:48 on flat count, 1,80,00,000 signing money, 2 parking spaces to the owners',
+    conditions:
+      'Flat allocation agreed floor by floor at signing; developer bears approval and utility costs; handover within 36 months of approval',
+    broker_name: 'Uttara Land Link',
+    broker_commission: 1.0,
+    status: 'accepted',
+    remarks: 'Accepted. This is the deal that was signed on 19 Jan 2026.',
+  },
   /* Tangail - the plot that is registered and still waiting on a fill plan. */
   {
     land: 'Tangail Mirzapur roadside plot',
@@ -332,6 +385,19 @@ export const DEMO_ACQUISITION_COSTS: DemoAcquisitionCost[] = [
    * is still open: the acquisition is settled and the development is not, so
    * the sheet is the one place the two sit side by side.
    */
+  /*
+   * The complete record (2026-10-04) — every one of the nine cost heads
+   * carries an estimate, so the Acquisition Cost sheet is shown in full.
+   */
+  { land: 'Uttara Sector 18 lake-facing site', cost_head: 'land_price', estimated_amount: 18_000_000, remarks: 'Signing money payable to the three owners under the JV' },
+  { land: 'Uttara Sector 18 lake-facing site', cost_head: 'registration_fee', estimated_amount: 180_000, remarks: '1% of the agreement value' },
+  { land: 'Uttara Sector 18 lake-facing site', cost_head: 'stamp_duty', estimated_amount: 270_000, remarks: '1.5% of the agreement value' },
+  { land: 'Uttara Sector 18 lake-facing site', cost_head: 'vat_tax', estimated_amount: 360_000, remarks: '2% gain tax deducted at source' },
+  { land: 'Uttara Sector 18 lake-facing site', cost_head: 'mutation_cost', estimated_amount: 95_000, remarks: 'Namjari in the company name after the JV deed' },
+  { land: 'Uttara Sector 18 lake-facing site', cost_head: 'legal_fee', estimated_amount: 450_000, remarks: 'Adv. Tanvir Alam — due diligence, JV drafting and registration' },
+  { land: 'Uttara Sector 18 lake-facing site', cost_head: 'broker_commission', estimated_amount: 180_000, remarks: 'Uttara Land Link, 1% of the signing money' },
+  { land: 'Uttara Sector 18 lake-facing site', cost_head: 'survey_fee', estimated_amount: 75_000, remarks: 'Amin survey and the three-hole soil test' },
+  { land: 'Uttara Sector 18 lake-facing site', cost_head: 'other', estimated_amount: 120_000, remarks: 'POA attestation in Ottawa, courier and notarisation' },
   {
     land: 'Tangail Mirzapur roadside plot',
     cost_head: 'land_price',

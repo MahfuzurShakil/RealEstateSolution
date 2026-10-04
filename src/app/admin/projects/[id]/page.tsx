@@ -28,7 +28,7 @@ import {
   projectShape,
   shapeIsBuilt,
 } from '@/lib/domain/project';
-import { projectRepository } from '@/lib/repositories';
+import { projectRepository, userRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatDate } from '@/lib/utils/format';
 import { UNIT_STATUSES } from '@/lib/db/types';
@@ -60,6 +60,13 @@ export default function ProjectDetailPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const project = useLiveQuery(() => projectRepository.getWithRelations(id), [id]);
+  const manager = useLiveQuery(
+    () =>
+      project?.project_manager
+        ? userRepository.getById(project.project_manager)
+        : Promise.resolve(undefined),
+    [project?.project_manager],
+  );
 
   if (project === undefined) return <p className="text-sm text-ink-muted">Loading…</p>;
   if (!project) {
@@ -164,6 +171,8 @@ export default function ProjectDetailPage() {
                   }
                 />
                 <Row label="Architect" value={project.architect} />
+                {/* Scope v3 §3.3 — who runs this project (2026-10-04) */}
+                <Row label="Project manager" value={manager?.name} />
                 <Row label="Expected start" value={formatDate(project.expected_start_date)} />
                 <Row
                   label="Expected completion"

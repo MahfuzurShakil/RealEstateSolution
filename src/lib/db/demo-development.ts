@@ -52,6 +52,58 @@ export const DEMO_DEVELOPMENT: DemoDevelopmentActivity[] = [
    * reaches Ready for Project and the scheme can be laid out on it — which is
    * also gate G3 doing its job.
    */
+  /*
+   * The complete record (2026-10-04) — three activities covering three of the
+   * five statuses, each with progress reports, so the Development tab shows a
+   * finished item, a running one and a parked one together.
+   */
+  {
+    land: 'Uttara Sector 18 lake-facing site',
+    activity_type: 'Site clearing',
+    contractor: 'Nirman Construction Services',
+    unit: 'sft',
+    planned_qty: 12_960,
+    budget_amount: 320_000,
+    start_date: '2026-02-02',
+    target_date: '2026-02-20',
+    status: 'completed',
+    notes: 'Caretaker shed, boundary scrub and two mature trees (RAJUK permission taken for the trees).',
+    progress: [
+      { progress_date: '2026-02-11', qty_done: 8_000, pct_complete: 62, amount_incurred: 190_000, remarks: 'Shed down, trees felled and carted.' },
+      { progress_date: '2026-02-19', qty_done: 12_960, pct_complete: 100, amount_incurred: 305_000, remarks: 'Site clear and levelled. Under budget.' },
+    ],
+  },
+  {
+    land: 'Uttara Sector 18 lake-facing site',
+    activity_type: 'Boundary wall',
+    contractor: 'Nirman Construction Services',
+    unit: 'rft',
+    planned_qty: 540,
+    budget_amount: 1_450_000,
+    start_date: '2026-02-24',
+    target_date: '2026-04-10',
+    status: 'completed',
+    notes: '5 ft brick wall with a gate on Lake Drive, to secure the site before mobilisation.',
+    progress: [
+      { progress_date: '2026-03-14', qty_done: 300, pct_complete: 56, amount_incurred: 760_000, remarks: 'Three sides up to plinth.' },
+      { progress_date: '2026-04-08', qty_done: 540, pct_complete: 100, amount_incurred: 1_425_000, remarks: 'Wall and gate complete. Site handed to the project team.' },
+    ],
+  },
+  {
+    land: 'Uttara Sector 18 lake-facing site',
+    activity_type: 'Utility connection',
+    contractor: 'Amin Enterprise',
+    unit: 'lot',
+    planned_qty: 1,
+    budget_amount: 900_000,
+    start_date: '2026-04-15',
+    status: 'on_hold',
+    notes:
+      'Construction power and a WASA site connection. Parked until the RAJUK approval number is issued — DESCO will not accept the application without it.',
+    progress: [
+      { progress_date: '2026-05-06', pct_complete: 30, amount_incurred: 180_000, remarks: 'Applications drafted and the DESCO survey fee paid. Waiting on the approval number.' },
+    ],
+  },
   {
     land: 'Rupganj Kanchan tract',
     activity_type: 'Earth filling',

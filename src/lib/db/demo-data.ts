@@ -40,6 +40,16 @@ export interface DemoStatusEvent {
   remarks?: string;
 }
 
+/** One attached file in the demo (land or project). */
+export interface DemoDocument {
+  /** a value from LAND_DOCUMENT_TYPES / PROJECT_DOCUMENT_TYPES */
+  type: string;
+  /** the name shown in the list and drawn on the sample file */
+  title: string;
+  notes?: string;
+  is_public?: boolean;
+}
+
 export interface DemoLand {
   name: string;
   location_division: string;
@@ -62,8 +72,21 @@ export interface DemoLand {
   nearby_facilities?: string;
   acquisition_type: AcquisitionType;
   status: LandStatus;
+  /**
+   * Demo user key this land is assigned to (`lands.assigned_to`).
+   *
+   * Applied after the users exist — lands are seeded first — so this is a key,
+   * not an id. See `applyDemoAssignments` in demo-seed.ts.
+   */
+  assigned_to_key?: string;
   remarks?: string;
   created_at: string;
+  /**
+   * Files on the Documents tab. `title` is what the user sees and what the
+   * generated PNG is captioned with, so a demo shows named paperwork rather
+   * than eight identical teal rectangles.
+   */
+  documents?: DemoDocument[];
   /**
    * Owner keys + their share of the plot. `area` is in the land's own
    * `land_size_unit` and `amount` is what was agreed with that owner
@@ -189,6 +212,30 @@ export const DEMO_OWNERS: DemoOwner[] = [
     nid: '1964889977665',
     address: 'Kanchan, Rupganj, Narayanganj',
     notes: 'Sold the family tract in one deal; four brothers signed together',
+  },
+  {
+    key: 'mosharraf',
+    name: 'Mosharraf Hossain Khan',
+    phone: '01711 909090',
+    nid: '1971445566778',
+    address: 'House 9, Road 12, Sector 4, Uttara, Dhaka',
+    notes: 'Eldest of three siblings; signs for the family and keeps the original deeds',
+  },
+  {
+    key: 'shireen',
+    name: 'Shireen Akhter Khan',
+    phone: '01811 909091',
+    nid: '1975112233445',
+    address: 'Sector 7, Uttara, Dhaka',
+    notes: 'Second sibling; wanted the flat allocation in writing before signing',
+  },
+  {
+    key: 'arifur',
+    name: 'Arifur Rahman Khan',
+    phone: '01911 909092',
+    nid: '1979667788990',
+    address: 'Toronto, Canada',
+    notes: 'Youngest sibling, lives abroad — signed through a registered power of attorney',
   },
   {
     key: 'rehana',
@@ -1202,6 +1249,138 @@ export const DEMO_LANDS: DemoLand[] = [
         reference_no: '2240/2026',
         performed_by: 'Sub-Registry Office, Savar',
         remarks: 'Registered under the power of attorney.',
+        source: 'manual',
+      },
+    ],
+  },
+  /*
+   * The complete record (2026-10-04) — the land the Module 1 and Module 2 demo
+   * is given on.
+   *
+   * Every other demo land is deliberately partial: each one sits at a
+   * different status so the pipeline is covered, which means no single land
+   * shows what a *finished* record looks like. This one does. Every optional
+   * column on `lands` carries a value, there are three owners with shares,
+   * areas and agreed amounts, full JV terms with a power of attorney, both
+   * site-visit kinds, two feasibility versions, all seventeen due-diligence
+   * items, a four-round offer ladder, every acquisition cost head, land
+   * development with progress, per-owner settlement with payments, named
+   * documents, and a status history that includes a correction.
+   *
+   * It ends at `linked_to_project` because the project built on it
+   * (`Nokshi Lakeview Residence`) is the other half of the demo.
+   *
+   * Keep it complete. If a field is added to `lands`, add it here too — this
+   * is the record that is supposed to answer "what can this module hold?".
+   */
+  {
+    name: 'Uttara Sector 18 lake-facing site',
+    location_division: 'Dhaka',
+    location_district: 'Dhaka',
+    location_upazila: 'Uttara',
+    location_area: 'Sector 18, Uttara',
+    road: 'Lake Drive Road',
+    road_access: '60 ft blacktop frontage on Lake Drive, 100 ft RAJUK road 250m east',
+    land_classification: 'Bhiti (homestead land)',
+    source: 'Reference',
+    mouza: 'Bauthar',
+    dag_number: '4412',
+    khatian_number: '2207',
+    land_size: 18,
+    land_size_unit: 'katha',
+    asking_price: 215_000_000,
+    final_agreed_amount: 18_000_000,
+    gps_lat: 23.8759,
+    gps_lng: 90.3795,
+    nearby_facilities:
+      'Uttara Lake frontage, Diabari bridge 1.2km, Metro Rail Diabari station 2km, Uttara Town College 900m, Shin-Shin Japan Hospital 1.5km, Sector 18 kitchen market 600m',
+    acquisition_type: 'joint_venture',
+    status: 'acquired',
+    assigned_to_key: 'shafiq',
+    remarks:
+      'Three siblings inherited the plot from their father. The youngest lives in Canada and signed through a registered power of attorney. Agreed as a 52:48 joint venture on flat count, with 1,80,00,000 signing money paid to the owners against the agreement.',
+    created_at: '2025-09-12T04:30:00.000Z',
+    owners: [
+      { key: 'mosharraf', share: 40, primary: true, area: 7.2, amount: 7_200_000 },
+      { key: 'shireen', share: 35, area: 6.3, amount: 6_300_000 },
+      { key: 'arifur', share: 25, area: 4.5, amount: 4_500_000 },
+    ],
+    jv: {
+      developer_share_pct: 52,
+      landowner_share_pct: 48,
+      agreement_date: '2026-01-19',
+      power_of_attorney: true,
+      poa_reference: 'POA-2026/0144, Uttara Sub-Registry',
+      jv_share_basis: 'flat_count',
+    },
+    documents: [
+      { type: 'khatian_copy', title: 'BS Khatian 2207 — certified copy', notes: 'Collected from the AC Land office, Uttara.' },
+      { type: 'dolil_deed', title: 'Inheritance deed 3310/1998 — father to three heirs' },
+      { type: 'mutation_certificate', title: 'Namjari case 1142/2024 — mutation certificate' },
+      { type: 'tax_receipt', title: 'Land development tax receipt 1432 Bangla' },
+      { type: 'location_map', title: 'Mouza map with dag 4412 marked', is_public: false },
+      { type: 'site_photo', title: 'Site photo — Lake Drive frontage, Feb 2026' },
+      { type: 'jv_agreement', title: 'Joint venture agreement — 52:48 on flat count', notes: 'Signed 19 Jan 2026 at the Uttara office, all three owners present.' },
+      { type: 'power_of_attorney', title: 'Registered POA — Arifur Rahman Khan', notes: 'Attested at the Bangladesh High Commission, Ottawa.' },
+      { type: 'other', title: 'RAJUK DAP sheet — Sector 18 land use', notes: 'Shows the plot as residential, FAR 4.0 on a 60 ft road.' },
+    ],
+    history: [
+      {
+        to_status: 'under_review',
+        event_date: '2025-09-24',
+        performed_by: 'Shafiq Rahman (Land Team)',
+        reference_no: 'SV-2025-088',
+        remarks: 'Lake frontage and a 60 ft road. High land, no filling needed. Worth a full study.',
+        source: 'automatic',
+      },
+      {
+        to_status: 'dd_in_progress',
+        event_date: '2025-10-28',
+        performed_by: 'Adv. Tanvir Alam',
+        reference_no: 'LV-2025-204',
+        remarks: 'Inheritance title. Three heirs, one abroad — power of attorney will be needed.',
+        source: 'automatic',
+      },
+      {
+        to_status: 'negotiation',
+        event_date: '2025-12-02',
+        performed_by: 'Rifat Ahmed',
+        amount: 198_000_000,
+        reference_no: 'NEG-2025-061',
+        remarks: 'Owners opened at 215,000,000 outright. Steered towards a joint venture instead.',
+        source: 'automatic',
+      },
+      {
+        to_status: 'agreed',
+        event_date: '2026-01-12',
+        performed_by: 'Rifat Ahmed',
+        amount: 18_000_000,
+        reference_no: 'NEG-2026-004',
+        remarks: 'Round 4 accepted: 52:48 on flat count plus 1,80,00,000 signing money.',
+        source: 'automatic',
+      },
+      {
+        to_status: 'on_hold',
+        event_date: '2026-01-15',
+        performed_by: 'Management committee',
+        remarks:
+          'Parked for three days while the youngest sibling\u2019s power of attorney was attested in Ottawa.',
+        source: 'manual',
+      },
+      {
+        to_status: 'agreed',
+        event_date: '2026-01-18',
+        performed_by: 'Shafiq Rahman (Land Team)',
+        remarks: 'Correction \u2014 the hold was recorded against the wrong land and is reversed here. POA received.',
+        source: 'correction',
+      },
+      {
+        to_status: 'acquired',
+        event_date: '2026-01-19',
+        performed_by: 'Uttara Sub-Registry Office',
+        amount: 18_000_000,
+        reference_no: 'JV-2026/0188',
+        remarks: 'Joint venture agreement signed and registered. Signing money paid the same day.',
         source: 'manual',
       },
     ],

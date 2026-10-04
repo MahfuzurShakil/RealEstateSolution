@@ -1,3 +1,4 @@
+import type { DemoDocument } from './demo-data';
 import type { ProjectStatus, ProjectType, TowerStatus, UnitStatus } from './types';
 
 export interface DemoProjectEvent {
@@ -101,11 +102,24 @@ export interface DemoProject {
   surroundings?: string;
   amenities: string[];
   cover_image_url?: string;
+  /**
+   * Title of one of this project's `documents` to use as the display image
+   * (`projects.cover_image_document_id`). Resolved after the files are
+   * created, because the id does not exist until then.
+   */
+  cover_image_document_title?: string;
+  /** demo user key for `projects.project_manager` — applied once users exist */
+  project_manager_key?: string;
   is_public: boolean;
   is_featured: boolean;
   created_at: string;
   /** demo land names this project is built on */
   land_names: string[];
+  /**
+   * Files on the Documents tab. Omitted, the seeder still attaches the usual
+   * two (architectural plan and brochure) so no project's tab is empty.
+   */
+  documents?: DemoDocument[];
   towers: DemoTower[];
   /**
    * v26 — a land-share project's register.
@@ -741,6 +755,198 @@ export const DEMO_PROJECTS: DemoProject[] = [
         to_status: 'handover_ongoing',
         event_date: '2026-08-25',
         remarks: 'Share deeds being registered buyer by buyer.',
+      },
+    ],
+  },
+  /*
+   * The complete record (2026-10-04) — the project the Module 2 demo is given
+   * on, built on the land of the same name in demo-data.ts.
+   *
+   * Every optional column on `projects` carries a value, including the two
+   * that nothing else in the demo sets: `project_manager` and
+   * `cover_image_document_id`. Two towers with every tower field, a full unit
+   * grid, the landowner's 48% settled in named flats sold both ways, a status
+   * history through to Under Construction, and nine named documents.
+   *
+   * Keep it complete — same rule as the land it stands on.
+   */
+  {
+    name: 'Nokshi Lakeview Residence',
+    project_type: 'apartment',
+    total_land_area: 18,
+    location_summary: 'Sector 18, Uttara — lake-facing on Lake Drive Road',
+    expected_start_date: '2026-05-01',
+    expected_completion_date: '2029-04-30',
+    actual_start_date: '2026-05-18',
+    status: 'under_construction',
+    architect: 'Shatotto Architecture for Green Living',
+    project_manager_key: 'shirin',
+    surroundings:
+      'Uttara Lake directly west, Diabari bridge 1.2km, Metro Rail Diabari station 2km, Uttara Town College 900m, Shin-Shin Japan Hospital 1.5km, Sector 18 kitchen market 600m, 100 ft RAJUK road 250m',
+    amenities: [
+      'Lift',
+      'Generator',
+      'Parking',
+      'Security',
+      'CCTV',
+      'Community Space',
+      'Rooftop Garden',
+      'Gymnasium',
+      'Prayer Room',
+    ],
+    cover_image_url:
+      'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1200&q=60',
+    cover_image_document_title: 'Lakeview Residence — front elevation render',
+    is_public: true,
+    is_featured: true,
+    created_at: '2026-02-02T09:00:00.000Z',
+    land_names: ['Uttara Sector 18 lake-facing site'],
+    documents: [
+      { type: 'architectural_plan', title: 'Architectural plan set — Rev C (approved)', notes: 'Shatotto, issued 11 Mar 2026. Supersedes Rev B.' },
+      { type: 'structural_drawing', title: 'Structural drawings — raft foundation & columns', notes: 'Based on the three-hole soil report taken in Nov 2025.' },
+      { type: 'rajuk_approval', title: 'RAJUK approval memo 2026/UTT/0914', notes: '12 floors at FAR 4.0 approved 28 Apr 2026.' },
+      { type: 'environmental_clearance', title: 'DoE environmental clearance — orange-B category' },
+      { type: 'fire_safety_certificate', title: 'Fire Service & Civil Defence clearance' },
+      { type: 'layout_floor_plan', title: 'Typical floor layout — Tower A levels 3–12', is_public: true },
+      { type: 'brochure', title: 'Nokshi Lakeview Residence — sales brochure', notes: 'The only file on this project the public website may show.', is_public: true },
+      { type: 'gallery_image', title: 'Lakeview Residence — front elevation render', is_public: true },
+      { type: 'other', title: 'Soil investigation report — 3 bore holes to 100 ft', notes: 'Engr. Nazmul Huda, Nov 2025. The raft design rests on this.' },
+    ],
+    towers: [
+      {
+        name: 'Tower A',
+        floor_count: 12,
+        status: 'under_construction',
+        building_type: 'B+G+12',
+        unit_per_floor: 2,
+        lift_count: 2,
+        electricity_backup: true,
+        front_road_width_ft: 60,
+        patterns: [
+          {
+            prefix: 'LA',
+            separator: '-',
+            floor_from: 3,
+            floor_to: 12,
+            floor_premium_mode: 'percent',
+            floor_premium_value: '1.8',
+            rows: [
+              {
+                suffix: 'A',
+                unit_type: '3 Bed',
+                bedroom_count: 3,
+                bathroom_count: 3,
+                balcony_count: 2,
+                size_sqft: 1680,
+                facing: 'West',
+                rate_per_sqft: 14200,
+                parking_allocated: 1,
+              },
+              {
+                suffix: 'B',
+                unit_type: '3 Bed',
+                bedroom_count: 3,
+                bathroom_count: 2,
+                balcony_count: 2,
+                size_sqft: 1450,
+                facing: 'South',
+                rate_per_sqft: 13500,
+                parking_allocated: 1,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'Tower B',
+        floor_count: 12,
+        status: 'planning',
+        building_type: 'B+G+12',
+        unit_per_floor: 2,
+        lift_count: 2,
+        electricity_backup: true,
+        front_road_width_ft: 60,
+        patterns: [
+          {
+            prefix: 'LB',
+            separator: '-',
+            floor_from: 3,
+            floor_to: 8,
+            floor_premium_mode: 'amount',
+            floor_premium_value: '150000',
+            rows: [
+              {
+                suffix: 'A',
+                unit_type: '4 Bed',
+                bedroom_count: 4,
+                bathroom_count: 4,
+                balcony_count: 3,
+                size_sqft: 2150,
+                facing: 'South-West',
+                rate_per_sqft: 13800,
+                parking_allocated: 2,
+              },
+              {
+                suffix: 'B',
+                unit_type: '2 Bed',
+                bedroom_count: 2,
+                bathroom_count: 2,
+                balcony_count: 1,
+                size_sqft: 1120,
+                facing: 'North',
+                rate_per_sqft: 12600,
+                parking_allocated: 1,
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    /*
+     * The owners' 48% on flat count, settled in named flats — which is how a
+     * JV is actually settled here, and what the JV Allocation tab checks the
+     * split against.
+     */
+    landowner_allocation: {
+      owner_key: 'mosharraf',
+      /*
+       * Fifteen of thirty-two. The target is 48% of 32 = 15.36 flats, and the
+       * allocation check reconciles to within one flat — so this reads as a
+       * settled JV. The deliberate mismatch is the Agrabad project's job.
+       */
+      unit_codes: [
+        'LA-3A', 'LA-4B', 'LA-5A', 'LA-6B', 'LA-7A', 'LA-8B', 'LA-9A', 'LA-10B',
+        'LA-11B', 'LA-12B',
+        'LB-3A', 'LB-4B', 'LB-5A', 'LB-6B', 'LB-7A',
+      ],
+    },
+    unit_status_overrides: {
+      hold: ['LA-11A'],
+      reserved: ['LA-12A'],
+      booked: ['LA-3B'],
+      sold: ['LA-4A'],
+    },
+    history: [
+      {
+        to_status: 'design',
+        event_date: '2026-02-09',
+        performed_by: 'Shatotto Architecture for Green Living',
+        reference_no: 'DWG-REV-A',
+        remarks: 'Concept and massing agreed — two towers, 12 floors, 2 units a floor.',
+      },
+      {
+        to_status: 'approval',
+        event_date: '2026-03-16',
+        performed_by: 'Shirin Sultana (Project Manager)',
+        reference_no: 'RAJUK/2026/UTT/0914',
+        remarks: 'Rev C drawings submitted to RAJUK with the soil report and the JV deed.',
+      },
+      {
+        to_status: 'under_construction',
+        event_date: '2026-05-18',
+        performed_by: 'Shirin Sultana (Project Manager)',
+        reference_no: 'MOB-2026-11',
+        remarks: 'Approval received 28 Apr. Piling rig mobilised on site 18 May.',
       },
     ],
   },

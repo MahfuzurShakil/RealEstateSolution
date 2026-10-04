@@ -28,6 +28,7 @@ import {
   landRepository,
   lookupRepository,
   projectRepository,
+  userRepository,
   type ProjectWithRelations,
 } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
@@ -43,6 +44,7 @@ interface FormState {
   expected_completion_date: string;
   actual_start_date: string;
   architect: string;
+  project_manager: string;
   surroundings: string;
   cover_image_url: string;
   is_public: boolean;
@@ -59,6 +61,7 @@ const EMPTY: FormState = {
   expected_completion_date: '',
   actual_start_date: '',
   architect: '',
+  project_manager: '',
   surroundings: '',
   cover_image_url: '',
   is_public: false,
@@ -78,6 +81,9 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
   const router = useRouter();
 
   const [form, setForm] = useState<FormState>(project ? toFormState(project) : EMPTY);
+  // who can hold a project: the PM role, plus management on a small office
+  const managers =
+    useLiveQuery(() => userRepository.listByRole(['project_manager', 'management']), []) ?? [];
   const [landIds, setLandIds] = useState<string[]>(project?.lands.map((l) => l.id) ?? []);
   const [amenities, setAmenities] = useState<string[]>(project?.amenities ?? []);
   const [availableLands, setAvailableLands] = useState<Land[]>([]);
@@ -214,6 +220,7 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
         expected_completion_date: form.expected_completion_date,
         actual_start_date: form.actual_start_date || null,
         architect: form.architect.trim() || null,
+        project_manager: form.project_manager || null,
         surroundings: form.surroundings.trim() || null,
         amenities,
         cover_image_url: form.cover_image_url.trim() || null,
@@ -229,7 +236,6 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
           ...payload,
           code: '',
           status: 'planning',
-          project_manager: null,
         });
       }
 
@@ -286,6 +292,24 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
               onChange={(e) => set('architect', e.target.value)}
               placeholder="e.g. Volumezero Ltd."
             />
+          </Field>
+          {/*
+            Scope v3 §3.3 — the column has been on `projects` from the start
+            and nothing ever set it, so every project read as unmanaged
+            (2026-10-04).
+          */}
+          <Field label="Project Manager">
+            <SelectInput
+              value={form.project_manager}
+              onChange={(e) => set('project_manager', e.target.value)}
+            >
+              <option value="">Not assigned</option>
+              {managers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </SelectInput>
           </Field>
 
           <Field
@@ -512,6 +536,7 @@ function toFormState(project: ProjectWithRelations): FormState {
     expected_completion_date: project.expected_completion_date,
     actual_start_date: str(project.actual_start_date),
     architect: str(project.architect),
+    project_manager: str(project.project_manager),
     surroundings: str(project.surroundings),
     cover_image_url: str(project.cover_image_url),
     is_public: project.is_public,

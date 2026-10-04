@@ -61,7 +61,7 @@ import { PROCUREMENT_BUDGET_HEAD } from './types';
 import { getDb } from './database';
 import { landIsHeld } from '../domain/land';
 import { backfillMaterialItems } from './backfill-material-items';
-import { DEMO_LANDS, DEMO_OWNERS } from './demo-data';
+import { DEMO_LANDS, DEMO_OWNERS, type DemoDocument } from './demo-data';
 import { DEMO_FEASIBILITY, DEMO_SITE_VISITS } from './demo-site-visits';
 import { DEMO_DD_FINDINGS } from './demo-dd';
 import { DEMO_ACQUISITION_COSTS, DEMO_NEGOTIATION_ROUNDS } from './demo-negotiation';
@@ -129,6 +129,84 @@ async function makeSamplePng(caption: string): Promise<Blob | null> {
   ctx.fillText('Sample document — demo data', 400, 300);
 
   return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), 'image/png'));
+}
+
+/**
+ * One named demo attachment.
+ *
+ * The title is what the user sees *and* what gets drawn on the generated PNG,
+ * so the file a demo opens says what it is. `custom_type_name` is set only for
+ * `other`, which is the one type that requires it.
+ */
+async function createDemoDocument(
+  entity_type: 'land' | 'project',
+  entity_id: string,
+  doc: DemoDocument,
+  uploaded_at: string,
+  createdBy: string | null,
+) {
+  const png = await makeSamplePng(doc.title);
+  if (!png) return undefined;
+  /*
+   * `file_name` is what the Documents tab prints, so it carries the readable
+   * title; `file_url` keeps the slug, which is what a storage path will be in
+   * Phase B when the Blob is replaced by a real file.
+   */
+  return documentRepository.create(
+    {
+      entity_type,
+      entity_id,
+      document_type: doc.type,
+      custom_type_name: doc.type === 'other' ? doc.title : null,
+      file_url: `${slugify(doc.title)}.png`,
+      file_data: png,
+      file_name: `${doc.title}.png`,
+      file_size: png.size,
+      mime_type: 'image/png',
+      is_public: doc.is_public ?? false,
+      uploaded_by: createdBy,
+      uploaded_at,
+      notes: doc.notes ?? null,
+    },
+    createdBy,
+  );
+}
+
+function slugify(title: string): string {
+  return (
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 60) || 'document'
+  );
+}
+
+/**
+ * `lands.assigned_to` and `projects.project_manager` (2026-10-04).
+ *
+ * A post-pass because both point at `users`, and users are created with the
+ * leads — after the lands and projects they would have to be set on. Until
+ * now neither column had a value anywhere in the demo, so neither could be
+ * shown.
+ */
+async function applyDemoAssignments(
+  landIds: Map<string, string>,
+  projectIds: Map<string, string>,
+  userIds: Map<string, string>,
+): Promise<void> {
+  for (const demo of DEMO_LANDS) {
+    if (!demo.assigned_to_key) continue;
+    const landId = landIds.get(demo.name);
+    const userId = userIds.get(demo.assigned_to_key);
+    if (landId && userId) await landRepository.update(landId, { assigned_to: userId });
+  }
+  for (const demo of DEMO_PROJECTS) {
+    if (!demo.project_manager_key) continue;
+    const projectId = projectIds.get(demo.name);
+    const userId = userIds.get(demo.project_manager_key);
+    if (projectId && userId) await projectRepository.update(projectId, { project_manager: userId });
+  }
 }
 
 /**
@@ -533,6 +611,46 @@ async function seedDemoOwnerSettlement(
     });
   }
 
+  /* ---- Uttara Sector 18: three owners, the complete settlement ---- */
+
+  /*
+   * The complete record (2026-10-04). All three siblings scheduled and paid,
+   * because the JV signing money was settled on the day of registration — so
+   * this is what a closed settlement looks like, against Savar's open one.
+   */
+  const uttara: Array<[string, string, number, string, string]> = [
+    ['mosharraf', 'Mosharraf Hossain Khan', 7_200_000, 'CHQ 0098211', 'cheque'],
+    ['shireen', 'Shireen Akhter Khan', 6_300_000, 'BEFTN 8812044', 'bank'],
+    ['arifur', 'Arifur Rahman Khan', 4_500_000, 'BEFTN 8812051', 'bank'],
+  ];
+  for (const [key, name, amount, reference_no, method] of uttara) {
+    const found = await mappingFor('Uttara Sector 18 lake-facing site', key);
+    if (!found) continue;
+    await ownerSettlementRepository.generateForMapping(
+      found.mapping.id,
+      {
+        agreementDate: '2026-01-19',
+        advanceAmount: Math.round(amount * 0.5),
+        monthlyCount: 0,
+        registrationAmount: amount - Math.round(amount * 0.5),
+        registrationAfterMonths: 0,
+      },
+      createdBy,
+    );
+    await payOwner(found.landId, found.mapping.id, {
+      amount,
+      expense_date: '2026-01-19',
+      cost_reason: `Signing money under the joint venture — ${name}'s share`,
+      paid_to: name,
+      payment_method: method as 'bank' | 'cheque' | 'cash',
+      reference_no,
+      notes:
+        key === 'arifur'
+          ? 'Paid to the attorney holder against the registered power of attorney.'
+          : 'Paid at the sub-registry office on the day the JV deed was registered.',
+    });
+  }
+
   /*
    * No explicit recalculation here: every payment went through
    * `createExpense`, which re-runs the owner waterfall for the land it names.
@@ -730,8 +848,18 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
       previous = event.to_status;
     }
 
-    // a couple of sample attachments on the closed deals
-    if (demo.status === 'acquired') {
+    /*
+     * Attachments. A land that lists its own `documents` gets exactly those,
+     * each named — the sample file is captioned with the title, so a demo
+     * shows a set of identifiable papers rather than identical rectangles.
+     * Everything else keeps the single closing document it always had.
+     */
+    const uploadedAt = `${demo.history.at(-1)?.event_date ?? '2026-01-01'}T10:00:00.000Z`;
+    if (demo.documents?.length) {
+      for (const doc of demo.documents) {
+        await createDemoDocument('land', land.id, doc, uploadedAt, createdBy);
+      }
+    } else if (demo.status === 'acquired') {
       const png = await makeSamplePng(demo.name);
       if (png) {
         // a JV closes with an agreement, a purchase with a deed
@@ -750,7 +878,7 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
             mime_type: 'image/png',
             is_public: false,
             uploaded_by: createdBy,
-            uploaded_at: `${demo.history.at(-1)?.event_date ?? '2026-01-01'}T10:00:00.000Z`,
+            uploaded_at: uploadedAt,
             notes: 'Scanned copy collected from the registry office',
           },
           createdBy,
@@ -769,6 +897,8 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
 
   const { projectIds, unitIds } = await seedDemoProjects(landIds, ownerIds, createdBy);
   const { userIds, leadIdByPhone } = await seedDemoLeads(projectIds, unitIds, createdBy);
+  // land officer and project manager — both point at users, so they wait for them
+  await applyDemoAssignments(landIds, projectIds, userIds);
   const bookingIds = await seedDemoBookings(
     projectIds,
     unitIds,
@@ -1050,8 +1180,27 @@ async function seedDemoProjects(
       updated_at: demo.created_at,
     });
 
+    /*
+     * Attachments. A project that lists its own `documents` gets those, named,
+     * and may point `cover_image_document_id` at one of them by title — which
+     * is the only way that column gets a value anywhere in the demo.
+     */
+    if (demo.documents?.length) {
+      for (const doc of demo.documents) {
+        const saved = await createDemoDocument(
+          'project',
+          project.id,
+          doc,
+          demo.created_at,
+          createdBy,
+        );
+        if (saved && doc.title === demo.cover_image_document_title) {
+          await db.projects.update(project.id, { cover_image_document_id: saved.id });
+        }
+      }
+    }
     // a couple of attachments so the Documents tab is not empty either
-    for (const type of ['architectural_plan', 'brochure'] as const) {
+    for (const type of demo.documents?.length ? [] : (['architectural_plan', 'brochure'] as const)) {
       const png = await makeSamplePng(`${demo.name} — ${type.replace(/_/g, ' ')}`);
       if (!png) continue;
       const fileName = `${type}-${project.code.toLowerCase()}.png`;

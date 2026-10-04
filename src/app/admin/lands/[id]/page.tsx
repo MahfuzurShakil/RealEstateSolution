@@ -56,6 +56,7 @@ import {
   landDevelopmentRepository,
   landPipelineRepository,
   siteVisitRepository,
+  userRepository,
   type LandWithRelations,
 } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
@@ -181,6 +182,10 @@ export default function LandDetailPage() {
   const ddProgress = useLiveQuery(() => landDdRepository.progressForLand(id), [id]);
   // BRD LAND-002 / ACQ-003 — what each owner is owed and what has gone to them
   const settlement = useLiveQuery(() => ownerSettlementRepository.positionForLand(id), [id]);
+  const assignee = useLiveQuery(
+    () => (land?.assigned_to ? userRepository.getById(land.assigned_to) : Promise.resolve(undefined)),
+    [land?.assigned_to],
+  );
   const devReadiness = useLiveQuery(
     () => landDevelopmentRepository.readinessForLand(id),
     [id],
@@ -332,6 +337,8 @@ export default function LandDetailPage() {
                   label="GPS"
                   value={land.gps_lat && land.gps_lng ? `${land.gps_lat}, ${land.gps_lng}` : '—'}
                 />
+                {/* BRD LAND-001 — the land officer on this plot (2026-10-04) */}
+                <Row label="Assigned to" value={assignee?.name} />
               </Card>
 
               <Card>
