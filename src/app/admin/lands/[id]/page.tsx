@@ -440,6 +440,18 @@ export default function LandDetailPage() {
                 </p>
               </Card>
 
+              {/*
+                v29 — the one number per land (PLATFORM-REPLAN.md §1.4), on the
+                first tab anybody opens. The same sheet stays in the Timeline's
+                acquisition section, where the estimates are worked out.
+              */}
+              {costSheetRelevant && (
+                <Card>
+                  <CardHeader title="Land Cost Sheet" />
+                  <AcquisitionCostPanel land={land} />
+                </Card>
+              )}
+
               {(land.nearby_facilities || land.remarks) && (
                 <Card>
                   <CardHeader title="Notes" />
@@ -680,7 +692,7 @@ export default function LandDetailPage() {
                   {/* the cost sheet only once there is a deal to cost */}
                   {costSheetRelevant && (
                     <Card>
-                      <CardHeader title="Acquisition Cost" />
+                      <CardHeader title="Land Cost Sheet" />
                       <AcquisitionCostPanel land={land} />
                     </Card>
                   )}

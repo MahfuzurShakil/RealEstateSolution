@@ -9,8 +9,11 @@ import { AccountPicker } from './AccountPicker';
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import {
+  ACQUISITION_COST_HEADS,
+  ACQUISITION_COST_HEAD_LABEL,
   LAND_LINKED_COST_CATEGORIES,
   SUPPLIER_PAYMENT_METHODS,
+  type AcquisitionCostHead,
   type CostCategory,
   type Expense,
   type SupplierPaymentMethod,
@@ -89,6 +92,7 @@ function ExpenseDialog({
     account_id: expense?.account_id ?? '',
     installment_id: expense?.installment_id ?? '',
     owner_mapping_id: expense?.owner_mapping_id ?? '',
+    land_cost_head: (expense?.land_cost_head ?? '') as AcquisitionCostHead | '',
     vat_amount: expense?.vat_amount ? String(expense.vat_amount) : '',
     ait_amount: expense?.ait_amount ? String(expense.ait_amount) : '',
     notes: expense?.notes ?? '',
@@ -175,6 +179,7 @@ function ExpenseDialog({
       // the plan belongs to the plot: changing either one strands the choice
       if (key === 'cost_category' && value !== 'land_payment') next.installment_id = '';
       if (key === 'land_id') next.installment_id = '';
+      if (key === 'cost_category' && value !== 'land_extra_cost') next.land_cost_head = '';
       return next;
     });
 
@@ -208,6 +213,9 @@ function ExpenseDialog({
         installment_id: settlesPlan ? form.installment_id || null : null,
         // BRD BR-003 — an owner settlement names the owner it settles
         owner_mapping_id: settlesPlan ? form.owner_mapping_id || null : null,
+        // v29 — which line of the land's cost sheet a fee belongs to
+        land_cost_head:
+          form.cost_category === 'land_extra_cost' ? form.land_cost_head || null : null,
         vat_amount: Number(form.vat_amount) || null,
         ait_amount: Number(form.ait_amount) || null,
         reference_no: form.reference_no.trim() || null,
@@ -354,6 +362,27 @@ function ExpenseDialog({
               {(lands ?? []).map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.code} — {l.name}
+                </option>
+              ))}
+            </SelectInput>
+          </Field>
+        )}
+
+        {/*
+          v29 — a land fee names its cost head, so the land's cost sheet can
+          put registration against registration instead of calling every fee
+          "unclassified". The land price itself is a land payment, not a fee.
+        */}
+        {form.cost_category === 'land_extra_cost' && (
+          <Field label="Cost head" hint="Where this fee goes on the land's cost sheet">
+            <SelectInput
+              value={form.land_cost_head}
+              onChange={(e) => set('land_cost_head', e.target.value)}
+            >
+              <option value="">Not classified</option>
+              {ACQUISITION_COST_HEADS.filter((h) => h !== 'land_price').map((h) => (
+                <option key={h} value={h}>
+                  {ACQUISITION_COST_HEAD_LABEL[h]}
                 </option>
               ))}
             </SelectInput>

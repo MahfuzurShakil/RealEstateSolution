@@ -83,10 +83,10 @@ export function ProjectLandCard({ projectId, lands }: { projectId: string; lands
                   {sheet && (
                     <div className="hidden shrink-0 text-right sm:block">
                       <p className="text-sm font-semibold tabular-nums text-ink">
-                        {formatBdt(sheet.actualTotal)}
+                        {formatBdt(sheet.landTotal.actual)}
                       </p>
                       <p className="text-[11px] text-ink-muted">
-                        spent · est. {formatBdt(sheet.estimatedTotal)}
+                        spent · est. {formatBdt(sheet.landTotal.estimated)}
                       </p>
                     </div>
                   )}

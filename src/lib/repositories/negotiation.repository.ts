@@ -21,7 +21,10 @@ const money = (n: number) => Math.round(n * 100) / 100;
 export interface AcquisitionCostLine {
   cost_head: AcquisitionCostHead;
   estimated: number;
+  /** ledger payments plus anything paid before this system (v29) */
   actual: number;
+  /** v29 — the part of `actual` that predates this system */
+  historic: number;
   remarks: string | null;
   /** null when there is no estimate to compare against */
   variance: number | null;
@@ -29,10 +32,28 @@ export interface AcquisitionCostLine {
 
 export interface AcquisitionCostSheet {
   lines: AcquisitionCostLine[];
+  /** acquisition heads only — the land itself and what it took to get it */
   estimatedTotal: number;
   actualTotal: number;
   /** what the ledger holds that no line accounts for — see the note below */
   unclassifiedActual: number;
+  /**
+   * v29 — land development (filling, boundary, internal roads): its budget
+   * and what has been incurred, from the development activities (DEV-001…).
+   */
+  development: { estimated: number; actual: number };
+  /** v29 — acquisition plus development: what this land costs in cash */
+  landTotal: { estimated: number; actual: number };
+  /**
+   * v29 — on a joint venture, what the landowner is paid in flats.
+   *
+   * Not cash and not in `landTotal`, but it is the larger part of what a JV
+   * plot costs, and an owner comparing a JV project with a bought one needs
+   * to see it (client decision 2026-10-06: show both). Valued at the list
+   * price of the units allocated to the landowner in the projects on this
+   * land; `null` until a project on it has allocated any.
+   */
+  landownerShare: { units: number; value: number } | null;
 }
 
 class LandNegotiationRepository extends BaseRepository<LandNegotiation> {
@@ -175,32 +196,40 @@ class LandAcquisitionCostRepository extends BaseRepository<LandAcquisitionCost> 
    * rather than quietly padding one line.
    */
   async sheetForLand(landId: string): Promise<AcquisitionCostSheet> {
-    const [estimates, expenses] = await Promise.all([
+    const [estimates, expenses, land, activities, mappings] = await Promise.all([
       this.listForLand(landId),
       db.expenses.where('land_id').equals(landId).toArray(),
+      db.lands.get(landId),
+      db.land_development_activities.where('land_id').equals(landId).toArray(),
+      db.land_project_mapping.where('land_id').equals(landId).toArray(),
     ]);
 
     const actualByHead = new Map<AcquisitionCostHead, number>();
     let unclassified = 0;
     for (const e of expenses) {
       const amount = Number(e.amount) || 0;
-      if (e.cost_category === 'land_payment') {
-        actualByHead.set('land_price', (actualByHead.get('land_price') ?? 0) + amount);
-      } else {
-        // every other land cost is a fee we cannot yet attribute to a head
-        unclassified += amount;
-      }
+      // v29 — a fee that names its head goes on that line
+      const head: AcquisitionCostHead | null =
+        e.cost_category === 'land_payment'
+          ? 'land_price'
+          : e.cost_category === 'land_extra_cost' && e.land_cost_head
+            ? e.land_cost_head
+            : null;
+      if (head) actualByHead.set(head, (actualByHead.get(head) ?? 0) + amount);
+      else unclassified += amount;
     }
 
     const byHead = new Map(estimates.map((e) => [e.cost_head, e]));
     const lines: AcquisitionCostLine[] = ACQUISITION_COST_HEADS.map((head) => {
       const row = byHead.get(head);
       const estimated = money(Number(row?.estimated_amount) || 0);
-      const actual = money(actualByHead.get(head) ?? 0);
+      const historic = money(Number(row?.historic_paid_amount) || 0);
+      const actual = money((actualByHead.get(head) ?? 0) + historic);
       return {
         cost_head: head,
         estimated,
         actual,
+        historic,
         remarks: row?.remarks ?? null,
         /*
          * `null` until something has actually been spent.
@@ -215,11 +244,66 @@ class LandAcquisitionCostRepository extends BaseRepository<LandAcquisitionCost> 
       };
     });
 
+    const estimatedTotal = money(lines.reduce((s, l) => s + l.estimated, 0));
+    const actualTotal = money(lines.reduce((s, l) => s + l.actual, 0) + unclassified);
+
+    /*
+     * Development, read the way `landDevelopmentRepository.readinessForLand`
+     * reads it: a cancelled activity costs nothing more, and its incurred
+     * total is the last progress report's running figure.
+     */
+    const live = activities.filter((a) => a.status !== 'cancelled');
+    const progress = live.length
+      ? await db.land_development_progress
+          .where('activity_id')
+          .anyOf(live.map((a) => a.id))
+          .toArray()
+      : [];
+    const incurredByActivity = new Map<string, { at: string; amount: number }>();
+    for (const p of progress) {
+      const prev = incurredByActivity.get(p.activity_id);
+      const at = `${p.progress_date}|${p.created_at}`;
+      if (!prev || at > prev.at) {
+        incurredByActivity.set(p.activity_id, { at, amount: Number(p.amount_incurred) || 0 });
+      }
+    }
+    const development = {
+      estimated: money(live.reduce((s, a) => s + (Number(a.budget_amount) || 0), 0)),
+      actual: money(live.reduce((s, a) => s + (incurredByActivity.get(a.id)?.amount ?? 0), 0)),
+    };
+
+    let landownerShare: AcquisitionCostSheet['landownerShare'] = null;
+    if (land?.acquisition_type === 'joint_venture' && mappings.length > 0) {
+      const towers = await db.towers
+        .where('project_id')
+        .anyOf(mappings.map((m) => m.project_id))
+        .toArray();
+      const units = towers.length
+        ? await db.units
+            .where('tower_id')
+            .anyOf(towers.map((t) => t.id))
+            .toArray()
+        : [];
+      const owners = units.filter((u) => u.allocation_type === 'landowner_share');
+      if (owners.length > 0) {
+        landownerShare = {
+          units: owners.length,
+          value: money(owners.reduce((s, u) => s + (Number(u.base_price) || 0), 0)),
+        };
+      }
+    }
+
     return {
       lines,
-      estimatedTotal: money(lines.reduce((s, l) => s + l.estimated, 0)),
-      actualTotal: money(lines.reduce((s, l) => s + l.actual, 0) + unclassified),
+      estimatedTotal,
+      actualTotal,
       unclassifiedActual: money(unclassified),
+      development,
+      landTotal: {
+        estimated: money(estimatedTotal + development.estimated),
+        actual: money(actualTotal + development.actual),
+      },
+      landownerShare,
     };
   }
 

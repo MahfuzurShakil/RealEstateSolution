@@ -14,7 +14,13 @@ import { landAcquisitionCostRepository } from '@/lib/repositories';
 import { formatBdt } from '@/lib/utils/format';
 
 /**
- * What the land actually costs to acquire (BRD ACQ-002).
+ * The land cost sheet — what this land costs, in one place (BRD ACQ-002,
+ * widened in v29 by PLATFORM-REPLAN.md §1.4).
+ *
+ * Acquisition heads first, then land development, then the total cash cost of
+ * the land; on a joint venture, the landowner's flats underneath as the
+ * non-cash part of the price. The owner reads one number per land here, and
+ * the project's Costing tab reads the same sheet.
  *
  * The BRD asks for the total, not just the land price: registration, stamp
  * duty, legal, mutation, broker commission and the rest. Only the *estimate*
@@ -40,8 +46,8 @@ export function AcquisitionCostPanel({ land }: { land: Land }) {
   return (
     <>
       <p className="mb-4 text-sm text-ink-muted">
-        The estimate is set here. Actuals come from the cost ledger — nothing on this screen is
-        typed twice.
+        The estimate is set here. Actuals come from the cost ledger, plus anything paid before this
+        system for land entered as already owned. Nothing on this screen is typed twice.
       </p>
 
       <div className="overflow-x-auto">
@@ -68,7 +74,12 @@ export function AcquisitionCostPanel({ land }: { land: Land }) {
               <tr key={line.cost_head}>
                 <td className="border-b border-hairline px-3 py-2.5">
                   <span className="text-ink">{ACQUISITION_COST_HEAD_LABEL[line.cost_head]}</span>
-                  {line.remarks && (
+                  {line.historic > 0 && (
+                    <span className="mt-0.5 block text-xs text-ink-muted">
+                      incl. {formatBdt(line.historic)} paid before this system
+                    </span>
+                  )}
+                  {line.remarks && line.historic === 0 && (
                     <span className="mt-0.5 block text-xs text-ink-muted">{line.remarks}</span>
                   )}
                 </td>
@@ -106,32 +117,92 @@ export function AcquisitionCostPanel({ land }: { land: Land }) {
           </tbody>
           <tfoot>
             <tr>
-              <td className="px-3 pt-3 text-sm font-semibold text-ink">Total acquisition cost</td>
+              <td className="px-3 pt-3 text-sm font-semibold text-ink">Acquisition subtotal</td>
               <td className="px-3 pt-3 text-right text-sm font-semibold tabular-nums text-ink">
                 {formatBdt(sheet.estimatedTotal)}
               </td>
               <td className="px-3 pt-3 text-right text-sm font-semibold tabular-nums text-ink">
                 {formatBdt(sheet.actualTotal)}
               </td>
-              {/* same rule as the rows: no spend, no variance */}
+              {/*
+                Only an overrun is a variance at subtotal level. Below the
+                estimate usually means fees not paid yet, not money saved, and
+                a green minus said the opposite (v29).
+              */}
               <td
                 className={
-                  sheet.actualTotal === 0
-                    ? 'px-3 pt-3 text-right text-sm font-semibold tabular-nums text-ink-muted'
-                    : sheet.actualTotal - sheet.estimatedTotal > 0
-                      ? 'px-3 pt-3 text-right text-sm font-semibold tabular-nums text-red-700'
-                      : 'px-3 pt-3 text-right text-sm font-semibold tabular-nums text-emerald-700'
+                  sheet.actualTotal > sheet.estimatedTotal
+                    ? 'px-3 pt-3 text-right text-sm font-semibold tabular-nums text-red-700'
+                    : 'px-3 pt-3 text-right text-sm tabular-nums text-ink-muted'
                 }
               >
                 {sheet.actualTotal === 0
                   ? 'nothing paid yet'
-                  : `${sheet.actualTotal - sheet.estimatedTotal > 0 ? '+' : '−'}${formatBdt(Math.abs(sheet.actualTotal - sheet.estimatedTotal))}`}
+                  : sheet.actualTotal > sheet.estimatedTotal
+                    ? `+${formatBdt(sheet.actualTotal - sheet.estimatedTotal)}`
+                    : '—'}
               </td>
               <td />
+            </tr>
+            {/* v29 — development is part of what the land costs */}
+            <tr>
+              <td className="px-3 pt-2.5 text-sm text-ink">
+                Land development
+                <span className="mt-0.5 block text-xs text-ink-muted">
+                  filling, boundary, internal roads, from the development activities
+                </span>
+              </td>
+              <td className="px-3 pt-2.5 text-right text-sm tabular-nums text-ink">
+                {sheet.development.estimated > 0 ? formatBdt(sheet.development.estimated) : '—'}
+              </td>
+              <td className="px-3 pt-2.5 text-right text-sm tabular-nums text-ink">
+                {sheet.development.actual > 0 ? formatBdt(sheet.development.actual) : '—'}
+              </td>
+              <td colSpan={2} />
+            </tr>
+            <tr>
+              <td className="border-t-2 border-ink/10 px-3 pt-3 text-sm font-bold text-ink">
+                Total land cost (cash)
+              </td>
+              <td className="border-t-2 border-ink/10 px-3 pt-3 text-right text-sm font-bold tabular-nums text-ink">
+                {formatBdt(sheet.landTotal.estimated)}
+              </td>
+              <td className="border-t-2 border-ink/10 px-3 pt-3 text-right text-sm font-bold tabular-nums text-ink">
+                {formatBdt(sheet.landTotal.actual)}
+              </td>
+              <td colSpan={2} className="border-t-2 border-ink/10 px-3 pt-3 text-right text-xs text-ink-muted">
+                {sheet.landTotal.estimated > sheet.landTotal.actual
+                  ? `${formatBdt(sheet.landTotal.estimated - sheet.landTotal.actual)} still to spend`
+                  : ''}
+              </td>
             </tr>
           </tfoot>
         </table>
       </div>
+
+      {/*
+        v29 — a JV plot is mostly paid for in flats. Shown beside the cash
+        total, never added to it: the two are different kinds of cost, and the
+        owner wants to see both (client decision 2026-10-06).
+      */}
+      {land.acquisition_type === 'joint_venture' && (
+        <div className="mt-4 rounded-xl border border-admin-100 bg-admin-50/60 px-3 py-2.5 text-xs text-admin-800">
+          {sheet.landownerShare ? (
+            <>
+              <strong>Landowner&rsquo;s share (non-cash):</strong> {sheet.landownerShare.units} unit
+              {sheet.landownerShare.units === 1 ? '' : 's'} allocated, worth{' '}
+              <strong>{formatBdt(sheet.landownerShare.value)}</strong> at list price. With the cash
+              above, the land&rsquo;s full cost is{' '}
+              <strong>{formatBdt(sheet.landTotal.actual + sheet.landownerShare.value)}</strong>.
+            </>
+          ) : (
+            <>
+              <strong>Landowner&rsquo;s share (non-cash):</strong> valued once a project on this land
+              allocates units to the landowner.
+            </>
+          )}
+        </div>
+      )}
 
       {/*
         Fees in the ledger that no head can claim yet. Said out loud rather
@@ -143,8 +214,9 @@ export function AcquisitionCostPanel({ land }: { land: Land }) {
           <Receipt className="mt-0.5 size-4 shrink-0 text-admin-600" />
           <span>
             <strong className="text-ink">{formatBdt(sheet.unclassifiedActual)}</strong> of land
-            extra costs is in the total but not on a line above — the cost ledger records those as
-            one category, so they cannot be split across registration, legal and the rest yet.{' '}
+            extra costs is in the total but not on a line above, because those expenses were saved
+            without a cost head. Edit them in the cost ledger and pick the head to put them on
+            their line.{' '}
             <Link href="/admin/expenses" className="text-admin-700 underline">
               Open the cost ledger
             </Link>

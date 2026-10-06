@@ -2212,6 +2212,19 @@ export async function clearDemoData(): Promise<void> {
     db.documents.clear(),
     db.projects.clear(),
     db.land_project_mapping.clear(),
+    /*
+     * The L2–L6 land tables (site visits through development). They were
+     * never added here, so every reload left the previous run's rows behind,
+     * pointing at lands that no longer exist — found when the v29 cost sheet
+     * read development spend off them.
+     */
+    db.site_visits.clear(),
+    db.land_feasibility.clear(),
+    db.land_dd_items.clear(),
+    db.land_negotiations.clear(),
+    db.land_acquisition_costs.clear(),
+    db.land_development_activities.clear(),
+    db.land_development_progress.clear(),
     db.towers.clear(),
     db.project_status_history.clear(),
     db.unit_deliveries.clear(),
