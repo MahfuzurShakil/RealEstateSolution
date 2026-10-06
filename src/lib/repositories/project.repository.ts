@@ -538,39 +538,24 @@ class LandProjectMappingRepository extends BaseRepository<LandProjectMapping> {
   }
 
   /**
-   * Rewrites the land set for a project. A land handed to a project moves to
-   * `linked_to_project` (Module 1 leaves that transition to Module 2); a land
-   * removed from its last project falls back to how it was acquired.
+   * Rewrites the land set for a project.
+   *
+   * Only the mapping changes. Until v29 this also wrote `linked_to_project`
+   * over the land's status, which erased where the deal stood once a project
+   * could be planned on land still being negotiated (PLATFORM-REPLAN.md §1.3).
+   * "In a project" is now read from the mapping, and the land keeps its own
+   * pipeline status.
    */
   async setLandsForProject(projectId: string, landIds: string[]): Promise<void> {
     const existing = await this.listForProject(projectId);
-    const previousIds = existing.map((m) => m.land_id);
-
     await db.land_project_mapping.bulkDelete(existing.map((m) => m.id));
     for (const land_id of landIds) await this.create({ land_id, project_id: projectId });
+  }
 
-    for (const land_id of new Set([...previousIds, ...landIds])) {
-      const land = await db.lands.get(land_id);
-      if (!land) continue;
-
-      const stillLinked = (await this.projectsForLand(land_id)).length > 0;
-      if (stillLinked && land.status !== 'linked_to_project') {
-        await db.lands.update(land_id, {
-          status: 'linked_to_project',
-          updated_at: new Date().toISOString(),
-        });
-      } else if (!stillLinked && land.status === 'linked_to_project') {
-        /*
-         * Back to where its own development left it, not to `acquired`: a plot
-         * whose filling was finished before the project took it is still
-         * finished when the project lets it go. `landPipelineRepository`
-         * re-derives that from the activities.
-         */
-        await db.lands.update(land_id, { status: 'acquired', updated_at: new Date().toISOString() });
-        const { landPipelineRepository } = await import('./land-pipeline.repository');
-        await landPipelineRepository.syncFromWork(land_id);
-      }
-    }
+  /** Every land id that sits in at least one project — for list badges. */
+  async linkedLandIds(): Promise<Set<string>> {
+    const rows = await db.land_project_mapping.toArray();
+    return new Set(rows.map((r) => r.land_id));
   }
 }
 

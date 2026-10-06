@@ -189,8 +189,8 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
     if (landIds.length === 0) next.lands = 'Link at least one land to this project';
     /*
      * Gate G3 (BRD DEV-004). Checked here because this is where the link is
-     * actually made — `linked_to_project` is set by this form and never chosen
-     * on the land page.
+     * actually made — lands are put into projects from this form, never from
+     * the land page.
      *
      * Every blocked plot is named rather than just the first, so somebody
      * fixing this does not discover the second one after saving the first.
@@ -239,8 +239,7 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
         });
       }
 
-      // Also flips the linked lands to `linked_to_project` (Module 1 leaves
-      // that transition to Module 2).
+      // the mapping only — the lands keep their own pipeline status (v29)
       await landProjectMappingRepository.setLandsForProject(saved.id, landIds);
 
       router.push(`/admin/projects/${saved.id}`);

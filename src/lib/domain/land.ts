@@ -3,6 +3,7 @@ import type {
   AcquisitionType,
   FeasibilityRecommendation,
   FeasibilityStatus,
+  LandEntryMode,
   LandStatus,
 } from '@/lib/db/types';
 import { localDay, todayLocal } from '@/lib/utils/format';
@@ -12,11 +13,11 @@ import { localDay, todayLocal } from '@/lib/utils/format';
  *
  *   sourced → under_review → dd_in_progress → negotiation → agreed
  *           → acquired → under_development → ready_for_project
- *           → linked_to_project
  *   any of those → on_hold | rejected;  ours → disposed
  *
- * `linked_to_project` is NOT chosen by hand — Module 2 sets it when the land is
- * mapped to a project. See `LAND_STATUSES` for why `jv_signed` is gone.
+ * Being in a project is not a status (v29) — it is a `land_project_mapping`
+ * row, read by `landProjectMappingRepository.projectsForLand`. See
+ * `LAND_STATUSES` for why `jv_signed` and `linked_to_project` are gone.
  */
 export const LAND_STATUS_META: Record<LandStatus, { label: string; tone: BadgeTone }> = {
   sourced: { label: 'Sourced', tone: 'neutral' },
@@ -27,7 +28,6 @@ export const LAND_STATUS_META: Record<LandStatus, { label: string; tone: BadgeTo
   acquired: { label: 'Acquired', tone: 'green' },
   under_development: { label: 'Under Development', tone: 'blue' },
   ready_for_project: { label: 'Ready for Project', tone: 'green' },
-  linked_to_project: { label: 'Linked to Project', tone: 'teal' },
   on_hold: { label: 'On Hold', tone: 'amber' },
   rejected: { label: 'Rejected', tone: 'red' },
   disposed: { label: 'Divested', tone: 'neutral' },
@@ -58,7 +58,7 @@ export const LAND_STAGE_META: Record<LandStage, { label: string; statuses: LandS
   deal: { label: 'Deal', statuses: ['negotiation', 'agreed'] },
   owned: {
     label: 'Owned',
-    statuses: ['acquired', 'under_development', 'ready_for_project', 'linked_to_project'],
+    statuses: ['acquired', 'under_development', 'ready_for_project'],
   },
   closed: { label: 'Closed', statuses: ['on_hold', 'rejected', 'disposed'] },
 };
@@ -93,14 +93,13 @@ export function allowedNextStatuses(current: LandStatus): LandStatus[] {
      * is not a sale: selling a plot means linking it to a `land_share` or
      * `plot_development` project, which is where units and bookings live.
      *
-     * Not offered from `linked_to_project`: a plot a project already stands on
-     * is not something to let go of from the land screen, and if it genuinely
-     * is, the project has to release it first.
+     * A plot a project stands on should not be let go of from here; the land
+     * page hides the action while the land is in a project, and the project
+     * has to release it first.
      */
     acquired: ['disposed'],
     under_development: ['disposed'],
     ready_for_project: ['disposed'],
-    linked_to_project: [],
     // a parked land is resumed (back to where it was) or dropped
     on_hold: ['rejected'],
     // a rejected land can be reopened at the start of the pipeline
@@ -209,8 +208,7 @@ export function ddGateBlockReason(progress: {
  * the dates on the plan are wrong from the day they are drawn.
  *
  * Enforced where the link is actually made — `ProjectForm` — rather than on the
- * land page, because `linked_to_project` is set by Module 2 and never chosen by
- * hand.
+ * land page, because the link is made from the project side.
  */
 export function developmentGateBlockReason(
   land: { name: string; no_development_required?: boolean | null } | undefined,
@@ -300,6 +298,8 @@ export const WAITING_LABEL: Record<WaitingKey, string> = {
 
 export interface LandWaitingInput {
   status: LandStatus;
+  /** v29 — a project already stands on it (from `land_project_mapping`) */
+  inProject?: boolean;
   acquisitionType: AcquisitionType;
   doneVisits: number;
   feasibility: FeasibilityGateInput;
@@ -370,9 +370,9 @@ export function landWaitingOn(input: LandWaitingInput): { key: WaitingKey; text:
       return { key: 'development', text: `${n} development ${n === 1 ? 'activity' : 'activities'}` };
     }
     case 'ready_for_project':
-      return { key: 'project', text: 'A project to be planned on it' };
-    case 'linked_to_project':
-      return { key: 'nothing', text: 'In a project' };
+      return input.inProject
+        ? { key: 'nothing', text: 'In a project' }
+        : { key: 'project', text: 'A project to be planned on it' };
     case 'on_hold':
       return { key: 'decision', text: 'A decision to resume or drop it' };
     case 'rejected':
@@ -544,14 +544,13 @@ export function nextAutomaticStep(
 
 /**
  * Where "Correct this status" may put a land — for land bought before this
- * system existed, or moved by mistake. Never `linked_to_project` (Module 2
- * owns it), and never the other acquisition type's outcome.
+ * system existed, or moved by mistake. Land already owned when it is entered
+ * should use the owned entry instead (v29), which records what was paid.
  */
 export function correctableStatuses(current: LandStatus): LandStatus[] {
-  if (current === 'linked_to_project') return [];
   return (Object.keys(LAND_STATUS_META) as LandStatus[]).filter(
-    // a project sets `linked_to_project`; parking and dropping are decisions
-    (s) => s !== current && s !== 'linked_to_project' && s !== 'on_hold',
+    // parking and dropping are decisions, recorded with a reason
+    (s) => s !== current && s !== 'on_hold',
   );
 }
 
@@ -571,7 +570,6 @@ export const STATUS_EXPECTS: Record<LandStatus, string> = {
   acquired: 'The deed is registered, or the JV agreement is signed.',
   under_development: 'The plot is ours and development work is running.',
   ready_for_project: 'The plot is ours and needs no further development.',
-  linked_to_project: 'Set by Module 2 when a project takes the land.',
   on_hold: 'Parked — recorded from the page header, with a reason.',
   rejected: 'Dropped. Never bought.',
   disposed: 'Was ours and is no longer held.',
@@ -584,8 +582,7 @@ export function landIsHeld(status: LandStatus): boolean {
   return (
     status === 'acquired' ||
     status === 'under_development' ||
-    status === 'ready_for_project' ||
-    status === 'linked_to_project'
+    status === 'ready_for_project'
   );
 }
 
@@ -681,7 +678,19 @@ export const LAND_PIPELINE_STEPS: LandStatus[] = [
 export const ACQUISITION_TYPE_LABEL: Record<AcquisitionType, string> = {
   direct_purchase: 'Direct Purchase',
   joint_venture: 'Joint Venture',
+  inherited: 'Inherited / Family',
+  other: 'Other',
 };
+
+export const LAND_ENTRY_MODE_LABEL: Record<LandEntryMode, string> = {
+  pipeline: 'Acquisition pipeline',
+  owned: 'Already owned',
+};
+
+/** Rows written before v29 carry no `entry_mode`; they all came through the pipeline. */
+export function landEntryMode(land: { entry_mode?: LandEntryMode | null }): LandEntryMode {
+  return land.entry_mode ?? 'pipeline';
+}
 
 export const LAND_SIZE_UNIT_LABEL: Record<string, string> = {
   katha: 'Katha',
@@ -689,7 +698,7 @@ export const LAND_SIZE_UNIT_LABEL: Record<string, string> = {
   decimal: 'Decimal',
 };
 
-/** A land is "closed" once acquired/JV-signed/rejected/disposed or handed to a project. */
+/** A land is "closed" once acquired/JV-signed/rejected/disposed. */
 export function isTerminalStatus(status: LandStatus): boolean {
   return (
     landIsHeld(status) || status === 'rejected' || status === 'disposed' || status === 'on_hold'

@@ -138,7 +138,6 @@ export function LandProgressCard({
         label: 'Land development',
         done:
           land.status === 'ready_for_project' ||
-          land.status === 'linked_to_project' ||
           Boolean(land.no_development_required) ||
           (dev.total > 0 && dev.outstanding === 0),
         count: land.no_development_required

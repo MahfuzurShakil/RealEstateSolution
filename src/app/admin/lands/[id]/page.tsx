@@ -44,6 +44,7 @@ import {
   statusStepConfig,
   finalAmountLabel,
   landHeadlineAmount,
+  landIsHeld,
   landUsesPurchasePricing,
 } from '@/lib/domain/land';
 import { JV_SHARE_BASIS_LABEL } from '@/lib/domain/project';
@@ -55,6 +56,7 @@ import {
   ownerSettlementRepository,
   landDevelopmentRepository,
   landPipelineRepository,
+  landProjectMappingRepository,
   siteVisitRepository,
   userRepository,
   type LandWithRelations,
@@ -190,6 +192,8 @@ export default function LandDetailPage() {
     () => landDevelopmentRepository.readinessForLand(id),
     [id],
   );
+  // v29 — "in a project" is a mapping, not a status
+  const inProjects = useLiveQuery(() => landProjectMappingRepository.projectsForLand(id), [id]);
   const roundCount = useLiveQuery(
     async () => (await landNegotiationRepository.listForLand(id)).length,
     [id],
@@ -213,12 +217,13 @@ export default function LandDetailPage() {
   const canEditOwnerAmounts =
     land.owners.length > 0 &&
     (Number(land.final_agreed_amount) || 0) > 0 &&
-    ['agreed', 'acquired', 'jv_signed', 'linked_to_project', 'disposed'].includes(land.status);
+    (land.status === 'agreed' || landIsHeld(land.status) || land.status === 'disposed');
   const purchasePricing = landUsesPurchasePricing(land.acquisition_type);
   const headline = landHeadlineAmount(land);
-  const costSheetRelevant = ['agreed', 'acquired', 'jv_signed', 'linked_to_project', 'disposed'].includes(
-    land.status,
-  );
+  // held covers under development and ready too — the sheet used to vanish
+  // the moment a plot went into development
+  const costSheetRelevant =
+    land.status === 'agreed' || landIsHeld(land.status) || land.status === 'disposed';
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { key: 'owners', label: `Owners (${land.owners.length})` },
@@ -251,11 +256,27 @@ export default function LandDetailPage() {
 
       <PageHeader
         title={land.name}
-        subtitle={`${land.code} · ${[land.location_area, land.location_district, land.location_division].filter(Boolean).join(', ')}`}
+        subtitle={
+          <>
+            {`${land.code} · ${[land.location_area, land.location_district, land.location_division].filter(Boolean).join(', ')}`}
+            {(inProjects ?? []).map((p) => (
+              <Link
+                key={p.id}
+                href={`/admin/projects/${p.id}`}
+                className="ml-2 inline-flex align-middle"
+              >
+                <Badge tone="teal">In project {p.code}</Badge>
+              </Link>
+            ))}
+          </>
+        }
         action={
           <div className="flex flex-wrap gap-2">
             {/* the decisions only a person can make — everything else follows the work */}
-            {allowedNextStatuses(land.status).map((to) => (
+            {allowedNextStatuses(land.status)
+              // a project stands on it: the project has to release it first
+              .filter((to) => !(to === 'disposed' && (inProjects?.length ?? 0) > 0))
+              .map((to) => (
               <Button
                 key={to}
                 variant={to === 'rejected' ? 'dangerGhost' : 'outline'}

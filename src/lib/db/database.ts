@@ -619,6 +619,86 @@ export class AppDatabase extends Dexie {
     this.version(28).stores({
       unit_deliveries: 'id, unit_id, booking_id, step, event_date',
     });
+
+    /*
+     * v29 — project first, land optional (PLATFORM-REPLAN.md, Phase 1).
+     *
+     * Three things change shape:
+     *
+     * 1. `linked_to_project` stops being a land status. Linking used to
+     *    overwrite whatever the land was, which was harmless while only a held
+     *    land could be linked — and wrong once a project may be planned on land
+     *    still in negotiation. Each such land gets back the status its
+     *    development work says it is at (the same rule `nextAutomaticStep`
+     *    applies), and the link/unlink rows leave the status history: they
+     *    recorded a mapping, which `land_project_mapping` still holds, not a
+     *    step in the land's own life.
+     * 2. Lands gain `entry_mode` (indexed: the land list filters owned against
+     *    pipeline) and `acquired_on`. Every existing land came through the
+     *    pipeline, so every row is stamped `pipeline`.
+     * 3. Projects gain `sales_status` (indexed: bookings list only projects
+     *    whose sales are open). A project that already has bookings was
+     *    evidently selling, so it starts `open`; the rest start `not_open`.
+     *
+     * The other v29 columns (`construction_after_sale`, the estimate fields,
+     * `land_acquisition_costs.historic_paid_amount`, `expenses.land_cost_head`)
+     * are not queried on and need no rewrite — absent reads as empty.
+     */
+    this.version(29)
+      .stores({
+        lands:
+          'id, &code, name, status, acquisition_type, entry_mode, location_district, location_area, assigned_to, created_at',
+        projects:
+          'id, &code, name, status, sales_status, project_type, is_public, is_featured, succeeds_project_id, created_at',
+      })
+      .upgrade(async (tx) => {
+        const activities = await tx.table('land_development_activities').toArray();
+        const lands = await tx.table('lands').toArray();
+        for (const land of lands) {
+          const changes: Record<string, unknown> = { entry_mode: land.entry_mode ?? 'pipeline' };
+          if (land.status === 'linked_to_project') {
+            const live = activities.filter(
+              (a) => a.land_id === land.id && a.status !== 'cancelled',
+            );
+            const outstanding = live.filter((a) => a.status !== 'completed').length;
+            changes.status = land.no_development_required
+              ? 'ready_for_project'
+              : live.length === 0
+                ? 'acquired'
+                : outstanding > 0
+                  ? 'under_development'
+                  : 'ready_for_project';
+          }
+          await tx.table('lands').update(land.id, changes);
+        }
+
+        const history = await tx.table('land_status_history').toArray();
+        const linkRows = history
+          .filter((e) => e.from_status === 'linked_to_project' || e.to_status === 'linked_to_project')
+          .map((e) => e.id);
+        await tx.table('land_status_history').bulkDelete(linkRows);
+
+        // a booking reaches its project through unit → tower
+        const towerProject = new Map(
+          (await tx.table('towers').toArray()).map((t) => [t.id as string, t.project_id as string]),
+        );
+        const unitProject = new Map(
+          (await tx.table('units').toArray()).map((u) => [
+            u.id as string,
+            towerProject.get(u.tower_id as string),
+          ]),
+        );
+        const booked = new Set(
+          (await tx.table('bookings').toArray()).map((b) => unitProject.get(b.unit_id as string)),
+        );
+        const projects = await tx.table('projects').toArray();
+        for (const project of projects) {
+          if (project.sales_status) continue;
+          await tx
+            .table('projects')
+            .update(project.id, { sales_status: booked.has(project.id) ? 'open' : 'not_open' });
+        }
+      });
   }
 }
 

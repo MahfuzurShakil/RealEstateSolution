@@ -1267,8 +1267,8 @@ export const DEMO_LANDS: DemoLand[] = [
    * development with progress, per-owner settlement with payments, named
    * documents, and a status history that includes a correction.
    *
-   * It ends at `linked_to_project` because the project built on it
-   * (`Nokshi Lakeview Residence`) is the other half of the demo.
+   * The project built on it (`Nokshi Lakeview Residence`) is the other half
+   * of the demo; since v29 that shows as an "In project" badge, not a status.
    *
    * Keep it complete. If a field is added to `lands`, add it here too — this
    * is the record that is supposed to answer "what can this module hold?".

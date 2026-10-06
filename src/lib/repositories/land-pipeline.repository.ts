@@ -182,7 +182,7 @@ class LandPipelineRepository {
    */
   async waitingOnForLands(lands: Land[]): Promise<Map<string, { key: WaitingKey; text: string }>> {
     const ids = new Set(lands.map((l) => l.id));
-    const [visits, studies, ddItems, rounds, schedules, activities, checklist] = await Promise.all([
+    const [visits, studies, ddItems, rounds, schedules, activities, checklist, mappings] = await Promise.all([
       db.site_visits.toArray(),
       db.land_feasibility.toArray(),
       db.land_dd_items.toArray(),
@@ -190,7 +190,9 @@ class LandPipelineRepository {
       db.payment_schedules.where('entity_type').equals('land').toArray(),
       db.land_development_activities.toArray(),
       db.dd_checklist_items.toArray(),
+      db.land_project_mapping.toArray(),
     ]);
+    const inProject = new Set(mappings.map((m) => m.land_id));
 
     const settledDd = new Set(['passed', 'conditionally_approved', 'waived', 'not_applicable']);
     const byLand = <T extends { land_id: string }>(rows: T[]) => {
@@ -223,6 +225,7 @@ class LandPipelineRepository {
         land.id,
         landWaitingOn({
           status: land.status,
+          inProject: inProject.has(land.id),
           acquisitionType: land.acquisition_type,
           doneVisits: (visitsBy.get(land.id) ?? []).filter((v) => v.status !== 'planned').length,
           feasibility: {

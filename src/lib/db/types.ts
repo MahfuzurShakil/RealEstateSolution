@@ -189,8 +189,12 @@ export interface CompanySettings extends BaseEntity {
  * - `jv_signed` — the BRD folds a joint venture into ACQUIRED, but the whole JV
  *   branch (share basis, unit allocation, owner inventory) keys off this being
  *   its own outcome.
- * - `linked_to_project` — set by Module 2 when the land is mapped to a project,
- *   never chosen by hand.
+ *
+ * `linked_to_project` used to be a twelfth status, set when a project took the
+ * land. It went in Dexie v29 (PLATFORM-REPLAN.md §1.3): a project can now be
+ * planned on land still being negotiated, and overwriting that land's pipeline
+ * status with "linked" erased where the deal actually stood. Whether a land is
+ * in a project is read from `land_project_mapping` instead.
  */
 /**
  * Where a land is (client decision 2026-09-18, extending BRD v2.0 LAND-004).
@@ -224,7 +228,6 @@ export const LAND_STATUSES = [
   'acquired',
   'under_development',
   'ready_for_project',
-  'linked_to_project',
   'on_hold',
   'rejected',
   'disposed',
@@ -234,8 +237,27 @@ export type LandStatus = (typeof LAND_STATUSES)[number];
 export const LAND_SIZE_UNITS = ['katha', 'bigha', 'decimal'] as const;
 export type LandSizeUnit = (typeof LAND_SIZE_UNITS)[number];
 
-export const ACQUISITION_TYPES = ['direct_purchase', 'joint_venture'] as const;
+/**
+ * How the land came to the company. `inherited` and `other` arrived with the
+ * owned-land entry (v29): family land and land bought long before this system
+ * existed were neither a purchase we can document step by step nor a JV, and
+ * forcing them into `direct_purchase` asked for a settlement schedule that
+ * never existed.
+ */
+export const ACQUISITION_TYPES = ['direct_purchase', 'joint_venture', 'inherited', 'other'] as const;
 export type AcquisitionType = (typeof ACQUISITION_TYPES)[number];
+
+/**
+ * v29 — how a land record was entered (PLATFORM-REPLAN.md §1.3).
+ *
+ * - `pipeline` — being acquired: sourced, visited, checked, negotiated, closed
+ *   (L1–L7). Every land before v29.
+ * - `owned` — already ours when it was entered. Created straight at
+ *   `acquired`; the acquisition steps read as not applicable rather than
+ *   outstanding, and what was paid is entered once as historic cost.
+ */
+export const LAND_ENTRY_MODES = ['pipeline', 'owned'] as const;
+export type LandEntryMode = (typeof LAND_ENTRY_MODES)[number];
 
 export interface Land extends BaseEntity {
   code: string;                       // LND-2026-001
@@ -304,6 +326,13 @@ export interface Land extends BaseEntity {
   gps_lng?: number | null;
   nearby_facilities?: string | null;
   acquisition_type: AcquisitionType;
+  /** v29 — absent on rows written before it; read a missing value as `pipeline` */
+  entry_mode?: LandEntryMode;
+  /**
+   * v29 — when the land became ours. Set on an owned entry; on a pipeline land
+   * the registration / JV signing event date says it, so it is left empty.
+   */
+  acquired_on?: ISODate | null;
   status: LandStatus;
   assigned_to?: UUID | null;
   remarks?: string | null;
@@ -637,6 +666,7 @@ export const ACQUISITION_COST_HEADS = [
   'legal_fee',
   'broker_commission',
   'survey_fee',
+  'holding_cost',
   'other',
 ] as const;
 export type AcquisitionCostHead = (typeof ACQUISITION_COST_HEADS)[number];
@@ -650,6 +680,7 @@ export const ACQUISITION_COST_HEAD_LABEL: Record<AcquisitionCostHead, string> = 
   legal_fee: 'Legal fees',
   broker_commission: 'Broker commission',
   survey_fee: 'Survey fee',
+  holding_cost: 'Holding cost (khajna, guard, utilities)',
   other: 'Other',
 };
 
@@ -657,6 +688,15 @@ export interface LandAcquisitionCost extends BaseEntity {
   land_id: UUID;
   cost_head: AcquisitionCostHead;
   estimated_amount: number;
+  /**
+   * v29 — paid before this system existed, so not in the expense ledger.
+   *
+   * An owned land bought in 2015 has a real price and a real registration fee,
+   * but booking them as expenses today would put 2015 money through this
+   * year's cash accounts. The cost sheet adds this to the ledger actual
+   * instead. Zero / absent for land acquired through the pipeline.
+   */
+  historic_paid_amount?: number | null;
   remarks?: string | null;
 }
 
@@ -1038,6 +1078,21 @@ export function projectSellsLand(type: ProjectType): boolean {
   return type === 'land_share' || type === 'plot_development';
 }
 
+/**
+ * v29 — whether the project is taking bookings (PLATFORM-REPLAN.md §1.1).
+ *
+ * Separate from `status` on purpose: in Bangladesh sales open around design
+ * and approval and run all through construction, so no build stage means
+ * "selling". `sold_out` is set by hand — a sold-out project with one
+ * cancellation is a decision, not arithmetic.
+ */
+export const PROJECT_SALES_STATUSES = ['not_open', 'open', 'paused', 'sold_out'] as const;
+export type ProjectSalesStatus = (typeof PROJECT_SALES_STATUSES)[number];
+
+/** v29 — a land-share project's plan for the land once the shares are sold. */
+export const CONSTRUCTION_AFTER_SALE = ['no', 'planned', 'undecided'] as const;
+export type ConstructionAfterSale = (typeof CONSTRUCTION_AFTER_SALE)[number];
+
 export interface Project extends BaseEntity {
   code: string;                       // PRJ-2026-001
   name: string;
@@ -1085,6 +1140,19 @@ export interface Project extends BaseEntity {
    * becomes a `plot_development` project that succeeds it.
    */
   succeeds_project_id?: UUID | null;
+  /** v29 — absent on rows written before it; read a missing value as `not_open` */
+  sales_status?: ProjectSalesStatus;
+  /** v29 — land_share only: what happens to the land after the shares sell */
+  construction_after_sale?: ConstructionAfterSale | null;
+  /**
+   * v29 — the quick revenue estimate used before units exist: saleable area
+   * (sqft for built product, the land unit for plots and shares) × average
+   * rate. Once units exist the Costing tab reads their prices instead.
+   */
+  est_saleable_area?: number | null;
+  est_avg_rate?: number | null;
+  /** v29 — percentage added on top of the estimated cost heads */
+  contingency_pct?: number | null;
   /** Public Portal P1 */
   is_public: boolean;
   is_featured: boolean;
@@ -2255,6 +2323,13 @@ export interface Expense extends BaseEntity {
    * quietly assumed to be symmetry.
    */
   installment_id?: UUID | null;
+  /**
+   * v29 — which acquisition head a `land_extra_cost` expense pays
+   * (registration, stamp duty, mutation…). Without it the cost sheet could
+   * only call those payments "unclassified", and the owner could not see
+   * what the registration actually cost against what was estimated.
+   */
+  land_cost_head?: AcquisitionCostHead | null;
   cost_category: CostCategory;
   /** short, plain label — the whole point of the ledger when category='other' */
   cost_reason: string;

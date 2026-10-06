@@ -1045,7 +1045,7 @@ async function seedDemoProjects(
       createdBy,
     );
 
-    // also flips those lands to `linked_to_project`
+    // the mapping only — since v29 the lands keep their own status
     await landProjectMappingRepository.setLandsForProject(
       project.id,
       demo.land_names.map((name) => landIds.get(name)).filter((id): id is string => Boolean(id)),
