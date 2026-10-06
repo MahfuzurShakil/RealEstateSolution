@@ -1033,3 +1033,57 @@ export const PROJECT_STEP_CONFIG: Record<ProjectStatus, ProjectStepConfig> = {
     ],
   },
 };
+
+/* ------------------------------------------------------------------ *
+ * v29 — land readiness (PLATFORM-REPLAN.md §1.1)
+ * ------------------------------------------------------------------ */
+
+/**
+ * How secure the ground under a project is, read from its linked lands.
+ *
+ * Not stored: it changes every time a land moves, and the land status is
+ * already the record. The project only summarises the weakest of its lands —
+ * a project on two plots is only as secured as the one still in negotiation.
+ */
+export const LAND_READINESS = ['none', 'acquiring', 'secured', 'ready'] as const;
+export type LandReadiness = (typeof LAND_READINESS)[number];
+
+export const LAND_READINESS_META: Record<
+  LandReadiness,
+  { label: string; tone: BadgeTone; hint: string }
+> = {
+  none: {
+    label: 'No land yet',
+    tone: 'neutral',
+    hint: 'Link the land this project stands on, or add it from the project form.',
+  },
+  acquiring: {
+    label: 'Land in acquisition',
+    tone: 'amber',
+    hint: 'At least one plot is still being sourced, checked or negotiated.',
+  },
+  secured: {
+    label: 'Land secured',
+    tone: 'blue',
+    hint: 'All land is owned or the JV is signed; development is not finished or not yet assessed.',
+  },
+  ready: {
+    label: 'Ready to build',
+    tone: 'green',
+    hint: 'All land is owned and needs no further development.',
+  },
+};
+
+const HELD = new Set(['acquired', 'under_development', 'ready_for_project']);
+
+export function landReadiness(lands: { status: string }[]): LandReadiness {
+  if (lands.length === 0) return 'none';
+  if (lands.some((l) => !HELD.has(l.status))) return 'acquiring';
+  if (lands.every((l) => l.status === 'ready_for_project')) return 'ready';
+  return 'secured';
+}
+
+/** Secured or better — what construction needs underneath it. */
+export function landIsSecured(readiness: LandReadiness): boolean {
+  return readiness === 'secured' || readiness === 'ready';
+}

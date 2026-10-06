@@ -2,13 +2,14 @@
 
 import type { ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Check, ChevronRight, Info } from 'lucide-react';
+import { Check, ChevronRight, Info, Minus } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardHeader } from '@/components/ui/Card';
 import type { Land } from '@/lib/db/types';
 import {
   LAND_STATUS_META,
   STEP_SETS_STATUS,
+  landEntryMode,
   landIsHeld,
   landStatusLabel,
 } from '@/lib/domain/land';
@@ -29,6 +30,8 @@ interface Step {
   key: keyof typeof STEP_SETS_STATUS;
   label: string;
   done: boolean;
+  /** v29 — an owned land never went through this step; neither done nor owed */
+  na?: boolean;
   /** the small count beside the label */
   count?: string;
   section: TimelineSection;
@@ -71,6 +74,7 @@ export function LandProgressCard({
   }, [land.id, land.status]);
 
   const isJv = land.acquisition_type === 'joint_venture';
+  const owned = landEntryMode(land) === 'owned';
   const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
   let steps: Step[] = [];
@@ -148,9 +152,26 @@ export function LandProgressCard({
         section: 'development',
       },
     ];
+    /*
+     * v29 — a land entered as already owned skipped the acquisition. Its
+     * unrecorded steps are not outstanding work, so they are shown as not
+     * applicable and left out of the count. Anything recorded anyway (a DD
+     * check done for comfort) still ticks.
+     */
+    if (owned) {
+      const acquisitionSteps = new Set(['visit', 'feasibility', 'dd', 'negotiation', 'settlement']);
+      steps = steps.map((step) => {
+        if (step.key === 'closing') return { ...step, label: 'Owned (entered as owned)' };
+        if (acquisitionSteps.has(step.key) && !step.done) {
+          return { ...step, na: true, count: undefined };
+        }
+        return step;
+      });
+    }
   }
 
-  const done = steps.filter((s) => s.done).length;
+  const counted = steps.filter((s) => !s.na);
+  const done = counted.filter((s) => s.done).length;
 
   return (
     <Card>
@@ -165,7 +186,7 @@ export function LandProgressCard({
       {data && (
         <>
           <p className="mb-3 text-xs text-ink-muted">
-            {done} of {steps.length} steps done
+            {done} of {counted.length} steps done
           </p>
           <ol className="space-y-1">
             {steps.map((step) => (
@@ -175,8 +196,13 @@ export function LandProgressCard({
                   onClick={() => onOpen(step.section)}
                   className="group flex w-full items-center gap-3 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-admin-50/60"
                 >
-                  <Tick done={step.done} />
-                  <span className={cn('min-w-0 flex-1 text-sm', step.done ? 'text-ink' : 'text-ink-muted')}>
+                  <Tick done={step.done} na={step.na} />
+                  <span
+                    className={cn(
+                      'min-w-0 flex-1 text-sm',
+                      step.done ? 'text-ink' : step.na ? 'text-slate-400' : 'text-ink-muted',
+                    )}
+                  >
                     {step.label}
                   </span>
                   {step.count && (
@@ -190,9 +216,11 @@ export function LandProgressCard({
                     status is a gate (feasibility) or a record (the schedule).
                   */}
                   <span className="hidden shrink-0 text-[11px] text-slate-400 sm:block">
-                    {STEP_SETS_STATUS[step.key]
-                      ? `→ ${landStatusLabel(STEP_SETS_STATUS[step.key]!, land.acquisition_type)}`
-                      : 'no status'}
+                    {step.na
+                      ? 'not applicable'
+                      : STEP_SETS_STATUS[step.key]
+                        ? `→ ${landStatusLabel(STEP_SETS_STATUS[step.key]!, land.acquisition_type)}`
+                        : 'no status'}
                   </span>
                   <ChevronRight className="size-3.5 shrink-0 text-slate-300 group-hover:text-admin-600" />
                 </button>
@@ -200,11 +228,20 @@ export function LandProgressCard({
             ))}
           </ol>
           <Note>
-            Status moves on its own as this work is recorded.{' '}
-            {isJv
-              ? 'JV signing is recorded on the Joint Venture tab'
-              : 'Registration is recorded under Negotiation & Acquisition'}
-            ; reject or divest from the page header.
+            {owned ? (
+              <>
+                Entered as already owned, so the acquisition steps do not apply. Development
+                still moves the status; divest from the page header.
+              </>
+            ) : (
+              <>
+                Status moves on its own as this work is recorded.{' '}
+                {isJv
+                  ? 'JV signing is recorded on the Joint Venture tab'
+                  : 'Registration is recorded under Negotiation & Acquisition'}
+                ; reject or divest from the page header.
+              </>
+            )}
           </Note>
         </>
       )}
@@ -212,15 +249,20 @@ export function LandProgressCard({
   );
 }
 
-function Tick({ done }: { done: boolean }) {
+function Tick({ done, na }: { done: boolean; na?: boolean }) {
   return (
     <span
       className={cn(
         'grid size-5 shrink-0 place-items-center rounded-full',
-        done ? 'bg-emerald-500 text-white' : 'border border-slate-300 bg-white',
+        done
+          ? 'bg-emerald-500 text-white'
+          : na
+            ? 'border border-dashed border-slate-300 bg-slate-50 text-slate-400'
+            : 'border border-slate-300 bg-white',
       )}
     >
       {done && <Check className="size-3" />}
+      {na && !done && <Minus className="size-3" />}
     </span>
   );
 }

@@ -4,9 +4,10 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, Globe, Map as MapIcon, Pencil, Star, Trash2 } from 'lucide-react';
+import { ArrowLeft, Globe, Pencil, Star, Trash2 } from 'lucide-react';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { JvAllocationCard } from '@/components/admin/projects/JvAllocationCard';
+import { ProjectLandCard } from '@/components/admin/projects/ProjectLandCard';
 import { ProjectGalleryPanel } from '@/components/admin/projects/ProjectGalleryPanel';
 import { ProjectStatusCard } from '@/components/admin/projects/ProjectStatusCard';
 import { ProjectTimeline } from '@/components/admin/projects/ProjectTimeline';
@@ -181,40 +182,8 @@ export default function ProjectDetailPage() {
                 <Row label="Actual start" value={formatDate(project.actual_start_date)} />
               </Card>
 
-              <Card>
-                <CardHeader title="Linked Land" />
-                {project.lands.length === 0 ? (
-                  <p className="text-sm text-ink-muted">No land linked to this project.</p>
-                ) : (
-                  <ul className="space-y-3">
-                    {project.lands.map((land) => (
-                      <li key={land.id}>
-                        <Link
-                          href={`/admin/lands/${land.id}`}
-                          className="flex items-center gap-3 rounded-xl border border-hairline p-3 transition-colors hover:bg-admin-50/60"
-                        >
-                          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-admin-50 text-admin-600">
-                            <MapIcon className="size-5" />
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-ink">{land.name}</p>
-                            <p className="text-xs text-ink-muted">
-                              {land.code} · {land.land_size}{' '}
-                              {LAND_SIZE_UNIT_LABEL[land.land_size_unit]} ·{' '}
-                              {[land.location_area, land.location_district]
-                                .filter(Boolean)
-                                .join(', ')}
-                            </p>
-                          </div>
-                          {land.acquisition_type === 'joint_venture' && (
-                            <Badge tone="teal">Joint Venture</Badge>
-                          )}
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </Card>
+              {/* v29 — the land under the project, its status and cost */}
+              <ProjectLandCard projectId={project.id} lands={project.lands} />
 
               {(project.amenities.length > 0 || project.surroundings) && (
                 <Card>
@@ -347,7 +316,7 @@ export default function ProjectDetailPage() {
         title={`Delete ${project.code}`}
         subtitle={project.name}
         confirmLabel="Delete project"
-        message="This deletes the project with its towers, units, land links and documents. Linked lands go back to their acquired / JV-signed status. It cannot be undone."
+        message="This deletes the project with its towers, units, land links and documents. The lands stay as they are and simply stop being linked. It cannot be undone."
         onCancel={() => setConfirmDelete(false)}
         onConfirm={async () => {
           await projectRepository.removeCascade(project.id);

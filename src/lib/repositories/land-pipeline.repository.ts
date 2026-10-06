@@ -2,6 +2,7 @@
 
 import { db } from '../db/database';
 import type {
+  AcquisitionCostHead,
   JvShareBasis,
   Land,
   LandDdItem,
@@ -37,7 +38,7 @@ import {
   landRepository,
   landStatusEventRepository,
 } from './land.repository';
-import { landNegotiationRepository } from './negotiation.repository';
+import { landAcquisitionCostRepository, landNegotiationRepository } from './negotiation.repository';
 import { ownerSettlementRepository } from './owner-settlement.repository';
 import { landFeasibilityRepository, siteVisitRepository } from './site-visit.repository';
 
@@ -423,6 +424,60 @@ class LandPipelineRepository {
       // per-owner one — refusing it here blocked a registration that was ready
       hasSchedule: Boolean(schedule) || ownerPlans,
     });
+  }
+
+  /**
+   * v29 — a land that was already ours when it was entered
+   * (PLATFORM-REPLAN.md §1.3).
+   *
+   * Straight to Acquired, with a history row that says so rather than a
+   * correction: nothing was skipped by mistake, there was simply no
+   * acquisition to record. What was paid goes onto the cost sheet as
+   * historic cost, and the land then moves on its development like any
+   * other — a plot marked as needing none lands on Ready for Project.
+   */
+  async recordOwnedEntry(
+    landId: string,
+    details: {
+      acquired_on: string;
+      reference_no: string | null;
+      /** what was paid per head, before this system; zero heads are skipped */
+      paid: Partial<Record<AcquisitionCostHead, number>>;
+    },
+    actor: string | null,
+  ): Promise<void> {
+    const land = await landRepository.getById(landId);
+    if (!land) throw new PipelineBlockedError('This land no longer exists.');
+
+    const price = details.paid.land_price ?? 0;
+    await landRepository.setStatus(
+      landId,
+      'acquired',
+      {
+        event_date: details.acquired_on,
+        performed_by: null,
+        amount: price > 0 ? price : null,
+        reference_no: details.reference_no,
+        remarks:
+          land.acquisition_type === 'inherited'
+            ? 'Entered as already owned — inherited / family land.'
+            : 'Entered as already owned — acquired before this system.',
+        source: 'owned_entry',
+      },
+      actor,
+    );
+    await landRepository.update(landId, {
+      entry_mode: 'owned',
+      acquired_on: details.acquired_on,
+      ...(price > 0 && land.acquisition_type !== 'joint_venture'
+        ? { final_agreed_amount: price }
+        : {}),
+    });
+
+    for (const [head, amount] of Object.entries(details.paid) as [AcquisitionCostHead, number][]) {
+      if (amount > 0) await landAcquisitionCostRepository.setHistoric(landId, head, amount, actor);
+    }
+    await this.syncFromWork(landId, actor);
   }
 
   /** A direct purchase becomes Acquired when the deed is registered. */

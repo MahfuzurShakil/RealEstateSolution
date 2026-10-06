@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { MapPin, Plus, Ruler, Search, Wallet } from 'lucide-react';
+import { KeyRound, MapPin, Plus, Ruler, Search, Wallet } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -122,13 +122,21 @@ export default function LandsListPage() {
     <>
       <PageHeader
         title="Lands"
-        subtitle="Land opportunities from first contact through acquisition or JV."
+        subtitle="Land already owned, and land being acquired from first contact through registration or JV."
         action={
-          <Link href="/admin/lands/new">
-            <Button>
-              <Plus className="size-4" /> Add Land
-            </Button>
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            {/* v29 — land already ours skips the acquisition pipeline */}
+            <Link href="/admin/lands/new?mode=owned">
+              <Button variant="outline">
+                <KeyRound className="size-4" /> Add owned land
+              </Button>
+            </Link>
+            <Link href="/admin/lands/new">
+              <Button>
+                <Plus className="size-4" /> Add Land
+              </Button>
+            </Link>
+          </div>
         }
       />
 

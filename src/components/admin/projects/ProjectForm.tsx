@@ -3,13 +3,16 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Info, Map as MapIcon } from 'lucide-react';
+import { ClipboardList, Info, KeyRound, Map as MapIcon } from 'lucide-react';
+import { Badge } from '@/components/ui/Badge';
+import { QuickLandModal } from './QuickLandModal';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Checkbox, Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
 import {
   PROJECT_TYPES,
   type Land,
+  type LandEntryMode,
   type LandSizeUnit,
   type Project,
   type ProjectType,
@@ -17,8 +20,9 @@ import {
 import {
   ACQUISITION_TYPE_LABEL,
   LAND_SIZE_UNIT_LABEL,
+  LAND_STATUS_META,
   developmentGateBlockReason,
-  landIsHeld,
+  landStatusLabel,
 } from '@/lib/domain/land';
 import { PROJECT_TYPE_HINT, PROJECT_TYPE_LABEL } from '@/lib/domain/project';
 import {
@@ -74,8 +78,12 @@ const num = (v: string) => (v.trim() === '' ? null : Number(v));
 /**
  * Add / Edit form for Module 2 (Design Reference A.9).
  *
- * A project is created against acquired or JV-signed land, so the land picker
- * only offers those — plus whatever this project already holds.
+ * Project first (PLATFORM-REPLAN.md §1.2): a project can be saved with no land
+ * at all, and any land still alive can be linked — one already owned, or one
+ * still in acquisition. Land can also be added from here without leaving the
+ * form. Whether the land is secure enough to sell or build on is the
+ * project's land readiness, checked when sales open and construction starts,
+ * not here.
  */
 export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
   const router = useRouter();
@@ -92,14 +100,18 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
   const [amenityOptions, setAmenityOptions] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  /** v29 — the quick-add land dialog, and which entry it opens on */
+  const [addingLand, setAddingLand] = useState<LandEntryMode | null>(null);
 
   useEffect(() => {
     const alreadyMine = new Set(project?.lands.map((l) => l.id) ?? []);
     landRepository.getAll().then((rows) =>
       setAvailableLands(
         rows
-          // land the company holds: acquired, being developed, ready, or already linked
-          .filter((l) => alreadyMine.has(l.id) || landIsHeld(l.status))
+          // any land still alive — owned or still being acquired (v29)
+          .filter(
+            (l) => alreadyMine.has(l.id) || (l.status !== 'rejected' && l.status !== 'disposed'),
+          )
           .sort((a, b) => a.code.localeCompare(b.code)),
       ),
     );
@@ -186,7 +198,6 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
     ) {
       next.expected_completion_date = 'Completion cannot be before the start date';
     }
-    if (landIds.length === 0) next.lands = 'Link at least one land to this project';
     /*
      * Gate G3 (BRD DEV-004). Checked here because this is where the link is
      * actually made — lands are put into projects from this form, never from
@@ -195,7 +206,7 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
      * Every blocked plot is named rather than just the first, so somebody
      * fixing this does not discover the second one after saving the first.
      */
-    else if (gateOn && blockedLands.length > 0) {
+    if (gateOn && blockedLands.length > 0) {
       next.lands = blockedLands.join(' ');
     }
     if (form.is_featured && !form.is_public) {
@@ -395,15 +406,28 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
       </Card>
 
       <Card>
-        <CardHeader title="Linked Land" />
+        <CardHeader
+          title="Linked Land"
+          action={
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => setAddingLand('owned')}>
+                <KeyRound className="size-4" /> Add owned land
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setAddingLand('pipeline')}>
+                <ClipboardList className="size-4" /> Land to acquire
+              </Button>
+            </div>
+          }
+        />
         <p className="mb-3 flex items-start gap-2 text-xs text-ink-muted">
           <Info className="mt-0.5 size-3.5 shrink-0" />
-          Only acquired or JV-signed lands can carry a project. Linking moves the land to
-          &ldquo;Linked to Project&rdquo;.
+          Optional. You can save the project now and link land later. Land still being acquired
+          can be linked too: it keeps its own status, and the land has to be secured before
+          construction starts.
         </p>
         {availableLands.length === 0 ? (
           <p className="text-sm text-ink-muted">
-            No acquired or JV-signed land yet — finish a land in the pipeline first.
+            No land recorded yet. Add the land this project stands on with the buttons above.
           </p>
         ) : (
           <div className="grid gap-2 sm:grid-cols-2">
@@ -438,7 +462,12 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
                         </span>
                       )}
                     </span>
-                    <span className="block truncate text-sm font-medium text-ink">{land.name}</span>
+                    <span className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium text-ink">{land.name}</span>
+                      <Badge tone={LAND_STATUS_META[land.status].tone}>
+                        {landStatusLabel(land.status, land.acquisition_type)}
+                      </Badge>
+                    </span>
                     <span className="block text-xs text-ink-muted">
                       {land.land_size} {LAND_SIZE_UNIT_LABEL[land.land_size_unit]} ·{' '}
                       {ACQUISITION_TYPE_LABEL[land.acquisition_type]} ·{' '}
@@ -451,6 +480,18 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
           </div>
         )}
         {errors.lands && <p className="mt-2 text-xs text-red-600">{errors.lands}</p>}
+        <QuickLandModal
+          open={addingLand !== null}
+          initialMode={addingLand ?? 'owned'}
+          onClose={() => setAddingLand(null)}
+          onCreated={(land) => {
+            setAvailableLands((rows) =>
+              [...rows, land].sort((a, b) => a.code.localeCompare(b.code)),
+            );
+            setLandIds((ids) => [...ids, land.id]);
+            setAddingLand(null);
+          }}
+        />
       </Card>
 
       <Card>

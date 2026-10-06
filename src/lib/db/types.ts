@@ -418,7 +418,8 @@ export interface LandStatusEvent extends BaseEntity {
   source?: LandStatusEventSource | null;
 }
 
-export const LAND_STATUS_EVENT_SOURCES = ['manual', 'automatic', 'correction'] as const;
+/** `owned_entry` (v29) — the land was entered as already ours, skipping the pipeline */
+export const LAND_STATUS_EVENT_SOURCES = ['manual', 'automatic', 'correction', 'owned_entry'] as const;
 export type LandStatusEventSource = (typeof LAND_STATUS_EVENT_SOURCES)[number];
 
 /* ------------------------------------------------------------------ *

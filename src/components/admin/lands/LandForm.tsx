@@ -3,17 +3,20 @@
 import { useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2, UserPlus } from 'lucide-react';
+import { ClipboardList, KeyRound, Plus, Trash2, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Checkbox, Field, MoneyInput, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
 import { MapPicker } from '@/components/ui/map/MapPicker';
 import { LandownerQuickAddModal } from './LandownerQuickAddModal';
 import {
+  ACQUISITION_COST_HEAD_LABEL,
   ACQUISITION_TYPES,
   JV_SHARE_BASES,
   LAND_SIZE_UNITS,
+  type AcquisitionCostHead,
   type AcquisitionType,
+  type LandEntryMode,
   type JvShareBasis,
   type Land,
   type LandSizeUnit,
@@ -22,6 +25,7 @@ import {
 import { JV_SHARE_BASIS_LABEL } from '@/lib/domain/project';
 import {
   ACQUISITION_TYPE_LABEL,
+  LAND_ENTRY_MODE_LABEL,
   LAND_SIZE_UNIT_LABEL,
   finalAmountHint,
   finalAmountLabel,
@@ -30,6 +34,7 @@ import {
 import { USER_ROLE_META } from '@/lib/domain/access';
 import {
   landJvRepository,
+  landPipelineRepository,
   lookupRepository,
   landOwnerMappingRepository,
   landRepository,
@@ -37,6 +42,24 @@ import {
   userRepository,
   type LandWithRelations,
 } from '@/lib/repositories';
+
+/**
+ * v29 — the heads an owned land is asked about. The full sheet has more
+ * (survey, VAT, holding cost) and they stay editable on the land's cost card;
+ * these are the ones a developer can usually still find a receipt for.
+ */
+const OWNED_COST_HEADS: AcquisitionCostHead[] = [
+  'land_price',
+  'registration_fee',
+  'stamp_duty',
+  'mutation_cost',
+  'legal_fee',
+  'broker_commission',
+  'other',
+];
+
+/** Acquisition types that only make sense for land that is already ours. */
+const OWNED_ONLY_TYPES: AcquisitionType[] = ['inherited', 'other'];
 
 /** Column layout shared by the owner table's header, rows and total. */
 const OWNER_GRID = 'md:grid-cols-[minmax(0,2.6fr)_minmax(0,1fr)_minmax(0,1fr)_4.5rem_2.5rem]';
@@ -164,11 +187,28 @@ function toFormState(land: LandWithRelations): FormState {
  *
  * Owner capture is always shown; the JV card appears only for joint_venture.
  */
-export function LandForm({ land }: { land?: LandWithRelations }) {
+export function LandForm({
+  land,
+  initialMode = 'pipeline',
+}: {
+  land?: LandWithRelations;
+  /** v29 — create only: start in the owned-land entry */
+  initialMode?: LandEntryMode;
+}) {
   const router = useRouter();
   const isEdit = Boolean(land);
 
   const [form, setForm] = useState<FormState>(land ? toFormState(land) : EMPTY);
+  /*
+   * v29 — how this land is being entered (PLATFORM-REPLAN.md §1.3). Chosen on
+   * create only: an owned land goes straight to Acquired, so switching mode on
+   * an existing record would rewrite its history.
+   */
+  const [mode, setMode] = useState<LandEntryMode>(initialMode);
+  const owned = !isEdit && mode === 'owned';
+  const [ownedOn, setOwnedOn] = useState('');
+  const [ownedRef, setOwnedRef] = useState('');
+  const [paid, setPaid] = useState<Partial<Record<AcquisitionCostHead, string>>>({});
   /*
    * Who a land can be assigned to: the land team, plus the roles that stand in
    * for them on a small office. Not every active user — a land assigned to an
@@ -209,6 +249,19 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
 
   const isJv = form.acquisition_type === 'joint_venture';
   const purchasePricing = landUsesPurchasePricing(form.acquisition_type);
+  // an owned land has no asking price — nobody is asking anything any more
+  const asksAskingPrice = purchasePricing && !owned;
+  const acquisitionOptions = owned
+    ? ACQUISITION_TYPES
+    : ACQUISITION_TYPES.filter((t) => !OWNED_ONLY_TYPES.includes(t) || t === form.acquisition_type);
+
+  function chooseMode(next: LandEntryMode) {
+    setMode(next);
+    // inherited / other are owned-only; a pipeline land is bought or a JV
+    if (next === 'pipeline' && OWNED_ONLY_TYPES.includes(form.acquisition_type)) {
+      set('acquisition_type', 'direct_purchase');
+    }
+  }
 
   const ownerShareTotal = useMemo(
     () => Math.round(owners.reduce((sum, o) => sum + (Number(o.ownership_share_pct) || 0), 0) * 100) / 100,
@@ -299,8 +352,9 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
      * land, so every joint venture in the system carries a price nobody asked
      * and nobody agreed — and the list sorts on it.
      */
-    if (purchasePricing && (!form.asking_price.trim() || Number(form.asking_price) < 0))
+    if (asksAskingPrice && (!form.asking_price.trim() || Number(form.asking_price) < 0))
       next.asking_price = 'Enter an amount';
+    if (owned && !ownedOn) next.acquired_on = 'When did it become yours?';
 
     if (owners.some((o) => !o.owner_id)) next.owners = 'Pick a landowner for every row';
     else if (new Set(owners.map((o) => o.owner_id)).size !== owners.length)
@@ -357,7 +411,7 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
         khatian_number: form.khatian_number.trim() || null,
         land_size: Number(form.land_size),
         land_size_unit: form.land_size_unit,
-        asking_price: Number(form.asking_price),
+        asking_price: owned ? 0 : Number(form.asking_price) || 0,
         final_agreed_amount: num(form.final_agreed_amount),
         gps_lat: num(form.gps_lat),
         gps_lng: num(form.gps_lng),
@@ -377,6 +431,7 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
           ...payload,
           code: '',
           status: 'sourced',
+          entry_mode: 'pipeline',
         });
       }
 
@@ -407,6 +462,17 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
         if (jv) await landJvRepository.remove(jv.id);
       }
 
+      // v29 — after owners and JV terms, so the history row sits on a whole record
+      if (owned) {
+        const amounts: Partial<Record<AcquisitionCostHead, number>> = {};
+        for (const head of OWNED_COST_HEADS) amounts[head] = Number(paid[head]) || 0;
+        await landPipelineRepository.recordOwnedEntry(
+          saved.id,
+          { acquired_on: ownedOn, reference_no: ownedRef.trim() || null, paid: amounts },
+          null,
+        );
+      }
+
       router.push(`/admin/lands/${saved.id}`);
     } finally {
       setSaving(false);
@@ -415,6 +481,52 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5 pb-4">
+      {!isEdit && (
+        <Card>
+          <CardHeader
+            title="How is this land coming to you?"
+            subtitle="Land you already own skips site visit, due diligence and negotiation."
+          />
+          <div className="grid gap-3 md:grid-cols-2">
+            {(
+              [
+                {
+                  key: 'owned',
+                  icon: KeyRound,
+                  text: 'Bought earlier, inherited, or the JV is already signed. Record it and what it cost, then start a project on it.',
+                },
+                {
+                  key: 'pipeline',
+                  icon: ClipboardList,
+                  text: 'Still to be acquired. Goes through site visit, due diligence, negotiation and registration.',
+                },
+              ] as const
+            ).map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => chooseMode(opt.key)}
+                aria-pressed={mode === opt.key}
+                className={
+                  'flex items-start gap-3 rounded-xl border p-4 text-left transition ' +
+                  (mode === opt.key
+                    ? 'border-admin-500 bg-admin-50 ring-2 ring-admin-500/20'
+                    : 'border-hairline bg-white hover:border-admin-300')
+                }
+              >
+                <opt.icon className="mt-0.5 size-5 shrink-0 text-admin-600" />
+                <span>
+                  <span className="block text-sm font-semibold text-ink">
+                    {LAND_ENTRY_MODE_LABEL[opt.key]}
+                  </span>
+                  <span className="mt-1 block text-xs text-ink-muted">{opt.text}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </Card>
+      )}
+
       <Card>
         <CardHeader title="Land Information" />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -437,7 +549,7 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
               value={form.acquisition_type}
               onChange={(e) => set('acquisition_type', e.target.value as AcquisitionType)}
             >
-              {ACQUISITION_TYPES.map((t) => (
+              {acquisitionOptions.map((t) => (
                 <option key={t} value={t}>
                   {ACQUISITION_TYPE_LABEL[t]}
                 </option>
@@ -574,7 +686,57 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
         price, and the cash side is written by the pipeline at signing — so the
         card is not rendered rather than rendered empty.
       */}
-      {(purchasePricing || isEdit) && (
+      {owned && (
+        <Card>
+          <CardHeader
+            title="Already owned: when and what it cost"
+            subtitle="Money paid before this system. It goes onto the land's cost sheet, not into this year's accounts."
+          />
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <Field label="Owned since" required error={errors.acquired_on}>
+              <TextInput
+                type="date"
+                value={ownedOn}
+                onChange={(e) => setOwnedOn(e.target.value)}
+                invalid={Boolean(errors.acquired_on)}
+              />
+            </Field>
+            <Field
+              label={isJv ? 'JV agreement no.' : 'Deed no.'}
+              hint="Optional — the registered deed or agreement reference"
+              className="xl:col-span-2"
+            >
+              <TextInput
+                value={ownedRef}
+                placeholder={isJv ? 'e.g. JV-2019/0042' : 'e.g. Dalil 5521/2015'}
+                onChange={(e) => setOwnedRef(e.target.value)}
+              />
+            </Field>
+            {OWNED_COST_HEADS.map((head) => (
+              <Field
+                key={head}
+                label={
+                  head === 'land_price'
+                    ? isJv
+                      ? 'Signing money paid'
+                      : form.acquisition_type === 'inherited'
+                        ? 'Price paid (0 if inherited)'
+                        : 'Land price paid'
+                    : ACQUISITION_COST_HEAD_LABEL[head]
+                }
+              >
+                <MoneyInput
+                  value={paid[head] ?? ''}
+                  placeholder="0"
+                  onChange={(e) => setPaid((p) => ({ ...p, [head]: e.target.value }))}
+                />
+              </Field>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {(asksAskingPrice || isEdit) && (
       <Card>
         <CardHeader title="Commercials (BDT)" />
         {/*
@@ -597,7 +759,7 @@ export function LandForm({ land }: { land?: LandWithRelations }) {
           how a typo gets fixed.
         */}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {purchasePricing && (
+          {asksAskingPrice && (
             <Field label="Asking Price" required error={errors.asking_price}>
               <MoneyInput
                 value={form.asking_price}

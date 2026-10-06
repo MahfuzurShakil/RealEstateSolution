@@ -126,6 +126,39 @@ class LandAcquisitionCostRepository extends BaseRepository<LandAcquisitionCost> 
   }
 
   /**
+   * v29 — what an owned land cost before this system existed.
+   *
+   * The estimate is set to the same figure when the head has none: for land
+   * already bought, the cost is known, and an empty estimate beside a paid
+   * amount would read as an overrun.
+   */
+  async setHistoric(
+    landId: string,
+    head: AcquisitionCostHead,
+    paid: number,
+    createdBy: string | null = null,
+  ): Promise<void> {
+    const existing = (await this.listForLand(landId)).find((r) => r.cost_head === head);
+    if (existing) {
+      await this.update(existing.id, {
+        historic_paid_amount: paid,
+        ...(Number(existing.estimated_amount) > 0 ? {} : { estimated_amount: paid }),
+      });
+      return;
+    }
+    await this.create(
+      {
+        land_id: landId,
+        cost_head: head,
+        estimated_amount: paid,
+        historic_paid_amount: paid,
+        remarks: 'Paid before this system — entered with the land',
+      },
+      createdBy,
+    );
+  }
+
+  /**
    * The sheet: estimate per head, actual per head, and the variance
    * (BRD ACQ-002).
    *
