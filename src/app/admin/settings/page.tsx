@@ -64,6 +64,8 @@ function SettingsForm({
     require_feasibility_approval: settings?.require_feasibility_approval ?? false,
     require_dd_completion: settings?.require_dd_completion ?? false,
     require_development_ready: settings?.require_development_ready ?? false,
+    block_sales_without_land: settings?.block_sales_without_land ?? false,
+    block_sales_before_approval: settings?.block_sales_before_approval ?? false,
   });
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
@@ -250,6 +252,35 @@ function SettingsForm({
               checked={gates.require_development_ready}
               onChange={(v) => {
                 setGates((g) => ({ ...g, require_development_ready: v }));
+                setSaved(false);
+              }}
+            />
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Sales gates" />
+          <p className="mb-3 text-xs text-ink-muted">
+            When a project&rsquo;s sales are opened, these are always shown as warnings. Switch one
+            on to make it a hard stop instead. Starting construction on land that is not secured is
+            always blocked.
+          </p>
+          <div className="space-y-2">
+            <GateToggle
+              label="Block sales until the land is secured"
+              detail="Sales cannot open while any land under the project is still being sourced, checked or negotiated. Land recorded as already owned, registered, or with a signed JV counts as secured."
+              checked={gates.block_sales_without_land}
+              onChange={(v) => {
+                setGates((g) => ({ ...g, block_sales_without_land: v }));
+                setSaved(false);
+              }}
+            />
+            <GateToggle
+              label="Block sales before the plan approval stage"
+              detail="Sales cannot open until the project has reached Approval. The Real Estate Development and Management Act 2010 expects an approved plan before a project is advertised. Land-share projects are exempt: nothing is built."
+              checked={gates.block_sales_before_approval}
+              onChange={(v) => {
+                setGates((g) => ({ ...g, block_sales_before_approval: v }));
                 setSaved(false);
               }}
             />

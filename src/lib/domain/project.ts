@@ -10,7 +10,9 @@ import type {
   BookingStatus,
   DeliveryStep,
   ForSaleBy,
+  ConstructionAfterSale,
   JvShareBasis,
+  ProjectSalesStatus,
   ProjectStatus,
   ProjectType,
   TowerStatus,
@@ -125,6 +127,8 @@ export interface ProjectReadiness {
   units_handed_over: number;
   /** money still owed on confirmed bookings for this project */
   outstanding_amount: number;
+  /** v29 — how secure the land under the project is (`landReadiness`) */
+  land_readiness: LandReadiness;
 }
 
 /**
@@ -178,6 +182,21 @@ export function projectStatusBlockers(
   ) {
     blockers.push(
       'No construction progress has been reported — nothing can be handed over yet',
+    );
+  }
+
+  /*
+   * v29 — no building, filling or road on land that is not ours yet
+   * (PLATFORM-REPLAN.md §1.1). Every shape that has this stage: a plot scheme
+   * calls it Under Development and the land under it is just as much at risk.
+   * Selling before the land is secured is only warned about (it is common,
+   * and the company can switch it to a block); starting work is not.
+   */
+  if (target === 'under_construction' && !landIsSecured(facts.land_readiness)) {
+    blockers.push(
+      facts.land_readiness === 'none'
+        ? 'No land is linked to this project yet. Link or add the land before work starts on it.'
+        : 'The land is still being acquired. Work can start once it is registered, the JV is signed, or it is recorded as already owned.',
     );
   }
 
@@ -1087,3 +1106,96 @@ export function landReadiness(lands: { status: string }[]): LandReadiness {
 export function landIsSecured(readiness: LandReadiness): boolean {
   return readiness === 'secured' || readiness === 'ready';
 }
+
+/* ------------------------------------------------------------------ *
+ * v29 — sales status (PLATFORM-REPLAN.md §1.1)
+ * ------------------------------------------------------------------ */
+
+export const PROJECT_SALES_STATUS_META: Record<
+  ProjectSalesStatus,
+  { label: string; tone: BadgeTone }
+> = {
+  not_open: { label: 'Sales not open', tone: 'neutral' },
+  open: { label: 'Sales open', tone: 'green' },
+  paused: { label: 'Sales paused', tone: 'amber' },
+  sold_out: { label: 'Sold out', tone: 'teal' },
+};
+
+/** Rows written before v29 carry no `sales_status`; read it as not open. */
+export function projectSalesStatus(project: {
+  sales_status?: ProjectSalesStatus | null;
+}): ProjectSalesStatus {
+  return project.sales_status ?? 'not_open';
+}
+
+/** The moves a person can make from each sales status. */
+export function allowedSalesMoves(current: ProjectSalesStatus): ProjectSalesStatus[] {
+  const map: Record<ProjectSalesStatus, ProjectSalesStatus[]> = {
+    not_open: ['open'],
+    open: ['paused', 'sold_out'],
+    paused: ['open', 'sold_out'],
+    // a cancellation can put stock back on the market
+    sold_out: ['open'],
+  };
+  return map[current];
+}
+
+export const SALES_MOVE_LABEL: Record<ProjectSalesStatus, string> = {
+  not_open: 'Close sales',
+  open: 'Open sales',
+  paused: 'Pause sales',
+  sold_out: 'Mark sold out',
+};
+
+/** Where the project status says the plan approval has been passed. */
+const PAST_APPROVAL: ReadonlySet<ProjectStatus> = new Set([
+  'under_construction',
+  'nearly_complete',
+  'handover_ongoing',
+  'closed',
+]);
+
+export interface SalesGateFacts {
+  status: ProjectStatus;
+  shape: ProjectShape;
+  land_readiness: LandReadiness;
+  /** Company Settings — turn each warning into a block */
+  block_without_land: boolean;
+  block_before_approval: boolean;
+}
+
+/**
+ * What to say before sales open (PLATFORM-REPLAN.md §1.1, client decision
+ * 2026-10-06: warn, and let the company make it a block).
+ *
+ * Two checks, both commonly skipped in this market and both real risks:
+ * selling on land the company does not yet hold, and selling before the plan
+ * is approved (the Real Estate Development and Management Act 2010 expects an
+ * approved plan before a project is advertised). A land share sells land, not
+ * a building, so it has no plan approval to wait for.
+ */
+export function salesOpenChecks(f: SalesGateFacts): { warnings: string[]; blockers: string[] } {
+  const warnings: string[] = [];
+  const blockers: string[] = [];
+  if (!landIsSecured(f.land_readiness)) {
+    const text =
+      f.land_readiness === 'none'
+        ? 'No land is linked to this project. Buyers would be paying for something on land the company has not recorded.'
+        : 'The land under this project is still being acquired. If the deal falls through, every booking has to be refunded.';
+    (f.block_without_land ? blockers : warnings).push(text);
+  }
+  const needsApproval = f.shape.item !== 'share';
+  if (needsApproval && f.status !== 'approval' && !PAST_APPROVAL.has(f.status)) {
+    const text =
+      'The plan approval stage has not been reached. The Real Estate Development and Management Act 2010 expects an approved plan before a project is advertised or sold.';
+    (f.block_before_approval ? blockers : warnings).push(text);
+  }
+  return { warnings, blockers };
+}
+
+/** v29 — a land-share project's plan for the land after the shares sell. */
+export const CONSTRUCTION_AFTER_SALE_LABEL: Record<ConstructionAfterSale, string> = {
+  no: 'No construction — the land stays as shares',
+  planned: 'Construction planned for the shareholders',
+  undecided: 'Not decided yet',
+};

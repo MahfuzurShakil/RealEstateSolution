@@ -10,6 +10,7 @@ import { JvAllocationCard } from '@/components/admin/projects/JvAllocationCard';
 import { ProjectLandCard } from '@/components/admin/projects/ProjectLandCard';
 import { ProjectGalleryPanel } from '@/components/admin/projects/ProjectGalleryPanel';
 import { ProjectStatusCard } from '@/components/admin/projects/ProjectStatusCard';
+import { ProjectSalesCard } from '@/components/admin/projects/ProjectSalesCard';
 import { ProjectTimeline } from '@/components/admin/projects/ProjectTimeline';
 import { PlotDevelopmentCard } from '@/components/admin/projects/PlotDevelopmentCard';
 import { SuccessionCard } from '@/components/admin/projects/SuccessionCard';
@@ -257,6 +258,8 @@ export default function ProjectDetailPage() {
 
         <aside className="min-w-0 space-y-5 lg:order-2">
           <ProjectStatusCard project={project} />
+          {/* v29 — selling runs beside the build stages, not inside them */}
+          <ProjectSalesCard project={project} lands={project.lands} />
 
           <Card>
             <CardHeader title="Inventory" />

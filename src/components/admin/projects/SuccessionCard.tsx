@@ -12,7 +12,12 @@ import { Field, SelectInput, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { PROJECT_TYPES, type Project, type ProjectType } from '@/lib/db/types';
-import { PROJECT_TYPE_HINT, PROJECT_TYPE_LABEL } from '@/lib/domain/project';
+import {
+  CONSTRUCTION_AFTER_SALE_LABEL,
+  PROJECT_TYPE_HINT,
+  PROJECT_TYPE_LABEL,
+  projectSalesStatus,
+} from '@/lib/domain/project';
 import { projectRepository } from '@/lib/repositories';
 
 /** What each successor type means when it grows out of a share register. */
@@ -95,6 +100,33 @@ export function SuccessionCard({ project }: { project: Project }) {
           ) : undefined
         }
       />
+
+      {/*
+        v29 — the plan for the land once the shares sell. When construction is
+        planned and the register is sold out, the next step is the successor,
+        so it is put in front of whoever opens the page.
+      */}
+      {isRegister && (
+        <p className="mb-3 text-xs text-ink-muted">
+          After the sale: {CONSTRUCTION_AFTER_SALE_LABEL[project.construction_after_sale ?? 'undecided']}
+        </p>
+      )}
+      {isRegister &&
+        project.construction_after_sale === 'planned' &&
+        projectSalesStatus(project) === 'sold_out' &&
+        (successors ?? []).length === 0 && (
+          <div className="mb-3 rounded-xl border border-admin-200 bg-admin-50 p-3">
+            <p className="text-sm font-medium text-admin-800">
+              Shares are sold out and construction is planned.
+            </p>
+            <p className="mt-0.5 text-xs text-admin-700">
+              Start the construction project now. The shareholders come across as its customers.
+            </p>
+            <Button size="sm" className="mt-2" onClick={() => setOpen(true)}>
+              <GitFork className="size-4" /> Start construction project
+            </Button>
+          </div>
+        )}
 
       {!isRegister && predecessor && (
         <p className="mb-3 text-sm text-ink-muted">

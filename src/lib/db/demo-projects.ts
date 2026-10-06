@@ -1,5 +1,12 @@
 import type { DemoDocument } from './demo-data';
-import type { ProjectStatus, ProjectType, TowerStatus, UnitStatus } from './types';
+import type {
+  ConstructionAfterSale,
+  ProjectSalesStatus,
+  ProjectStatus,
+  ProjectType,
+  TowerStatus,
+  UnitStatus,
+} from './types';
 
 export interface DemoProjectEvent {
   to_status: ProjectStatus;
@@ -112,6 +119,10 @@ export interface DemoProject {
   project_manager_key?: string;
   is_public: boolean;
   is_featured: boolean;
+  /** v29 — whether bookings are being taken (PLATFORM-REPLAN.md §1.1) */
+  sales_status: ProjectSalesStatus;
+  /** v29 — land_share only */
+  construction_after_sale?: ConstructionAfterSale;
   created_at: string;
   /** demo land names this project is built on */
   land_names: string[];
@@ -158,6 +169,7 @@ export const DEMO_PROJECTS: DemoProject[] = [
       'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1200&q=60',
     is_public: true,
     is_featured: true,
+    sales_status: 'open',
     created_at: '2026-05-04T10:15:00.000Z',
     land_names: ['Bashundhara Block K corner plot'],
     towers: [
@@ -309,6 +321,7 @@ export const DEMO_PROJECTS: DemoProject[] = [
       'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1200&q=60',
     is_public: true,
     is_featured: false,
+    sales_status: 'open',
     created_at: '2026-07-21T09:30:00.000Z',
     land_names: ['Uttara Sector 13 residential plot'],
     towers: [
@@ -381,6 +394,7 @@ export const DEMO_PROJECTS: DemoProject[] = [
       'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1200&q=60',
     is_public: false,
     is_featured: false,
+    sales_status: 'not_open',
     created_at: '2026-06-09T14:00:00.000Z',
     land_names: ['Chattogram Agrabad commercial plot'],
     towers: [
@@ -471,6 +485,7 @@ export const DEMO_PROJECTS: DemoProject[] = [
       'https://images.unsplash.com/photo-1481253127861-534498168948?auto=format&fit=crop&w=1200&q=60',
     is_public: true,
     is_featured: true,
+    sales_status: 'open',
     created_at: '2024-03-11T11:20:00.000Z',
     land_names: ['Dhanmondi Road 27 plot'],
     towers: [
@@ -623,6 +638,7 @@ export const DEMO_PROJECTS: DemoProject[] = [
     amenities: ['Security', 'CCTV', 'Parking'],
     is_public: true,
     is_featured: false,
+    sales_status: 'open',
     created_at: '2026-02-14T06:00:00.000Z',
     land_names: ['Rupganj Kanchan tract'],
     towers: [
@@ -719,6 +735,9 @@ export const DEMO_PROJECTS: DemoProject[] = [
     amenities: [],
     is_public: true,
     is_featured: false,
+    // 4 of 20 shares sold so far; the buyers have already asked about a building
+    sales_status: 'open',
+    construction_after_sale: 'planned',
     created_at: '2026-04-10T05:45:00.000Z',
     land_names: ['Savar Birulia riverside plot'],
     towers: [],
@@ -799,6 +818,7 @@ export const DEMO_PROJECTS: DemoProject[] = [
     cover_image_document_title: 'Lakeview Residence — front elevation render',
     is_public: true,
     is_featured: true,
+    sales_status: 'open',
     created_at: '2026-02-02T09:00:00.000Z',
     land_names: ['Uttara Sector 18 lake-facing site'],
     documents: [

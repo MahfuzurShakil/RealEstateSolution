@@ -10,6 +10,7 @@ import type {
   LandSizeUnit,
   Landowner,
   Project,
+  ProjectSalesStatus,
   ProjectStatus,
   ProjectStatusEvent,
   ProjectType,
@@ -27,6 +28,7 @@ import {
   unitCode,
   type AllocationTotals,
   type JvAllocationSummary,
+  landReadiness,
   type ProjectReadiness,
   type UnitPatternInput,
 } from '../domain/project';
@@ -98,7 +100,11 @@ class ProjectRepository extends BaseRepository<Project> {
 
   async create(input: NewRecord<Project>, createdBy: string | null = null): Promise<Project> {
     const code = input.code?.trim() ? input.code : await this.generateCode();
-    const project = await super.create({ ...input, code }, createdBy);
+    // v29 — a new project is not selling until somebody opens its sales
+    const project = await super.create(
+      { sales_status: 'not_open', ...input, code },
+      createdBy,
+    );
     /*
      * Every project starts on a default payment plan (Section 8.2), and v27
      * picks it by shape: a plot runs 48 months with no construction milestone
@@ -167,11 +173,12 @@ class ProjectRepository extends BaseRepository<Project> {
    * same split as the booking blockers, which this follows.
    */
   async readiness(projectId: string, today = todayLocal()): Promise<ProjectReadiness> {
-    const [towers, units, rollup, bookings] = await Promise.all([
+    const [towers, units, rollup, bookings, lands] = await Promise.all([
       towerRepository.listForProject(projectId),
       unitRepository.listForProject(projectId),
       towerWorkItemRepository.rollupForProject(projectId, today),
       db.bookings.toArray(),
+      landProjectMappingRepository.landsForProject(projectId),
     ]);
 
     const unitIds = new Set(units.map((u) => u.id));
@@ -191,7 +198,18 @@ class ProjectRepository extends BaseRepository<Project> {
       units_spoken_for: units.filter((u) => SPOKEN_FOR.has(u.status)).length,
       units_handed_over: units.filter((u) => u.status === 'handed_over').length,
       outstanding_amount: Math.round(outstanding * 100) / 100,
+      land_readiness: landReadiness(lands),
     };
+  }
+
+  /**
+   * v29 — open, pause, or close sales (PLATFORM-REPLAN.md §1.1).
+   *
+   * The checks live in `salesOpenChecks` and are applied by the caller, which
+   * has to show the warnings anyway; this only writes.
+   */
+  async setSalesStatus(projectId: string, sales_status: ProjectSalesStatus): Promise<void> {
+    await this.update(projectId, { sales_status });
   }
 
   /**

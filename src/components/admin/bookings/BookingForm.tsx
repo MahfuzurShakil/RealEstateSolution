@@ -27,6 +27,7 @@ import {
   PREMIUM_HINT,
   PREMIUM_LABEL,
   isUnitSellable,
+  projectSalesStatus,
   projectShape,
   unitDescription,
   unitSizeLabel,
@@ -364,7 +365,11 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
             </SelectInput>
           </Field>
 
-          <Field label="Project" required={!isEdit}>
+          <Field
+            label="Project"
+            required={!isEdit}
+            hint={isEdit ? undefined : 'Only projects with sales open are listed.'}
+          >
             <SelectInput
               value={form.project_id}
               disabled={isEdit}
@@ -374,11 +379,15 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
               }}
             >
               <option value="">Pick a project</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.code} — {p.name}
-                </option>
-              ))}
+              {projects
+                // v29 — a project takes bookings only while its sales are open;
+                // an existing booking keeps showing its own project
+                .filter((p) => projectSalesStatus(p) === 'open' || p.id === form.project_id)
+                .map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.code} — {p.name}
+                  </option>
+                ))}
             </SelectInput>
           </Field>
           <Field

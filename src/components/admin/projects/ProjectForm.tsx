@@ -10,7 +10,9 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Checkbox, Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
 import {
+  CONSTRUCTION_AFTER_SALE,
   PROJECT_TYPES,
+  type ConstructionAfterSale,
   type Land,
   type LandEntryMode,
   type LandSizeUnit,
@@ -24,7 +26,12 @@ import {
   developmentGateBlockReason,
   landStatusLabel,
 } from '@/lib/domain/land';
-import { PROJECT_TYPE_HINT, PROJECT_TYPE_LABEL } from '@/lib/domain/project';
+import {
+  CONSTRUCTION_AFTER_SALE_LABEL,
+  PROJECT_TYPE_HINT,
+  PROJECT_TYPE_LABEL,
+  projectSalesStatus,
+} from '@/lib/domain/project';
 import {
   companySettingsRepository,
   landDevelopmentRepository,
@@ -53,6 +60,8 @@ interface FormState {
   cover_image_url: string;
   is_public: boolean;
   is_featured: boolean;
+  /** v29 — land_share only */
+  construction_after_sale: ConstructionAfterSale;
 }
 
 const EMPTY: FormState = {
@@ -70,6 +79,7 @@ const EMPTY: FormState = {
   cover_image_url: '',
   is_public: false,
   is_featured: false,
+  construction_after_sale: 'undecided',
 };
 
 const str = (v: unknown) => (v === null || v === undefined ? '' : String(v));
@@ -209,6 +219,15 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
     if (gateOn && blockedLands.length > 0) {
       next.lands = blockedLands.join(' ');
     }
+    /*
+     * v29 — the public site shows projects that are selling. Only checked when
+     * the box is being ticked, so an older project already public with sales
+     * not yet opened can still be edited.
+     */
+    const salesOpen = project ? projectSalesStatus(project) !== 'not_open' : false;
+    if (form.is_public && !project?.is_public && !salesOpen) {
+      next.is_public = 'Open sales on the project page first, then publish it';
+    }
     if (form.is_featured && !form.is_public) {
       next.is_featured = 'A featured project must be public first';
     }
@@ -237,6 +256,8 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
         cover_image_url: form.cover_image_url.trim() || null,
         is_public: form.is_public,
         is_featured: form.is_featured,
+        construction_after_sale:
+          form.project_type === 'land_share' ? form.construction_after_sale : null,
       };
 
       let saved: Project;
@@ -284,6 +305,27 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
               ))}
             </SelectInput>
           </Field>
+
+          {form.project_type === 'land_share' && (
+            <Field
+              label="After the shares are sold"
+              className="xl:col-span-3"
+              hint="If construction is planned, the project page prompts you to start the construction project once the shares sell out."
+            >
+              <SelectInput
+                value={form.construction_after_sale}
+                onChange={(e) =>
+                  set('construction_after_sale', e.target.value as ConstructionAfterSale)
+                }
+              >
+                {CONSTRUCTION_AFTER_SALE.map((v) => (
+                  <option key={v} value={v}>
+                    {CONSTRUCTION_AFTER_SALE_LABEL[v]}
+                  </option>
+                ))}
+              </SelectInput>
+            </Field>
+          )}
 
           <Field
             label="Location Summary"
@@ -532,14 +574,17 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
               placeholder="https://images.unsplash.com/…"
             />
           </Field>
-          <Checkbox
-            label="Show this project on the public website"
-            checked={form.is_public}
-            onChange={(e) => {
-              set('is_public', e.target.checked);
-              if (!e.target.checked) set('is_featured', false);
-            }}
-          />
+          <div>
+            <Checkbox
+              label="Show this project on the public website"
+              checked={form.is_public}
+              onChange={(e) => {
+                set('is_public', e.target.checked);
+                if (!e.target.checked) set('is_featured', false);
+              }}
+            />
+            {errors.is_public && <p className="mt-1 text-xs text-red-600">{errors.is_public}</p>}
+          </div>
           <div>
             <Checkbox
               label="Feature it on the public home page"
@@ -581,5 +626,6 @@ function toFormState(project: ProjectWithRelations): FormState {
     cover_image_url: str(project.cover_image_url),
     is_public: project.is_public,
     is_featured: project.is_featured,
+    construction_after_sale: project.construction_after_sale ?? 'undecided',
   };
 }

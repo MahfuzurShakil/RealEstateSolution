@@ -1041,6 +1041,8 @@ async function seedDemoProjects(
         cover_image_url: demo.cover_image_url ?? null,
         is_public: demo.is_public,
         is_featured: demo.is_featured,
+        sales_status: demo.sales_status,
+        construction_after_sale: demo.construction_after_sale ?? null,
       },
       createdBy,
     );

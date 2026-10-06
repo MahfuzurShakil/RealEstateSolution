@@ -162,6 +162,14 @@ export interface CompanySettings extends BaseEntity {
    */
   require_development_ready?: boolean | null;
   /**
+   * v29 — sales gates (PLATFORM-REPLAN.md §1.1). Opening sales on land still
+   * being acquired, or before the plan approval stage, is warned about; each
+   * switch turns its warning into a block. Off by default: both are common
+   * practice, and the client chose warnings (2026-10-06).
+   */
+  block_sales_without_land?: boolean | null;
+  block_sales_before_approval?: boolean | null;
+  /**
    * BRD DEV-004 — a plot that needs no development at all.
    *
    * Set per land, not globally: a ready plot in Uttara needs no filling and a
