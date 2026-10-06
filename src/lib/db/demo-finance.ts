@@ -1,4 +1,4 @@
-import type { CostCategory, SupplierPaymentMethod } from './types';
+import type { AcquisitionCostHead, CostCategory, SupplierPaymentMethod } from './types';
 
 /**
  * Bangladesh-context demo dataset for Module 7 (Finance).
@@ -27,6 +27,8 @@ export interface DemoExpense {
   /** the land this payment is against, for land_payment / land_extra_cost */
   land_name?: string;
   cost_category: CostCategory;
+  /** v29 — the cost-sheet head a land fee goes on */
+  land_cost_head?: AcquisitionCostHead;
   cost_reason: string;
   amount: number;
   days_ago: number;
@@ -71,6 +73,7 @@ export const DEMO_EXPENSES: DemoExpense[] = [
     project_name: 'Nokshi Dhanmondi Court',
     land_name: 'Dhanmondi Road 27 plot',
     cost_category: 'land_extra_cost',
+    land_cost_head: 'registration_fee',
     cost_reason: 'Registration fee, stamp duty and mutation',
     amount: 5850000,
     days_ago: 758,
@@ -83,6 +86,7 @@ export const DEMO_EXPENSES: DemoExpense[] = [
     project_name: 'Nokshi Green Residence',
     land_name: 'Bashundhara Block K corner plot',
     cost_category: 'land_extra_cost',
+    land_cost_head: 'other',
     cost_reason: 'Boundary wall and site clearing before mobilisation',
     amount: 1240000,
     days_ago: 520,

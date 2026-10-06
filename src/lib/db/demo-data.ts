@@ -1,4 +1,5 @@
 import type {
+  AcquisitionCostHead,
   AcquisitionType,
   JvShareBasis,
   LandSizeUnit,
@@ -111,6 +112,17 @@ export interface DemoLand {
   };
   /** pipeline trail; the last entry matches `status` */
   history: DemoStatusEvent[];
+  /**
+   * v29 — entered as already owned (PLATFORM-REPLAN.md §1.3). Seeded through
+   * `landPipelineRepository.recordOwnedEntry`, exactly as the form does it;
+   * `history` stays empty because there was no pipeline to walk.
+   */
+  owned?: {
+    acquired_on: string;
+    reference_no?: string;
+    no_development_required?: boolean;
+    paid: Partial<Record<AcquisitionCostHead, number>>;
+  };
 }
 
 export const DEMO_OWNERS: DemoOwner[] = [
@@ -1384,5 +1396,76 @@ export const DEMO_LANDS: DemoLand[] = [
         source: 'manual',
       },
     ],
+  },
+  /*
+   * v29 — two lands entered as already owned. The company bought the first
+   * in 2016, long before this system, and is now building on it; the second
+   * is the chairman's family land, sold as shares. Neither has a site visit,
+   * a due-diligence checklist or a negotiation, and neither should.
+   */
+  {
+    name: 'Shyamoli Ring Road plot',
+    location_division: 'Dhaka',
+    location_district: 'Dhaka',
+    location_upazila: 'Mohammadpur',
+    location_area: 'Shyamoli',
+    road: 'Ring Road',
+    road_access: '40 ft frontage on Ring Road',
+    land_classification: 'Bhiti (homestead land)',
+    source: 'Own survey',
+    mouza: 'Mohammadpur',
+    dag_number: '1187',
+    khatian_number: '903',
+    land_size: 6,
+    land_size_unit: 'katha',
+    asking_price: 0,
+    acquisition_type: 'direct_purchase',
+    status: 'acquired',
+    remarks: 'Bought in 2016 and held while the Ring Road widening settled. Entered as owned.',
+    created_at: '2026-09-28T04:30:00.000Z',
+    owners: [],
+    history: [],
+    owned: {
+      acquired_on: '2016-03-14',
+      reference_no: 'Dalil 2210/2016',
+      no_development_required: true,
+      paid: {
+        land_price: 36_000_000,
+        registration_fee: 360_000,
+        stamp_duty: 540_000,
+        mutation_cost: 25_000,
+        legal_fee: 80_000,
+      },
+    },
+  },
+  {
+    name: 'Zinzira riverside family land',
+    location_division: 'Dhaka',
+    location_district: 'Dhaka',
+    location_upazila: 'Keraniganj',
+    location_area: 'Zinzira',
+    road_access: 'Approach road from Zinzira bazar, 20 ft',
+    land_classification: 'Nal (agricultural land)',
+    mouza: 'Zinzira',
+    dag_number: '402, 403',
+    khatian_number: '77',
+    land_size: 1.5,
+    land_size_unit: 'bigha',
+    asking_price: 0,
+    acquisition_type: 'inherited',
+    status: 'acquired',
+    remarks: 'The chairman\u2019s family land. Sold as undivided shares; no building planned yet.',
+    created_at: '2026-09-30T05:00:00.000Z',
+    owners: [],
+    history: [],
+    owned: {
+      acquired_on: '2009-07-01',
+      reference_no: 'Heba 118/2009',
+      no_development_required: true,
+      paid: {
+        mutation_cost: 18_000,
+        holding_cost: 120_000,
+      },
+    },
   },
 ];

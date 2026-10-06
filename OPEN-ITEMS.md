@@ -3,7 +3,8 @@
 Known-open work that is **not** a blocker for what is already shipped. Add to
 this as modules land; delete an entry when it is done.
 
-Last reviewed: 2026-09-06, after the second round of client feedback (Section 0l);
+Last reviewed: 2026-10-07, after Phase 1 of the platform replan (Section 0s);
+before that 2026-09-06, after the second round of client feedback (Section 0l);
 before that 2026-09-05, after the list-filter consistency pass (Section 0k)
 and Tier 3.5 — cash position (Section 0j),
 Tier 3.2 — project budget (Section 0i),
@@ -15,6 +16,45 @@ the client review batches F1–F4 (Section 0b)
 and the Tier 2 remediation batches 2A–2E from
 `REMEDIATION-PLAN.md` (see Section 0 below, which also covers Tier 1). The
 full defect list is in `ANALYSIS-REPORT_2026-09-02.md`.
+
+---
+
+## 0s. Platform replan, Phase 1 — Project & Land (2026-10-07)
+
+`PLATFORM-REPLAN.md` reorganises the platform into one project-centred
+pipeline in five phases. The baseline before it is tagged **v0.0.1**. Phase 1
+(project first, owned land, sales status, land cost sheet, Costing tab) is
+built in Dexie **v29**; these are what it leaves open.
+
+- **Phase 2 is next: construction and the transaction trail.** Every spend as
+  one linked chain (request → purchase → voucher, scan plus digital entry →
+  payment against the voucher), tagged by project and khat. Transparency, not
+  restriction: nothing blocks a bill for going over its estimate. Begin by
+  auditing where Modules 5–7 already link the chain and where it breaks.
+- **One land under several projects is split evenly**, in both the Costing tab
+  and the finance roll-up. There is no share column on `land_project_mapping`;
+  add one if a client needs an uneven split (one plot, two phases of unequal
+  size).
+- **The JV landowner share is valued at list price** of the units allocated to
+  the landowner. Before any project on the land allocates units it shows as
+  "valued once units are allocated". No valuation for a JV still in
+  negotiation.
+- **Revenue counts unsold units at list price**, with no discount or
+  negotiation allowance. A margin read before sales start is optimistic by
+  that much.
+- **Costing heads are cost categories.** Four were added (design & approval,
+  utilities & connections, sales commission, finance cost). Expenses filed
+  under a custom Master Data category land in "Other" on the Costing tab.
+- **Sold out is set by hand.** Nothing moves a project to `sold_out` when the
+  last unit sells, on purpose (one cancellation reopens it). A reminder when
+  every company unit is spoken for would be reasonable.
+- **The booking filter is UI-only.** `bookingRepository` does not refuse a
+  booking on a project whose sales are not open; the demo seed and any
+  import path can still write one. Enforce in the repository in Phase B.
+- **Demo reload race (from 0m) still exists.** Clicking reload while the
+  first-load seed is still running produces mixed rows. Separately, the reload
+  never cleared the L2–L6 land tables. That one is fixed (2026-10-07).
+- **TEST-SCENARIOS.md does not cover v29** (owned entry, sales gates, Costing).
 
 ---
 

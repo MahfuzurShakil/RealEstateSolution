@@ -222,7 +222,23 @@ class LandAcquisitionCostRepository extends BaseRepository<LandAcquisitionCost> 
     const byHead = new Map(estimates.map((e) => [e.cost_head, e]));
     const lines: AcquisitionCostLine[] = ACQUISITION_COST_HEADS.map((head) => {
       const row = byHead.get(head);
-      const estimated = money(Number(row?.estimated_amount) || 0);
+      let estimated = money(Number(row?.estimated_amount) || 0);
+      let remarks = row?.remarks ?? null;
+      /*
+       * v29 — a land nobody has costed yet still has a price: the agreed
+       * amount, or the asking price on a purchase. Without it, a project on
+       * land still in negotiation showed its land at zero and its margin
+       * too good by the price of the plot.
+       */
+      if (head === 'land_price' && estimated === 0 && land) {
+        const fallback =
+          Number(land.final_agreed_amount) ||
+          (land.acquisition_type === 'direct_purchase' ? Number(land.asking_price) || 0 : 0);
+        if (fallback > 0) {
+          estimated = money(fallback);
+          remarks = Number(land.final_agreed_amount) ? 'From the agreed amount' : 'From the asking price, until an estimate is set';
+        }
+      }
       const historic = money(Number(row?.historic_paid_amount) || 0);
       const actual = money((actualByHead.get(head) ?? 0) + historic);
       return {
@@ -230,7 +246,7 @@ class LandAcquisitionCostRepository extends BaseRepository<LandAcquisitionCost> 
         estimated,
         actual,
         historic,
-        remarks: row?.remarks ?? null,
+        remarks,
         /*
          * `null` until something has actually been spent.
          *

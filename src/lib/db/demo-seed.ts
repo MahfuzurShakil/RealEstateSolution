@@ -48,6 +48,7 @@ import {
   paymentScheduleRepository,
   bankAccountRepository,
   projectBudgetRepository,
+  projectCostingRepository,
   refundRepository,
   userProjectAssignmentRepository,
 } from '../repositories';
@@ -771,7 +772,9 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
         gps_lng: demo.gps_lng ?? null,
         nearby_facilities: demo.nearby_facilities ?? null,
         acquisition_type: demo.acquisition_type,
-        status: demo.status,
+        // an owned land is moved to Acquired by its owned entry below
+        status: demo.owned ? 'sourced' : demo.status,
+        entry_mode: 'pipeline',
         assigned_to: null,
         remarks: demo.remarks ?? null,
       },
@@ -884,6 +887,26 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
           createdBy,
         );
       }
+    }
+
+    /*
+     * v29 — the same call the land form makes for "Already owned": straight to
+     * Acquired with an owned-entry history row, what was paid on the cost
+     * sheet as historic cost, and (with no development needed) on to Ready.
+     */
+    if (demo.owned) {
+      if (demo.owned.no_development_required) {
+        await landRepository.update(land.id, { no_development_required: true });
+      }
+      await landPipelineRepository.recordOwnedEntry(
+        land.id,
+        {
+          acquired_on: demo.owned.acquired_on,
+          reference_no: demo.owned.reference_no ?? null,
+          paid: demo.owned.paid,
+        },
+        createdBy,
+      );
     }
 
     await db.lands.update(land.id, { created_at: demo.created_at, updated_at: demo.created_at });
@@ -1046,6 +1069,22 @@ async function seedDemoProjects(
       },
       createdBy,
     );
+    // v29 — the Costing tab's estimate, through the same call its editor makes
+    if (demo.costing) {
+      await projectCostingRepository.saveEstimate(
+        project.id,
+        {
+          heads: demo.costing.heads.map(([cost_category, budgeted_amount]) => ({
+            cost_category,
+            budgeted_amount,
+          })),
+          contingency_pct: demo.costing.contingency_pct ?? null,
+          est_saleable_area: demo.costing.est_saleable_area ?? null,
+          est_avg_rate: demo.costing.est_avg_rate ?? null,
+        },
+        createdBy,
+      );
+    }
 
     // the mapping only — since v29 the lands keep their own status
     await landProjectMappingRepository.setLandsForProject(
@@ -1935,6 +1974,7 @@ async function seedDemoFinance(
         project_id: demo.project_name ? (projectIds.get(demo.project_name) ?? null) : null,
         land_id: demo.land_name ? (landIds.get(demo.land_name) ?? null) : null,
         cost_category: demo.cost_category,
+        land_cost_head: demo.land_cost_head ?? null,
         cost_reason: demo.cost_reason,
         amount: demo.amount,
         expense_date: daysFromToday(-demo.days_ago).slice(0, 10),
@@ -2069,7 +2109,7 @@ async function seedDemoFinance(
       'Nokshi Dhanmondi Court',
       [
         [PROCUREMENT_BUDGET_HEAD, 2000000],
-        ['land_payment', 70000000],
+        // v29 — no land line: land is costed on the land's own cost sheet
         ['contractor_payment', 6000000],
         ['marketing', 500000],
       ],

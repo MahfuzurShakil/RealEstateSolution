@@ -149,6 +149,26 @@ export interface DemoProject {
   unit_status_overrides?: Partial<Record<UnitStatus, string[]>>;
   /** pipeline trail; the last entry matches `status` */
   history?: DemoProjectEvent[];
+  /**
+   * v29 — the Costing tab's estimate (PLATFORM-REPLAN.md §1.5): budget per
+   * head as [cost category code, amount], the contingency, and the quick
+   * revenue figures used before units exist.
+   */
+  costing?: {
+    heads: Array<[string, number]>;
+    contingency_pct?: number;
+    est_saleable_area?: number;
+    est_avg_rate?: number;
+  };
+}
+
+/** A construction estimate split the way the Costing editor splits it (60/40). */
+function construction(sqft: number, rate: number): Array<[string, number]> {
+  const total = sqft * rate;
+  return [
+    ['_procurement', Math.round(total * 0.6)],
+    ['contractor_payment', Math.round(total * 0.4)],
+  ];
 }
 
 export const DEMO_PROJECTS: DemoProject[] = [
@@ -322,6 +342,18 @@ export const DEMO_PROJECTS: DemoProject[] = [
     is_public: true,
     is_featured: false,
     sales_status: 'open',
+    costing: {
+      heads: [
+        ['design_approval', 3_500_000],
+        ...construction(22_000, 3_500),
+        ['utility_connection', 3_000_000],
+        ['marketing', 1_200_000],
+        ['sales_commission', 1_800_000],
+        ['finance_cost', 2_500_000],
+        ['admin', 2_000_000],
+      ],
+      contingency_pct: 5,
+    },
     created_at: '2026-07-21T09:30:00.000Z',
     land_names: ['Uttara Sector 13 residential plot'],
     towers: [
@@ -395,6 +427,18 @@ export const DEMO_PROJECTS: DemoProject[] = [
     is_public: false,
     is_featured: false,
     sales_status: 'not_open',
+    costing: {
+      heads: [
+        ['design_approval', 5_000_000],
+        ...construction(48_000, 3_300),
+        ['utility_connection', 9_000_000],
+        ['marketing', 2_500_000],
+        ['sales_commission', 3_000_000],
+        ['finance_cost', 8_000_000],
+        ['admin', 3_500_000],
+      ],
+      contingency_pct: 7,
+    },
     created_at: '2026-06-09T14:00:00.000Z',
     land_names: ['Chattogram Agrabad commercial plot'],
     towers: [
@@ -639,6 +683,17 @@ export const DEMO_PROJECTS: DemoProject[] = [
     is_public: true,
     is_featured: false,
     sales_status: 'open',
+    // the filling and roads are costed on the land, as land development
+    costing: {
+      heads: [
+        ['design_approval', 2_000_000],
+        ['utility_connection', 6_000_000],
+        ['marketing', 2_500_000],
+        ['sales_commission', 1_500_000],
+        ['admin', 1_500_000],
+      ],
+      contingency_pct: 3,
+    },
     created_at: '2026-02-14T06:00:00.000Z',
     land_names: ['Rupganj Kanchan tract'],
     towers: [
@@ -738,6 +793,14 @@ export const DEMO_PROJECTS: DemoProject[] = [
     // 4 of 20 shares sold so far; the buyers have already asked about a building
     sales_status: 'open',
     construction_after_sale: 'planned',
+    costing: {
+      heads: [
+        ['design_approval', 120_000],
+        ['marketing', 150_000],
+        ['sales_commission', 100_000],
+        ['admin', 100_000],
+      ],
+    },
     created_at: '2026-04-10T05:45:00.000Z',
     land_names: ['Savar Birulia riverside plot'],
     towers: [],
@@ -819,6 +882,21 @@ export const DEMO_PROJECTS: DemoProject[] = [
     is_public: true,
     is_featured: true,
     sales_status: 'open',
+    costing: {
+      heads: [
+        ['design_approval', 6_000_000],
+        ...construction(52_000, 3_600),
+        ['utility_connection', 7_500_000],
+        ['marketing', 3_000_000],
+        ['sales_commission', 4_000_000],
+        ['finance_cost', 6_000_000],
+        ['admin', 4_500_000],
+        ['other', 1_200_000],
+      ],
+      contingency_pct: 5,
+      est_saleable_area: 52_000,
+      est_avg_rate: 12_500,
+    },
     created_at: '2026-02-02T09:00:00.000Z',
     land_names: ['Uttara Sector 18 lake-facing site'],
     documents: [
@@ -969,5 +1047,166 @@ export const DEMO_PROJECTS: DemoProject[] = [
         remarks: 'Approval received 28 Apr. Piling rig mobilised on site 18 May.',
       },
     ],
+  },
+  /*
+   * v29 — the project-first cases (PLATFORM-REPLAN.md §1.7).
+   */
+  {
+    // on land entered as already owned: sales opened at Approval, not built yet
+    name: 'Nokshi Shyamoli Residence',
+    project_type: 'apartment',
+    total_land_area: 6,
+    location_summary: 'Ring Road, Shyamoli, Dhaka',
+    expected_start_date: '2027-01-15',
+    expected_completion_date: '2029-12-31',
+    status: 'approval',
+    architect: 'Vitti Sthapati Brindo',
+    surroundings: 'Shyamoli Square 500m, Shishu Mela 800m, Ring Road frontage',
+    amenities: ['Lift', 'Generator', 'Parking', 'Security', 'Rooftop Garden'],
+    is_public: true,
+    is_featured: false,
+    sales_status: 'open',
+    created_at: '2026-09-29T06:00:00.000Z',
+    land_names: ['Shyamoli Ring Road plot'],
+    towers: [
+      {
+        name: 'Main Building',
+        floor_count: 10,
+        status: 'planning',
+        building_type: 'G+9',
+        unit_per_floor: 2,
+        lift_count: 1,
+        electricity_backup: true,
+        front_road_width_ft: 40,
+        patterns: [
+          {
+            prefix: 'S',
+            separator: '-',
+            floor_from: 2,
+            floor_to: 9,
+            rows: [
+              {
+                suffix: 'A',
+                unit_type: '3 Bed',
+                bedroom_count: 3,
+                bathroom_count: 3,
+                balcony_count: 2,
+                size_sqft: 1250,
+                facing: 'South',
+                rate_per_sqft: 11_500,
+                parking_allocated: 1,
+              },
+              {
+                suffix: 'B',
+                unit_type: '3 Bed',
+                bedroom_count: 3,
+                bathroom_count: 2,
+                balcony_count: 2,
+                size_sqft: 1180,
+                facing: 'North',
+                rate_per_sqft: 11_000,
+                parking_allocated: 1,
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    history: [
+      {
+        to_status: 'design',
+        event_date: '2026-10-01',
+        performed_by: 'Vitti Sthapati Brindo',
+        reference_no: 'ARCH-2026-044',
+        remarks: 'Land already ours since 2016, so design started the week the project was opened.',
+      },
+      {
+        to_status: 'approval',
+        event_date: '2026-10-05',
+        performed_by: 'RAJUK',
+        reference_no: 'RAJUK/LUC/2026/1871',
+        remarks: 'Land use clearance in hand; building plan submitted.',
+      },
+    ],
+    costing: {
+      heads: [
+        ['design_approval', 4_500_000],
+        ...construction(26_000, 3_600),
+        ['utility_connection', 3_500_000],
+        ['marketing', 1_500_000],
+        ['sales_commission', 2_300_000],
+        ['finance_cost', 3_000_000],
+        ['admin', 2_500_000],
+      ],
+      contingency_pct: 5,
+    },
+  },
+  {
+    // inherited family land sold as shares; whether to build later is open
+    name: 'Zinzira Riverside Land Share',
+    project_type: 'land_share',
+    total_land_area: 30,
+    location_summary: 'Zinzira, Keraniganj — across the Buriganga',
+    expected_start_date: '2026-10-10',
+    expected_completion_date: '2027-06-30',
+    status: 'planning',
+    surroundings: 'Zinzira bazar 600m, Babubazar bridge 3km, Buriganga riverfront',
+    amenities: [],
+    is_public: true,
+    is_featured: false,
+    sales_status: 'open',
+    construction_after_sale: 'undecided',
+    created_at: '2026-10-01T05:30:00.000Z',
+    land_names: ['Zinzira riverside family land'],
+    towers: [],
+    share_register: {
+      prefix: 'ZS',
+      separator: '-',
+      count: 30,
+      price_per_share: 900_000,
+      unit_type: 'Land Share',
+      total_land_size: 30,
+    },
+    costing: {
+      heads: [
+        ['design_approval', 150_000],
+        ['marketing', 600_000],
+        ['sales_commission', 800_000],
+        ['admin', 300_000],
+        ['other', 200_000],
+      ],
+      contingency_pct: 3,
+    },
+  },
+  {
+    // planned on land still in negotiation: sales not open, construction blocked
+    name: 'Nokshi Tongi Logistics Park',
+    project_type: 'commercial',
+    total_land_area: 40,
+    location_summary: 'Tongi BSCIC area, Gazipur',
+    expected_start_date: '2027-06-01',
+    expected_completion_date: '2029-12-31',
+    status: 'planning',
+    surroundings: 'Dhaka–Mymensingh highway 1.2km, Tongi rail station 2km, BSCIC industrial area',
+    amenities: ['Generator', 'Parking', 'Security', 'Fire Fighting System'],
+    is_public: false,
+    is_featured: false,
+    sales_status: 'not_open',
+    created_at: '2026-10-03T08:00:00.000Z',
+    land_names: ['Gazipur Tongi industrial-adjacent plot'],
+    towers: [],
+    costing: {
+      heads: [
+        ['design_approval', 6_000_000],
+        ...construction(70_000, 3_000),
+        ['utility_connection', 12_000_000],
+        ['marketing', 3_000_000],
+        ['finance_cost', 15_000_000],
+        ['admin', 5_000_000],
+      ],
+      contingency_pct: 7,
+      est_saleable_area: 60_000,
+      est_avg_rate: 6_500,
+    },
   },
 ];

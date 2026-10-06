@@ -105,7 +105,6 @@ sourced
   → acquired               (registered, or the JV signed — the land is ours)
   → under_development      (land development running)
   → ready_for_project      (serviced, or no development needed)
-  → linked_to_project      (once mapped to a Project)
 
   যেকোনো স্তর থেকে  → on_hold | rejected
   আমাদের হয়ে গেলে   → disposed  (স্ক্রিনে "Divested")
@@ -130,8 +129,23 @@ land development নিজে সেট করে। `on_hold` সেই জম�
 বাতিল — স্ক্রিনে "Divested", এবং টাকা পাওয়া optional (বাতিল JV-তে কিছু পাওয়া যায়
 না)। BRD LAND-004 DISPOSED এই key-এই map করে।
 
-`linked_to_project` BRD-র আট-টার তালিকায় নাই, কিন্তু রাখা হয়েছে: Module 2 নিজে সেট
-করে, হাতে বাছা যায় না।
+**হালনাগাদ (client decision, 2026-10-06 — PLATFORM-REPLAN.md, Dexie v29).**
+
+`linked_to_project` আর স্ট্যাটাস নয়। এখন project আগে তৈরি হয়, জমি পরে — এমনকি
+negotiation চলা জমিও project-এ link করা যায়। link করলে স্ট্যাটাস "linked" দিয়ে
+overwrite হলে জমির deal কোথায় আছে সেটাই মুছে যেতো। তাই জমি নিজের pipeline স্ট্যাটাসেই
+থাকে, আর project-এ আছে কিনা সেটা `land_project_mapping` থেকে পড়া হয় (স্ক্রিনে
+"In project PRJ-…" badge)। v29 পুরনো row গুলাকে development অনুযায়ী `acquired` /
+`under_development` / `ready_for_project`-এ ফিরিয়ে দিয়েছে।
+
+**দুইভাবে জমি entry (`entry_mode`):**
+
+| value | কখন |
+|---|---|
+| `pipeline` | জমি এখনো কেনা/JV হয়নি — site visit, DD, negotiation, registration (L1–L7) |
+| `owned` | জমি আগে থেকেই কোম্পানির (আগে কেনা, পারিবারিক, JV আগেই সাইন করা) — সরাসরি `acquired`, history-তে "Owned entry", আর যা খরচ হয়েছিল তা cost sheet-এ historic cost হিসেবে |
+
+Owned জমিতে site visit / DD / negotiation ধাপগুলো "not applicable" দেখায়, বাকি নয়।
 
 ### 2.3 `lands` table
 
@@ -154,7 +168,9 @@ lands
  - gps_lat                DECIMAL, nullable
  - gps_lng                DECIMAL, nullable
  - nearby_facilities      TEXT
- - acquisition_type       ENUM: direct_purchase | joint_venture
+ - acquisition_type       ENUM: direct_purchase | joint_venture | inherited | other   -- last two v29, owned entry only
+ - entry_mode             ENUM: pipeline | owned   -- v29
+ - acquired_on            DATE, nullable           -- v29, owned entry
  - status                 ENUM (per pipeline above)
  - assigned_to            UUID → users.id
  - remarks                TEXT
@@ -210,7 +226,11 @@ land_jv_details
 ## 3. MODULE 2: Project Creation ✅ FROZEN
 
 ### 3.1 Purpose
-Acquired/JV-signed land(s)-এর against-এ Project তৈরি করা, Tower ও Unit-level detail সহ।
+Project তৈরি করা, Tower ও Unit-level detail সহ। **v29 থেকে project আগে, জমি পরে**:
+জমি ছাড়াই project save করা যায়, আর owned বা acquisition-এ থাকা যেকোনো জমি link
+করা যায় (PLATFORM-REPLAN.md §1.2)। জমি কতটা নিশ্চিত — *No land / In acquisition /
+Secured / Ready to build* — সেটা project-এর "land readiness", link করা জমি থেকে পড়া হয়,
+store করা হয় না।
 
 ### 3.2 Status Pipeline
 ```
@@ -244,7 +264,29 @@ projects
  - cover_image_url         VARCHAR, nullable
  - is_public                BOOLEAN, default false   -- addendum (Public Portal P1): website-এ দেখানো হবে কিনা
  - is_featured               BOOLEAN, default false   -- addendum (Public Portal P1): Home page-এ highlight করা হবে কিনা
+ - sales_status              ENUM: not_open | open | paused | sold_out   -- v29: booking নেওয়া হচ্ছে কিনা; build status থেকে আলাদা
+ - construction_after_sale   ENUM: no | planned | undecided, nullable    -- v29: land_share only
+ - est_saleable_area         DECIMAL, nullable   -- v29: units হওয়ার আগে revenue estimate (sqft, বা জমির unit)
+ - est_avg_rate              DECIMAL, nullable   -- v29
+ - contingency_pct           DECIMAL, nullable   -- v29: Costing estimate-এর উপর %
 ```
+
+#### Sales, gates, costing — হালনাগাদ (client decision, 2026-10-06)
+
+- **Sales status build status থেকে আলাদা।** বাংলাদেশে বিক্রি design/approval-এর সময়
+  শুরু হয় আর construction জুড়ে চলে। Booking form শুধু `open` project দেখায়; public
+  করতে হলে sales আগে open হতে হবে।
+- **Sales gates (warning, setting দিয়ে block):** জমি secured না হলে, বা approval
+  stage-এ না পৌঁছালে (Real Estate Development and Management Act 2010) sales open করার সময়
+  সতর্কবার্তা। Company Settings-এর দুটো switch এগুলোকে block বানায়।
+- **Construction gate (সবসময় block):** জমি secured না হলে `under_construction`-এ যাওয়া যায় না।
+- **Costing tab:** khat অনুযায়ী estimate (`project_budget_lines`) — design & approval,
+  materials, contractor & labour, utilities, marketing, sales commission, finance cost,
+  overhead, other, + contingency %। জমির খরচ জমির cost sheet থেকে আসে, এখানে টাইপ হয়
+  না। Revenue units থেকে (JV-তে landowner-এর unit বাদ), বা units না থাকলে area × rate।
+  কিছু block হয় না — শুধু দেখায় (transparency, not restriction)।
+- **Land cost sheet:** acquisition heads (estimate / actual) + historic cost (owned) +
+  land development + মোট cash cost; JV হলে landowner-এর flat-এর মূল্য আলাদা লাইনে, non-cash।
 
 #### `project_type` — হালনাগাদ (client decision, 2026-09-20)
 
