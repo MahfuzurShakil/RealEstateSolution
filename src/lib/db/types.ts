@@ -2247,6 +2247,11 @@ export const COST_CATEGORIES = [
   'contractor_payment',
   'marketing',
   'admin',
+  // v29 — costing heads (PLATFORM-REPLAN.md §1.5), so estimate and spend share a khat
+  'design_approval',
+  'utility_connection',
+  'sales_commission',
+  'finance_cost',
   'other',
 ] as const;
 
@@ -2270,6 +2275,10 @@ export const COST_CATEGORY_SEED: { code: SystemCostCategory; value: string }[] =
   { code: 'contractor_payment', value: 'Contractor Payment' },
   { code: 'marketing', value: 'Marketing' },
   { code: 'admin', value: 'Admin' },
+  { code: 'design_approval', value: 'Design & Approval' },
+  { code: 'utility_connection', value: 'Utilities & Connections' },
+  { code: 'sales_commission', value: 'Sales Commission' },
+  { code: 'finance_cost', value: 'Finance Cost' },
   { code: 'other', value: 'Other' },
 ];
 

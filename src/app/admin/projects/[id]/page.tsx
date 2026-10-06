@@ -16,7 +16,7 @@ import { PlotDevelopmentCard } from '@/components/admin/projects/PlotDevelopment
 import { SuccessionCard } from '@/components/admin/projects/SuccessionCard';
 import { TowersUnitsPanel } from '@/components/admin/projects/TowersUnitsPanel';
 import { ProjectProcurementSummary } from '@/components/admin/procurement/ProjectProcurementSummary';
-import { ProjectBudgetPanel } from '@/components/admin/finance/ProjectBudgetPanel';
+import { ProjectCostingTab } from '@/components/admin/projects/ProjectCostingTab';
 import { ProjectProgressSummary } from '@/components/admin/site-progress/ProjectProgressSummary';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -40,7 +40,7 @@ type Tab =
   | 'towers'
   | 'progress'
   | 'procurement'
-  | 'budget'
+  | 'costing'
   | 'allocation'
   | 'timeline'
   | 'documents';
@@ -101,10 +101,11 @@ export default function ProjectDetailPage() {
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
+    // v29 — the owner's view; it replaced the bare budget-vs-actual tab
+    { key: 'costing', label: 'Costing' },
     { key: 'towers', label: inventoryLabel },
     ...(shapeIsBuilt(shape) ? [{ key: 'progress' as Tab, label: 'Site Progress' }] : []),
     { key: 'procurement', label: 'Finance & Cost' },
-    { key: 'budget', label: 'Budget' },
     { key: 'allocation', label: 'JV Allocation' },
     { key: 'timeline', label: 'Timeline' },
     { key: 'documents', label: 'Documents' },
@@ -222,7 +223,7 @@ export default function ProjectDetailPage() {
           {tab === 'procurement' && <ProjectProcurementSummary projectId={project.id} />}
 
           {/* Section 8.3 — what the project was planned to cost, against what it has */}
-          {tab === 'budget' && <ProjectBudgetPanel projectId={project.id} />}
+          {tab === 'costing' && <ProjectCostingTab project={project} />}
 
           {tab === 'allocation' && <JvAllocationCard projectId={project.id} />}
 

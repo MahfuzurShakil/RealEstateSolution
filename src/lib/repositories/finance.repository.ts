@@ -38,6 +38,7 @@ import { BaseRepository, type NewRecord, type UpdateRecord } from './base.reposi
 import { documentRepository } from './document.repository';
 import { recalculateOwnersForLand } from './owner-settlement.repository';
 import { paymentRepository } from './payment.repository';
+import { landAcquisitionCostRepository } from './negotiation.repository';
 
 /*
  * Direction of dependency, as in the other cross-module repositories:
@@ -1199,6 +1200,8 @@ class FinanceDashboardRepository {
       expenses,
       vouchers,
       payments,
+      landMappings,
+      landCash,
     ] = await Promise.all([
       db.projects.toArray(),
       db.towers.toArray(),
@@ -1210,7 +1213,15 @@ class FinanceDashboardRepository {
       db.expenses.toArray(),
       db.supplier_vouchers.toArray(),
       db.payments.toArray(),
+      db.land_project_mapping.toArray(),
+      landAcquisitionCostRepository.cashActualByLand(),
     ]);
+
+    // v29 — lands under a project are costed through the land, once
+    const projectsPerLand = new Map<string, number>();
+    for (const m of landMappings) {
+      projectsPerLand.set(m.land_id, (projectsPerLand.get(m.land_id) ?? 0) + 1);
+    }
 
     const towerProject = new Map(towers.map((t) => [t.id, t.project_id]));
     const unitById = new Map(units.map((u) => [u.id, u]));
@@ -1243,6 +1254,7 @@ class FinanceDashboardRepository {
       due: 0,
       cost_expenses: 0,
       cost_procurement: 0,
+      cost_land: 0,
       total_cost: 0,
       estimated_profit: 0,
       overdue_amount: 0,
@@ -1297,6 +1309,8 @@ class FinanceDashboardRepository {
 
     for (const expense of expenses) {
       if (!expense.project_id) continue;
+      // a linked land's money is in `cost_land` below — counting it here too would double it
+      if (expense.land_id && projectsPerLand.has(expense.land_id)) continue;
       const row = byId.get(expense.project_id);
       if (!row) continue;
       row.cost_expenses = money(row.cost_expenses + (Number(expense.amount) || 0));
@@ -1309,9 +1323,16 @@ class FinanceDashboardRepository {
       row.cost_procurement = money(row.cost_procurement + (Number(voucher.amount) || 0));
     }
 
+    for (const m of landMappings) {
+      const row = byId.get(m.project_id);
+      if (!row) continue;
+      const share = (landCash.get(m.land_id) ?? 0) / (projectsPerLand.get(m.land_id) ?? 1);
+      row.cost_land = money(row.cost_land + share);
+    }
+
     for (const row of byId.values()) {
       row.due = money(Math.max(0, row.sales_value - row.collected));
-      row.total_cost = money(row.cost_expenses + row.cost_procurement);
+      row.total_cost = money(row.cost_expenses + row.cost_procurement + row.cost_land);
       row.estimated_profit = money(row.sales_value - row.total_cost);
     }
 
@@ -1333,13 +1354,22 @@ class FinanceDashboardRepository {
     unallocated_cost: number;
   }> {
     const projects = await this.byProject(today);
-    const [expenses, vouchers] = await Promise.all([
+    const [expenses, vouchers, landMappings] = await Promise.all([
       db.expenses.toArray(),
       db.supplier_vouchers.toArray(),
+      db.land_project_mapping.toArray(),
     ]);
+    /*
+     * v29 — money on a land that a project stands on is already in that
+     * project's `cost_land` (development and historic cost included), so it is
+     * not unallocated even when the expense names no project.
+     */
+    const linkedLands = new Set(landMappings.map((m) => m.land_id));
 
     const unallocated = money(
-      expenses.filter((e) => !e.project_id).reduce((s, e) => s + (Number(e.amount) || 0), 0) +
+      expenses
+        .filter((e) => !e.project_id && !(e.land_id && linkedLands.has(e.land_id)))
+        .reduce((s, e) => s + (Number(e.amount) || 0), 0) +
         vouchers.filter((v) => !v.project_id).reduce((s, v) => s + (Number(v.amount) || 0), 0),
     );
 

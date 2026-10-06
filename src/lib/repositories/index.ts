@@ -9,6 +9,7 @@ export {
 } from './lookup.repository';
 export { companySettingsRepository } from './settings.repository';
 export { projectBudgetRepository } from './budget.repository';
+export { projectCostingRepository } from './costing.repository';
 export {
   bankAccountRepository,
   BankAccountInUseError,

@@ -292,10 +292,14 @@ export const COST_CATEGORY_META: Record<SystemCostCategory, { label: string; ton
   contractor_payment: { label: 'Contractor Payment', tone: 'amber' },
   marketing: { label: 'Marketing', tone: 'blue' },
   admin: { label: 'Admin', tone: 'neutral' },
+  design_approval: { label: 'Design & Approval', tone: 'blue' },
+  utility_connection: { label: 'Utilities & Connections', tone: 'blue' },
+  sales_commission: { label: 'Sales Commission', tone: 'amber' },
+  finance_cost: { label: 'Finance Cost', tone: 'red' },
   other: { label: 'Other', tone: 'neutral' },
 };
 
-/** Is this one of the six the code knows by name? */
+/** Is this one of the categories the code knows by name? */
 export function isSystemCostCategory(code: string): code is SystemCostCategory {
   return (COST_CATEGORIES as readonly string[]).includes(code);
 }
@@ -344,6 +348,13 @@ export interface ProjectFinanceSummary {
   /** expenses ledger + Module 6 supplier vouchers (8.3) */
   cost_expenses: number;
   cost_procurement: number;
+  /**
+   * v29 — the cash cost of the land under the project (PLATFORM-REPLAN.md
+   * §1.5). Each linked land's cost sheet actual, split evenly when one land
+   * carries several projects. Land expenses on a linked land are counted
+   * here and not again in `cost_expenses`.
+   */
+  cost_land: number;
   total_cost: number;
   /** sales − cost; negative early in a project is normal, not an error */
   estimated_profit: number;

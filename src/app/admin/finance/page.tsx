@@ -58,7 +58,7 @@ export default function FinanceOverviewPage() {
     },
     { label: 'Due', value: data.due, hint: 'sales value not yet collected', icon: CircleDollarSign },
     { label: 'Refunded', value: data.refunded, hint: 'paid back on cancellations', icon: Undo2 },
-    { label: 'Total cost', value: data.total_cost, hint: 'ledger + procurement', icon: ReceiptText },
+    { label: 'Total cost', value: data.total_cost, hint: 'land + ledger + procurement', icon: ReceiptText },
     {
       label: 'Estimated profit',
       value: data.estimated_profit,
@@ -143,7 +143,7 @@ export default function FinanceOverviewPage() {
         <span className="text-sm text-ink">
           {formatBdt(row.total_cost )}
           <span className="block text-xs text-ink-muted">
-            {formatBdt(row.cost_procurement )} material
+            {formatBdt(row.cost_land)} land · {formatBdt(row.cost_procurement)} material
           </span>
         </span>
       ),
@@ -161,15 +161,18 @@ export default function FinanceOverviewPage() {
       cell: (row) => {
         const budgeted = budgets?.[row.project_id] ?? 0;
         if (budgeted <= 0) return <span className="text-xs text-ink-muted">no budget</span>;
-        const left = budgeted - row.total_cost;
-        const pct = Math.round((row.total_cost / budgeted) * 1000) / 10;
+        // v29 — the budget has no land line (land is costed on the land), so
+        // land is left out of the spend it is compared with
+        const spent = row.total_cost - row.cost_land;
+        const left = budgeted - spent;
+        const pct = Math.round((spent / budgeted) * 1000) / 10;
         return (
           <span className="text-sm">
             <span className={left < 0 ? 'font-medium text-red-600' : 'text-ink'}>
               {left < 0 ? `${formatBdt(Math.abs(left))} over` : `${formatBdt(left)} left`}
             </span>
             <span className="block text-xs text-ink-muted">
-              {pct}% of {formatBdt(budgeted)}
+              {pct}% of {formatBdt(budgeted)}, excl. land
             </span>
           </span>
         );
@@ -177,7 +180,7 @@ export default function FinanceOverviewPage() {
       sortValue: (row) => {
         const budgeted = budgets?.[row.project_id] ?? 0;
         // unbudgeted projects sort last rather than mixing into the variances
-        return budgeted > 0 ? budgeted - row.total_cost : Number.POSITIVE_INFINITY;
+        return budgeted > 0 ? budgeted - (row.total_cost - row.cost_land) : Number.POSITIVE_INFINITY;
       },
     },
     {

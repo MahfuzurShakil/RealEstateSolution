@@ -307,6 +307,42 @@ class LandAcquisitionCostRepository extends BaseRepository<LandAcquisitionCost> 
     };
   }
 
+  /**
+   * v29 — every land's cash cost so far, in one pass, for the finance roll-up.
+   *
+   * The same figure as `sheetForLand(...).landTotal.actual`: every expense
+   * booked against the land, plus historic cost on owned land, plus what land
+   * development has incurred. Read table by table rather than land by land,
+   * because the finance overview needs it for every project at once.
+   */
+  async cashActualByLand(): Promise<Map<string, number>> {
+    const [expenses, costs, activities, progress] = await Promise.all([
+      db.expenses.toArray(),
+      db.land_acquisition_costs.toArray(),
+      db.land_development_activities.toArray(),
+      db.land_development_progress.toArray(),
+    ]);
+    const out = new Map<string, number>();
+    const add = (landId: string, amount: number) =>
+      out.set(landId, money((out.get(landId) ?? 0) + amount));
+
+    for (const e of expenses) if (e.land_id) add(e.land_id, Number(e.amount) || 0);
+    for (const c of costs) add(c.land_id, Number(c.historic_paid_amount) || 0);
+
+    // latest report per activity — each one states the running total
+    const latest = new Map<string, { at: string; amount: number }>();
+    for (const p of progress) {
+      const at = `${p.progress_date}|${p.created_at}`;
+      const prev = latest.get(p.activity_id);
+      if (!prev || at > prev.at) latest.set(p.activity_id, { at, amount: Number(p.amount_incurred) || 0 });
+    }
+    for (const a of activities) {
+      if (a.status === 'cancelled') continue;
+      add(a.land_id, latest.get(a.id)?.amount ?? 0);
+    }
+    return out;
+  }
+
   async removeForLand(landId: string): Promise<void> {
     const rows = await this.listForLand(landId);
     await db.land_acquisition_costs.bulkDelete(rows.map((r) => r.id));

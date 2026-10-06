@@ -40,7 +40,7 @@ export function ProjectFinanceCard({ projectId }: { projectId: string }) {
     { label: 'Sales value', value: summary.sales_value, hint: 'company-owned units' },
     { label: 'Collected', value: summary.collected, hint: `${collectedPct}% of sales` },
     { label: 'Due', value: summary.due, hint: 'not yet received' },
-    { label: 'Total cost', value: summary.total_cost, hint: 'ledger + procurement' },
+    { label: 'Total cost', value: summary.total_cost, hint: 'land + ledger + procurement' },
   ];
 
   return (
