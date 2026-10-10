@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { Layers } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -9,7 +10,11 @@ import { Modal } from '@/components/ui/Modal';
 import { LAND_SIZE_UNITS, type LandSizeUnit, type Tower } from '@/lib/db/types';
 import { LAND_SIZE_UNIT_LABEL } from '@/lib/domain/land';
 import type { ProjectShape } from '@/lib/domain/project';
-import { unitRepository } from '@/lib/repositories';
+import {
+  landAcquisitionCostRepository,
+  landProjectMappingRepository,
+  unitRepository,
+} from '@/lib/repositories';
 import { formatBdt } from '@/lib/utils/format';
 
 /**
@@ -57,8 +62,41 @@ export function PlotShareGenerateModal({
   const [facing, setFacing] = useState('South');
 
   /* ---- shares ---- */
-  const [pricePerShare, setPricePerShare] = useState('100000');
-  const [totalLandSize, setTotalLandSize] = useState('');
+  // empty until the register's own price (if any) is known: typed by hand (D2)
+  const [pricePerShare, setPricePerShare] = useState(isPlot ? '100000' : '');
+  const [priceTouched, setPriceTouched] = useState(false);
+  const [error, setError] = useState('');
+
+  /*
+   * A register divides the project's own land (client walkthrough
+   * 2026-10-10): its size and cost are read from the linked land, and the
+   * price per share is set against the land cost per share.
+   */
+  const shareContext = useLiveQuery(async () => {
+    if (isPlot) return null;
+    const lands = await landProjectMappingRepository.landsForProject(tower.project_id);
+    const sameUnit = lands.length > 0 && new Set(lands.map((l) => l.land_size_unit)).size === 1;
+    let cost = 0;
+    for (const l of lands) {
+      const sheet = await landAcquisitionCostRepository.sheetForLand(l.id);
+      cost += Math.max(sheet.landTotal.estimated, sheet.landTotal.actual);
+    }
+    const existing = await unitRepository.listForTower(tower.id);
+    return {
+      lands,
+      size: sameUnit ? lands.reduce((s, l) => s + (Number(l.land_size) || 0), 0) : null,
+      unit: sameUnit ? lands[0].land_size_unit : null,
+      cost,
+      existing: existing.length,
+      price: existing[0]?.base_price ?? null,
+      sold: existing.filter((u) => u.status !== 'available' && u.status !== 'hold').length,
+    };
+  }, [isPlot, tower.id, tower.project_id]);
+
+  // regenerating starts from the price the register already has
+  useEffect(() => {
+    if (!priceTouched && shareContext?.price) setPricePerShare(String(shareContext.price));
+  }, [shareContext?.price, priceTouched]);
 
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ created: number; skipped: string[] } | null>(null);
@@ -127,10 +165,13 @@ export function PlotShareGenerateModal({
             count: n,
             price_per_share: Number(pricePerShare) || 0,
             unit_type: unitType,
-            total_land_size: totalLandSize.trim() === '' ? null : Number(totalLandSize),
+            total_land_size: null,
             land_size_unit: sizeUnit,
+            replace: (shareContext?.existing ?? 0) > 0,
           });
       setResult({ created: res.created.length, skipped: res.skipped });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -156,10 +197,17 @@ export function PlotShareGenerateModal({
             <Button variant="outline" onClick={onClose} disabled={busy}>
               Cancel
             </Button>
-            <Button onClick={generate} disabled={busy || n === 0}>
+            <Button
+              onClick={generate}
+              disabled={
+                busy ||
+                n === 0 ||
+                (!isPlot && (!shareContext || shareContext.lands.length === 0 || shareContext.sold > 0))
+              }
+            >
               {busy
                 ? 'Generating…'
-                : `Generate ${n} ${n === 1 ? L.item.toLowerCase() : L.itemPlural.toLowerCase()}`}
+                : `${!isPlot && (shareContext?.existing ?? 0) > 0 ? 'Regenerate' : 'Generate'} ${n} ${n === 1 ? L.item.toLowerCase() : L.itemPlural.toLowerCase()}`}
             </Button>
           </>
         )
@@ -189,6 +237,10 @@ export function PlotShareGenerateModal({
         </div>
       ) : (
         <div className="space-y-5">
+          {!isPlot && shareContext && (
+            <ShareLandBanner context={shareContext} count={n} />
+          )}
+          {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
           <section className="rounded-xl border border-hairline bg-white p-4">
             <h3 className="mb-3 text-sm font-semibold text-ink">
               1. How many {L.itemPlural.toLowerCase()}
@@ -279,38 +331,15 @@ export function PlotShareGenerateModal({
                 </div>
               </>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-3">
-                <Field label="Price per share (BDT)" required>
-                  <TextInput
-                    value={pricePerShare}
-                    onChange={(e) => setPricePerShare(e.target.value)}
-                    inputMode="numeric"
-                  />
-                </Field>
-                <Field
-                  label="Total plot size"
-                  hint="Optional — divided across the shares, so each one shows its katha"
-                >
-                  <TextInput
-                    value={totalLandSize}
-                    onChange={(e) => setTotalLandSize(e.target.value)}
-                    inputMode="decimal"
-                    placeholder="e.g. 24"
-                  />
-                </Field>
-                <Field label="Unit">
-                  <SelectInput
-                    value={sizeUnit}
-                    onChange={(e) => setSizeUnit(e.target.value as LandSizeUnit)}
-                  >
-                    {LAND_SIZE_UNITS.map((u) => (
-                      <option key={u} value={u}>
-                        {LAND_SIZE_UNIT_LABEL[u] ?? u}
-                      </option>
-                    ))}
-                  </SelectInput>
-                </Field>
-              </div>
+              <SharePricing
+                price={pricePerShare}
+                onPrice={(v) => {
+                  setPriceTouched(true);
+                  setPricePerShare(v);
+                }}
+                count={n}
+                context={shareContext ?? null}
+              />
             )}
           </section>
 
@@ -358,3 +387,88 @@ export function PlotShareGenerateModal({
     </Modal>
   );
 }
+
+interface ShareContext {
+  lands: Array<{ code: string; name: string }>;
+  size: number | null;
+  unit: LandSizeUnit | null;
+  cost: number;
+  existing: number;
+  price: number | null;
+  sold: number;
+}
+
+/** The land being divided, read only, and why the button may be disabled. */
+function ShareLandBanner({ context, count }: { context: ShareContext; count: number }) {
+  if (context.lands.length === 0) {
+    return (
+      <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+        Link the land to this project first. The register divides that land.
+      </p>
+    );
+  }
+  const each =
+    context.size && count > 0 ? Math.round((context.size / count) * 10000) / 10000 : null;
+  return (
+    <div className="rounded-xl border border-admin-100 bg-admin-50/60 p-3 text-sm text-admin-800">
+      <p>
+        Dividing <strong>{context.lands.map((l) => l.code).join(', ')}</strong>
+        {context.size !== null && context.unit && (
+          <>
+            {' '}· {context.size} {LAND_SIZE_UNIT_LABEL[context.unit]}
+            {each !== null && (
+              <>
+                {' '}· each share {each} {LAND_SIZE_UNIT_LABEL[context.unit]}
+              </>
+            )}
+          </>
+        )}
+        . Shares always add up to 100%.
+      </p>
+      {context.existing > 0 && (
+        <p className={context.sold > 0 ? 'mt-1 font-medium text-red-700' : 'mt-1'}>
+          {context.sold > 0
+            ? `${context.sold} of ${context.existing} shares are already booked or sold, so the register cannot be regenerated.`
+            : `A register of ${context.existing} shares exists. Generating replaces it (none is sold yet).`}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Price per share, with the land cost per share and the profit beside it (D2). */
+function SharePricing({
+  price,
+  onPrice,
+  count,
+  context,
+}: {
+  price: string;
+  onPrice: (v: string) => void;
+  count: number;
+  context: ShareContext | null;
+}) {
+  const p = Number(price) || 0;
+  const costEach = context && count > 0 ? context.cost / count : 0;
+  const profit = p - costEach;
+  const pct = p > 0 ? Math.round((profit / p) * 1000) / 10 : null;
+  return (
+    <div className="grid gap-4 sm:grid-cols-3">
+      <Field label="Price per share (BDT)" required>
+        <TextInput value={price} onChange={(e) => onPrice(e.target.value)} inputMode="numeric" />
+      </Field>
+      <Field label="Land cost per share" hint="Land cost sheet ÷ number of shares">
+        <TextInput value={costEach > 0 ? formatBdt(Math.round(costEach)) : 'No land cost recorded'} readOnly disabled />
+      </Field>
+      <Field label="Profit per share" hint={pct === null ? undefined : `${pct}% of the price`}>
+        <TextInput
+          value={costEach > 0 ? formatBdt(Math.round(profit)) : '—'}
+          readOnly
+          disabled
+          className={profit < 0 ? 'text-red-600' : undefined}
+        />
+      </Field>
+    </div>
+  );
+}
+

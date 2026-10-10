@@ -19,6 +19,7 @@ import {
   salesOpenChecks,
 } from '@/lib/domain/project';
 import { companySettingsRepository, projectRepository } from '@/lib/repositories';
+import { todayLocal } from '@/lib/utils/format';
 
 const MOVE_QUESTION: Record<ProjectSalesStatus, string> = {
   open: 'Bookings can be taken on this project from now on.',
@@ -40,6 +41,11 @@ export function ProjectSalesCard({ project, lands }: { project: Project; lands: 
   const [target, setTarget] = useState<ProjectSalesStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const settings = useLiveQuery(() => companySettingsRepository.get(), []);
+  const readiness = useLiveQuery(() => projectRepository.readiness(project.id), [project.id, project.updated_at]);
+  // every unit has a buyer: suggest closing sales rather than waiting for somebody to notice
+  const allSpokenFor =
+    readiness !== undefined && readiness.unit_count > 0 && readiness.units_spoken_for >= readiness.unit_count;
+  const isShare = projectShape(project.project_type).item === 'share';
 
   const current = projectSalesStatus(project);
   const meta = PROJECT_SALES_STATUS_META[current];
@@ -56,6 +62,23 @@ export function ProjectSalesCard({ project, lands }: { project: Project; lands: 
     setBusy(true);
     try {
       await projectRepository.setSalesStatus(project.id, target);
+      /*
+       * A land share's status follows its sales: once the register is sold
+       * out, the project is at "Sold Out", with no second click needed.
+       */
+      if (isShare && target === 'sold_out' && project.status === 'planning') {
+        await projectRepository.setStatus(
+          project.id,
+          'nearly_complete',
+          {
+            event_date: todayLocal(),
+            performed_by: null,
+            reference_no: null,
+            remarks: 'Every share sold; moved with the sales status.',
+          },
+          null,
+        );
+      }
       setTarget(null);
     } finally {
       setBusy(false);
@@ -72,6 +95,14 @@ export function ProjectSalesCard({ project, lands }: { project: Project; lands: 
             ? 'Taking bookings. The project appears in the booking form.'
             : 'Not taking bookings. The project is left out of the booking form.'}
         </p>
+        {current === 'open' && allSpokenFor && (
+          <div className="mb-3 rounded-xl border border-admin-200 bg-admin-50 p-3 text-sm text-admin-800">
+            Every {projectShape(project.project_type).labels.item.toLowerCase()} has a buyer.
+            <Button size="sm" className="mt-2 w-full" onClick={() => setTarget('sold_out')}>
+              Mark sold out
+            </Button>
+          </div>
+        )}
         <div className="space-y-2">
           {allowedSalesMoves(current).map((to) => {
             const blocked = to === 'open' && checks.blockers.length > 0;

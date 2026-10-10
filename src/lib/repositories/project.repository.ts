@@ -723,10 +723,18 @@ export interface SharePatternInput {
   count: number;
   price_per_share: number;
   unit_type: string;
-  /** the whole plot, divided evenly across the shares; optional */
+  /**
+   * Ignored since 2026-10-10: the register divides the project's own linked
+   * land, read here, never a size typed in the generator.
+   */
   total_land_size?: number | null;
   land_size_unit: LandSizeUnit;
+  /** replace an existing register; refused once any share is spoken for */
+  replace?: boolean;
 }
+
+/** Statuses a share can be in and still be thrown away by a regenerate. */
+const UNSOLD: ReadonlySet<string> = new Set(['available', 'hold']);
 
 class UnitRepository extends BaseRepository<Unit> {
   constructor() {
@@ -906,11 +914,48 @@ class UnitRepository extends BaseRepository<Unit> {
     const count = Math.max(0, Math.trunc(Number(input.count) || 0));
     if (count === 0) return { created, skipped };
 
+    /*
+     * One register per project, adding up to exactly 100% of the land
+     * (client walkthrough 2026-10-10). Running the generator again on top of
+     * an existing register used to add a second set of shares and push the
+     * total past the plot. Now it either replaces an unsold register or stops.
+     */
+    const current = await db.units.where('tower_id').equals(towerId).toArray();
+    if (current.length > 0) {
+      if (!input.replace) {
+        throw new Error(`The register already has ${current.length} shares. Regenerate it instead.`);
+      }
+      const spoken = current.filter((u) => !UNSOLD.has(u.status));
+      if (spoken.length > 0) {
+        throw new Error(
+          `${spoken.length} share${spoken.length === 1 ? ' is' : 's are'} already booked or sold, so the register cannot be regenerated.`,
+        );
+      }
+      await db.units.bulkDelete(current.map((u) => u.id));
+      for (const u of current) existing.delete(u.code);
+    }
+
+    // the land is the project's own: read from its linked lands, never typed
+    const tower = await db.towers.get(towerId);
+    const lands = tower ? await landProjectMappingRepository.landsForProject(tower.project_id) : [];
+    const sameUnit = lands.length > 0 && new Set(lands.map((l) => l.land_size_unit)).size === 1;
+    const landTotal = sameUnit ? lands.reduce((s, l) => s + (Number(l.land_size) || 0), 0) : 0;
+    const landUnit = sameUnit ? lands[0].land_size_unit : input.land_size_unit;
+
+    /*
+     * Rounded shares must still add up: 100 / 3 is 33.33 three times, which
+     * is 99.99%. Every share but the last gets the rounded figure and the
+     * last one takes what is left, so the register is exactly the land.
+     */
     const pct = money(100 / count);
-    const areaEach = input.total_land_size ? money((Number(input.total_land_size) || 0) / count) : null;
+    const lastPct = money(100 - pct * (count - 1));
+    const areaEach = landTotal > 0 ? Math.round((landTotal / count) * 10000) / 10000 : null;
+    const areaLast =
+      areaEach !== null ? Math.round((landTotal - areaEach * (count - 1)) * 10000) / 10000 : null;
     const width = String(count).length;
 
     for (let i = 0; i < count; i += 1) {
+      const last = i === count - 1;
       const code = `${input.prefix}${input.separator}${String(i + 1).padStart(width, '0')}`;
       if (existing.has(code)) {
         skipped.push(code);
@@ -928,9 +973,9 @@ class UnitRepository extends BaseRepository<Unit> {
             bathroom_count: null,
             balcony_count: null,
             size_sqft: null,
-            land_size: areaEach,
-            land_size_unit: areaEach ? input.land_size_unit : null,
-            share_pct: pct,
+            land_size: last ? areaLast : areaEach,
+            land_size_unit: areaEach ? landUnit : null,
+            share_pct: last ? lastPct : pct,
             road_width_ft: null,
             is_corner: null,
             facing: null,

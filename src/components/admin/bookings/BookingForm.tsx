@@ -126,7 +126,15 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
 
   // a customer can be handed in from the customer page ("Book a unit")
   const [form, setForm] = useState<FormState>(() =>
-    booking ? toFormState(booking) : { ...EMPTY, customer_id: params.get('customer') ?? '' },
+    booking
+      ? toFormState(booking)
+      : {
+          ...EMPTY,
+          customer_id: params.get('customer') ?? '',
+          // "Sell this unit / share / plot" from the project page hands both in
+          project_id: params.get('project') ?? '',
+          unit_id: params.get('unit') ?? '',
+        },
   );
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);

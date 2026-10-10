@@ -784,8 +784,8 @@ export const DEMO_PROJECTS: DemoProject[] = [
     location_summary: 'Birulia, Savar — on the Turag',
     expected_start_date: '2026-04-15',
     expected_completion_date: '2026-12-31',
-    actual_start_date: '2026-04-15',
-    status: 'handover_ongoing',
+    // 4 of 20 shares sold: the register is still open (client walkthrough 2026-10-10)
+    status: 'planning',
     surroundings: 'Birulia bridge 1km, Ashulia 5km, Uttara 12km, riverside frontage',
     amenities: [],
     is_public: true,
@@ -808,37 +808,12 @@ export const DEMO_PROJECTS: DemoProject[] = [
       prefix: 'SHARE',
       separator: '-',
       count: 20,
-      price_per_share: 100_000,
+      // 1.2 katha a share at about 24 lakh a katha; the land cost 20 lakh a katha
+      price_per_share: 2_900_000,
       unit_type: 'Land Share',
       total_land_size: 24,
     },
-    history: [
-      {
-        to_status: 'design',
-        event_date: '2026-04-15',
-        remarks: 'Twenty equal shares agreed with the board. Nothing is built.',
-      },
-      {
-        to_status: 'approval',
-        event_date: '2026-04-28',
-        remarks: 'Share deed drafted and vetted.',
-      },
-      {
-        to_status: 'under_construction',
-        event_date: '2026-05-04',
-        remarks: 'Register opened for sale. No construction on this project.',
-      },
-      {
-        to_status: 'nearly_complete',
-        event_date: '2026-07-30',
-        remarks: 'Most of the register sold.',
-      },
-      {
-        to_status: 'handover_ongoing',
-        event_date: '2026-08-25',
-        remarks: 'Share deeds being registered buyer by buyer.',
-      },
-    ],
+    history: [],
   },
   /*
    * The complete record (2026-10-04) — the project the Module 2 demo is given

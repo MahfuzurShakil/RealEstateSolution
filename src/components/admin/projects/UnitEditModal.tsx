@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Home, Lock } from 'lucide-react';
+import { Home, Lock, ShoppingBag } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Checkbox, Field, MoneyInput, SelectInput, TextInput } from '@/components/ui/Field';
@@ -105,6 +105,16 @@ export function UnitEditModal({
     if (form.allocation_type === 'landowner_share' && !form.allocated_to_owner_id) {
       return setError(`Pick the landowner this ${shape.labels.item.toLowerCase()} belongs to`);
     }
+    // a register is the whole land and never more (client walkthrough 2026-10-10)
+    if (uses('share_pct')) {
+      const others = (await unitRepository.listForTower(unit.tower_id)).filter((u) => u.id !== unit.id);
+      const total = others.reduce((s, u) => s + (Number(u.share_pct) || 0), 0) + (Number(form.share_pct) || 0);
+      if (total > 100.005) {
+        return setError(
+          `All shares together would be ${Math.round(total * 100) / 100}% of the land. Shares can never exceed 100%.`,
+        );
+      }
+    }
 
     setSaving(true);
     try {
@@ -153,6 +163,20 @@ export function UnitEditModal({
           </Button>
         ) : (
           <>
+            {/*
+              Booked and sold are never set here: a sale has a buyer, a price
+              and a payment plan, and the booking records all three.
+            */}
+            {(unit.status === 'available' || unit.status === 'hold') && unit.for_sale_by === 'company' && (
+              <Link
+                href={`/admin/bookings/new?project=${projectId}&unit=${unit.id}`}
+                className="mr-auto"
+              >
+                <Button variant="outline">
+                  <ShoppingBag className="size-4" /> Sell this {shape.labels.item.toLowerCase()}
+                </Button>
+              </Link>
+            )}
             <Button variant="outline" onClick={onClose} disabled={saving}>
               Cancel
             </Button>

@@ -595,7 +595,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
   /*
    * v27 — a land share.
    *
-   * 100,000 flat, no premiums at all: every share of one plot is worth the
+   * 29 lakh flat, no premiums at all: every share of one plot is worth the
    * same, so there is no attribute to price. Paid in full at booking, which is
    * how a share this size usually goes — and it leaves the register showing
    * one share gone and nineteen available.
@@ -609,13 +609,13 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     floor_premium: 0,
     facing_premium: 0,
     parking_charge: 0,
-    other_charges: 18000,
+    other_charges: 60000,
     discount_amount: 0,
-    booking_amount: 20000,
+    booking_amount: 500000,
     installment_tenure_months: 6,
     payments: [
       {
-        amount: 118_000,
+        amount: 2_960_000,
         days_ago: 52,
         method: 'bank',
         reference_no: 'BEFTN 6620411',
@@ -637,12 +637,12 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     floor_premium: 0,
     facing_premium: 0,
     parking_charge: 0,
-    other_charges: 18000,
+    other_charges: 60000,
     discount_amount: 0,
-    booking_amount: 20000,
+    booking_amount: 500000,
     installment_tenure_months: 6,
     payments: [
-      { amount: 118_000, days_ago: 48, method: 'bank', reference_no: 'BEFTN 6620590' },
+      { amount: 2_960_000, days_ago: 48, method: 'bank', reference_no: 'BEFTN 6620590' },
     ],
   },
   {
@@ -654,12 +654,12 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     floor_premium: 0,
     facing_premium: 0,
     parking_charge: 0,
-    other_charges: 18000,
+    other_charges: 60000,
     discount_amount: 0,
-    booking_amount: 20000,
+    booking_amount: 500000,
     installment_tenure_months: 6,
     payments: [
-      { amount: 118_000, days_ago: 45, method: 'bank', reference_no: 'BEFTN 6620733' },
+      { amount: 2_960_000, days_ago: 45, method: 'bank', reference_no: 'BEFTN 6620733' },
     ],
   },
   {
@@ -671,12 +671,12 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     floor_premium: 0,
     facing_premium: 0,
     parking_charge: 0,
-    other_charges: 18000,
+    other_charges: 60000,
     discount_amount: 0,
-    booking_amount: 20000,
+    booking_amount: 500000,
     installment_tenure_months: 6,
     payments: [
-      { amount: 118_000, days_ago: 41, method: 'bank', reference_no: 'BEFTN 6620811' },
+      { amount: 2_960_000, days_ago: 41, method: 'bank', reference_no: 'BEFTN 6620811' },
     ],
   },
   /*

@@ -201,6 +201,20 @@ export function projectStatusBlockers(
   }
 
   /*
+   * A land share's "Sold Out" stage is a fact, not a choice (client
+   * walkthrough 2026-10-10): the register has to actually be sold.
+   */
+  if (
+    shape.item === 'share' &&
+    target === 'nearly_complete' &&
+    facts.unit_count > 0 &&
+    facts.units_spoken_for < facts.unit_count
+  ) {
+    const left = facts.unit_count - facts.units_spoken_for;
+    blockers.push(`${left} share${left === 1 ? ' is' : 's are'} still unsold`);
+  }
+
+  /*
    * This one holds for every shape: closing a project nobody has taken
    * delivery of is wrong whether delivery is keys, possession or a deed.
    */
