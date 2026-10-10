@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Layers } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
@@ -93,10 +93,9 @@ export function PlotShareGenerateModal({
     };
   }, [isPlot, tower.id, tower.project_id]);
 
-  // regenerating starts from the price the register already has
-  useEffect(() => {
-    if (!priceTouched && shareContext?.price) setPricePerShare(String(shareContext.price));
-  }, [shareContext?.price, priceTouched]);
+  // regenerating starts from the price the register already has, until typed over
+  const sharePrice =
+    !isPlot && !priceTouched && shareContext?.price ? String(shareContext.price) : pricePerShare;
 
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ created: number; skipped: string[] } | null>(null);
@@ -135,7 +134,7 @@ export function PlotShareGenerateModal({
 
   const perItem = isPlot
     ? (Number(plotSize) || 0) * (Number(ratePerKatha) || 0)
-    : Number(pricePerShare) || 0;
+    : Number(sharePrice) || 0;
   const totalValue = perItem * n + (isPlot ? corners.length * (Number(cornerPremium) || 0) : 0);
 
   /** A register has to add up to the whole plot, so unequal shares are a later edit. */
@@ -163,7 +162,7 @@ export function PlotShareGenerateModal({
             prefix,
             separator,
             count: n,
-            price_per_share: Number(pricePerShare) || 0,
+            price_per_share: Number(sharePrice) || 0,
             unit_type: unitType,
             total_land_size: null,
             land_size_unit: sizeUnit,
@@ -332,7 +331,7 @@ export function PlotShareGenerateModal({
               </>
             ) : (
               <SharePricing
-                price={pricePerShare}
+                price={sharePrice}
                 onPrice={(v) => {
                   setPriceTouched(true);
                   setPricePerShare(v);
