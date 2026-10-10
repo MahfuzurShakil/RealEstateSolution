@@ -474,6 +474,14 @@ class ProjectRepository extends BaseRepository<Project> {
       throw new Error('A land-share project is succeeded by a project that builds or partitions — not by another share register.');
     }
     if (!input.name.trim()) throw new Error('Give the new project a name.');
+    /*
+     * One land, one project (client decision 2026-10-10, PROJECT-FLOW-REVIEW
+     * D3). The successor takes the land over, so the share register has to be
+     * finished selling first: a building cannot start on shares still for sale.
+     */
+    if ((predecessor.sales_status ?? 'not_open') !== 'sold_out') {
+      throw new Error('Mark the share register sold out first. The construction project takes over the land once every share is sold.');
+    }
 
     const successor = await this.create(
       {
@@ -499,10 +507,10 @@ class ProjectRepository extends BaseRepository<Project> {
       createdBy,
     );
 
-    // the plot is the same plot: link it to the successor as well
+    // the plot moves to the successor: one land, one project (D3)
     const lands = await landProjectMappingRepository.listForProject(predecessorId);
     for (const m of lands) {
-      await landProjectMappingRepository.create({ land_id: m.land_id, project_id: successor.id }, createdBy);
+      await landProjectMappingRepository.update(m.id, { project_id: successor.id });
     }
     return successor;
   }
@@ -565,6 +573,19 @@ class LandProjectMappingRepository extends BaseRepository<LandProjectMapping> {
    * pipeline status.
    */
   async setLandsForProject(projectId: string, landIds: string[]): Promise<void> {
+    /*
+     * One land, one project (client decision 2026-10-10, D3). Refused before
+     * anything is written, naming the project that already holds the land.
+     */
+    for (const land_id of landIds) {
+      const holders = (await this.projectsForLand(land_id)).filter((p) => p.id !== projectId);
+      if (holders.length > 0) {
+        const land = await db.lands.get(land_id);
+        throw new Error(
+          `${land?.code ?? 'This land'} is already the land of ${holders[0].code}. A land can belong to one project only.`,
+        );
+      }
+    }
     const existing = await this.listForProject(projectId);
     await db.land_project_mapping.bulkDelete(existing.map((m) => m.id));
     for (const land_id of landIds) await this.create({ land_id, project_id: projectId });

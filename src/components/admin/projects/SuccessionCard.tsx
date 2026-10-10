@@ -93,7 +93,7 @@ export function SuccessionCard({ project }: { project: Project }) {
       <CardHeader
         title={isRegister ? 'Shareholders' : 'Commissioned by shareholders'}
         action={
-          isRegister ? (
+          isRegister && projectSalesStatus(project) === 'sold_out' ? (
             <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
               <GitFork className="size-4" /> Start successor project
             </Button>

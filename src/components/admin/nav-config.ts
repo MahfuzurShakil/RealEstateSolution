@@ -64,18 +64,19 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [{ label: 'Overview', href: '/admin', module: null }],
   },
   {
+    // project starts the life cycle; land sits under it (client, 2026-10-10)
+    label: 'Projects',
+    icon: Building2,
+    items: [
+      { label: 'All Projects', href: '/admin/projects', module: 'project' },
+    ],
+  },
+  {
     label: 'Land Management',
     icon: Map,
     items: [
       { label: 'Lands', href: '/admin/lands', module: 'land' },
       { label: 'Landowners', href: '/admin/landowners', module: 'land' },
-    ],
-  },
-  {
-    label: 'Projects',
-    icon: Building2,
-    items: [
-      { label: 'All Projects', href: '/admin/projects', module: 'project' },
     ],
   },
   {

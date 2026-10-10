@@ -3,9 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ClipboardList, Info, KeyRound, Map as MapIcon } from 'lucide-react';
-import { Badge } from '@/components/ui/Badge';
-import { QuickLandModal } from './QuickLandModal';
+import { Building2, Info, LandPlot, Layers, Map as MapIcon, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Checkbox, Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
@@ -14,23 +12,15 @@ import {
   PROJECT_TYPES,
   type ConstructionAfterSale,
   type Land,
-  type LandEntryMode,
   type LandSizeUnit,
   type Project,
   type ProjectType,
 } from '@/lib/db/types';
-import {
-  ACQUISITION_TYPE_LABEL,
-  LAND_SIZE_UNIT_LABEL,
-  LAND_STATUS_META,
-  developmentGateBlockReason,
-  landStatusLabel,
-} from '@/lib/domain/land';
+import { LAND_SIZE_UNIT_LABEL, developmentGateBlockReason } from '@/lib/domain/land';
 import {
   CONSTRUCTION_AFTER_SALE_LABEL,
   PROJECT_TYPE_HINT,
   PROJECT_TYPE_LABEL,
-  projectSalesStatus,
 } from '@/lib/domain/project';
 import {
   companySettingsRepository,
@@ -43,13 +33,11 @@ import {
   type ProjectWithRelations,
 } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
-import { formatBdt } from '@/lib/utils/format';
+import { LandFacts, LandPickerModal } from './LandPickerModal';
 
 interface FormState {
   name: string;
   project_type: ProjectType;
-  total_land_area: string;
-  total_land_area_unit: LandSizeUnit;
   location_summary: string;
   expected_start_date: string;
   expected_completion_date: string;
@@ -58,17 +46,12 @@ interface FormState {
   project_manager: string;
   surroundings: string;
   cover_image_url: string;
-  is_public: boolean;
-  is_featured: boolean;
-  /** v29 — land_share only */
   construction_after_sale: ConstructionAfterSale;
 }
 
 const EMPTY: FormState = {
   name: '',
   project_type: 'apartment',
-  total_land_area: '',
-  total_land_area_unit: 'katha',
   location_summary: '',
   expected_start_date: '',
   expected_completion_date: '',
@@ -77,160 +60,112 @@ const EMPTY: FormState = {
   project_manager: '',
   surroundings: '',
   cover_image_url: '',
-  is_public: false,
-  is_featured: false,
   construction_after_sale: 'undecided',
 };
 
 const str = (v: unknown) => (v === null || v === undefined ? '' : String(v));
-const num = (v: string) => (v.trim() === '' ? null : Number(v));
+
+type Kind = 'built' | 'plot' | 'share';
+const kindOf = (t: ProjectType): Kind =>
+  t === 'land_share' ? 'share' : t === 'plot_development' ? 'plot' : 'built';
+
+/** The two dates mean different things per type (client walkthrough 2026-10-10). */
+const TIMELINE: Record<Kind, { title: string; start: string; end: string; startHint: string; endHint: string }> = {
+  built: {
+    title: 'Construction timeline',
+    start: 'Construction start',
+    end: 'Handover target',
+    startHint: 'When piling or foundation work is expected to begin',
+    endHint: 'When flats are expected to be handed over',
+  },
+  plot: {
+    title: 'Development timeline',
+    start: 'Development start',
+    end: 'Plot handover target',
+    startHint: 'Filling, roads and drains begin',
+    endHint: 'When plots are expected to be handed over',
+  },
+  share: {
+    title: 'Sale period',
+    start: 'Sales start',
+    end: 'Target sell-out',
+    startHint: 'Nothing is built: this is only the selling window',
+    endHint: 'When all shares are expected to be sold',
+  },
+};
+
+const TYPE_ICON: Record<Kind, typeof Building2> = { built: Building2, plot: LandPlot, share: Layers };
 
 /**
- * Add / Edit form for Module 2 (Design Reference A.9).
+ * Add / Edit form for Module 2, rebuilt after the client walkthrough
+ * (PROJECT-FLOW-REVIEW.md, batch 1).
  *
- * Project first (PLATFORM-REPLAN.md §1.2): a project can be saved with no land
- * at all, and any land still alive can be linked — one already owned, or one
- * still in acquisition. Land can also be added from here without leaving the
- * form. Whether the land is secure enough to sell or build on is the
- * project's land readiness, checked when sales open and construction starts,
- * not here.
+ * Order: what the project is, then its type, then the fields that type needs,
+ * then the land. The land is picked and confirmed in a dialog and then shown
+ * read only; its area is never typed here, it comes from the land. A land
+ * belongs to one project only (D3). Publishing lives on the Sales card.
  */
 export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
   const router = useRouter();
 
   const [form, setForm] = useState<FormState>(project ? toFormState(project) : EMPTY);
-  // who can hold a project: the PM role, plus management on a small office
   const managers =
     useLiveQuery(() => userRepository.listByRole(['project_manager', 'management']), []) ?? [];
-  const [landIds, setLandIds] = useState<string[]>(project?.lands.map((l) => l.id) ?? []);
+  const [lands, setLands] = useState<Land[]>(project?.lands ?? []);
   const [amenities, setAmenities] = useState<string[]>(project?.amenities ?? []);
-  const [availableLands, setAvailableLands] = useState<Land[]>([]);
-  /** lands already carrying another project — legal, but worth flagging */
-  const [otherProjectByLand, setOtherProjectByLand] = useState<Record<string, string>>({});
   const [amenityOptions, setAmenityOptions] = useState<string[]>([]);
+  const [picking, setPicking] = useState<{ replace?: string } | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
-  /** v29 — the quick-add land dialog, and which entry it opens on */
-  const [addingLand, setAddingLand] = useState<LandEntryMode | null>(null);
 
   useEffect(() => {
-    const alreadyMine = new Set(project?.lands.map((l) => l.id) ?? []);
-    landRepository.getAll().then((rows) =>
-      setAvailableLands(
-        rows
-          // any land still alive — owned or still being acquired (v29)
-          .filter(
-            (l) => alreadyMine.has(l.id) || (l.status !== 'rejected' && l.status !== 'disposed'),
-          )
-          .sort((a, b) => a.code.localeCompare(b.code)),
-      ),
-    );
     lookupRepository.options('amenity').then((rows) => setAmenityOptions(rows.map((r) => r.value)));
-
-    landRepository.getAll().then(async (rows) => {
-      const taken: Record<string, string> = {};
-      for (const land of rows) {
-        const others = (await landProjectMappingRepository.projectsForLand(land.id)).filter(
-          (p) => p.id !== project?.id,
-        );
-        if (others.length > 0) taken[land.id] = others.map((p) => p.code).join(', ');
-      }
-      setOtherProjectByLand(taken);
-    });
-  }, [project]);
+  }, []);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
-  const selectedLands = useMemo(
-    () => availableLands.filter((l) => landIds.includes(l.id)),
-    [availableLands, landIds],
-  );
+  const kind = kindOf(form.project_type);
+  const timeline = TIMELINE[kind];
+  // the inventory is shaped by the type, so the type is fixed once there is any
+  const typeLocked = Boolean(project && project.unit_total > 0);
 
-  /** Sum of the picked lands, only when they share one unit (Section 3.3). */
-  const landAreaSuggestion = useMemo(() => {
-    if (selectedLands.length === 0) return null;
-    const units = new Set(selectedLands.map((l) => l.land_size_unit));
-    if (units.size !== 1) return null;
-    const unit = [...units][0];
-    const total = selectedLands.reduce((sum, l) => sum + (Number(l.land_size) || 0), 0);
-    return { total: Number(total.toFixed(2)), unit };
-  }, [selectedLands]);
+  /** Area from the land, never typed: summed when the lands share a unit. */
+  const area = useMemo(() => {
+    if (lands.length === 0) return null;
+    const units = new Set(lands.map((l) => l.land_size_unit));
+    if (units.size !== 1) return { total: null, unit: lands[0].land_size_unit as LandSizeUnit };
+    const total = lands.reduce((s, l) => s + (Number(l.land_size) || 0), 0);
+    return { total: Number(total.toFixed(4)), unit: lands[0].land_size_unit as LandSizeUnit };
+  }, [lands]);
 
-  function toggleLand(id: string) {
-    setLandIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
-  }
-
-  /*
-   * Gate G3 (BRD DEV-004) — a project planned over a plot that is still being
-   * filled has a schedule nobody can meet: piling cannot start on ground that
-   * is four feet short, and the dates are wrong from the day they are drawn.
-   *
-   * Live, so ticking a plot shows the problem immediately rather than at save.
-   * Lands already linked to this project are exempt: the link exists, and
-   * re-validating history would make an existing project unsaveable over work
-   * that was done before the gate was switched on.
-   */
+  // gate G3 (BRD DEV-004), for land newly added to this project
   const gateOn = useLiveQuery(
     async () => (await companySettingsRepository.get())?.require_development_ready ?? false,
     [],
   );
-  const alreadyLinked = useMemo(
-    () => new Set(project?.lands.map((l) => l.id) ?? []),
-    [project],
-  );
-  const blockedLands = useLiveQuery(async () => {
-    const reasons: string[] = [];
-    for (const id of landIds) {
-      if (alreadyLinked.has(id)) continue;
-      const land = await landRepository.getById(id);
-      const readiness = await landDevelopmentRepository.readinessForLand(id);
-      const reason = developmentGateBlockReason(land ?? undefined, readiness);
-      if (reason) reasons.push(reason);
-    }
-    return reasons;
-  }, [landIds, alreadyLinked]) ?? [];
-
-  function toggleAmenity(value: string) {
-    setAmenities((list) =>
-      list.includes(value) ? list.filter((a) => a !== value) : [...list, value],
-    );
-  }
+  const alreadyLinked = useMemo(() => new Set(project?.lands.map((l) => l.id) ?? []), [project]);
+  const blockedLands =
+    useLiveQuery(async () => {
+      const reasons: string[] = [];
+      for (const land of lands) {
+        if (alreadyLinked.has(land.id)) continue;
+        const readiness = await landDevelopmentRepository.readinessForLand(land.id);
+        const reason = developmentGateBlockReason(land, readiness);
+        if (reason) reasons.push(reason);
+      }
+      return reasons;
+    }, [lands.map((l) => l.id).join(','), alreadyLinked]) ?? [];
 
   function validate(): boolean {
     const next: Record<string, string> = {};
     if (!form.name.trim()) next.name = 'Project name is required';
     if (!form.expected_start_date) next.expected_start_date = 'Required';
     if (!form.expected_completion_date) next.expected_completion_date = 'Required';
-    else if (
-      form.expected_start_date &&
-      form.expected_completion_date < form.expected_start_date
-    ) {
-      next.expected_completion_date = 'Completion cannot be before the start date';
+    else if (form.expected_start_date && form.expected_completion_date < form.expected_start_date) {
+      next.expected_completion_date = `${timeline.end} cannot be before ${timeline.start.toLowerCase()}`;
     }
-    /*
-     * Gate G3 (BRD DEV-004). Checked here because this is where the link is
-     * actually made — lands are put into projects from this form, never from
-     * the land page.
-     *
-     * Every blocked plot is named rather than just the first, so somebody
-     * fixing this does not discover the second one after saving the first.
-     */
-    if (gateOn && blockedLands.length > 0) {
-      next.lands = blockedLands.join(' ');
-    }
-    /*
-     * v29 — the public site shows projects that are selling. Only checked when
-     * the box is being ticked, so an older project already public with sales
-     * not yet opened can still be edited.
-     */
-    const salesOpen = project ? projectSalesStatus(project) !== 'not_open' : false;
-    if (form.is_public && !project?.is_public && !salesOpen) {
-      next.is_public = 'Open sales on the project page first, then publish it';
-    }
-    if (form.is_featured && !form.is_public) {
-      next.is_featured = 'A featured project must be public first';
-    }
+    if (gateOn && blockedLands.length > 0) next.lands = blockedLands.join(' ');
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -243,21 +178,19 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
       const payload = {
         name: form.name.trim(),
         project_type: form.project_type,
-        total_land_area: num(form.total_land_area),
-        total_land_area_unit: form.total_land_area_unit,
+        // from the land, read only (client walkthrough 2026-10-10)
+        total_land_area: area?.total ?? null,
+        total_land_area_unit: area?.unit ?? 'katha',
         location_summary: form.location_summary.trim() || null,
         expected_start_date: form.expected_start_date,
         expected_completion_date: form.expected_completion_date,
-        actual_start_date: form.actual_start_date || null,
-        architect: form.architect.trim() || null,
+        actual_start_date: kind === 'built' ? form.actual_start_date || null : null,
+        architect: kind === 'share' ? null : form.architect.trim() || null,
         project_manager: form.project_manager || null,
         surroundings: form.surroundings.trim() || null,
-        amenities,
+        amenities: kind === 'share' ? [] : amenities,
         cover_image_url: form.cover_image_url.trim() || null,
-        is_public: form.is_public,
-        is_featured: form.is_featured,
-        construction_after_sale:
-          form.project_type === 'land_share' ? form.construction_after_sale : null,
+        construction_after_sale: kind === 'share' ? form.construction_after_sale : null,
       };
 
       let saved: Project;
@@ -268,24 +201,36 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
           ...payload,
           code: '',
           status: 'planning',
+          is_public: false,
+          is_featured: false,
         });
       }
 
-      // the mapping only — the lands keep their own pipeline status (v29)
-      await landProjectMappingRepository.setLandsForProject(saved.id, landIds);
-
+      try {
+        await landProjectMappingRepository.setLandsForProject(
+          saved.id,
+          lands.map((l) => l.id),
+        );
+      } catch (err) {
+        setErrors((prev) => ({ ...prev, lands: err instanceof Error ? err.message : String(err) }));
+        if (!project) router.push(`/admin/projects/${saved.id}/edit`);
+        return;
+      }
       router.push(`/admin/projects/${saved.id}`);
     } finally {
       setSaving(false);
     }
   }
 
+  const TypeIcon = TYPE_ICON[kind];
+
   return (
     <form onSubmit={handleSubmit} className="space-y-5 pb-4">
+      {/* 1 — what the project is */}
       <Card>
-        <CardHeader title="Project Information" />
+        <CardHeader title="Project information" />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Field label="Project Name" required error={errors.name} className="xl:col-span-2">
+          <Field label="Project name" required error={errors.name} className="xl:col-span-2">
             <TextInput
               value={form.name}
               onChange={(e) => set('name', e.target.value)}
@@ -293,30 +238,91 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
               invalid={Boolean(errors.name)}
             />
           </Field>
-          <Field label="Project Type" required hint={PROJECT_TYPE_HINT[form.project_type]}>
-            <SelectInput
-              value={form.project_type}
-              onChange={(e) => set('project_type', e.target.value as ProjectType)}
-            >
-              {PROJECT_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {PROJECT_TYPE_LABEL[t]}
+          <Field label="Project manager">
+            <SelectInput value={form.project_manager} onChange={(e) => set('project_manager', e.target.value)}>
+              <option value="">Not assigned</option>
+              {managers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
                 </option>
               ))}
             </SelectInput>
           </Field>
+          <Field
+            label="Location summary"
+            className="xl:col-span-3"
+            hint="Marketing address for the public site. Mouza and dag stay on the land record."
+          >
+            <TextInput
+              value={form.location_summary}
+              onChange={(e) => set('location_summary', e.target.value)}
+              placeholder="e.g. Bashundhara R/A, Dhaka"
+            />
+          </Field>
+        </div>
+      </Card>
 
-          {form.project_type === 'land_share' && (
+      {/* 2 — the type, which shapes everything after it */}
+      <Card>
+        <CardHeader
+          title="Project type"
+          subtitle={typeLocked ? 'Fixed: this project already has inventory.' : 'Decides what is sold and which details are asked below'}
+        />
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+          {PROJECT_TYPES.map((t) => {
+            const Icon = TYPE_ICON[kindOf(t)];
+            const active = form.project_type === t;
+            return (
+              <button
+                key={t}
+                type="button"
+                disabled={typeLocked && !active}
+                onClick={() => set('project_type', t)}
+                aria-pressed={active}
+                className={cn(
+                  'flex items-start gap-2.5 rounded-xl border p-3 text-left transition',
+                  active
+                    ? 'border-admin-500 bg-admin-50 ring-2 ring-admin-500/20'
+                    : 'border-hairline bg-white hover:border-admin-300',
+                  typeLocked && !active && 'cursor-not-allowed opacity-50',
+                )}
+              >
+                <Icon className="mt-0.5 size-4 shrink-0 text-admin-600" />
+                <span>
+                  <span className="block text-sm font-semibold text-ink">{PROJECT_TYPE_LABEL[t]}</span>
+                  <span className="mt-0.5 block text-[11px] leading-snug text-ink-muted">{PROJECT_TYPE_HINT[t]}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* 3 — what this type needs */}
+      <Card>
+        <CardHeader
+          title={`${PROJECT_TYPE_LABEL[form.project_type]} details`}
+          action={<TypeIcon className="size-5 text-admin-500" />}
+        />
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {kind !== 'share' && (
+            <Field label={kind === 'plot' ? 'Layout planner / architect' : 'Architect'}>
+              <TextInput
+                value={form.architect}
+                onChange={(e) => set('architect', e.target.value)}
+                placeholder={kind === 'plot' ? 'e.g. Planning Associates' : 'e.g. Volumezero Ltd.'}
+              />
+            </Field>
+          )}
+          {kind === 'share' && (
             <Field
               label="After the shares are sold"
               className="xl:col-span-3"
-              hint="If construction is planned, the project page prompts you to start the construction project once the shares sell out."
+              hint="If construction is planned, the project prompts you to start the construction project once every share is sold."
             >
               <SelectInput
                 value={form.construction_after_sale}
-                onChange={(e) =>
-                  set('construction_after_sale', e.target.value as ConstructionAfterSale)
-                }
+                onChange={(e) => set('construction_after_sale', e.target.value as ConstructionAfterSale)}
               >
                 {CONSTRUCTION_AFTER_SALE.map((v) => (
                   <option key={v} value={v}>
@@ -326,95 +332,11 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
               </SelectInput>
             </Field>
           )}
-
-          <Field
-            label="Location Summary"
-            className="xl:col-span-2"
-            hint="Marketing address for the public site — the mouza/dag details stay on the land record."
-          >
-            <TextInput
-              value={form.location_summary}
-              onChange={(e) => set('location_summary', e.target.value)}
-              placeholder="e.g. Bashundhara R/A, Dhaka"
-            />
-          </Field>
-          <Field label="Architect">
-            <TextInput
-              value={form.architect}
-              onChange={(e) => set('architect', e.target.value)}
-              placeholder="e.g. Volumezero Ltd."
-            />
-          </Field>
-          {/*
-            Scope v3 §3.3 — the column has been on `projects` from the start
-            and nothing ever set it, so every project read as unmanaged
-            (2026-10-04).
-          */}
-          <Field label="Project Manager">
-            <SelectInput
-              value={form.project_manager}
-              onChange={(e) => set('project_manager', e.target.value)}
-            >
-              <option value="">Not assigned</option>
-              {managers.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}
-                </option>
-              ))}
-            </SelectInput>
-          </Field>
-
-          <Field
-            label="Total Land Area"
-            hint={
-              landAreaSuggestion
-                ? `Linked lands total ${landAreaSuggestion.total} ${LAND_SIZE_UNIT_LABEL[landAreaSuggestion.unit]}`
-                : undefined
-            }
-          >
-            <div className="flex gap-2">
-              <TextInput
-                type="number"
-                step="0.01"
-                min="0"
-                value={form.total_land_area}
-                onChange={(e) => set('total_land_area', e.target.value)}
-                placeholder="e.g. 24"
-              />
-              {landAreaSuggestion && (
-                <Button
-                  variant="outline"
-                  size="md"
-                  className="shrink-0"
-                  onClick={() => {
-                    set('total_land_area', String(landAreaSuggestion.total));
-                    set('total_land_area_unit', landAreaSuggestion.unit);
-                  }}
-                >
-                  Use sum
-                </Button>
-              )}
-            </div>
-          </Field>
-          <Field label="Area Unit">
-            <SelectInput
-              value={form.total_land_area_unit}
-              onChange={(e) => set('total_land_area_unit', e.target.value as LandSizeUnit)}
-            >
-              {Object.entries(LAND_SIZE_UNIT_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </SelectInput>
-          </Field>
         </div>
-      </Card>
 
-      <Card>
-        <CardHeader title="Timeline" />
+        <p className="mb-3 mt-5 text-sm font-medium text-ink">{timeline.title}</p>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Field label="Expected Start Date" required error={errors.expected_start_date}>
+          <Field label={timeline.start} required hint={timeline.startHint} error={errors.expected_start_date}>
             <TextInput
               type="date"
               value={form.expected_start_date}
@@ -422,11 +344,7 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
               invalid={Boolean(errors.expected_start_date)}
             />
           </Field>
-          <Field
-            label="Expected Completion Date"
-            required
-            error={errors.expected_completion_date}
-          >
+          <Field label={timeline.end} required hint={timeline.endHint} error={errors.expected_completion_date}>
             <TextInput
               type="date"
               value={form.expected_completion_date}
@@ -434,139 +352,127 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
               invalid={Boolean(errors.expected_completion_date)}
             />
           </Field>
-          <Field
-            label="Actual Start Date"
-            hint="Stamped automatically when the project moves to Under Construction."
-          >
-            <TextInput
-              type="date"
-              value={form.actual_start_date}
-              onChange={(e) => set('actual_start_date', e.target.value)}
-            />
-          </Field>
+          {kind === 'built' && project && (
+            <Field label="Actual construction start" hint="Stamped when the project moves to Under Construction">
+              <TextInput
+                type="date"
+                value={form.actual_start_date}
+                onChange={(e) => set('actual_start_date', e.target.value)}
+              />
+            </Field>
+          )}
         </div>
+        <p className="mt-3 flex items-start gap-2 text-xs text-ink-muted">
+          <Info className="mt-0.5 size-3.5 shrink-0" />
+          {kind === 'share'
+            ? 'Shares are generated from the linked land on the project page. Their price is set there, with the land cost per share beside it.'
+            : kind === 'plot'
+              ? 'Plots are generated on the project page; their total cannot exceed the land.'
+              : 'Towers and units are added on the project page after saving.'}
+        </p>
       </Card>
 
+      {/* 4 — the land, picked and confirmed, then read only */}
       <Card>
         <CardHeader
-          title="Linked Land"
+          title="Land"
+          subtitle="Optional now. A land belongs to one project only."
           action={
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => setAddingLand('owned')}>
-                <KeyRound className="size-4" /> Add owned land
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setAddingLand('pipeline')}>
-                <ClipboardList className="size-4" /> Land to acquire
-              </Button>
-            </div>
+            <Button variant="outline" size="sm" onClick={() => setPicking({})}>
+              <Plus className="size-4" /> {lands.length ? 'Add another land' : 'Select land'}
+            </Button>
           }
         />
-        <p className="mb-3 flex items-start gap-2 text-xs text-ink-muted">
-          <Info className="mt-0.5 size-3.5 shrink-0" />
-          Optional. You can save the project now and link land later. Land still being acquired
-          can be linked too: it keeps its own status, and the land has to be secured before
-          construction starts.
-        </p>
-        {availableLands.length === 0 ? (
-          <p className="text-sm text-ink-muted">
-            No land recorded yet. Add the land this project stands on with the buttons above.
-          </p>
+        {lands.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-hairline p-5 text-center text-sm text-ink-muted">
+            <MapIcon className="mx-auto mb-2 size-6 text-slate-300" />
+            No land selected. Pick an existing land, or add one you already own or are about to buy.
+          </div>
         ) : (
-          <div className="grid gap-2 sm:grid-cols-2">
-            {availableLands.map((land) => {
-              const selected = landIds.includes(land.id);
-              return (
-                <button
-                  key={land.id}
-                  type="button"
-                  onClick={() => toggleLand(land.id)}
-                  className={cn(
-                    'flex items-start gap-3 rounded-xl border p-3 text-left transition-colors',
-                    selected
-                      ? 'border-admin-400 bg-admin-50'
-                      : 'border-hairline bg-white hover:bg-admin-50/50',
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg',
-                      selected ? 'bg-admin-500 text-white' : 'bg-slate-100 text-slate-500',
-                    )}
+          <div className="space-y-4">
+            {lands.map((land) => (
+              <div key={land.id}>
+                <LandFacts land={land} />
+                <div className="mt-2 flex justify-end gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => setPicking({ replace: land.id })}>
+                    <RefreshCw className="size-4" /> Change land
+                  </Button>
+                  <Button
+                    variant="dangerGhost"
+                    size="sm"
+                    onClick={() => setLands((rows) => rows.filter((l) => l.id !== land.id))}
                   >
-                    <MapIcon className="size-4" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-xs font-medium text-ink-muted">
-                      {land.code}
-                      {otherProjectByLand[land.id] && (
-                        <span className="ml-1.5 text-amber-600">
-                          · already in {otherProjectByLand[land.id]}
-                        </span>
-                      )}
-                    </span>
-                    <span className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium text-ink">{land.name}</span>
-                      <Badge tone={LAND_STATUS_META[land.status].tone}>
-                        {landStatusLabel(land.status, land.acquisition_type)}
-                      </Badge>
-                    </span>
-                    <span className="block text-xs text-ink-muted">
-                      {land.land_size} {LAND_SIZE_UNIT_LABEL[land.land_size_unit]} ·{' '}
-                      {ACQUISITION_TYPE_LABEL[land.acquisition_type]} ·{' '}
-                      {formatBdt(land.final_agreed_amount ?? land.asking_price)}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
+                    <Trash2 className="size-4" /> Remove
+                  </Button>
+                </div>
+              </div>
+            ))}
+            <div className="grid gap-4 rounded-xl bg-admin-50/60 p-3 sm:grid-cols-2">
+              <Field label="Total land area" hint="From the land record; change it on the land">
+                <TextInput
+                  value={
+                    area?.total != null
+                      ? `${area.total} ${LAND_SIZE_UNIT_LABEL[area.unit]}`
+                      : 'Lands are in different units'
+                  }
+                  readOnly
+                  disabled
+                />
+              </Field>
+              <Field label="Area unit">
+                <TextInput value={area ? LAND_SIZE_UNIT_LABEL[area.unit] : ''} readOnly disabled />
+              </Field>
+            </div>
           </div>
         )}
         {errors.lands && <p className="mt-2 text-xs text-red-600">{errors.lands}</p>}
-        <QuickLandModal
-          open={addingLand !== null}
-          initialMode={addingLand ?? 'owned'}
-          onClose={() => setAddingLand(null)}
-          onCreated={(land) => {
-            setAvailableLands((rows) =>
-              [...rows, land].sort((a, b) => a.code.localeCompare(b.code)),
+        <LandPickerModal
+          open={picking !== null}
+          projectId={project?.id}
+          exclude={lands.map((l) => l.id)}
+          onClose={() => setPicking(null)}
+          onConfirm={async (land) => {
+            const fresh = (await landRepository.getById(land.id)) ?? land;
+            setLands((rows) =>
+              picking?.replace
+                ? rows.map((l) => (l.id === picking.replace ? fresh : l))
+                : [...rows, fresh],
             );
-            setLandIds((ids) => [...ids, land.id]);
-            setAddingLand(null);
+            setPicking(null);
           }}
         />
       </Card>
 
+      {/* 5 — what buyers see */}
       <Card>
-        <CardHeader title="Amenities & Surroundings" />
-        <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {amenityOptions.map((option) => (
-            <Checkbox
-              key={option}
-              label={option}
-              checked={amenities.includes(option)}
-              onChange={() => toggleAmenity(option)}
-            />
-          ))}
-        </div>
-        <Field
-          label="Surroundings"
-          hint="School / hospital / market / main road distances — shown on the public project page."
-        >
-          <TextArea
-            value={form.surroundings}
-            onChange={(e) => set('surroundings', e.target.value)}
-            placeholder="e.g. Scholastica 900m, Evercare Hospital 2km, 100ft road 300m"
-          />
-        </Field>
-      </Card>
-
-      <Card>
-        <CardHeader title="Public Website" />
+        <CardHeader title={kind === 'share' ? 'Surroundings' : 'Amenities & surroundings'} />
+        {kind !== 'share' && (
+          <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {amenityOptions.map((option) => (
+              <Checkbox
+                key={option}
+                label={option}
+                checked={amenities.includes(option)}
+                onChange={() =>
+                  setAmenities((list) =>
+                    list.includes(option) ? list.filter((a) => a !== option) : [...list, option],
+                  )
+                }
+              />
+            ))}
+          </div>
+        )}
         <div className="grid gap-4 md:grid-cols-2">
+          <Field label="Surroundings" hint="School, hospital, market, main road distances">
+            <TextArea
+              value={form.surroundings}
+              onChange={(e) => set('surroundings', e.target.value)}
+              placeholder="e.g. Scholastica 900m, Evercare Hospital 2km, 100ft road 300m"
+            />
+          </Field>
           <Field
             label="Cover image link"
-            className="md:col-span-2"
-            hint="Only for an image hosted elsewhere. To use your own photos, upload them on the project's Documents tab as “Gallery Image” and pick the display picture there — an uploaded picture takes precedence over this link."
+            hint="Only for an image hosted elsewhere; uploaded photos are chosen on the Documents tab. Publishing is on the Sales card."
           >
             <TextInput
               value={form.cover_image_url}
@@ -574,26 +480,6 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
               placeholder="https://images.unsplash.com/…"
             />
           </Field>
-          <div>
-            <Checkbox
-              label="Show this project on the public website"
-              checked={form.is_public}
-              onChange={(e) => {
-                set('is_public', e.target.checked);
-                if (!e.target.checked) set('is_featured', false);
-              }}
-            />
-            {errors.is_public && <p className="mt-1 text-xs text-red-600">{errors.is_public}</p>}
-          </div>
-          <div>
-            <Checkbox
-              label="Feature it on the public home page"
-              checked={form.is_featured}
-              disabled={!form.is_public}
-              onChange={(e) => set('is_featured', e.target.checked)}
-            />
-            {errors.is_featured && <p className="mt-1 text-xs text-red-600">{errors.is_featured}</p>}
-          </div>
         </div>
       </Card>
 
@@ -614,8 +500,6 @@ function toFormState(project: ProjectWithRelations): FormState {
     ...EMPTY,
     name: project.name,
     project_type: project.project_type,
-    total_land_area: str(project.total_land_area),
-    total_land_area_unit: project.total_land_area_unit ?? 'katha',
     location_summary: str(project.location_summary),
     expected_start_date: project.expected_start_date,
     expected_completion_date: project.expected_completion_date,
@@ -624,8 +508,6 @@ function toFormState(project: ProjectWithRelations): FormState {
     project_manager: str(project.project_manager),
     surroundings: str(project.surroundings),
     cover_image_url: str(project.cover_image_url),
-    is_public: project.is_public,
-    is_featured: project.is_featured,
     construction_after_sale: project.construction_after_sale ?? 'undecided',
   };
 }

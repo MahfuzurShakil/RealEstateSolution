@@ -1013,20 +1013,13 @@ async function seedDemoDelivery(
   await step('rownak::B-3', 'possession_given', daysFromToday(-14).slice(0, 10), 'POS-B3', 'Site office, Kanchan');
   await step('rownak::B-3', 'deed_registered', daysFromToday(-9).slice(0, 10), '6118/2026', 'Sub-Registry Office, Rupganj');
 
-  const register = projectIds.get('Birulia Riverside Share Project');
-  if (register) {
-    const successor = await projectRepository.startSuccessor(
-      register,
-      {
-        name: "Birulia Shareholders' Court",
-        project_type: 'apartment',
-        expected_start_date: daysFromToday(60).slice(0, 10),
-        expected_completion_date: daysFromToday(60 + 36 * 30).slice(0, 10),
-      },
-      createdBy,
-    );
-    projectIds.set(successor.name, successor.id);
-  }
+  /*
+   * No successor in the demo any more: Birulia has sold 4 of 20 shares, and
+   * since 2026-10-10 a construction project can only start once the register
+   * is sold out, taking the land over (D3). Its "construction planned" note
+   * shows what comes next.
+   */
+
 }
 
 /**

@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Checkbox } from '@/components/ui/Field';
 import type { Land, Project, ProjectSalesStatus } from '@/lib/db/types';
 import {
   PROJECT_SALES_STATUS_META,
@@ -96,6 +97,33 @@ export function ProjectSalesCard({ project, lands }: { project: Project; lands: 
               </div>
             );
           })}
+        </div>
+        {/*
+          Publishing sits with selling (client walkthrough 2026-10-10): the
+          public site shows projects buyers can book, so the switch only works
+          once sales have opened.
+        */}
+        <div className="mt-4 space-y-2 border-t border-hairline pt-4">
+          <Checkbox
+            label="Show on the public website"
+            checked={project.is_public}
+            disabled={current === 'not_open' && !project.is_public}
+            onChange={(e) =>
+              projectRepository.update(project.id, {
+                is_public: e.target.checked,
+                ...(e.target.checked ? {} : { is_featured: false }),
+              })
+            }
+          />
+          <Checkbox
+            label="Feature on the home page"
+            checked={project.is_featured}
+            disabled={!project.is_public}
+            onChange={(e) => projectRepository.update(project.id, { is_featured: e.target.checked })}
+          />
+          {current === 'not_open' && !project.is_public && (
+            <p className="text-xs text-ink-muted">Open sales first, then publish.</p>
+          )}
         </div>
       </Card>
 
