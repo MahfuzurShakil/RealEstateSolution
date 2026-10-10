@@ -76,7 +76,9 @@ export function ProjectCostingTab({ project }: { project: Project }) {
             value={costing.revenue.source === 'none' ? '—' : formatBdt(costing.revenue.expected)}
             hint={
               costing.revenue.source === 'units'
-                ? `${costing.revenue.companyUnits} units for sale`
+                ? costing.revenue.totalUnits > costing.revenue.companyUnits
+                  ? `developer share: ${costing.revenue.companyUnits} of ${costing.revenue.totalUnits} units`
+                  : `${costing.revenue.companyUnits} units for sale`
                 : costing.revenue.source === 'estimate'
                   ? 'quick estimate: area × rate'
                   : 'no units or estimate yet'

@@ -717,6 +717,13 @@ export interface PlotPatternInput {
 }
 
 /** A share register (v26) — see `bulkGenerateShares`. */
+/** Bangladesh land units in katha: 1 bigha = 20 katha, 1 katha = 1.65 decimal. */
+function toKatha(value: number, unit: LandSizeUnit | null | undefined): number {
+  if (unit === 'bigha') return value * 20;
+  if (unit === 'decimal') return value / 1.65;
+  return value;
+}
+
 export interface SharePatternInput {
   prefix: string;
   separator: string;
@@ -847,6 +854,33 @@ class UnitRepository extends BaseRepository<Unit> {
     const start = Math.trunc(Number(input.start_number) || 1);
     const size = Number(input.land_size) || 0;
     const rate = Number(input.rate_per_katha) || 0;
+
+    /*
+     * Plots can never add up to more than the land under the project
+     * (PROJECT-FLOW-REVIEW B-6). Compared in katha, since a plot run and the
+     * land may be recorded in different units; roads and open space mean the
+     * real limit is lower, which the layout plan decides, not this check.
+     */
+    const tower = await db.towers.get(towerId);
+    if (tower && count > 0 && size > 0) {
+      const lands = await landProjectMappingRepository.landsForProject(tower.project_id);
+      const landKatha = lands.reduce((s, l) => s + toKatha(Number(l.land_size) || 0, l.land_size_unit), 0);
+      if (landKatha > 0) {
+        const towerIds = (await db.towers.where('project_id').equals(tower.project_id).toArray()).map((t) => t.id);
+        const plots = await db.units.where('tower_id').anyOf(towerIds).toArray();
+        const usedKatha = plots.reduce(
+          (s, u) => s + toKatha(Number(u.land_size) || 0, u.land_size_unit ?? 'katha'),
+          0,
+        );
+        const runKatha = toKatha(size * count, input.land_size_unit);
+        if (usedKatha + runKatha > landKatha + 0.0001) {
+          const round = (n: number) => Math.round(n * 100) / 100;
+          throw new Error(
+            `These plots need ${round(runKatha)} katha, but only ${round(Math.max(0, landKatha - usedKatha))} katha of the ${round(landKatha)} katha land is left.`,
+          );
+        }
+      }
+    }
 
     for (let i = 0; i < count; i += 1) {
       const number = start + i;

@@ -62,28 +62,46 @@ export const COSTING_HEADS: CostingHead[] = [
     hint: 'Agent and in-house sales commission',
   },
   {
-    code: 'finance_cost',
-    label: 'Finance cost',
-    hint: 'Bank loan interest and charges while the project runs',
-  },
-  {
-    code: 'admin',
-    label: 'Overhead & admin',
-    hint: 'Site office, staff, security, utilities during construction',
-  },
-  {
     code: 'other',
     label: 'Other',
     hint: 'Anything that fits no head above',
   },
 ];
 
-/** The heads that apply to a project type. */
+/*
+ * Not project heads (client walkthrough 2026-10-10): office overhead and
+ * finance cost. One admin team and one bank relationship serve every
+ * project, so splitting them per project is guesswork; they belong to the
+ * company-level view (Phase 3). Spend filed under them still shows, folded
+ * into "Other", so nothing disappears.
+ */
+
+/** What a head is called on each type, where the generic name misleads. */
+const HEAD_LABEL_BY_TYPE: Partial<Record<ProjectType, Record<string, { label: string; hint: string }>>> = {
+  land_share: {
+    design_approval: {
+      label: 'Legal & deed',
+      hint: 'Share deed drafting, lawyer, registration of the share deeds',
+    },
+  },
+  plot_development: {
+    design_approval: {
+      label: 'Layout design & approval',
+      hint: 'Survey, layout plan, RAJUK / Pourashava subdivision approval',
+    },
+    utility_connection: {
+      label: 'Utilities for the plots',
+      hint: 'Electricity lines, water, gas and drainage to each plot',
+    },
+  },
+};
+
+/** The heads that apply to a project type, named for that type. */
 export function costingHeadsFor(type: ProjectType): CostingHead[] {
   const built = type === 'apartment' || type === 'commercial' || type === 'mixed';
   return COSTING_HEADS.filter(
     (h) => (!h.builtOnly || built) && (!h.notShare || type !== 'land_share'),
-  );
+  ).map((h) => ({ ...h, ...(HEAD_LABEL_BY_TYPE[type]?.[h.code] ?? {}) }));
 }
 
 /** Land money is costed on the land, never as a project head. */
@@ -116,6 +134,8 @@ export interface ProjectCosting {
     /** unsold company units at list price */
     unsold: number;
     companyUnits: number;
+    /** every unit, the landowner's included */
+    totalUnits: number;
     soldUnits: number;
   };
   collected: number;

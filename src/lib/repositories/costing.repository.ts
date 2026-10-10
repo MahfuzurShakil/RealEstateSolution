@@ -90,6 +90,7 @@ class ProjectCostingRepository {
             booked: money(booked),
             unsold: money(unsold),
             companyUnits: companyUnits.length,
+            totalUnits: units.length,
             // by unit status: a unit handed over before bookings were recorded is still sold
             soldUnits: companyUnits.filter((u) => SPOKEN_FOR.has(u.status)).length,
           }
@@ -99,6 +100,7 @@ class ProjectCostingRepository {
             booked: 0,
             unsold: 0,
             companyUnits: 0,
+            totalUnits: 0,
             soldUnits: 0,
           };
 

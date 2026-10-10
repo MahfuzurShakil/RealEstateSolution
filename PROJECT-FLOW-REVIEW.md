@@ -72,3 +72,17 @@ a project screen depends on them.
 3. **Tabs by type:** JV Allocation only for JV, Finance summary tab, Materials tab, Transfer-in removed (A-6, A-10, A-12, A-13)
 4. **Estimate by type:** heads per type, overhead/finance cost removed from project estimates (A-7, A-11)
 5. **Plot and building checks:** plot area guard, one-land-one-live-project rule, JV developer-share revenue (B-4, B-6, B-7)
+
+---
+
+## F. Progress (2026-10-10)
+
+| Batch | Status |
+|---|---|
+| 1. Menu + project form | Done: menu order, form by type, land picker with confirm, read-only land and area, timeline per type, publish on the Sales card, one land one project |
+| 2. Land share | Done: register from the linked land, exactly 100%, no second register, cost and profit per share, Sell button to booking, sold-out suggestion, Sold Out stage blocked while unsold, realistic demo prices |
+| 3. Tabs by type | Done: JV Allocation only on JV land, one Finance tab (estimate, where the money went, sales & collection), Materials tab, Transfer in removed |
+| 4. Estimate by type | Done: overhead and finance cost out of project estimates; heads named per type (Legal & deed on a share, layout approval on a plot) |
+| 5. Plot and JV checks | Done: plots can't exceed the land; JV revenue says developer share X of Y units. One land one project was done in batch 1 |
+
+Still open: plot "roads & common area %" (no field yet; the guard compares against the whole land), and a market-value line for inherited land (its cost sheet is near zero, so its margin looks very high).

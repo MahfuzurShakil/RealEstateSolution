@@ -2113,7 +2113,6 @@ async function seedDemoFinance(
         [PROCUREMENT_BUDGET_HEAD, 6000000],
         ['contractor_payment', 12000000],
         ['marketing', 800000],
-        ['admin', 400000],
       ],
     ],
   ];
