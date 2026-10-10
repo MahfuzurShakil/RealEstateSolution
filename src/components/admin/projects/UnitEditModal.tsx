@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Home, Lock, ShoppingBag } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
+import { useProjectIsJv } from './useProjectIsJv';
 import { Button } from '@/components/ui/Button';
 import { Checkbox, Field, MoneyInput, SelectInput, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
@@ -80,6 +81,7 @@ export function UnitEditModal({
   const [saving, setSaving] = useState(false);
 
   const locked = !isUnitEditable(unit.status);
+  const isJv = useProjectIsJv(projectId);
   /** the booking that claimed this unit, so a locked unit can point at it */
   const booking = useLiveQuery(() => bookingRepository.activeForUnit(unit.id), [unit.id]);
 
@@ -362,6 +364,8 @@ export function UnitEditModal({
             ))}
           </SelectInput>
         </Field>
+        {isJv && (
+        <>
         <Field
           label="Who sells it"
           hint={
@@ -421,6 +425,8 @@ export function UnitEditModal({
             ))}
           </SelectInput>
         </Field>
+        </>
+        )}
         {form.allocation_type === 'landowner_share' && owners.length === 0 && (
           <p className="-mt-2 text-xs text-amber-700 sm:col-span-2">
             No landowner is attached to this project&rsquo;s land yet. Link the land on the

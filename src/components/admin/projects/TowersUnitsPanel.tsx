@@ -47,6 +47,7 @@ import { formatBdt } from '@/lib/utils/format';
 import { TowerFormModal } from './TowerFormModal';
 import { UnitMatrix } from './UnitMatrix';
 import { UnitBulkAllocateModal } from './UnitBulkAllocateModal';
+import { useProjectIsJv } from './useProjectIsJv';
 import { PlotShareGenerateModal } from './PlotShareGenerateModal';
 import { UnitBulkGenerateModal } from './UnitBulkGenerateModal';
 import { UnitEditModal } from './UnitEditModal';
@@ -70,6 +71,7 @@ export function TowersUnitsPanel({
 }) {
   const { userId } = useMockSession();
   const shape = projectShape(projectType);
+  const isJv = useProjectIsJv(projectId);
   const L = shape.labels;
   /*
    * A share register has exactly one hidden container (see
@@ -308,6 +310,7 @@ export function TowersUnitsPanel({
                 </option>
               ))}
             </SelectInput>
+            {isJv && (
             <SelectInput
               value={allocation}
               onChange={(e) => setAllocation(e.target.value as AllocationType | 'all')}
@@ -320,6 +323,7 @@ export function TowersUnitsPanel({
                 </option>
               ))}
             </SelectInput>
+            )}
           </div>
 
           {view === 'list' && selection.length > 0 && (
@@ -328,9 +332,11 @@ export function TowersUnitsPanel({
                 {selection.length}{' '}
                 {selection.length === 1 ? L.item.toLowerCase() : L.itemPlural.toLowerCase()} selected
               </p>
-              <Button size="sm" onClick={() => setAllocateOpen(true)}>
-                <Handshake className="size-4" /> Allocate
-              </Button>
+              {isJv && (
+                <Button size="sm" onClick={() => setAllocateOpen(true)}>
+                  <Handshake className="size-4" /> Allocate
+                </Button>
+              )}
               <Button size="sm" variant="danger" onClick={() => setDeleteUnits(true)}>
                 <Trash2 className="size-4" /> Delete
               </Button>

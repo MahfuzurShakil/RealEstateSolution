@@ -1,12 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   ArrowLeftRight,
   ArrowRight,
   ClipboardList,
+  Hammer,
   PackageMinus,
   Receipt,
   ShoppingCart,
@@ -14,9 +15,6 @@ import {
   Truck,
   Warehouse,
 } from 'lucide-react';
-import { ProjectFinanceCard } from '@/components/admin/finance/ProjectFinanceCard';
-import { StockIssueModal } from '@/components/admin/procurement/StockIssueModal';
-import { StockTransferModal } from '@/components/admin/procurement/StockTransferModal';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -27,12 +25,18 @@ import type { PurchaseOrderWithRelations, StockRowWithRelations } from '@/lib/re
 import {
   procurementCostRepository,
   purchaseOrderRepository,
-  stockIssueRepository,
+  stockConsumptionRepository,
   stockRepository,
 } from '@/lib/repositories';
 import { formatBdt, formatBdtRate, formatDate } from '@/lib/utils/format';
 
 /**
+ * The project's Materials tab (client walkthrough 2026-10-10): what was
+ * bought, what is on site, and what has been used and what it cost. Read
+ * only, apart from raising a request or an order. Moving stock between
+ * stores (transfer in, issue) is Procurement's job and stays on the Stock
+ * page; the money summary is on the Finance tab.
+ *
  * Section 7.11 — the cost chain, read for one project.
  *
  * The chain is `material_requests → purchase_orders → stock → stock_issues →
@@ -43,19 +47,29 @@ import { formatBdt, formatBdtRate, formatDate } from '@/lib/utils/format';
  * the site, or actually built into something.
  */
 export function ProjectProcurementSummary({ projectId }: { projectId: string }) {
-  const [issueOpen, setIssueOpen] = useState(false);
-  const [transferOpen, setTransferOpen] = useState(false);
-
   const summary = useLiveQuery(() => procurementCostRepository.forProject(projectId), [projectId]);
   const orders = useLiveQuery(
     () => purchaseOrderRepository.list({ project_id: projectId }),
     [projectId],
   );
   const stock = useLiveQuery(() => stockRepository.list({ location: projectId }), [projectId]);
-  const issues = useLiveQuery(
-    () => stockIssueRepository.list({ project_id: projectId }),
+  const used = useLiveQuery(
+    () => stockConsumptionRepository.list({ project_id: projectId }),
     [projectId],
   );
+  /** what the site has used to date, one row per item */
+  const usedByItem = useMemo(() => {
+    const map = new Map<string, { id: string; item: string; unit: string; qty: number; cost: number; last: string }>();
+    for (const u of used ?? []) {
+      const key = `${u.item_name}|${u.unit}`;
+      const row = map.get(key) ?? { id: key, item: u.item_name, unit: u.unit, qty: 0, cost: 0, last: u.used_date };
+      row.qty += Number(u.quantity_used) || 0;
+      row.cost += Number(u.total_cost) || 0;
+      if (u.used_date > row.last) row.last = u.used_date;
+      map.set(key, row);
+    }
+    return [...map.values()];
+  }, [used]);
 
   if (summary === undefined) return <p className="text-sm text-ink-muted">Loading…</p>;
 
@@ -203,21 +217,16 @@ export function ProjectProcurementSummary({ projectId }: { projectId: string }) 
 
   return (
     <div className="space-y-5">
-      {/* Section 8.3 roll-up, above the material chain that feeds part of it */}
-      <ProjectFinanceCard projectId={projectId} />
-
       <Card>
         <CardHeader
-          title="Material cost chain"
+          title="Material flow"
+          subtitle="Ordered → received → on site → used"
           action={
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => setTransferOpen(true)}>
-                <ArrowLeftRight className="size-4" /> Transfer in
+            <Link href={`/admin/material-requests/new?project=${projectId}`}>
+              <Button size="sm">
+                <ClipboardList className="size-4" /> Request material
               </Button>
-              <Button size="sm" onClick={() => setIssueOpen(true)}>
-                <PackageMinus className="size-4" /> Issue
-              </Button>
-            </div>
+            </Link>
           }
         />
 
@@ -336,50 +345,55 @@ export function ProjectProcurementSummary({ projectId }: { projectId: string }) 
 
       <Card>
         <CardHeader
-          title="Recent issues to site"
+          title="Materials used to date"
+          subtitle="What the site has recorded as used, and what it cost"
           action={
-            <Link href={`/admin/stock?tab=issues&project=${projectId}`}>
-              <Button size="sm" variant="ghost">
-                See all
-              </Button>
-            </Link>
+            <span className="text-xs text-ink-muted">
+              {formatBdt(usedByItem.reduce((t, r) => t + r.cost, 0))} in total
+            </span>
           }
         />
-        {(issues ?? []).length === 0 ? (
-          <EmptyState
-            icon={PackageMinus}
-            title="Nothing issued yet"
-            /* issuing moves material out of the store; what makes it project
-               cost is recording it as used on site (7.8b) */
-            description="Issuing moves material from the store to the site. It becomes project cost when the site records it as used."
-          />
-        ) : (
-          <ul className="space-y-2">
-            {(issues ?? []).slice(0, 6).map((issue) => (
-              <li
-                key={issue.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-hairline p-3"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-ink">{issue.item_name}</p>
-                  <p className="text-xs text-ink-muted">
-                    {issue.quantity_issued} {issue.unit} · {formatDate(issue.issue_date)}
-                    {issue.work_item && ` · ${issue.work_item.name}`}
-                  </p>
-                </div>
-                <span className="text-sm font-medium text-ink">{formatBdt(issue.total_cost)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
+        <DataTable
+          rows={usedByItem}
+          columns={[
+            {
+              key: 'item',
+              header: 'Item',
+              cell: (r) => <span className="font-medium text-ink">{r.item}</span>,
+              sortValue: (r) => r.item,
+            },
+            {
+              key: 'qty',
+              header: 'Used',
+              align: 'right',
+              cell: (r) => `${Math.round(r.qty * 100) / 100} ${r.unit}`,
+              sortValue: (r) => r.qty,
+            },
+            {
+              key: 'cost',
+              header: 'Cost',
+              align: 'right',
+              cell: (r) => <span className="font-medium text-ink">{formatBdt(r.cost)}</span>,
+              sortValue: (r) => r.cost,
+            },
+            {
+              key: 'last',
+              header: 'Last used',
+              cell: (r) => formatDate(r.last),
+              sortValue: (r) => r.last,
+            },
+          ]}
+          initialSort={{ key: 'cost', direction: 'desc' }}
+          label="items"
+          emptyState={
+            <EmptyState
+              icon={Hammer}
+              title="Nothing recorded as used yet"
+              description="Material becomes project cost when the site records it as used."
+            />
+          }
+        />
       </Card>
-
-      <StockIssueModal
-        open={issueOpen}
-        defaults={{ project_id: projectId }}
-        onClose={() => setIssueOpen(false)}
-      />
-      <StockTransferModal open={transferOpen} onClose={() => setTransferOpen(false)} />
     </div>
   );
 }

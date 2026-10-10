@@ -12,7 +12,11 @@ import { useMockSession } from '@/lib/auth/mock-session';
 import type { Project } from '@/lib/db/types';
 import { canEdit } from '@/lib/domain/access';
 import { costingHeadsFor, type ProjectCosting } from '@/lib/domain/costing';
-import { projectBudgetRepository, projectCostingRepository } from '@/lib/repositories';
+import {
+  financeDashboardRepository,
+  projectBudgetRepository,
+  projectCostingRepository,
+} from '@/lib/repositories';
 import { PROCUREMENT_BUDGET_HEAD } from '@/lib/db/types';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt } from '@/lib/utils/format';
@@ -34,6 +38,7 @@ export function ProjectCostingTab({ project }: { project: Project }) {
     [project.id, project.updated_at],
   );
   const mayEdit = canEdit(role, 'finance_expense');
+  const sales = useLiveQuery(() => financeDashboardRepository.forProject(project.id), [project.id]);
 
   if (costing === undefined) return <p className="text-sm text-ink-muted">Loading…</p>;
   if (!costing) return null;
@@ -118,6 +123,10 @@ export function ProjectCostingTab({ project }: { project: Project }) {
         )}
         <MarginLine costing={costing} />
       </Card>
+
+      <MoneyWent costing={costing} />
+
+      {sales && <SalesCollection sales={sales} />}
 
       <Card>
         <CardHeader title="By head (khat)" subtitle="Estimate, spend so far, and what is left. Red means over the estimate." />
@@ -425,5 +434,94 @@ function EstimateModal({
         </p>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * The owner's first question about cost: where did it go? Spend so far,
+ * grouped into the few categories that matter (client walkthrough
+ * 2026-10-10), each with its share of the total.
+ */
+function MoneyWent({ costing }: { costing: ProjectCosting }) {
+  const pick = (codes: string[]) =>
+    costing.lines.filter((l) => codes.includes(l.code)).reduce((s, l) => s + l.actual, 0);
+  const groups = [
+    { label: 'Land', value: costing.land.actual },
+    { label: 'Design & approval', value: pick(['design_approval']) },
+    { label: 'Construction', value: pick([PROCUREMENT_BUDGET_HEAD, 'contractor_payment']) },
+    { label: 'Utilities', value: pick(['utility_connection']) },
+    { label: 'Selling', value: pick(['marketing', 'sales_commission']) },
+    { label: 'Other', value: pick(['finance_cost', 'admin', 'other']) },
+  ].filter((g) => g.value > 0);
+  const total = groups.reduce((s, g) => s + g.value, 0);
+  return (
+    <Card>
+      <CardHeader title="Where the money went" subtitle="Spent so far, by main category" />
+      {total === 0 ? (
+        <p className="text-sm text-ink-muted">Nothing spent on this project yet.</p>
+      ) : (
+        <ul className="space-y-3">
+          {groups.map((g) => {
+            const pct = Math.round((g.value / total) * 1000) / 10;
+            return (
+              <li key={g.label}>
+                <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
+                  <span className="text-ink">{g.label}</span>
+                  <span className="tabular-nums text-ink">
+                    {formatBdt(g.value)} <span className="text-xs text-ink-muted">· {pct}%</span>
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-slate-100">
+                  <div className="h-2 rounded-full bg-admin-500" style={{ width: `${Math.max(1, pct)}%` }} />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+/** Sales and money in: sold, collected, still to collect, overdue. */
+function SalesCollection({
+  sales,
+}: {
+  sales: {
+    sales_value: number;
+    collected: number;
+    due: number;
+    refunded: number;
+    overdue_amount: number;
+    overdue_count: number;
+    booking_count: number;
+  };
+}) {
+  const pct = sales.sales_value > 0 ? Math.min(100, Math.round((sales.collected / sales.sales_value) * 1000) / 10) : 0;
+  return (
+    <Card>
+      <CardHeader title="Sales & collection" subtitle="Company units only; a landowner's own units are not company money" />
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <Tile label="Sold for" value={formatBdt(sales.sales_value)} hint={`${sales.booking_count} booking${sales.booking_count === 1 ? '' : 's'}`} />
+        <Tile label="Collected" value={formatBdt(sales.collected)} hint={`${pct}% of sales`} tone="good" />
+        <Tile label="Receivable" value={formatBdt(sales.due)} hint="sold, not yet received" />
+        <Tile
+          label="Overdue"
+          value={formatBdt(sales.overdue_amount)}
+          hint={`${sales.overdue_count} instalment${sales.overdue_count === 1 ? '' : 's'} late`}
+          tone={sales.overdue_amount > 0 ? 'bad' : undefined}
+        />
+      </div>
+      <div className="mt-4">
+        <div className="mb-2 flex items-center justify-between text-xs text-ink-muted">
+          <span>Collected against sales</span>
+          <span className="font-medium text-ink">{pct}%</span>
+        </div>
+        <ProgressBar value={pct} size="sm" behind={sales.overdue_count > 0} />
+      </div>
+      {sales.refunded > 0 && (
+        <p className="mt-3 text-xs text-ink-muted">{formatBdt(sales.refunded)} refunded on cancellations.</p>
+      )}
+    </Card>
   );
 }

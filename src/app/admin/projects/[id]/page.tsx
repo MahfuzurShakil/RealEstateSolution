@@ -8,6 +8,7 @@ import { ArrowLeft, Globe, Pencil, Star, Trash2 } from 'lucide-react';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { JvAllocationCard } from '@/components/admin/projects/JvAllocationCard';
 import { ProjectLandCard } from '@/components/admin/projects/ProjectLandCard';
+import { useProjectIsJv } from '@/components/admin/projects/useProjectIsJv';
 import { ProjectGalleryPanel } from '@/components/admin/projects/ProjectGalleryPanel';
 import { ProjectStatusCard } from '@/components/admin/projects/ProjectStatusCard';
 import { ProjectSalesCard } from '@/components/admin/projects/ProjectSalesCard';
@@ -39,8 +40,8 @@ type Tab =
   | 'overview'
   | 'towers'
   | 'progress'
-  | 'procurement'
-  | 'costing'
+  | 'materials'
+  | 'finance'
   | 'allocation'
   | 'timeline'
   | 'documents';
@@ -62,6 +63,7 @@ export default function ProjectDetailPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const project = useLiveQuery(() => projectRepository.getWithRelations(id), [id]);
+  const isJv = useProjectIsJv(id);
   const manager = useLiveQuery(
     () =>
       project?.project_manager
@@ -101,12 +103,14 @@ export default function ProjectDetailPage() {
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
-    // v29 — the owner's view; it replaced the bare budget-vs-actual tab
-    { key: 'costing', label: 'Costing' },
     { key: 'towers', label: inventoryLabel },
     ...(shapeIsBuilt(shape) ? [{ key: 'progress' as Tab, label: 'Site Progress' }] : []),
-    { key: 'procurement', label: 'Finance & Cost' },
-    { key: 'allocation', label: 'JV Allocation' },
+    // one money tab: estimate vs actual, where it went, sales and collection (D1)
+    { key: 'finance', label: 'Finance' },
+    // what was bought, is on site and was used; nothing to buy on a share register
+    ...(shape.item !== 'share' ? [{ key: 'materials' as Tab, label: 'Materials' }] : []),
+    // landowner allocation exists only on joint-venture land
+    ...(isJv ? [{ key: 'allocation' as Tab, label: 'JV Allocation' }] : []),
     { key: 'timeline', label: 'Timeline' },
     { key: 'documents', label: 'Documents' },
   ];
@@ -220,10 +224,10 @@ export default function ProjectDetailPage() {
           {tab === 'progress' && <ProjectProgressSummary projectId={project.id} />}
 
           {/* Section 7.11 — the material cost chain, read for this project */}
-          {tab === 'procurement' && <ProjectProcurementSummary projectId={project.id} />}
+          {tab === 'materials' && <ProjectProcurementSummary projectId={project.id} />}
 
           {/* Section 8.3 — what the project was planned to cost, against what it has */}
-          {tab === 'costing' && <ProjectCostingTab project={project} />}
+          {tab === 'finance' && <ProjectCostingTab project={project} />}
 
           {tab === 'allocation' && <JvAllocationCard projectId={project.id} />}
 
