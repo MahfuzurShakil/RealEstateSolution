@@ -56,8 +56,8 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: Building2,
     items: [
       { label: 'All Projects', href: '/admin/projects', module: 'project' },
-      // every project's construction at a glance (client, 2026-10-11)
-      { label: 'Site Progress', href: '/admin/site-progress', module: 'site_progress' },
+      // projects under construction, each with its site workspace (Phase 2, 2026-10-11)
+      { label: 'Construction', href: '/admin/site-progress', module: 'site_progress' },
     ],
   },
   {

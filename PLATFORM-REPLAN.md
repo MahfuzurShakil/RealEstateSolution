@@ -51,7 +51,7 @@ Every module hangs off the project. The work flows left to right, and Administra
 | Phase | Focus | Outcome for the owner |
 |---|---|---|
 | **1. Project & Land** (this plan, detailed below) | Project-first creation, two land entry modes, project lifecycle per type, land cost sheet, project cost and revenue estimate, Sales/CRM wired to `sales_status` | "What will this project cost, and what will it earn?" |
-| 2. Construction | **Site progress** (M5) reviewed into the stage flow; one traceable chain for every spend: request → purchase → voucher (scan uploaded **and** digital voucher entered) → finance pays against that voucher; every step tagged with project and cost head (khat) | "I can see the work done and every transaction per khat" |
+| 2. Construction | **Replanned 2026-10-11, see the Phase 2 section:** a Construction area for projects in construction (work breakdown, site log, materials, photos), separate from the project page; one traceable chain for every spend: request → purchase → voucher (scan uploaded **and** digital voucher entered) → finance pays against that voucher; every step tagged with project and cost head (khat) | "I can see the work done and every transaction per khat" |
 | 3. Finance & owner view | Actual vs estimate per head, project P&L including land, cash flow (collections vs payments), owner dashboard across projects | "Where did the money go, and what is left?" |
 | 4. Administration | Sidebar and roles regrouped by pipeline stage, an approval record on requests/vouchers/payments, an audit log (who changed what, when), master data tidy-up | "Everything is accountable to a person" |
 | 5. Public portal | P1–P4 from the public-portal doc, fed by the Phase 1 publish rules | Customers see launched projects |
@@ -207,6 +207,53 @@ The fully populated pair LND-2026-018 / PRJ-2026-007 (OPEN-ITEMS 0r) keeps every
 4. Land cost sheet.
 5. Project Costing tab plus `byProject` land inclusion.
 6. Demo data, scope-doc update and OPEN-ITEMS.
+
+## Phase 2 — Construction (replanned 2026-10-11)
+
+### Why the change
+Site work begins only when a project reaches construction. Keeping site progress and material
+requests as tabs on every project page mixed **what the project is** (land, type, stages, sales)
+with **day-to-day site work**, and showed construction tabs on projects that are still in
+planning or are land shares. The client proposed a separate **Construction** area; that is the
+standard split (project master record vs. site operations), and most of it already exists
+(the site-progress project page has work breakdown, timeline, requests and photos).
+
+### Target
+**Menu:** Projects → All Projects · **Construction** (renamed from Site Progress).
+
+**Construction list:** only projects whose construction has started:
+`under_construction`, `nearly_complete`, `handover_ongoing` (the existing `isSiteActive`).
+Closed projects are under a "Completed" filter. Planning, design and approval projects and land
+shares never appear.
+
+**Construction workspace** (open a project from the list):
+
+| Tab | Content | Source today |
+|---|---|---|
+| Overview | progress vs plan, towers, behind-schedule items, latest on site, materials at a glance | project Site Progress overview |
+| Work breakdown | work items per tower, weights, planned dates | site-progress page |
+| Site log | Log update at the top; every update in a paged table | project Site Progress → Log updates |
+| Materials | Requests · Orders (Receive) · Stock on site · Used | project Materials tab |
+| Photos & documents | site photos, uploads | site-progress page Photos |
+| Activity | the activity timeline | site-progress page |
+
+**Project page** loses its Site Progress and Materials tabs. A building project in construction
+shows an **Open construction** button and a small progress card on Overview.
+
+**The money chain** (the original Phase 2 goal) runs through the Materials tab: request →
+procurement order → site receives (cost) → finance pays the supplier against the voucher →
+shown in Finance → project. Phase 2 also audits that every step links to the one before it.
+
+### Build order
+1. Rename to Construction, move under Projects, list only construction projects.
+2. Workspace tabs: Overview, Work breakdown, Site log, Materials, Photos & documents, Activity.
+3. Project page: remove Site Progress / Materials tabs; add Open construction.
+4. Money-chain audit: request ↔ order ↔ receipt ↔ voucher ↔ payment links, gaps fixed.
+5. Demo data and docs.
+
+**Decisions (2026-10-11):** name "Construction"; list from construction start (closed under
+"Completed"); plot projects not included yet.
+**Progress:** steps 1–3 done 2026-10-11. Next: step 4, the money-chain audit.
 
 ## Verification
 

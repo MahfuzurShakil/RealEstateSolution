@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, Globe, Pencil, Star, Trash2, Wallet } from 'lucide-react';
+import { ArrowLeft, Globe, HardHat, Pencil, Star, Trash2, Wallet } from 'lucide-react';
+import { isSiteActive } from '@/lib/domain/site-progress';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { JvAllocationCard } from '@/components/admin/projects/JvAllocationCard';
 import { ProjectLandCard } from '@/components/admin/projects/ProjectLandCard';
@@ -16,8 +17,6 @@ import { ProjectTimeline } from '@/components/admin/projects/ProjectTimeline';
 import { PlotDevelopmentCard } from '@/components/admin/projects/PlotDevelopmentCard';
 import { SuccessionCard } from '@/components/admin/projects/SuccessionCard';
 import { TowersUnitsPanel } from '@/components/admin/projects/TowersUnitsPanel';
-import { ProjectProcurementSummary } from '@/components/admin/procurement/ProjectProcurementSummary';
-import { ProjectProgressSummary } from '@/components/admin/site-progress/ProjectProgressSummary';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -38,8 +37,6 @@ import { UNIT_STATUSES } from '@/lib/db/types';
 type Tab =
   | 'overview'
   | 'towers'
-  | 'progress'
-  | 'materials'
   | 'allocation'
   | 'timeline'
   | 'documents';
@@ -104,9 +101,6 @@ export default function ProjectDetailPage() {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { key: 'towers', label: inventoryLabel },
-    ...(shapeIsBuilt(shape) ? [{ key: 'progress' as Tab, label: 'Site Progress' }] : []),
-    // what was bought, is on site and was used; nothing to buy on a share register
-    ...(shape.item !== 'share' ? [{ key: 'materials' as Tab, label: 'Materials' }] : []),
     // landowner allocation exists only on joint-venture land
     ...(isJv ? [{ key: 'allocation' as Tab, label: 'JV Allocation' }] : []),
     { key: 'timeline', label: 'Timeline' },
@@ -127,6 +121,18 @@ export default function ProjectDetailPage() {
         subtitle={`${project.code} · ${project.location_summary ?? PROJECT_TYPE_LABEL[project.project_type]}`}
         action={
           <div className="flex gap-2">
+            {/*
+              Site work lives in Construction once building has started
+              (PLATFORM-REPLAN.md Phase 2): work breakdown, site log,
+              materials, photos.
+            */}
+            {shapeIsBuilt(shape) && (isSiteActive(project.status) || project.status === 'closed') && (
+              <Link href={`/admin/site-progress/${project.id}`}>
+                <Button>
+                  <HardHat className="size-4" /> Open construction
+                </Button>
+              </Link>
+            )}
             {/* all money lives in Finance (client feedback 2026-10-11) */}
             <Link href={`/admin/finance/projects/${project.id}`}>
               <Button variant="outline">
@@ -225,10 +231,8 @@ export default function ProjectDetailPage() {
             <TowersUnitsPanel projectId={project.id} projectType={project.project_type} />
           )}
 
-          {tab === 'progress' && <ProjectProgressSummary projectId={project.id} />}
 
           {/* Section 7.11 — the material cost chain, read for this project */}
-          {tab === 'materials' && <ProjectProcurementSummary projectId={project.id} />}
 
           {/* Section 8.3 — what the project was planned to cost, against what it has */}
 

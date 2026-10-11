@@ -44,10 +44,21 @@ import { PublicProgressPreview } from './PublicProgressPreview';
  * written from here too (the Site Progress menu is gone); the work items and
  * the full log stay on the site progress page this links to.
  */
-export function ProjectProgressSummary({ projectId }: { projectId: string }) {
+export function ProjectProgressSummary({
+  projectId,
+  view,
+}: {
+  projectId: string;
+  /**
+   * Fixed view, for the Construction workspace (2026-10-11), which has its
+   * own tabs and actions; without it the summary shows its own sub-tabs.
+   */
+  view?: 'overview' | 'log';
+}) {
   const today = todayLocal();
   const [logOpen, setLogOpen] = useState(false);
-  const [sub, setSub] = useState<'overview' | 'log'>('overview');
+  const [subState, setSub] = useState<'overview' | 'log'>('overview');
+  const sub = view ?? subState;
   // every update logged on this project, newest first (client feedback 2026-10-11)
   const updates = useLiveQuery(
     () => siteProgressUpdateRepository.list({ project_id: projectId }),
@@ -81,7 +92,7 @@ export function ProjectProgressSummary({ projectId }: { projectId: string }) {
   const recent = (activity ?? []).slice(0, 5);
 
   // the actions sit at the top, beside the sub-tabs (client feedback 2026-10-11)
-  const header = (
+  const header = view ? null : (
     <SubTabs
       tabs={[
         { key: 'overview', label: 'Overview' },

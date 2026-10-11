@@ -25,7 +25,6 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Field, SelectInput, TextInput } from '@/components/ui/Field';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { PROJECT_STATUSES } from '@/lib/db/types';
 import { PROJECT_STATUS_META } from '@/lib/domain/project';
 import { STALE_AFTER_DAYS, scheduleBadge, scheduleCaption } from '@/lib/domain/site-progress';
 import { projectProgressRepository, type ProjectProgressRow } from '@/lib/repositories';
@@ -36,7 +35,8 @@ type Mode = 'projects' | 'activity';
 
 
 /**
- * The Site Progress board.
+ * The Construction board (renamed from Site Progress, 2026-10-11): only
+ * projects whose construction has started.
  *
  * This page used to be a flat list of every reading ever logged. That answered
  * "what was typed in", but the question it is actually opened to answer is
@@ -111,8 +111,8 @@ export default function SiteProgressBoardPage() {
   return (
     <>
       <PageHeader
-        title="Site Progress"
-        subtitle="Where every project stands on the ground — the ones that need you first."
+        title="Construction"
+        subtitle="Every project under construction, the ones that need you first. Open one to manage its site."
         action={
           <Button onClick={() => setLogOpen(true)}>
             <Plus className="size-4" /> Log Update
@@ -220,12 +220,13 @@ export default function SiteProgressBoardPage() {
                       value={projectStatus}
                       onChange={(e) => setProjectStatus(e.target.value)}
                     >
-                      <option value="all">All stages</option>
-                      {PROJECT_STATUSES.map((s) => (
+                      <option value="all">All under construction</option>
+                      {(['under_construction', 'nearly_complete', 'handover_ongoing'] as const).map((s) => (
                         <option key={s} value={s}>
                           {PROJECT_STATUS_META[s].label}
                         </option>
                       ))}
+                      <option value="closed">Completed (closed)</option>
                     </SelectInput>
                   </Field>
 

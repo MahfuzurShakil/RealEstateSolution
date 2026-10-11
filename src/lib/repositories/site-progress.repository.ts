@@ -761,7 +761,20 @@ class ProjectProgressRepository {
     );
     const requestsByProject = groupBy(requests, (r) => r.project_id);
 
-    let rows: ProjectProgressRow[] = projects.map((project) => {
+    /*
+     * Construction lists only building projects whose construction has
+     * started (client decision 2026-10-11); closed ones only when asked for.
+     * Planning, design and approval projects, plots and land shares never
+     * appear: there is no site work on them to manage here.
+     */
+    const onSite = projects.filter((p) => {
+      const built = p.project_type === 'apartment' || p.project_type === 'commercial' || p.project_type === 'mixed';
+      if (!built) return false;
+      if (filters.project_status === 'closed') return p.status === 'closed';
+      return isSiteActive(p.status);
+    });
+
+    let rows: ProjectProgressRow[] = onSite.map((project) => {
       const projectTowers = (towersByProject.get(project.id) ?? []).sort((a, b) =>
         a.name.localeCompare(b.name, undefined, { numeric: true }),
       );
