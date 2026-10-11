@@ -74,6 +74,7 @@ export function ProjectStatusCard({ project }: { project: Project }) {
     readiness ? projectStatusWarnings(status, readiness, shape) : [];
 
   const targetBlockers = target ? blockersFor(target) : [];
+  const forwardMove = target !== null && order(target) > currentOrder;
   // asked only when moving forward: stepping back records why, not new papers
   const stage =
     target && order(target) > currentOrder ? stageRequirements(target, project.project_type) : null;
@@ -81,7 +82,8 @@ export function ProjectStatusCard({ project }: { project: Project }) {
 
   function open(status: ProjectStatus) {
     setTarget(status);
-    setDetails({});
+    // a forward move closes the current stage first (client, 2026-10-11)
+    setDetails(order(status) > currentOrder ? { completed_on: todayLocal() } : {});
     setFiles({});
     setValues({
       event_date:
@@ -102,6 +104,10 @@ export function ProjectStatusCard({ project }: { project: Project }) {
       return;
     }
     // the stage's key details and papers are compulsory (decision 2026-10-11)
+    if (forwardMove && !details.completed_on) {
+      setError(`Say when ${label(project.status).toLowerCase()} was completed`);
+      return;
+    }
     const missingDetail = stage?.fields.find((f) => f.required && !details[f.key]?.trim());
     if (missingDetail) {
       setError(`${missingDetail.label} is required for this stage`);
@@ -247,15 +253,27 @@ export function ProjectStatusCard({ project }: { project: Project }) {
         open={target !== null && config !== null}
         // on a tower shape the step's own title; elsewhere the shape's name for it
         title={
-          target && shape.container === 'tower' ? (config?.title ?? '') : target ? `Move to ${label(target)}` : ''
+          forwardMove && target
+            ? `Complete ${label(project.status)} → start ${label(target)}`
+            : target && shape.container === 'tower'
+              ? (config?.title ?? '')
+              : target
+                ? `Move to ${label(target)}`
+                : ''
         }
         subtitle={`${project.code} · ${project.name}`}
         tone={config?.tone ?? 'default'}
         icon={GitBranch}
         confirmLabel={
-          shape.container === 'tower' ? (config?.confirmLabel ?? 'Confirm') : target ? label(target) : 'Confirm'
+          forwardMove && target
+            ? `Complete & start ${label(target)}`
+            : shape.container === 'tower'
+              ? (config?.confirmLabel ?? 'Confirm')
+              : target
+                ? label(target)
+                : 'Confirm'
         }
-        message={config?.question}
+        message={forwardMove ? undefined : config?.question}
         busy={busy}
         onCancel={() => setTarget(null)}
         onConfirm={confirm}
@@ -275,11 +293,19 @@ export function ProjectStatusCard({ project }: { project: Project }) {
             </p>
           </div>
         )}
-        {config?.fields.map(renderField)}
-        {stage && (stage.fields.length > 0 || stage.documents.length > 0) && (
-          <div className="mt-4 space-y-3 border-t border-hairline pt-4">
-            <p className="text-sm font-medium text-ink">What this stage produced</p>
-            {stage.fields.map((f) => (
+        {forwardMove && (
+          <div className="space-y-3 rounded-xl border border-admin-100 bg-admin-50/40 p-3">
+            <p className="text-sm font-semibold text-ink">
+              1 · {label(project.status)} completed
+            </p>
+            <Field label={`${label(project.status)} completed on`} required>
+              <TextInput
+                type="date"
+                value={details.completed_on ?? ''}
+                onChange={(e) => setDetails((d) => ({ ...d, completed_on: e.target.value }))}
+              />
+            </Field>
+            {stage?.fields.map((f) => (
               <Field key={f.key} label={f.label} required={f.required}>
                 {f.type === 'select' ? (
                   <SelectInput
@@ -303,7 +329,7 @@ export function ProjectStatusCard({ project }: { project: Project }) {
                 )}
               </Field>
             ))}
-            {stage.documents.map((doc) => (
+            {stage?.documents.map((doc) => (
               <Field key={doc.label} label={doc.label} required={doc.required}>
                 <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-hairline bg-white px-3 py-2 text-sm text-ink-muted hover:border-admin-300">
                   <Upload className="size-4 shrink-0 text-admin-600" />
@@ -326,6 +352,12 @@ export function ProjectStatusCard({ project }: { project: Project }) {
             ))}
           </div>
         )}
+        {forwardMove && (
+          <p className="mb-1 mt-4 text-sm font-semibold text-ink">
+            2 · {target ? label(target) : ''} starts
+          </p>
+        )}
+        {config?.fields.map(renderField)}
         {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
       </ConfirmDialog>
     </>
