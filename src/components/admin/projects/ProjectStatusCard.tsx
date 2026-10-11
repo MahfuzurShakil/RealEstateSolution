@@ -274,6 +274,8 @@ export function ProjectStatusCard({ project }: { project: Project }) {
                 : 'Confirm'
         }
         message={forwardMove ? undefined : config?.question}
+        // landscape, two columns: what was completed beside what starts (2026-10-11)
+        size={forwardMove ? 'xl' : 'sm'}
         busy={busy}
         onCancel={() => setTarget(null)}
         onConfirm={confirm}
@@ -293,8 +295,9 @@ export function ProjectStatusCard({ project }: { project: Project }) {
             </p>
           </div>
         )}
+        <div className={forwardMove ? 'grid items-start gap-5 lg:grid-cols-2' : ''}>
         {forwardMove && (
-          <div className="space-y-3 rounded-xl border border-admin-100 bg-admin-50/40 p-3">
+          <div className="grid gap-3 rounded-xl border border-admin-100 bg-admin-50/40 p-3 sm:grid-cols-2 [&>p]:sm:col-span-2">
             <p className="text-sm font-semibold text-ink">
               1 · {label(project.status)} completed
             </p>
@@ -352,12 +355,15 @@ export function ProjectStatusCard({ project }: { project: Project }) {
             ))}
           </div>
         )}
-        {forwardMove && (
-          <p className="mb-1 mt-4 text-sm font-semibold text-ink">
-            2 · {target ? label(target) : ''} starts
-          </p>
-        )}
-        {config?.fields.map(renderField)}
+        <div className={forwardMove ? 'rounded-xl border border-hairline bg-white p-3' : ''}>
+          {forwardMove && (
+            <p className="mb-1 text-sm font-semibold text-ink">
+              2 · {target ? label(target) : ''} starts
+            </p>
+          )}
+          {config?.fields.map(renderField)}
+        </div>
+        </div>
         {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
       </ConfirmDialog>
     </>

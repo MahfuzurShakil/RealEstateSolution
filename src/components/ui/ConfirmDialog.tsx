@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { AlertTriangle, type LucideIcon } from 'lucide-react';
 import { Button } from './Button';
-import { Modal, type ModalTone } from './Modal';
+import { Modal, type ModalSize, type ModalTone } from './Modal';
 
 /**
  * Confirmation dialog. `children` can carry extra fields (a date, a remark)
@@ -23,6 +23,7 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
   children,
+  size = 'sm',
 }: {
   open: boolean;
   title: string;
@@ -37,6 +38,8 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
   children?: ReactNode;
+  /** wider for dialogs that collect a lot (a project stage move) */
+  size?: ModalSize;
 }) {
   return (
     <Modal
@@ -45,7 +48,7 @@ export function ConfirmDialog({
       subtitle={subtitle}
       icon={icon}
       tone={tone}
-      size="sm"
+      size={size}
       onClose={onCancel}
       footer={
         <>

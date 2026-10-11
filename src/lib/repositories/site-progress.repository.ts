@@ -1,6 +1,7 @@
 'use client';
 
 import { db } from '../db/database';
+import { towerStatusFromProgress } from '../domain/project';
 import {
   DEFAULT_TOWER_WORK_ITEMS,
   type DocumentRecord,
@@ -201,6 +202,8 @@ async function recalculateTower(towerId: string): Promise<number> {
   const pct = towerProgressPct(items);
   await db.towers.update(towerId, {
     current_progress_pct: pct,
+    // the status follows the log, never a dropdown (2026-10-11)
+    status: towerStatusFromProgress(pct),
     updated_at: new Date().toISOString(),
   });
   return pct;

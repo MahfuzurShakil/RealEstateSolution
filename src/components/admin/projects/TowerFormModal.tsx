@@ -3,11 +3,10 @@
 import { useState } from 'react';
 import { Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { Checkbox, Field, SelectInput, TextInput } from '@/components/ui/Field';
+import { Checkbox, Field, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
-import { TOWER_STATUSES, type Tower, type TowerStatus } from '@/lib/db/types';
+import type { Tower, TowerStatus } from '@/lib/db/types';
 import type { ProjectShape } from '@/lib/domain/project';
-import { TOWER_STATUS_META } from '@/lib/domain/project';
 import { towerRepository } from '@/lib/repositories';
 
 interface FormState {
@@ -145,18 +144,6 @@ export function TowerFormModal({
             placeholder={isTower ? 'e.g. Tower A' : 'e.g. Block C'}
             invalid={Boolean(errors.name)}
           />
-        </Field>
-        <Field label="Status" required>
-          <SelectInput
-            value={form.status}
-            onChange={(e) => set('status', e.target.value as TowerStatus)}
-          >
-            {TOWER_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {TOWER_STATUS_META[s].label}
-              </option>
-            ))}
-          </SelectInput>
         </Field>
         {isTower && (
           <>

@@ -696,11 +696,24 @@ export function defaultCodePrefix(shape: ProjectShape, containerName: string): s
   return containerName.replace(/^(block|tower)\s+/i, '').trim() || containerName;
 }
 
+/*
+ * A tower's status is not chosen (client feedback 2026-10-11): planning and
+ * design are the project's stages, and once building starts the site log
+ * moves the tower — `towerStatusFromProgress` below, written whenever the
+ * tower's progress is recalculated. `planning` is read as "Not started".
+ */
 export const TOWER_STATUS_META: Record<TowerStatus, { label: string; tone: BadgeTone }> = {
-  planning: { label: 'Planning', tone: 'neutral' },
+  planning: { label: 'Not started', tone: 'neutral' },
   under_construction: { label: 'Under Construction', tone: 'amber' },
   complete: { label: 'Complete', tone: 'green' },
 };
+
+/** The tower status its site progress says. */
+export function towerStatusFromProgress(pct: number): TowerStatus {
+  if (pct >= 100) return 'complete';
+  if (pct > 0) return 'under_construction';
+  return 'planning';
+}
 
 export const UNIT_STATUS_META: Record<UnitStatus, { label: string; tone: BadgeTone }> = {
   available: { label: 'Available', tone: 'green' },
