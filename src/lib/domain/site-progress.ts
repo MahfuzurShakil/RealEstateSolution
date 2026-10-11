@@ -309,6 +309,32 @@ export const MATERIAL_REQUEST_STATUS_META: Record<
   cancelled: { label: 'Cancelled', tone: 'neutral' },
 };
 
+/**
+ * The request's dates (Construction review 2026-10-11): raised today or
+ * earlier, and needed on or after the day it is raised. Returns the problem,
+ * or null.
+ */
+export function requestDateProblem(requestDate: string, requiredBy: string | null): string | null {
+  const today = new Date();
+  const local = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  if (!requestDate) return 'A request date is required.';
+  if (requestDate > local) return 'The request date cannot be in the future.';
+  if (requiredBy && requiredBy < requestDate) return 'It cannot be needed before the day it is asked for.';
+  return null;
+}
+
+/** Still waiting for material, and its needed-by date has passed. */
+export function isRequestLate(
+  request: { status: MaterialRequestStatus; required_by?: string | null },
+  today: string,
+): boolean {
+  return Boolean(
+    request.required_by &&
+      request.required_by < today &&
+      !['fulfilled', 'rejected', 'cancelled'].includes(request.status),
+  );
+}
+
 /** Requests nobody needs to act on any more. */
 export function isRequestClosed(status: MaterialRequestStatus): boolean {
   return status === 'fulfilled' || status === 'rejected' || status === 'cancelled';

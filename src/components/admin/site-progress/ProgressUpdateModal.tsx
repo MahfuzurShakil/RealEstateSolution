@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { HardHat, MapPin } from 'lucide-react';
+import { Camera, HardHat, MapPin, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
@@ -11,12 +11,13 @@ import { useMockSession } from '@/lib/auth/mock-session';
 import type { TowerWorkItem } from '@/lib/db/types';
 import { WORK_ITEM_STATUS_META, clampPct, isSiteActive, statusForProgress } from '@/lib/domain/site-progress';
 import {
+  documentRepository,
   projectRepository,
   siteProgressUpdateRepository,
   towerRepository,
   towerWorkItemRepository,
 } from '@/lib/repositories';
-import { todayLocal } from '@/lib/utils/format';
+import { formatDate, todayLocal } from '@/lib/utils/format';
 import { ProgressBar } from './ProgressBar';
 
 /**
@@ -59,6 +60,10 @@ export function ProgressUpdateModal({
   const [lng, setLng] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  /** photos taken on site, saved with the reading (Construction review 2026-10-11) */
+  const [photos, setPhotos] = useState<File[]>([]);
+  /** shown after "Save & log another", so the engineer sees it went in */
+  const [savedNote, setSavedNote] = useState('');
 
   const projects = useLiveQuery(() => projectRepository.list(), []);
   const towers = useLiveQuery(
@@ -75,11 +80,28 @@ export function ProgressUpdateModal({
     [workItem, items, workItemId],
   );
 
-    const pct = clampPct(Number(progress));
+  /*
+   * What the engineer needs to know before saving (Construction review
+   * 2026-10-11): when construction started (nothing is reported before it),
+   * whether this item already has a reading that day, and whether a
+   * back-dated reading will become the current figure or only fill history.
+   */
+  const context = useLiveQuery(async () => {
+    if (!selected) return null;
+    const tower = await towerRepository.getById(selected.tower_id);
+    const project = tower ? await projectRepository.getById(tower.project_id) : undefined;
+    const readings = await siteProgressUpdateRepository.listForWorkItem(selected.id);
+    const latest = readings.map((r) => r.update_date).sort().at(-1) ?? null;
+    return { start: project?.actual_start_date ?? null, latest, readings };
+  }, [selected?.id]);
+  const sameDay = context?.readings.find((r) => r.update_date === updateDate);
+  const olderThanCurrent = Boolean(context?.latest && updateDate < context.latest);
+
+  const pct = clampPct(Number(progress));
   const previous = Number(selected?.actual_progress_pct ?? 0);
   const nextStatus = statusForProgress(pct);
 
-  async function save(andOpen: boolean) {
+  async function save(another: boolean) {
     if (!selected) {
       setError('Pick the work item this update is for');
       return;
@@ -98,6 +120,10 @@ export function ProgressUpdateModal({
       setError('The update date cannot be in the future');
       return;
     }
+    if (context?.start && updateDate < context.start) {
+      setError(`Construction started on ${formatDate(context.start)}; a reading cannot be earlier`);
+      return;
+    }
     setBusy(true);
     try {
       const saved = await siteProgressUpdateRepository.log(
@@ -112,8 +138,44 @@ export function ProgressUpdateModal({
         },
         userId,
       );
-      onClose();
-      if (andOpen) onSaved?.(saved.id);
+      for (const file of photos) {
+        await documentRepository.create(
+          {
+            entity_type: 'site_progress_update',
+            entity_id: saved.id,
+            document_type: 'progress_photo',
+            custom_type_name: null,
+            file_url: file.name,
+            file_data: file,
+            file_name: file.name,
+            file_size: file.size,
+            mime_type: file.type,
+            is_public: false,
+            uploaded_by: userId,
+            uploaded_at: new Date().toISOString(),
+            notes: null,
+          },
+          userId,
+        );
+      }
+      onSaved?.(saved.id);
+      if (another) {
+        /*
+         * A day's report covers several items: keep the project, tower and
+         * date, clear what belongs to the one item just saved.
+         */
+        setSavedNote(`${selected.name} saved at ${pct}%. Pick the next item.`);
+        if (!workItem) setWorkItemId('');
+        setProgress('0');
+        setRemarks('');
+        setPhotos([]);
+        setLat('');
+        setLng('');
+        setShowMap(false);
+        setError('');
+      } else {
+        onClose();
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'The update could not be saved.');
     } finally {
@@ -134,9 +196,11 @@ export function ProgressUpdateModal({
           <Button variant="outline" onClick={onClose} viewSafe disabled={busy}>
             Cancel
           </Button>
-          <Button variant="outline" onClick={() => save(true)} disabled={busy}>
-            Save &amp; add photos
-          </Button>
+          {!workItem && (
+            <Button variant="outline" onClick={() => save(true)} disabled={busy}>
+              Save &amp; log another
+            </Button>
+          )}
           <Button onClick={() => save(false)} disabled={busy}>
             {busy ? 'Saving…' : 'Save update'}
           </Button>
@@ -250,6 +314,19 @@ export function ProgressUpdateModal({
           </p>
         </div>
 
+        {sameDay && (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            This item already has a reading on {formatDate(updateDate)} ({sameDay.progress_pct}%). Saving
+            adds another for the same day, and the newer one counts.
+          </p>
+        )}
+        {olderThanCurrent && (
+          <p className="rounded-xl border border-hairline bg-slate-50 p-3 text-xs text-ink-muted">
+            The item&rsquo;s latest reading is from {formatDate(context?.latest)}. This earlier one
+            fills in the history and does not change the current figure.
+          </p>
+        )}
+
         <Field label="Remarks">
           <TextArea
             value={remarks}
@@ -257,6 +334,39 @@ export function ProgressUpdateModal({
             placeholder="What was done today — casting, rod binding, shuttering, delays…"
           />
         </Field>
+
+        <div>
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-hairline bg-white px-3 py-2 text-sm font-medium text-ink hover:bg-admin-50">
+            <Camera className="size-4" /> Add photos
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="sr-only"
+              onChange={(e) => {
+                const picked = Array.from(e.target.files ?? []);
+                setPhotos((p) => [...p, ...picked]);
+                e.target.value = '';
+              }}
+            />
+          </label>
+          {photos.length > 0 && (
+            <ul className="mt-2 flex flex-wrap gap-2">
+              {photos.map((f, i) => (
+                <li key={`${f.name}-${i}`} className="flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 text-xs text-ink">
+                  {f.name}
+                  <button
+                    type="button"
+                    aria-label={`Remove ${f.name}`}
+                    onClick={() => setPhotos((p) => p.filter((_, j) => j !== i))}
+                  >
+                    <X className="size-3" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
 
         {showMap ? (
           <MapPicker lat={lat} lng={lng} onChange={(a, b) => { setLat(a); setLng(b); }} />
@@ -266,6 +376,7 @@ export function ProgressUpdateModal({
           </Button>
         )}
 
+        {savedNote && !error && <p className="text-sm text-emerald-700">{savedNote}</p>}
         {error && <p className="text-sm text-red-600">{error}</p>}
       </div>
     </Modal>

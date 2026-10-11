@@ -1620,6 +1620,7 @@ async function seedDemoSiteProgress(
         work_item_id: workItem?.id ?? null,
         requested_by: userIds.get(demo.requested_by_key) ?? null,
         request_date: daysFromToday(-demo.days_ago).slice(0, 10),
+        required_by: daysFromToday(-demo.days_ago + 7).slice(0, 10),
         notes: demo.notes ?? null,
         decision_note: null,
         items: demo.items.map((i) => ({
@@ -1664,7 +1665,8 @@ async function seedDemoSiteProgress(
         await materialRequestRepository.setStatus(request.id, step, {
           decision_note: step === path[path.length - 1] ? (demo.decision_note ?? null) : undefined,
           approved_quantities: step === 'approved' ? approved : undefined,
-          decided_by: userIds.get('monir') ?? null,
+          // the Project Manager decides (client decision 2026-10-11)
+          decided_by: userIds.get('shirin') ?? null,
           event_date: daysFromToday(-decidedDaysAgo).slice(0, 10),
         });
       }

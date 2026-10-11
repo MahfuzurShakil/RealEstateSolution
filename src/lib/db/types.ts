@@ -1787,6 +1787,13 @@ export interface MaterialRequest extends BaseEntity {
   /** site engineer who raised it */
   requested_by: UUID | null;
   request_date: ISODate;
+  /**
+   * When the site needs it on site (Construction review 2026-10-11). Every
+   * requisition here says "casting on Thursday": without the date procurement
+   * cannot tell the urgent from the routine, and nobody can see a request
+   * that is now late. Not indexed, so no version block.
+   */
+  required_by?: ISODate | null;
   status: MaterialRequestStatus;
   notes?: string | null;
   /**

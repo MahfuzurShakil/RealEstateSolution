@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
@@ -47,7 +46,6 @@ type Mode = 'projects' | 'activity';
  * worst first; the raw log is still one tab away for the audit case.
  */
 export default function SiteProgressBoardPage() {
-  const router = useRouter();
   const today = todayLocal();
 
   const [mode, setMode] = useState<Mode>('projects');
@@ -300,7 +298,6 @@ export default function SiteProgressBoardPage() {
         <ProgressUpdateModal
           open
           onClose={() => setLogOpen(false)}
-          onSaved={(id) => router.push(`/admin/site-progress/updates/${id}`)}
         />
       )}
     </>

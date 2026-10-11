@@ -26,7 +26,7 @@ import { SubTabs } from '@/components/ui/SubTabs';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { canEdit } from '@/lib/domain/access';
 import { SITE_AGEING_DAYS } from '@/lib/domain/procurement';
-import { MATERIAL_REQUEST_STATUS_META, isRequestClosed } from '@/lib/domain/site-progress';
+import { MATERIAL_REQUEST_STATUS_META, isRequestClosed, isRequestLate } from '@/lib/domain/site-progress';
 import type {
   IncomingDelivery,
   MaterialRequestWithRelations,
@@ -39,7 +39,7 @@ import {
   siteMaterialsRepository,
 } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
-import { formatDate } from '@/lib/utils/format';
+import { formatDate, todayLocal } from '@/lib/utils/format';
 
 type Sub = 'requests' | 'incoming' | 'materials';
 type Chip = 'all' | 'in_store' | 'in_use' | 'used' | 'sent_back';
@@ -56,10 +56,16 @@ const n = (v: number) => Math.round(v * 1000) / 1000;
  * the site's materials, one row per item, where received / in use / used are
  * statuses of the same row rather than separate tabs.
  */
-export function ConstructionMaterialsTab({ projectId }: { projectId: string }) {
+export function ConstructionMaterialsTab({
+  projectId,
+  initialSub,
+}: {
+  projectId: string;
+  initialSub?: Sub;
+}) {
   const { role } = useMockSession();
   const mayAct = canEdit(role, 'site_progress');
-  const [sub, setSub] = useState<Sub>('materials');
+  const [sub, setSub] = useState<Sub>(initialSub ?? 'materials');
   const [chip, setChip] = useState<Chip>('all');
   const [receiving, setReceiving] = useState<IncomingDelivery | null>(null);
   const [acting, setActing] = useState<{ row: SiteMaterialRow; mode: SiteMaterialMode } | null>(null);
@@ -121,6 +127,21 @@ export function ConstructionMaterialsTab({ projectId }: { projectId: string }) {
       header: 'Raised',
       cell: (row) => formatDate(row.request_date),
       sortValue: (row) => row.request_date,
+    },
+    {
+      // Construction review 2026-10-11 — when the site needs it, and whether that has passed
+      key: 'required_by',
+      header: 'Needed by',
+      cell: (row) =>
+        row.required_by ? (
+          <span className={isRequestLate(row, todayLocal()) ? 'text-xs font-medium text-red-600' : 'text-xs text-ink'}>
+            {formatDate(row.required_by)}
+            {isRequestLate(row, todayLocal()) && <span className="block">late</span>}
+          </span>
+        ) : (
+          <span className="text-xs text-ink-muted">—</span>
+        ),
+      sortValue: (row) => row.required_by ?? '9999',
     },
     {
       key: 'approved',

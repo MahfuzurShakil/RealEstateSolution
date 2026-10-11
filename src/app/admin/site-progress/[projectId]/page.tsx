@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { useState } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ArrowLeft, Building2, Package, Plus } from 'lucide-react';
 import { ActivityTimeline } from '@/components/admin/site-progress/ActivityTimeline';
@@ -41,11 +41,20 @@ type Tab = 'overview' | 'breakdown' | 'log' | 'materials' | 'photos' | 'timeline
  * activity trail. The project page keeps what the project *is*; this page
  * is the work on it.
  */
-export default function ProjectProgressPage() {
+function ProjectProgressPage() {
   const { role } = useMockSession();
   const { projectId } = useParams<{ projectId: string }>();
   const today = todayLocal();
-  const [tab, setTab] = useState<Tab>('overview');
+  // a link can open a tab: ?tab=materials&sub=requests (back from a new request)
+  const params = useSearchParams();
+  const [tab, setTab] = useState<Tab>(() => {
+    const t = params.get('tab');
+    return t === 'materials' || t === 'log' || t === 'breakdown' ? t : 'overview';
+  });
+  const [materialsSub] = useState<'requests' | 'incoming' | 'materials' | undefined>(() => {
+    const sub = params.get('sub');
+    return sub === 'requests' || sub === 'incoming' || sub === 'materials' ? sub : undefined;
+  });
   const [logOpen, setLogOpen] = useState(false);
   // QA audit X-01 — the site team and the PM log and edit; others read
   const mayEdit = canEdit(role, 'site_progress');
@@ -167,7 +176,7 @@ export default function ProjectProgressPage() {
       {tab === 'log' && <ProjectProgressSummary projectId={project.id} view="log" />}
 
       {/* requests, deliveries to receive, and the site's materials — quantities only */}
-      {tab === 'materials' && <ConstructionMaterialsTab projectId={project.id} />}
+      {tab === 'materials' && <ConstructionMaterialsTab projectId={project.id} initialSub={materialsSub} />}
 
       {tab === 'photos' && (
         <div className="space-y-5">
@@ -200,3 +209,12 @@ export default function ProjectProgressPage() {
   );
 }
 
+
+/** `useSearchParams` needs a Suspense boundary (the ?tab= link). */
+export default function Page() {
+  return (
+    <Suspense fallback={<p className="text-sm text-ink-muted">Loading…</p>}>
+      <ProjectProgressPage />
+    </Suspense>
+  );
+}

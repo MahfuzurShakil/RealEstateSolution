@@ -28,6 +28,8 @@ import {
   MATERIAL_REQUEST_STATUS_META,
   WORK_ITEM_STATUS_META,
   approvalSummary,
+  isRequestLate,
+  isSiteActive,
   requestTotals,
 } from '@/lib/domain/site-progress';
 import { PO_DELIVER_TO_META, PURCHASE_ORDER_STATUS_META, poDeliversToSite } from '@/lib/domain/procurement';
@@ -36,7 +38,9 @@ import {
   purchaseOrderRepository,
   receivedAtSiteForRequest,
 } from '@/lib/repositories';
-import { formatDate } from '@/lib/utils/format';
+import { formatDate, todayLocal } from '@/lib/utils/format';
+import { useMockSession } from '@/lib/auth/mock-session';
+import { canEdit, canView } from '@/lib/domain/access';
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -50,6 +54,7 @@ function Row({ label, value }: { label: string; value: ReactNode }) {
 /** One material request (Sections 6.5 / 6.6). */
 export default function MaterialRequestDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { role } = useMockSession();
   const router = useRouter();
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -75,6 +80,9 @@ export default function MaterialRequestDetailPage() {
     );
   }
 
+  // the site team works from Construction; procurement from its own list
+  const backToSite =
+    canView(role, 'site_progress') && !canEdit(role, 'procurement') && isSiteActive(request.project?.status ?? '');
   const totals = requestTotals(request.items);
   const decided = request.status !== 'pending';
 
@@ -129,11 +137,12 @@ export default function MaterialRequestDetailPage() {
 
   return (
     <>
+      {/* Construction review 2026-10-11 — the site team goes back to its site */}
       <Link
-        href="/admin/material-requests"
+        href={backToSite ? `/admin/site-progress/${request.project_id}?tab=materials&sub=requests` : '/admin/material-requests'}
         className="mb-4 inline-flex items-center gap-2 text-sm text-ink-muted hover:text-admin-700"
       >
-        <ArrowLeft className="size-4" /> Back to material requests
+        <ArrowLeft className="size-4" /> {backToSite ? `Back to ${request.project?.name ?? 'the site'}` : 'Back to material requests'}
       </Link>
 
       <PageHeader
@@ -334,6 +343,19 @@ export default function MaterialRequestDetailPage() {
           <Card>
             <CardHeader title="Record" />
             <Row label="Request date" value={formatDate(request.request_date)} />
+            <Row
+              label="Needed on site by"
+              value={
+                request.required_by ? (
+                  <span className={isRequestLate(request, todayLocal()) ? 'text-red-600' : undefined}>
+                    {formatDate(request.required_by)}
+                    {isRequestLate(request, todayLocal()) ? ' · late' : ''}
+                  </span>
+                ) : (
+                  '—'
+                )
+              }
+            />
             <Row label="Requested by" value={request.requester_name} />
             <Row label="Tower" value={request.tower?.name ?? 'Whole site'} />
             <Row label="Created" value={formatDate(request.created_at)} />

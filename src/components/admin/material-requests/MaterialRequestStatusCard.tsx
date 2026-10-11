@@ -82,7 +82,17 @@ export function MaterialRequestStatusCard({
   const [busy, setBusy] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
 
-  const next = manualNextRequestStatuses(request.status);
+  /*
+   * Construction review 2026-10-11 — who may take each step: the PM approves
+   * or rejects; whoever may raise a request may withdraw it while it waits;
+   * the site team or the PM closes it short.
+   */
+  const mayRaise = canEdit(role, 'material_request');
+  const maySite = canEdit(role, 'site_progress');
+  const next = manualNextRequestStatuses(request.status).filter((s) =>
+    s === 'cancelled' ? mayRaise || mayDecide : s === 'fulfilled' ? mayDecide || maySite : mayDecide,
+  );
+  const waitingOnOthers = manualNextRequestStatuses(request.status).length > 0 && next.length === 0;
   const isRejected = request.status === 'rejected';
   const currentIndex = MATERIAL_REQUEST_PIPELINE.indexOf(request.status);
   const config = action ? MATERIAL_REQUEST_STEP_CONFIG[action] : null;
@@ -104,6 +114,17 @@ export function MaterialRequestStatusCard({
       setError('A reason is required');
       return;
     }
+    if (action === 'approved') {
+      const cut = request.items.some((i) => {
+        const v = quantities[i.id]?.trim();
+        return v !== undefined && v !== '' && Number(v) < i.quantity_requested;
+      });
+      // the site needs to know why it is getting less than it asked for
+      if (cut && !note.trim()) {
+        setError('Some lines are cut: say why in the note, so the site knows');
+        return;
+      }
+    }
     setBusy(true);
     try {
       await materialRequestRepository.setStatus(request.id, action, {
@@ -120,6 +141,8 @@ export function MaterialRequestStatusCard({
             : undefined,
       });
       setAction(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not be saved.');
     } finally {
       setBusy(false);
     }
@@ -184,7 +207,7 @@ export function MaterialRequestStatusCard({
           </ol>
         )}
 
-        {next.length > 0 && !mayDecide ? (
+        {waitingOnOthers ? (
           <p className="rounded-xl border border-hairline p-3 text-xs text-ink-muted">
             {request.status === 'pending'
               ? 'Waiting for the Project Manager to approve, cut or reject it.'
@@ -338,7 +361,10 @@ export function MaterialRequestStatusCard({
         )}
 
         {action && !config?.needsNote && (
-          <Field label="Note">
+          <Field
+            label={action === 'approved' ? 'Note (required when a line is cut)' : 'Note'}
+            error={error || undefined}
+          >
             <TextArea
               value={note}
               onChange={(e) => setNote(e.target.value)}

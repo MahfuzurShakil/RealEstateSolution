@@ -163,6 +163,18 @@ export interface DemoProject {
 }
 
 /** A construction estimate split the way the Costing editor splits it (60/40). */
+/**
+ * A date this many days before the demo is loaded. Nokshi Green's site log is
+ * written relative to load day, so its stage dates are too — fixed dates had
+ * the first piling reading a year before the recorded construction start
+ * (Construction review 2026-10-11).
+ */
+function daysAgo(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
 function construction(sqft: number, rate: number): Array<[string, number]> {
   const total = sqft * rate;
   return [
@@ -177,9 +189,9 @@ export const DEMO_PROJECTS: DemoProject[] = [
     project_type: 'apartment',
     total_land_area: 10,
     location_summary: 'Bashundhara R/A, Dhaka',
-    expected_start_date: '2026-06-01',
+    expected_start_date: daysAgo(395),
     expected_completion_date: '2029-05-31',
-    actual_start_date: '2026-06-18',
+    actual_start_date: daysAgo(385),
     status: 'under_construction',
     architect: 'Volumezero Ltd.',
     surroundings:
@@ -204,7 +216,7 @@ export const DEMO_PROJECTS: DemoProject[] = [
       est_saleable_area: 15_000,
       est_avg_rate: 9_500,
     },
-    created_at: '2026-05-04T10:15:00.000Z',
+    created_at: `${daysAgo(450)}T10:15:00.000Z`,
     land_names: ['Bashundhara Block K corner plot'],
     towers: [
       {
@@ -319,21 +331,21 @@ export const DEMO_PROJECTS: DemoProject[] = [
     history: [
       {
         to_status: 'design',
-        event_date: '2026-05-18',
+        event_date: daysAgo(440),
         performed_by: 'Volumezero Ltd.',
         reference_no: 'ARCH-2026-014',
         remarks: 'দুই টাওয়ারের layout চূড়ান্ত — Tower A আগে, Tower B পরে।',
       },
       {
         to_status: 'approval',
-        event_date: '2026-05-29',
+        event_date: daysAgo(420),
         performed_by: 'RAJUK',
         reference_no: 'RAJUK/2026/4471',
         remarks: 'Setback নিয়ে একটা query এসেছিল, drawing সংশোধন করে জমা দেওয়া হয়েছে।',
       },
       {
         to_status: 'under_construction',
-        event_date: '2026-06-18',
+        event_date: daysAgo(385),
         performed_by: 'Base Tech Engineering',
         reference_no: 'WO-2026-008',
         remarks: 'Piling শুরু হয়েছে। সাইট ঠিকাদারকে বুঝিয়ে দেওয়া হয়েছে।',

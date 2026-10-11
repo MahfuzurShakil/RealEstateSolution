@@ -9,22 +9,29 @@ import { PageHeader } from '@/components/ui/PageHeader';
 
 function NewMaterialRequest() {
   const params = useSearchParams();
+  /*
+   * Construction review 2026-10-11: raised from a site's workspace, the page
+   * sent the engineer back to Procurement's list instead of the site.
+   */
+  const project = params.get('project');
+  const siteRequests = project ? `/admin/site-progress/${project}?tab=materials&sub=requests` : null;
 
   return (
     <>
       <Link
-        href="/admin/material-requests"
+        href={siteRequests ?? '/admin/material-requests'}
         className="mb-4 inline-flex items-center gap-2 text-sm text-ink-muted hover:text-admin-700"
       >
-        <ArrowLeft className="size-4" /> Back to material requests
+        <ArrowLeft className="size-4" /> {siteRequests ? 'Back to the site' : 'Back to material requests'}
       </Link>
 
       <PageHeader
         title="Raise Material Request"
-        subtitle="What the site needs, and where. Procurement decides on it from the same list."
+        subtitle="What the site needs, where and by when. The Project Manager approves it; procurement then buys or sends it."
       />
 
       <MaterialRequestForm
+        returnTo={siteRequests ?? undefined}
         defaults={{
           project_id: params.get('project') ?? undefined,
           tower_id: params.get('tower') ?? undefined,

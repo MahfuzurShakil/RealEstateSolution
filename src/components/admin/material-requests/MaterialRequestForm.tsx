@@ -19,7 +19,7 @@ import {
   userRepository,
 } from '@/lib/repositories';
 import { todayLocal } from '@/lib/utils/format';
-import { isSiteActive } from '@/lib/domain/site-progress';
+import { isSiteActive, requestDateProblem } from '@/lib/domain/site-progress';
 
 interface LineRow {
   /** existing row id, so an approved quantity survives an edit */
@@ -47,11 +47,14 @@ const EMPTY_LINE = (): LineRow => ({ item_id: null, item_name: '', unit: '', qua
 export function MaterialRequestForm({
   request,
   defaults,
+  returnTo,
 }: {
   /** omit to create */
   request?: MaterialRequestWithRelations;
   /** prefilled from the Progress tab's "Request material" link */
   defaults?: { project_id?: string; tower_id?: string; work_item_id?: string };
+  /** where to go after raising it — the site's Materials tab when raised from there */
+  returnTo?: string;
 }) {
   const router = useRouter();
   const { userId } = useMockSession();
@@ -67,6 +70,7 @@ export function MaterialRequestForm({
   /** null = untouched, so the acting site engineer can be the default */
   const [requestedBy, setRequestedBy] = useState<string | null>(request?.requested_by ?? null);
   const [requestDate, setRequestDate] = useState(request?.request_date ?? todayLocal());
+  const [requiredBy, setRequiredBy] = useState(request?.required_by ?? '');
   const [notes, setNotes] = useState(request?.notes ?? '');
   const [lines, setLines] = useState<LineRow[]>(
     request
@@ -115,6 +119,15 @@ export function MaterialRequestForm({
       setError('Pick the project this material is for');
       return;
     }
+    if (!requiredBy) {
+      setError('Say when it is needed on site');
+      return;
+    }
+    const dateProblem = requestDateProblem(requestDate, requiredBy);
+    if (dateProblem) {
+      setError(dateProblem);
+      return;
+    }
     /*
      * QA audit C-05: a line with an item but no quantity, or a quantity but no
      * item, used to vanish on save — the request went out shorter than typed.
@@ -150,6 +163,7 @@ export function MaterialRequestForm({
         work_item_id: workItemId || null,
         requested_by: requesterValue || null,
         request_date: requestDate,
+        required_by: requiredBy || null,
         notes: notes.trim() || null,
       };
       const items = filled.map((l) => ({
@@ -168,8 +182,13 @@ export function MaterialRequestForm({
           { ...payload, items, decision_note: null },
           userId,
         );
-        router.push(`/admin/material-requests/${saved.id}`);
+        // raised from the site: back to the site's requests, where it now shows
+        router.push(
+          returnTo ?? `/admin/material-requests/${saved.id}`,
+        );
       }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'The request could not be saved.');
     } finally {
       setBusy(false);
     }
@@ -238,7 +257,17 @@ export function MaterialRequestForm({
             <TextInput
               type="date"
               value={requestDate}
+              max={todayLocal()}
               onChange={(e) => setRequestDate(e.target.value)}
+            />
+          </Field>
+
+          <Field label="Needed on site by" required hint="Casting day, or when the stock runs out">
+            <TextInput
+              type="date"
+              value={requiredBy}
+              min={requestDate}
+              onChange={(e) => setRequiredBy(e.target.value)}
             />
           </Field>
 

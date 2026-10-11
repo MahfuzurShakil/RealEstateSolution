@@ -22,6 +22,7 @@ import {
   daysBetween,
   isSiteActive,
   progressSeries,
+  requestDateProblem,
   readingKind,
   rollupAcrossTowers,
   rollupProgress,
@@ -379,6 +380,10 @@ class SiteProgressUpdateRepository extends BaseRepository<SiteProgressUpdate> {
     if (!project || !isSiteActive(project.status)) {
       throw new Error('Progress is logged only on a project under construction.');
     }
+    // Construction review 2026-10-11 — nothing is built before construction starts
+    if (project.actual_start_date && input.update_date < project.actual_start_date) {
+      throw new Error('A reading cannot be dated before the construction start.');
+    }
     const pct = clampPct(Number(input.progress_pct));
     const saved = await this.create({ ...input, progress_pct: pct }, createdBy);
     await applyLatestReading(input.work_item_id);
@@ -478,6 +483,8 @@ class MaterialRequestRepository extends BaseRepository<MaterialRequest> {
     createdBy: string | null = null,
   ): Promise<MaterialRequest> {
     const { items, ...rest } = input;
+    const dateProblem = requestDateProblem(rest.request_date, rest.required_by ?? null);
+    if (dateProblem) throw new Error(dateProblem);
     const code = rest.code?.trim() ? rest.code : await this.generateCode();
 
     const request = await this.create({ ...rest, code, status: 'pending' }, createdBy);
@@ -531,6 +538,7 @@ class MaterialRequestRepository extends BaseRepository<MaterialRequest> {
       work_item_id?: string | null;
       requested_by?: string | null;
       request_date?: string;
+      required_by?: string | null;
       notes?: string | null;
     },
     items: MaterialRequestItemInput[],
@@ -538,6 +546,10 @@ class MaterialRequestRepository extends BaseRepository<MaterialRequest> {
   ): Promise<MaterialRequest | undefined> {
     const blocked = await this.editBlockReason(id);
     if (blocked) throw new Error(blocked);
+    if (changes.request_date) {
+      const dateProblem = requestDateProblem(changes.request_date, changes.required_by ?? null);
+      if (dateProblem) throw new Error(dateProblem);
+    }
     await materialRequestItemRepository.replaceForRequest(id, items, createdBy);
     return this.update(id, changes as never);
   }
@@ -647,11 +659,29 @@ class MaterialRequestRepository extends BaseRepository<MaterialRequest> {
 
     if (status === 'approved') {
       const items = await materialRequestItemRepository.listForRequest(id);
-      for (const item of items) {
+      // blank means "all of it" — the quantity that was asked for
+      const decided = items.map((item) => {
         const raw = options.approved_quantities?.[item.id];
-        // blank means "all of it" — the quantity that was asked for
-        const approved = raw === null || raw === undefined ? item.quantity_requested : raw;
-        await materialRequestItemRepository.update(item.id, { quantity_approved: approved });
+        return { item, approved: raw === null || raw === undefined ? item.quantity_requested : Number(raw) };
+      });
+      /*
+       * Construction review 2026-10-11: a PM can cut a line, not invent one —
+       * nothing below zero or above what the site asked for — and a request
+       * with every line cut to nothing was rejected, whatever it is called.
+       */
+      const bad = decided.find(
+        (d) => !Number.isFinite(d.approved) || d.approved < 0 || d.approved > d.item.quantity_requested,
+      );
+      if (bad) {
+        throw new Error(
+          `${bad.item.item_name}: approve between 0 and the ${bad.item.quantity_requested} ${bad.item.unit} asked for.`,
+        );
+      }
+      if (decided.every((d) => d.approved <= 0)) {
+        throw new Error('Every line is cut to 0: reject the request instead, with the reason.');
+      }
+      for (const d of decided) {
+        await materialRequestItemRepository.update(d.item.id, { quantity_approved: d.approved });
       }
     }
 
