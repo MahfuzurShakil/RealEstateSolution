@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   ArrowRight,
@@ -8,6 +9,7 @@ import {
   CalendarClock,
   HardHat,
   Package,
+  Plus,
   TrendingDown,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
@@ -26,6 +28,7 @@ import {
 import { projectProgressRepository } from '@/lib/repositories';
 import { formatDate, todayLocal } from '@/lib/utils/format';
 import { ProgressBar } from './ProgressBar';
+import { ProgressUpdateModal } from './ProgressUpdateModal';
 import { ProgressSparkline } from './ProgressSparkline';
 import { PublicProgressPreview } from './PublicProgressPreview';
 
@@ -35,11 +38,13 @@ import { PublicProgressPreview } from './PublicProgressPreview';
  *
  * The project page is about the project as an asset — its land, its units, its
  * JV terms, its documents. Construction is an operation that runs on it, so
- * this is a read-only window with a way in, not a second copy of the Site
- * Progress module. Editing the WBS and logging readings happen in one place.
+ * this is mostly a read-only window. Since 2026-10-11 the daily log is
+ * written from here too (the Site Progress menu is gone); the work items and
+ * the full log stay on the site progress page this links to.
  */
 export function ProjectProgressSummary({ projectId }: { projectId: string }) {
   const today = todayLocal();
+  const [logOpen, setLogOpen] = useState(false);
 
   const row = useLiveQuery(
     () => projectProgressRepository.forProject(projectId, today),
@@ -200,12 +205,21 @@ export function ProjectProgressSummary({ projectId }: { projectId: string }) {
 
       <PublicProgressPreview projectId={projectId} isPublic={row.project.is_public} />
 
-      <Link href={`/admin/site-progress/${projectId}`}>
-        <Button className="w-full sm:w-auto">
-          <HardHat className="size-4" /> Open site progress
-          <ArrowRight className="size-4" />
+      <div className="flex flex-wrap gap-2">
+        {/* the site log is written from the project (client feedback 2026-10-11) */}
+        <Button onClick={() => setLogOpen(true)}>
+          <Plus className="size-4" /> Log site update
         </Button>
-      </Link>
+        <Link href={`/admin/site-progress/${projectId}`}>
+          <Button variant="outline">
+            <HardHat className="size-4" /> Work items & full log
+            <ArrowRight className="size-4" />
+          </Button>
+        </Link>
+      </div>
+      {logOpen && (
+        <ProgressUpdateModal open projectId={projectId} onClose={() => setLogOpen(false)} />
+      )}
     </div>
   );
 }

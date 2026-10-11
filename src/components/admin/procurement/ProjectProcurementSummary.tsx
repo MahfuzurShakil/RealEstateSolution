@@ -1,13 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   ArrowLeftRight,
   ArrowRight,
   ClipboardList,
   Hammer,
+  PackageCheck,
   PackageMinus,
   Receipt,
   ShoppingCart,
@@ -20,9 +21,16 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { PURCHASE_ORDER_STATUS_META } from '@/lib/domain/procurement';
-import type { PurchaseOrderWithRelations, StockRowWithRelations } from '@/lib/repositories';
+import { PURCHASE_ORDER_STATUS_META, canReceiveAgainst } from '@/lib/domain/procurement';
+import { MATERIAL_REQUEST_STATUS_META } from '@/lib/domain/site-progress';
+import { GoodsReceiptModal } from '@/components/admin/procurement/GoodsReceiptModal';
+import type {
+  MaterialRequestWithRelations,
+  PurchaseOrderWithRelations,
+  StockRowWithRelations,
+} from '@/lib/repositories';
 import {
+  materialRequestRepository,
   procurementCostRepository,
   purchaseOrderRepository,
   stockConsumptionRepository,
@@ -53,6 +61,11 @@ export function ProjectProcurementSummary({ projectId }: { projectId: string }) 
     [projectId],
   );
   const stock = useLiveQuery(() => stockRepository.list({ location: projectId }), [projectId]);
+  const [receiving, setReceiving] = useState<PurchaseOrderWithRelations | null>(null);
+  const requests = useLiveQuery(
+    () => materialRequestRepository.list({ project_id: projectId }),
+    [projectId],
+  );
   const used = useLiveQuery(
     () => stockConsumptionRepository.list({ project_id: projectId }),
     [projectId],
@@ -183,6 +196,51 @@ export function ProjectProcurementSummary({ projectId }: { projectId: string }) 
       cell: (row) => formatBdt(row.totals.value),
       sortValue: (row) => row.totals.value,
     },
+    {
+      // the site receives what procurement ordered for it (decision 2026-10-11)
+      key: 'receive',
+      header: '',
+      align: 'right',
+      cell: (row) =>
+        canReceiveAgainst(row.status) ? (
+          <Button size="sm" onClick={() => setReceiving(row)}>
+            <PackageCheck className="size-4" /> Receive
+          </Button>
+        ) : null,
+    },
+  ];
+
+  const requestColumns: Column<MaterialRequestWithRelations>[] = [
+    {
+      key: 'code',
+      header: 'Request',
+      cell: (row) => (
+        <Link href={`/admin/material-requests/${row.id}`} className="font-medium text-ink hover:text-admin-700">
+          {row.code}
+          <span className="block text-xs font-normal text-ink-muted">
+            {row.items.map((i) => i.item_name).slice(0, 3).join(', ')}
+            {row.items.length > 3 ? ` +${row.items.length - 3}` : ''}
+          </span>
+        </Link>
+      ),
+      sortValue: (row) => row.code,
+    },
+    {
+      key: 'request_date',
+      header: 'Requested',
+      cell: (row) => formatDate(row.request_date),
+      sortValue: (row) => row.request_date,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      cell: (row) => (
+        <Badge tone={MATERIAL_REQUEST_STATUS_META[row.status].tone}>
+          {MATERIAL_REQUEST_STATUS_META[row.status].label}
+        </Badge>
+      ),
+      sortValue: (row) => row.status,
+    },
   ];
 
   const stockColumns: Column<StockRowWithRelations>[] = [
@@ -295,14 +353,35 @@ export function ProjectProcurementSummary({ projectId }: { projectId: string }) 
 
       <Card>
         <CardHeader
-          title="Purchase orders"
+          title="Material requests"
+          subtitle="Raised from this project; procurement orders against them"
           action={
-            <Link href={`/admin/purchase-orders/new?project=${projectId}`}>
+            <Link href={`/admin/material-requests/new?project=${projectId}`}>
               <Button size="sm" variant="outline">
-                <ShoppingCart className="size-4" /> New order
+                <ClipboardList className="size-4" /> New request
               </Button>
             </Link>
           }
+        />
+        <DataTable
+          rows={requests ?? []}
+          columns={requestColumns}
+          initialSort={{ key: 'request_date', direction: 'desc' }}
+          label="requests"
+          emptyState={
+            <EmptyState
+              icon={ClipboardList}
+              title="No request raised yet"
+              description="Ask procurement for material with New request."
+            />
+          }
+        />
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Orders from procurement"
+          subtitle="Procurement orders; the site receives the delivery here, and its value becomes project cost"
         />
         <DataTable
           rows={orders ?? []}
@@ -312,8 +391,8 @@ export function ProjectProcurementSummary({ projectId }: { projectId: string }) 
           emptyState={
             <EmptyState
               icon={ClipboardList}
-              title="No order raised for this project"
-              description="Material may still reach it by transfer from the central store."
+              title="No order for this project yet"
+              description="Procurement raises orders against the requests above."
             />
           }
         />
@@ -394,6 +473,11 @@ export function ProjectProcurementSummary({ projectId }: { projectId: string }) 
           }
         />
       </Card>
+      <GoodsReceiptModal
+        open={receiving !== null}
+        order={receiving!}
+        onClose={() => setReceiving(null)}
+      />
     </div>
   );
 }

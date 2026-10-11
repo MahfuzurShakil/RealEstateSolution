@@ -1,11 +1,9 @@
 import type { LucideIcon } from 'lucide-react';
 import type { ModuleKey } from '@/lib/domain/access';
-import { canApprove, canEdit } from '@/lib/domain/access';
 import type { UserRole } from '@/lib/db/types';
 import {
   Building2,
   Coins,
-  HardHat,
   LayoutDashboard,
   Map,
   Package,
@@ -26,29 +24,18 @@ export interface NavItem {
   disabled?: boolean;
   /**
    * An extra condition on top of the module check, for a screen that belongs to
-   * two groups depending on who is looking. Only Material Requests uses it —
-   * see the note on the Site Progress group.
+   * groups depending on who is looking. Nothing uses it since the Site
+   * Progress group went (2026-10-11); kept for the next item that needs it.
    */
   visibleFor?: (role: UserRole) => boolean;
 }
 
 /**
- * Material Requests is the Site → Procurement bridge of Section 6.5, so it
- * genuinely belongs to two groups — and which one depends on what the role does
- * with it.
- *
- * It used to sit under Site Progress for everybody. That put Procurement's own
- * approval inbox under a heading for a module Procurement cannot otherwise
- * open (`site_progress` is `—` for that role in 9.6), while their Procurement
- * group did not mention it at all. So the person who lives in that queue had to
- * go looking for it in somebody else's section.
- *
- * One entry each, in the place that role uses it: approvers who do not raise
- * requests see it under Procurement, everyone else under Site Progress.
+ * Material Requests is the Site → Procurement bridge of Section 6.5. Since
+ * 2026-10-11 it has one entry, under Procurement, for everyone with access:
+ * the site raises and follows its own requests from the project's Materials
+ * tab, and this list is every project's requests in one place.
  */
-const approvesButDoesNotRaise = (role: UserRole) =>
-  canApprove(role, 'material_request') && !canEdit(role, 'material_request');
-const raisesOrJustWatches = (role: UserRole) => !approvesButDoesNotRaise(role);
 
 export interface NavGroup {
   label: string;
@@ -88,19 +75,11 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Customers', href: '/admin/customers', module: 'booking' },
     ],
   },
-  {
-    label: 'Site Progress',
-    icon: HardHat,
-    items: [
-      { label: 'Progress Updates', href: '/admin/site-progress', module: 'site_progress' },
-      {
-        label: 'Material Requests',
-        href: '/admin/material-requests',
-        module: 'material_request',
-        visibleFor: raisesOrJustWatches,
-      },
-    ],
-  },
+  /*
+   * No Site Progress group (client feedback 2026-10-11): site log updates and
+   * material requests are made from the project's own tabs. Procurement keeps
+   * the all-project request list below.
+   */
   {
     label: 'Procurement',
     icon: Package,
@@ -109,7 +88,6 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Material Requests',
         href: '/admin/material-requests',
         module: 'material_request',
-        visibleFor: approvesButDoesNotRaise,
       },
       { label: 'Purchase Orders', href: '/admin/purchase-orders', module: 'procurement' },
       { label: 'Suppliers', href: '/admin/suppliers', module: 'procurement' },

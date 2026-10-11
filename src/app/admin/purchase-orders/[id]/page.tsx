@@ -89,7 +89,13 @@ export default function PurchaseOrderDetailPage() {
   }
 
   const summary = paymentSummary(order.totals.value, order.vouchers);
-  const canReceive = canReceiveAgainst(order.status);
+  /*
+   * A delivery to a project site is received by the site, from the project's
+   * Materials tab (decision 2026-10-11). Procurement receives only what comes
+   * into the central store.
+   */
+  const receivedAtSite = Boolean(order.project_id);
+  const canReceive = canReceiveAgainst(order.status) && !receivedAtSite;
 
   const itemColumns: Column<PurchaseOrderItem>[] = [
     {
@@ -349,7 +355,9 @@ export default function PurchaseOrderDetailPage() {
                   icon={PackageCheck}
                   title="Nothing has arrived yet"
                   description={
-                    canReceive
+                    receivedAtSite && canReceiveAgainst(order.status)
+                      ? 'This order is delivered to the project site. The site records the receipt from the project’s Materials tab.'
+                      : canReceive
                       ? 'Record the delivery when the material reaches the store — only quantities that pass the quality check go into stock.'
                       : 'This order has to be placed with the supplier before anything can be received against it.'
                   }
