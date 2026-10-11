@@ -213,10 +213,7 @@ export function LandFacts({ land }: { land: Land }) {
     ['Mouza / Dag / Khatian', [land.mouza, land.dag_number, land.khatian_number].map((v) => v || '—').join(' / ')],
     ['Acquired how', `${ACQUISITION_TYPE_LABEL[land.acquisition_type]} · ${LAND_ENTRY_MODE_LABEL[landEntryMode(land)]}`],
     ['Status', landStatusLabel(land.status, land.acquisition_type)],
-    [
-      'Land cost',
-      sheet ? `${formatBdt(sheet.landTotal.estimated)} estimated · ${formatBdt(sheet.landTotal.actual)} spent` : '…',
-    ],
+    ...landMoney(land, sheet),
   ];
   return (
     <dl className="divide-y divide-hairline rounded-xl border border-hairline bg-white">
@@ -228,4 +225,39 @@ export function LandFacts({ land }: { land: Land }) {
       ))}
     </dl>
   );
+}
+
+/**
+ * The land's money in plain words (client feedback 2026-10-11): what the land
+ * itself costs and on what basis, everything paid so far, and what is still
+ * to pay. "Estimated / spent" mixed fees, estimates and payments into two
+ * numbers nobody could read.
+ */
+function landMoney(
+  land: Land,
+  sheet: Awaited<ReturnType<typeof landAcquisitionCostRepository.sheetForLand>> | undefined,
+): [string, string][] {
+  if (!sheet) return [['Land cost', '…']];
+  const price = sheet.lines.find((l) => l.cost_head === 'land_price');
+  const isJv = land.acquisition_type === 'joint_venture';
+  const basis = price?.historic
+    ? 'paid'
+    : Number(land.final_agreed_amount)
+      ? 'agreed'
+      : land.acquisition_type === 'direct_purchase'
+        ? 'asking'
+        : '';
+  const priceText =
+    land.acquisition_type === 'inherited' && !(price && price.estimated > 0)
+      ? 'Inherited, no price paid'
+      : price && price.estimated > 0
+        ? `${formatBdt(price.estimated)}${basis ? ` (${basis})` : ''}`
+        : 'Not recorded';
+  const total = Math.max(sheet.landTotal.estimated, sheet.landTotal.actual);
+  const toPay = Math.max(0, total - sheet.landTotal.actual);
+  return [
+    [isJv ? 'Signing money' : 'Land price', priceText],
+    ['Paid so far', `${formatBdt(sheet.landTotal.actual)} (price, fees and development)`],
+    ['Still to pay', toPay > 0 ? formatBdt(toPay) : 'Nothing'],
+  ];
 }

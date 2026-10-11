@@ -86,3 +86,20 @@ a project screen depends on them.
 | 5. Plot and JV checks | Done: plots can't exceed the land; JV revenue says developer share X of Y units. One land one project was done in batch 1 |
 
 Still open: plot "roads & common area %" (no field yet; the guard compares against the whole land), and a market-value line for inherited land (its cost sheet is near zero, so its margin looks very high).
+
+---
+
+## G. Round 2 feedback (2026-10-11) and plan
+
+| # | Feedback | Plan |
+|---|---|---|
+| 1 | Land confirm popup: "estimated / spent" cost is confusing | Show plain facts: **Land price** (agreed, asking or paid, with which), **Paid so far**, and **Still to pay** |
+| 2 | Cover image: upload, not a link; surroundings and picture on separate lines | Image upload (stored as a project document, used as the display picture); the link field goes |
+| 3 | Estimate must not depend on flats, bookings, generation or land actuals | Estimate is its own type-based plan, typed by the owner: land, construction, etc., and expected sales. Actual cost is tracked separately against the project. The two are compared, never mixed |
+| 4 | Status moves must collect that stage's information and files | Each move asks for the stage's own details and documents; key documents are **compulsory** (decision) |
+| 5 | Project Materials should not raise purchase orders; procurement does. Project only requests and **receives**; received value becomes cost | Materials tab: request, see the project's requests and incoming orders, **receive** (decision: site receives). Material cost is counted **when received** (decision) |
+| 5* | All money in Finance: costs from any stage (land, project, materials, procurement, finance itself), sales, collections and payments, per project and per sector. No cost tab under Project | New **Finance → Projects** page per project. Project's Finance tab removed (a link to Finance stays) |
+| 6 | Site Progress and Material Requests don't need their own menu | Removed from the menu; requests and site log updates are done from the project's tabs |
+| 7 | Procurement sees every project's requests | Procurement keeps the all-project request list and purchase orders |
+
+Batches: R2-1 popup + picture (1, 2) · R2-2 menu, materials request/receive, site log from project (5, 6, 7) · R2-3 Finance per project with standalone estimate (3, 5*) · R2-4 stage moves with details and documents (4) · R2-5 SQA pass.

@@ -3,7 +3,19 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Building2, Info, LandPlot, Layers, Map as MapIcon, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import {
+  Building2,
+  Image as ImageIcon,
+  Info,
+  LandPlot,
+  Layers,
+  Map as MapIcon,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Upload,
+} from 'lucide-react';
+import { useBlobUrl } from '@/components/ui/useBlobUrl';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Checkbox, Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
@@ -24,6 +36,7 @@ import {
 } from '@/lib/domain/project';
 import {
   companySettingsRepository,
+  documentRepository,
   landDevelopmentRepository,
   landProjectMappingRepository,
   landRepository,
@@ -45,7 +58,6 @@ interface FormState {
   architect: string;
   project_manager: string;
   surroundings: string;
-  cover_image_url: string;
   construction_after_sale: ConstructionAfterSale;
 }
 
@@ -59,7 +71,6 @@ const EMPTY: FormState = {
   architect: '',
   project_manager: '',
   surroundings: '',
-  cover_image_url: '',
   construction_after_sale: 'undecided',
 };
 
@@ -117,6 +128,16 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
   const [picking, setPicking] = useState<{ replace?: string } | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  /** the display picture, uploaded rather than linked (client feedback 2026-10-11) */
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const currentCover = useLiveQuery(
+    () =>
+      project?.cover_image_document_id
+        ? documentRepository.getById(project.cover_image_document_id)
+        : Promise.resolve(undefined),
+    [project?.cover_image_document_id],
+  );
+  const coverPreview = useBlobUrl(coverFile ?? currentCover?.file_data ?? null);
 
   useEffect(() => {
     lookupRepository.options('amenity').then((rows) => setAmenityOptions(rows.map((r) => r.value)));
@@ -189,7 +210,6 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
         project_manager: form.project_manager || null,
         surroundings: form.surroundings.trim() || null,
         amenities: kind === 'share' ? [] : amenities,
-        cover_image_url: form.cover_image_url.trim() || null,
         construction_after_sale: kind === 'share' ? form.construction_after_sale : null,
       };
 
@@ -204,6 +224,26 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
           is_public: false,
           is_featured: false,
         });
+      }
+
+      // the uploaded picture becomes a gallery document and the display picture
+      if (coverFile) {
+        const doc = await documentRepository.create({
+          entity_type: 'project',
+          entity_id: saved.id,
+          document_type: 'gallery_image',
+          custom_type_name: null,
+          file_url: coverFile.name,
+          file_data: coverFile,
+          file_name: coverFile.name,
+          file_size: coverFile.size,
+          mime_type: coverFile.type,
+          is_public: true,
+          uploaded_by: null,
+          uploaded_at: new Date().toISOString(),
+          notes: 'Display picture, uploaded with the project',
+        });
+        await projectRepository.update(saved.id, { cover_image_document_id: doc.id, cover_image_url: null });
       }
 
       try {
@@ -462,24 +502,45 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
             ))}
           </div>
         )}
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Surroundings" hint="School, hospital, market, main road distances">
-            <TextArea
-              value={form.surroundings}
-              onChange={(e) => set('surroundings', e.target.value)}
-              placeholder="e.g. Scholastica 900m, Evercare Hospital 2km, 100ft road 300m"
-            />
-          </Field>
-          <Field
-            label="Cover image link"
-            hint="Only for an image hosted elsewhere; uploaded photos are chosen on the Documents tab. Publishing is on the Sales card."
-          >
-            <TextInput
-              value={form.cover_image_url}
-              onChange={(e) => set('cover_image_url', e.target.value)}
-              placeholder="https://images.unsplash.com/…"
-            />
-          </Field>
+        <Field label="Surroundings" hint="School, hospital, market, main road distances">
+          <TextArea
+            value={form.surroundings}
+            onChange={(e) => set('surroundings', e.target.value)}
+            placeholder="e.g. Scholastica 900m, Evercare Hospital 2km, 100ft road 300m"
+          />
+        </Field>
+      </Card>
+
+      {/* 6 — the display picture, on its own line (client feedback 2026-10-11) */}
+      <Card>
+        <CardHeader
+          title="Project picture"
+          subtitle="Shown on the project list and the public website. More photos go on the Documents tab."
+        />
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="grid size-28 shrink-0 place-items-center overflow-hidden rounded-xl border border-hairline bg-slate-50">
+            {coverPreview ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={coverPreview} alt="Project picture" className="size-full object-cover" />
+            ) : (
+              <ImageIcon className="size-8 text-slate-300" />
+            )}
+          </div>
+          <div className="space-y-2">
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-hairline bg-white px-3 py-2 text-sm font-medium text-ink hover:bg-admin-50">
+              <Upload className="size-4" />
+              {coverPreview ? 'Replace picture' : 'Upload picture'}
+              <input
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={(e) => setCoverFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
+            <p className="text-xs text-ink-muted">
+              {coverFile ? coverFile.name : 'JPG or PNG. Publishing is on the Sales card.'}
+            </p>
+          </div>
         </div>
       </Card>
 
@@ -507,7 +568,6 @@ function toFormState(project: ProjectWithRelations): FormState {
     architect: str(project.architect),
     project_manager: str(project.project_manager),
     surroundings: str(project.surroundings),
-    cover_image_url: str(project.cover_image_url),
     construction_after_sale: project.construction_after_sale ?? 'undecided',
   };
 }
