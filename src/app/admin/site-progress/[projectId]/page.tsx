@@ -7,7 +7,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { ArrowLeft, Building2, Package, Plus } from 'lucide-react';
 import { ActivityTimeline } from '@/components/admin/site-progress/ActivityTimeline';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
-import { ProjectProcurementSummary } from '@/components/admin/procurement/ProjectProcurementSummary';
+import { ConstructionMaterialsTab } from '@/components/admin/construction/ConstructionMaterialsTab';
 import { ProjectProgressSummary } from '@/components/admin/site-progress/ProjectProgressSummary';
 import { ProgressPhotoGallery } from '@/components/admin/site-progress/ProgressPhotoGallery';
 import { ProgressUpdateModal } from '@/components/admin/site-progress/ProgressUpdateModal';
@@ -137,8 +137,8 @@ export default function ProjectProgressPage() {
 
       {tab === 'log' && <ProjectProgressSummary projectId={project.id} view="log" />}
 
-      {/* request, receive what procurement ordered, stock on site, what was used */}
-      {tab === 'materials' && <ProjectProcurementSummary projectId={project.id} />}
+      {/* requests, deliveries to receive, and the site's materials — quantities only */}
+      {tab === 'materials' && <ConstructionMaterialsTab projectId={project.id} />}
 
       {tab === 'photos' && (
         <div className="space-y-5">

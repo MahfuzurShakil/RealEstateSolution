@@ -43,7 +43,7 @@ import {
 import { useMockSession } from '@/lib/auth/mock-session';
 import { canEdit } from '@/lib/domain/access';
 import { cn } from '@/lib/utils/cn';
-import { formatBdt, formatDate, todayLocal } from '@/lib/utils/format';
+import { formatDate, todayLocal } from '@/lib/utils/format';
 import { ProgressBar } from './ProgressBar';
 import { ProgressUpdateModal } from './ProgressUpdateModal';
 import { WorkItemFormModal } from './WorkItemFormModal';
@@ -321,8 +321,11 @@ export function TowerProgressPanel({
                           if (used) {
                             return (
                               <p className="mt-1.5 text-[11px] text-ink-muted">
-                                {formatBdt(used.value)} of material used against this item, over{' '}
-                                {used.entries} entr{used.entries === 1 ? 'y' : 'ies'}.
+                                Used:{' '}
+                                {used.items
+                                  .map((i) => `${i.name} ${Math.round(i.quantity * 1000) / 1000} ${i.unit}`)
+                                  .join(', ')}{' '}
+                                ({used.entries} entr{used.entries === 1 ? 'y' : 'ies'}).
                               </p>
                             );
                           }
@@ -332,8 +335,7 @@ export function TowerProgressPanel({
                                 <TriangleAlert className="mt-px size-3 shrink-0" />
                                 Reported complete, but no material has been recorded as used
                                 against it. Either it needed none, or the site&rsquo;s consumption
-                                has not been entered — the project&rsquo;s material cost is short
-                                by whatever it took.
+                                has not been marked used yet on the Materials tab.
                               </p>
                             );
                           }

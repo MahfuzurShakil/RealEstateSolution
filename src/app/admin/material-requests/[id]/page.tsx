@@ -30,9 +30,13 @@ import {
   approvalSummary,
   requestTotals,
 } from '@/lib/domain/site-progress';
-import { PURCHASE_ORDER_STATUS_META } from '@/lib/domain/procurement';
-import { materialRequestRepository, purchaseOrderRepository } from '@/lib/repositories';
-import { formatBdt, formatDate } from '@/lib/utils/format';
+import { PO_DELIVER_TO_META, PURCHASE_ORDER_STATUS_META, poDeliversToSite } from '@/lib/domain/procurement';
+import {
+  materialRequestRepository,
+  purchaseOrderRepository,
+  receivedAtSiteForRequest,
+} from '@/lib/repositories';
+import { formatDate } from '@/lib/utils/format';
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -52,6 +56,8 @@ export default function MaterialRequestDetailPage() {
   const request = useLiveQuery(() => materialRequestRepository.getWithRelations(id), [id]);
   // Section 7.2 — what Procurement actually bought against this request
   const orders = useLiveQuery(() => purchaseOrderRepository.list({ request_id: id }), [id]);
+  // Phase 2 step 4: what the site has actually received, per line
+  const receivedAtSite = useLiveQuery(() => receivedAtSiteForRequest(id), [id]);
 
   if (request === undefined) return <p className="text-sm text-ink-muted">Loading…</p>;
   if (!request) {
@@ -100,6 +106,22 @@ export default function MaterialRequestDetailPage() {
         );
       },
       sortValue: (row) => row.quantity_approved ?? -1,
+    },
+    {
+      key: 'received',
+      header: 'Received at site',
+      align: 'right',
+      cell: (row) => {
+        const got = receivedAtSite?.get(row.id) ?? 0;
+        const want = row.quantity_approved ?? row.quantity_requested;
+        if (want <= 0) return <span className="text-ink-muted">—</span>;
+        return (
+          <span className={got >= want - 0.0005 ? 'font-medium text-emerald-700' : got > 0 ? 'font-medium text-amber-600' : 'text-ink-muted'}>
+            {Math.round(got * 1000) / 1000} {row.unit}
+          </span>
+        );
+      },
+      sortValue: (row) => receivedAtSite?.get(row.id) ?? 0,
     },
   ];
 
@@ -261,8 +283,7 @@ export default function MaterialRequestDetailPage() {
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium text-ink">{order.code}</p>
                           <p className="truncate text-xs text-ink-muted">
-                            {order.supplier?.name ?? 'Supplier removed'} ·{' '}
-                            {formatBdt(order.totals.value)}
+                            {order.supplier?.name ?? 'Supplier removed'} · {PO_DELIVER_TO_META[poDeliversToSite(order) ? 'site' : 'main_store'].label}
                           </p>
                         </div>
                       </div>

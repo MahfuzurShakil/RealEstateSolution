@@ -25,6 +25,7 @@ import type {
   SupplierVoucher,
   Tower,
   TowerWorkItem,
+  WriteOffReason,
 } from '../db/types';
 import {
   money,
@@ -2150,14 +2151,23 @@ class StockConsumptionRepository extends BaseRepository<StockConsumption> {
    * site-wide material (safety gear, site office) is real and belongs to no
    * line, and inventing a home for it would misreport whichever line got it.
    */
-  async byWorkItem(): Promise<Map<string, { value: number; entries: number }>> {
+  async byWorkItem(): Promise<
+    Map<string, { value: number; entries: number; items: Array<{ name: string; unit: string; quantity: number }> }>
+  > {
     const rows = await db.stock_consumptions.toArray();
-    const out = new Map<string, { value: number; entries: number }>();
+    const out = new Map<
+      string,
+      { value: number; entries: number; items: Array<{ name: string; unit: string; quantity: number }> }
+    >();
     for (const row of rows) {
       if (!row.work_item_id) continue;
-      const at = out.get(row.work_item_id) ?? { value: 0, entries: 0 };
+      const at = out.get(row.work_item_id) ?? { value: 0, entries: 0, items: [] };
       at.value = money(at.value + (Number(row.total_cost) || 0));
       at.entries += 1;
+      // quantities, for Construction, which shows no money (Phase 2 step 4)
+      const line = at.items.find((i) => i.name === row.item_name && i.unit === row.unit);
+      if (line) line.quantity = qty(line.quantity + (Number(row.quantity_used) || 0));
+      else at.items.push({ name: row.item_name, unit: row.unit, quantity: qty(Number(row.quantity_used) || 0) });
       out.set(row.work_item_id, at);
     }
     return out;
@@ -2395,6 +2405,21 @@ export interface SiteMaterialRow {
   oldest_in_use_days: number;
 }
 
+export type SiteMaterialMode = 'hand_out' | 'use' | 'back_to_store' | 'send_back' | 'write_off';
+
+export interface SiteMaterialAction {
+  mode: SiteMaterialMode;
+  project_id: string;
+  /** `SiteMaterialRow.id` */
+  row_id: string;
+  quantity: number;
+  work_item_id?: string | null;
+  date: string;
+  by: string | null;
+  notes?: string | null;
+  reason?: WriteOffReason;
+}
+
 class SiteMaterialsRepository {
   /**
    * What is coming to this site and has not been received: orders unloading
@@ -2521,6 +2546,117 @@ class SiteMaterialsRepository {
     return [...rows.values()]
       .filter((r) => r.received + r.in_store + r.in_use + r.used + r.sent_back + r.sending > 0.0005)
       .sort((a, b) => a.item_name.localeCompare(b.item_name));
+  }
+
+  /**
+   * One site action on one item (Phase 2 step 4), quantity only:
+   *
+   * - `hand_out`: site store → in use (an issue);
+   * - `use`: recorded as used — taken from what is in use first, the rest
+   *   handed out and used in one go, because most sites do both the same day;
+   * - `back_to_store`: in use → site store;
+   * - `send_back`: leftovers to the main store, on the way until it counts
+   *   them in — from the site store first, then from what is in use;
+   * - `write_off`: damaged, lost or stolen — in use first, then store.
+   */
+  async act(input: SiteMaterialAction): Promise<void> {
+    const quantity = qty(Number(input.quantity) || 0);
+    if (quantity <= 0) throw new Error('Enter a quantity greater than zero.');
+    const rows = await this.forProject(input.project_id);
+    const row = rows.find((r) => r.id === input.row_id);
+    if (!row) throw new Error('This item is no longer on the site.');
+    const key = { item_id: row.item_id, item_name: row.item_name, unit: row.unit };
+    const base = { project_id: input.project_id, ...key };
+
+    const handOut = async (q: number, note: string | null) =>
+      stockIssueRepository.issue(
+        {
+          ...base,
+          work_item_id: input.work_item_id ?? null,
+          quantity_issued: q,
+          issue_date: input.date,
+          issued_by: input.by,
+          notes: note,
+        },
+        input.by,
+      );
+    const backToStore = async (q: number, note: string | null) =>
+      stockReturnRepository.send(
+        { ...base, quantity_returned: q, return_date: input.date, returned_by: input.by, notes: note },
+        input.by,
+      );
+    const tooMuch = (have: number, what: string) =>
+      new Error(`Only ${have} ${row.unit} of ${row.item_name} is ${what}.`);
+
+    switch (input.mode) {
+      case 'hand_out':
+        if (quantity > row.in_store + 0.0005) throw tooMuch(row.in_store, 'in the site store');
+        await handOut(quantity, input.notes ?? null);
+        return;
+      case 'back_to_store':
+        if (quantity > row.in_use + 0.0005) throw tooMuch(row.in_use, 'in use');
+        await backToStore(quantity, input.notes ?? null);
+        return;
+      case 'use': {
+        if (quantity > row.in_use + row.in_store + 0.0005) {
+          throw tooMuch(qty(row.in_use + row.in_store), 'on the site');
+        }
+        const fromStore = qty(Math.max(0, quantity - row.in_use));
+        if (fromStore > 0) await handOut(fromStore, 'Handed out and used the same day.');
+        await stockConsumptionRepository.use(
+          {
+            ...base,
+            work_item_id: input.work_item_id ?? null,
+            quantity_used: quantity,
+            used_date: input.date,
+            recorded_by: input.by,
+            notes: input.notes ?? null,
+          },
+          input.by,
+        );
+        return;
+      }
+      case 'send_back': {
+        if (quantity > row.in_use + row.in_store + 0.0005) {
+          throw tooMuch(qty(row.in_use + row.in_store), 'on the site');
+        }
+        const fromUse = qty(Math.max(0, quantity - row.in_store));
+        if (fromUse > 0) await backToStore(fromUse, 'Collected from the work to send back.');
+        await stockTransferRepository.transfer(
+          {
+            ...key,
+            quantity,
+            from_project_id: input.project_id,
+            to_project_id: null,
+            transfer_date: input.date,
+            transferred_by: input.by,
+            notes: input.notes ?? 'Leftover sent back to the main store.',
+          },
+          input.by,
+        );
+        return;
+      }
+      case 'write_off': {
+        if (!input.notes?.trim()) throw new Error('Say what happened to it.');
+        if (quantity > row.in_use + row.in_store + 0.0005) {
+          throw tooMuch(qty(row.in_use + row.in_store), 'on the site');
+        }
+        const fromStore = qty(Math.max(0, quantity - row.in_use));
+        if (fromStore > 0) await handOut(fromStore, 'Taken from the store to write off.');
+        await stockWriteOffRepository.writeOff(
+          {
+            ...base,
+            quantity_written_off: quantity,
+            reason: input.reason ?? 'damaged',
+            notes: input.notes.trim(),
+            write_off_date: input.date,
+            approved_by: input.by,
+          },
+          input.by,
+        );
+        return;
+      }
+    }
   }
 
   /**

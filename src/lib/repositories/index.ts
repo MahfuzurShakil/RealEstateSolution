@@ -144,6 +144,8 @@ export {
   type SupplierBillLineInput,
   type IncomingDelivery,
   type SiteMaterialRow,
+  type SiteMaterialAction,
+  type SiteMaterialMode,
   supplierBalance,
   InsufficientStockError,
   InsufficientSiteStockError,

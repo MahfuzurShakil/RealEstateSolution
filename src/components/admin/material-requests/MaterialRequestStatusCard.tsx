@@ -186,8 +186,9 @@ export function MaterialRequestStatusCard({
 
         {next.length > 0 && !mayDecide ? (
           <p className="rounded-xl border border-hairline p-3 text-xs text-ink-muted">
-            Waiting on a decision from Procurement or the project manager. Raising the request is
-            where this role&rsquo;s part ends (Section 9.6).
+            {request.status === 'pending'
+              ? 'Waiting for the Project Manager to approve, cut or reject it.'
+              : 'Closing it short is for the site or the Project Manager.'}
           </p>
         ) : next.length > 0 ? (
           <div className="space-y-2">
@@ -213,7 +214,7 @@ export function MaterialRequestStatusCard({
           request.status === 'fulfilled' && (
             <p className="flex items-start gap-2 text-xs text-emerald-700">
               <PackageCheck className="mt-0.5 size-3.5 shrink-0" />
-              The site confirmed it arrived. This request is closed.
+              Received at site. This request is closed.
             </p>
           )
         )}
@@ -227,8 +228,8 @@ export function MaterialRequestStatusCard({
         */}
         {request.status === 'approved' && !mayProcure && (
           <p className="mt-3 rounded-xl border border-hairline p-3 text-xs text-ink-muted">
-            Approved. Procurement takes it from here — either a purchase order, or a transfer from
-            a store that already holds the material.
+            Approved. Procurement takes it from here — an order delivered to the site or the main
+            store, or material sent from the main store.
           </p>
         )}
 
@@ -252,21 +253,20 @@ export function MaterialRequestStatusCard({
               className="w-full"
               onClick={() => setTransferOpen(true)}
             >
-              <ArrowLeftRight className="size-4" /> Meet from central stock
+              <ArrowLeftRight className="size-4" /> Send from main store
             </Button>
             <p className="rounded-xl border border-hairline p-3 text-xs text-ink-muted">
-              The request moves to Ordered on its own when a purchase order is placed, and to In
-              Store once that order has been fully received. Transferring the material from a store
-              that already holds it reaches In Store straight away — nothing is bought. The site
-              closes it from there.
+              The request moves on by itself: Ordered when an order is placed, On the way when
+              material is sent from the main store, Partly received and Received as the site counts
+              it in.
             </p>
           </div>
         )}
 
         {request.status === 'ordered' && (
           <p className="mt-3 rounded-xl border border-hairline p-3 text-xs text-ink-muted">
-            Being bought now. It reaches In Store by itself once the purchase order behind it is
-            fully received — nobody marks that by hand. Closing it is the site&rsquo;s own step.
+            Being bought now. It moves to Partly received and Received as the site counts the
+            deliveries in — nobody marks that by hand.
           </p>
         )}
 
@@ -331,7 +331,7 @@ export function MaterialRequestStatusCard({
             <TextArea
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="Why is the request being turned down?"
+              placeholder="Why?"
               invalid={Boolean(error)}
             />
           </Field>
