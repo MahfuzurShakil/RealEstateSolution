@@ -192,6 +192,8 @@ export default function LandDetailPage() {
     () => landDevelopmentRepository.readinessForLand(id),
     [id],
   );
+  // QA 2026-10-11 — say why a delete is refused before anyone clicks it
+  const deleteBlocked = useLiveQuery(() => landRepository.deleteBlockReason(id), [id]);
   // v29 — "in a project" is a mapping, not a status
   const inProjects = useLiveQuery(() => landProjectMappingRepository.projectsForLand(id), [id]);
   const roundCount = useLiveQuery(
@@ -794,7 +796,11 @@ export default function LandDetailPage() {
         title={`Delete ${land.code}`}
         subtitle={land.name}
         confirmLabel="Delete land"
-        message="This deletes the land along with its owner links, JV terms, pipeline history and uploaded documents. It cannot be undone."
+        message={
+          deleteBlocked ??
+          'This deletes the land along with its owner links, JV terms, pipeline history and uploaded documents. It cannot be undone.'
+        }
+        disabled={Boolean(deleteBlocked)}
         onCancel={() => setConfirmDelete(false)}
         onConfirm={async () => {
           await landRepository.removeCascade(land.id);

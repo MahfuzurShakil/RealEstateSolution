@@ -137,7 +137,29 @@ class LandRepository extends BaseRepository<Land> {
   }
 
   /** Removes the land together with its mappings, JV row and documents. */
+  /**
+   * Why a land cannot be deleted, or null (QA pass 2026-10-11): deleting a
+   * land a project stands on left the project pointing at nothing, and
+   * deleting one with payments orphaned them.
+   */
+  async deleteBlockReason(id: string): Promise<string | null> {
+    const [links, payments] = await Promise.all([
+      db.land_project_mapping.where('land_id').equals(id).toArray(),
+      db.expenses.where('land_id').equals(id).count(),
+    ]);
+    if (links.length > 0) {
+      const project = await db.projects.get(links[0].project_id);
+      return `${project?.code ?? 'A project'} stands on this land. Remove it from the project first.`;
+    }
+    if (payments > 0) {
+      return `${payments} payment${payments === 1 ? ' is' : 's are'} recorded against this land, so it cannot be deleted. Divest it instead.`;
+    }
+    return null;
+  }
+
   async removeCascade(id: string): Promise<void> {
+    const blocked = await this.deleteBlockReason(id);
+    if (blocked) throw new Error(blocked);
     const mappings = await db.land_owner_mapping.where('land_id').equals(id).toArray();
     await db.land_owner_mapping.bulkDelete(mappings.map((m) => m.id));
     const jv = await db.land_jv_details.where('land_id').equals(id).first();

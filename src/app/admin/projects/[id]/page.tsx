@@ -62,6 +62,8 @@ export default function ProjectDetailPage() {
 
   const project = useLiveQuery(() => projectRepository.getWithRelations(id), [id]);
   const isJv = useProjectIsJv(id);
+  // QA 2026-10-11 — a project with buyers or money against it is closed, not deleted
+  const deleteBlocked = useLiveQuery(() => projectRepository.deleteBlockReason(id), [id]);
   const manager = useLiveQuery(
     () =>
       project?.project_manager
@@ -325,7 +327,11 @@ export default function ProjectDetailPage() {
         title={`Delete ${project.code}`}
         subtitle={project.name}
         confirmLabel="Delete project"
-        message="This deletes the project with its towers, units, land links and documents. The lands stay as they are and simply stop being linked. It cannot be undone."
+        message={
+          deleteBlocked ??
+          'This deletes the project with its towers, units, land links and documents. The lands stay as they are and simply stop being linked. It cannot be undone.'
+        }
+        disabled={Boolean(deleteBlocked)}
         onCancel={() => setConfirmDelete(false)}
         onConfirm={async () => {
           await projectRepository.removeCascade(project.id);

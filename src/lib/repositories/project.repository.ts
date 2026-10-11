@@ -36,6 +36,7 @@ import { money } from '../domain/finance';
 import { nextCode } from '../utils/id';
 import { todayLocal } from '../utils/format';
 import { BaseRepository, type NewRecord } from './base.repository';
+import { projectBudgetRepository } from './budget.repository';
 import { documentRepository } from './document.repository';
 import { userProjectAssignmentRepository } from './user.repository';
 import { installmentPlanTemplateRepository } from './payment.repository';
@@ -539,7 +540,40 @@ class ProjectRepository extends BaseRepository<Project> {
   }
 
   /** Removes the project with its land links, towers, units and documents. */
+  /**
+   * Why a project cannot be deleted, or null (QA pass 2026-10-11).
+   *
+   * Deleting used to cascade its towers and units away even when buyers had
+   * booked and paid, leaving bookings, receipts, orders and expenses pointing
+   * at a project that no longer existed. Anything that records money or a
+   * buyer now stops it; the project can be closed instead.
+   */
+  async deleteBlockReason(id: string): Promise<string | null> {
+    const units = await unitRepository.listForProject(id);
+    const unitIds = new Set(units.map((u) => u.id));
+    const [bookings, orders, expenses, vouchers] = await Promise.all([
+      db.bookings.toArray(),
+      db.purchase_orders.toArray(),
+      db.expenses.where('project_id').equals(id).count(),
+      db.supplier_vouchers.toArray(),
+    ]);
+    const parts: string[] = [];
+    const booked = bookings.filter((b) => unitIds.has(b.unit_id)).length;
+    if (booked) parts.push(`${booked} booking${booked === 1 ? '' : 's'}`);
+    const pos = orders.filter((o) => o.project_id === id).length;
+    if (pos) parts.push(`${pos} purchase order${pos === 1 ? '' : 's'}`);
+    if (expenses) parts.push(`${expenses} expense${expenses === 1 ? '' : 's'}`);
+    const paid = vouchers.filter((v) => v.project_id === id).length;
+    if (paid) parts.push(`${paid} supplier payment${paid === 1 ? '' : 's'}`);
+    return parts.length
+      ? `This project has ${parts.join(', ')}. Deleting it would orphan them; close the project instead.`
+      : null;
+  }
+
   async removeCascade(id: string): Promise<void> {
+    const blocked = await this.deleteBlockReason(id);
+    if (blocked) throw new Error(blocked);
+    await projectBudgetRepository.removeForProject(id);
     const history = await db.project_status_history.where('project_id').equals(id).toArray();
     await db.project_status_history.bulkDelete(history.map((h) => h.id));
 
@@ -610,6 +644,27 @@ class LandProjectMappingRepository extends BaseRepository<LandProjectMapping> {
       }
     }
     const existing = await this.listForProject(projectId);
+    /*
+     * Land under a project that is being built or sold is not taken away
+     * from it (QA pass 2026-10-11): the buyers' units stand on it.
+     */
+    const removed = existing.filter((m) => !landIds.includes(m.land_id));
+    if (removed.length > 0) {
+      const project = await db.projects.get(projectId);
+      const towers = await db.towers.where('project_id').equals(projectId).toArray();
+      const units = towers.length
+        ? await db.units.where('tower_id').anyOf(towers.map((t) => t.id)).toArray()
+        : [];
+      const hasBuyers = units.some((u) => ['reserved', 'booked', 'sold', 'handed_over'].includes(u.status));
+      const building = project && !['planning', 'design', 'approval'].includes(project.status);
+      if (hasBuyers || building) {
+        throw new Error(
+          hasBuyers
+            ? 'Buyers have booked units on this project, so its land cannot be removed.'
+            : 'Work has started on this project, so its land cannot be removed.',
+        );
+      }
+    }
     await db.land_project_mapping.bulkDelete(existing.map((m) => m.id));
     for (const land_id of landIds) await this.create({ land_id, project_id: projectId });
   }

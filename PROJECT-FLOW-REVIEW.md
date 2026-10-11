@@ -103,3 +103,18 @@ Still open: plot "roads & common area %" (no field yet; the guard compares again
 | 7 | Procurement sees every project's requests | Procurement keeps the all-project request list and purchase orders |
 
 Batches: R2-1 popup + picture (1, 2) · R2-2 menu, materials request/receive, site log from project (5, 6, 7) · R2-3 Finance per project with standalone estimate (3, 5*) · R2-4 stage moves with details and documents (4) · R2-5 SQA pass.
+
+### Round 2 progress (2026-10-11)
+
+| Batch | Status |
+|---|---|
+| R2-1 | Done: land money in plain words in the picker; picture upload instead of a link, on its own line |
+| R2-2 | Done: Site Progress menu removed; site log and requests from the project; project receives procurement's orders; PO page defers to the site; one all-project request list under Procurement |
+| R2-3 | Done: Finance → project page; project Finance tab removed; estimate typed by type (land, heads, expected sales) and never read from units, bookings or land sheets; actual = land records + material received + expenses; payments listed separately |
+| R2-4 | Done: stage moves ask for the stage's details and papers per type; key ones compulsory; shown on the Timeline |
+| R2-5 | Done (QA): project delete blocked when bookings, orders, expenses or supplier payments exist (it used to orphan them); land delete blocked when a project stands on it or payments exist (it used to leave the project pointing at nothing); land cannot be removed from a project being built or sold; project names must be unique; opening sales with no units warns; budget lines removed with a deleted project |
+
+QA items noted, not fixed yet:
+- Status moves are still possible with no work items or site log for built projects at "Nearly complete" (only a warning).
+- A booking cancelled after "sold out" does not reopen sales automatically (by design, one click).
+- Receiving at site needs a site-manager-only permission check; any role that can open the project can press Receive today.

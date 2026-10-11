@@ -178,9 +178,22 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
       return reasons;
     }, [lands.map((l) => l.id).join(','), alreadyLinked]) ?? [];
 
+  // QA 2026-10-11 — two projects with one name are two answers to "which one?"
+  const takenNames = useLiveQuery(
+    async () =>
+      new Set(
+        (await projectRepository.getAll())
+          .filter((p) => p.id !== project?.id)
+          .map((p) => p.name.trim().toLowerCase()),
+      ),
+    [project?.id],
+  );
+
   function validate(): boolean {
     const next: Record<string, string> = {};
     if (!form.name.trim()) next.name = 'Project name is required';
+    else if (takenNames?.has(form.name.trim().toLowerCase()))
+      next.name = 'Another project already has this name';
     if (!form.expected_start_date) next.expected_start_date = 'Required';
     if (!form.expected_completion_date) next.expected_completion_date = 'Required';
     else if (form.expected_start_date && form.expected_completion_date < form.expected_start_date) {

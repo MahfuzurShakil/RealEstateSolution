@@ -55,6 +55,7 @@ export function ProjectSalesCard({ project, lands }: { project: Project; lands: 
     land_readiness: landReadiness(lands),
     block_without_land: Boolean(settings?.block_sales_without_land),
     block_before_approval: Boolean(settings?.block_sales_before_approval),
+    unit_count: readiness?.unit_count,
   });
 
   async function confirm() {

@@ -1176,6 +1176,8 @@ export interface SalesGateFacts {
   /** Company Settings — turn each warning into a block */
   block_without_land: boolean;
   block_before_approval: boolean;
+  /** units, plots or shares generated so far */
+  unit_count?: number;
 }
 
 /**
@@ -1197,6 +1199,12 @@ export function salesOpenChecks(f: SalesGateFacts): { warnings: string[]; blocke
         ? 'No land is linked to this project. Buyers would be paying for something on land the company has not recorded.'
         : 'The land under this project is still being acquired. If the deal falls through, every booking has to be refunded.';
     (f.block_without_land ? blockers : warnings).push(text);
+  }
+  // QA 2026-10-11 — nothing to book yet: sales would open on an empty list
+  if (f.unit_count === 0) {
+    warnings.push(
+      `No ${f.shape.labels.itemPlural.toLowerCase()} have been generated yet, so nothing can be booked until they are.`,
+    );
   }
   const needsApproval = f.shape.item !== 'share';
   if (needsApproval && f.status !== 'approval' && !PAST_APPROVAL.has(f.status)) {
