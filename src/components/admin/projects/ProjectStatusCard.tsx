@@ -2,12 +2,13 @@
 
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { AlertTriangle, Check, GitBranch, Lock } from 'lucide-react';
+import { AlertTriangle, Check, GitBranch, Lock, Upload } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { Field, TextArea, TextInput } from '@/components/ui/Field';
+import { Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
+import { stageRequirements } from '@/lib/domain/project-stages';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { Project, ProjectStatus } from '@/lib/db/types';
 import {
@@ -40,6 +41,9 @@ export function ProjectStatusCard({ project }: { project: Project }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  /** the stage's own details and papers (client feedback 2026-10-11) */
+  const [details, setDetails] = useState<Record<string, string>>({});
+  const [files, setFiles] = useState<Record<string, File>>({});
 
   // v26 — a plot or share project reports no construction; the shape says so
   const shape = projectShape(project.project_type);
@@ -70,10 +74,15 @@ export function ProjectStatusCard({ project }: { project: Project }) {
     readiness ? projectStatusWarnings(status, readiness, shape) : [];
 
   const targetBlockers = target ? blockersFor(target) : [];
+  // asked only when moving forward: stepping back records why, not new papers
+  const stage =
+    target && order(target) > currentOrder ? stageRequirements(target, project.project_type) : null;
   const targetWarnings = target ? warningsFor(target) : [];
 
   function open(status: ProjectStatus) {
     setTarget(status);
+    setDetails({});
+    setFiles({});
     setValues({
       event_date:
         status === 'under_construction' ? (project.actual_start_date ?? todayLocal()) : todayLocal(),
@@ -92,6 +101,17 @@ export function ProjectStatusCard({ project }: { project: Project }) {
       setError(`${missing.label.replace(' (required)', '')} is required`);
       return;
     }
+    // the stage's key details and papers are compulsory (decision 2026-10-11)
+    const missingDetail = stage?.fields.find((f) => f.required && !details[f.key]?.trim());
+    if (missingDetail) {
+      setError(`${missingDetail.label} is required for this stage`);
+      return;
+    }
+    const missingDoc = stage?.documents.find((d) => d.required && !files[d.label]);
+    if (missingDoc) {
+      setError(`Upload the ${missingDoc.label.toLowerCase()} to move on`);
+      return;
+    }
 
     setBusy(true);
     try {
@@ -103,8 +123,12 @@ export function ProjectStatusCard({ project }: { project: Project }) {
           performed_by: values.performed_by?.trim() || null,
           reference_no: values.reference_no?.trim() || null,
           remarks: values.remarks?.trim() || null,
+          details: Object.keys(details).length ? details : null,
         },
         userId,
+        (stage?.documents ?? [])
+          .filter((d) => files[d.label])
+          .map((d) => ({ document_type: d.type, label: d.label, file: files[d.label] })),
       );
       setTarget(null);
     } finally {
@@ -252,6 +276,56 @@ export function ProjectStatusCard({ project }: { project: Project }) {
           </div>
         )}
         {config?.fields.map(renderField)}
+        {stage && (stage.fields.length > 0 || stage.documents.length > 0) && (
+          <div className="mt-4 space-y-3 border-t border-hairline pt-4">
+            <p className="text-sm font-medium text-ink">What this stage produced</p>
+            {stage.fields.map((f) => (
+              <Field key={f.key} label={f.label} required={f.required}>
+                {f.type === 'select' ? (
+                  <SelectInput
+                    value={details[f.key] ?? ''}
+                    onChange={(e) => setDetails((d) => ({ ...d, [f.key]: e.target.value }))}
+                  >
+                    <option value="">Choose…</option>
+                    {f.options?.map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
+                  </SelectInput>
+                ) : (
+                  <TextInput
+                    type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+                    value={details[f.key] ?? ''}
+                    placeholder={f.placeholder}
+                    onChange={(e) => setDetails((d) => ({ ...d, [f.key]: e.target.value }))}
+                  />
+                )}
+              </Field>
+            ))}
+            {stage.documents.map((doc) => (
+              <Field key={doc.label} label={doc.label} required={doc.required}>
+                <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-hairline bg-white px-3 py-2 text-sm text-ink-muted hover:border-admin-300">
+                  <Upload className="size-4 shrink-0 text-admin-600" />
+                  <span className="truncate">{files[doc.label]?.name ?? 'Choose file'}</span>
+                  <input
+                    type="file"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      setFiles((prev) => {
+                        const next = { ...prev };
+                        if (f) next[doc.label] = f;
+                        else delete next[doc.label];
+                        return next;
+                      });
+                    }}
+                  />
+                </label>
+              </Field>
+            ))}
+          </div>
+        )}
         {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
       </ConfirmDialog>
     </>

@@ -1329,6 +1329,12 @@ export interface ProjectStatusEvent extends BaseEntity {
   /** approval memo, drawing set number, handover reference */
   reference_no?: string | null;
   remarks?: string | null;
+  /**
+   * What the stage being left produced (client feedback 2026-10-11):
+   * answers to `stageRequirements`, keyed by field. Not indexed, so no Dexie
+   * version; absent on events recorded before it.
+   */
+  details?: Record<string, string> | null;
 }
 
 /** Document types for entity_type = 'project' (Section 3.7) */
@@ -1341,6 +1347,13 @@ export const PROJECT_DOCUMENT_TYPES = [
   'layout_floor_plan',
   'brochure',
   'gallery_image',
+  // 2026-10-11 — the papers each stage move asks for (domain/project-stages.ts)
+  'soil_test_report',
+  'site_survey',
+  'layout_plan',
+  'subdivision_approval',
+  'occupancy_certificate',
+  'share_deed',
   'other',
 ] as const;
 

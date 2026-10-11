@@ -223,11 +223,13 @@ class ProjectRepository extends BaseRepository<Project> {
     status: ProjectStatus,
     event: Omit<NewRecord<ProjectStatusEvent>, 'project_id' | 'from_status' | 'to_status'>,
     createdBy: string | null = null,
+    /** the stage's papers, filed against this event (2026-10-11) */
+    files: Array<{ document_type: string; label: string; file: File }> = [],
   ): Promise<Project | undefined> {
     const current = await this.getById(id);
     if (!current) return undefined;
 
-    await projectStatusEventRepository.create(
+    const logged = await projectStatusEventRepository.create(
       {
         ...event,
         project_id: id,
@@ -236,6 +238,27 @@ class ProjectRepository extends BaseRepository<Project> {
       },
       createdBy,
     );
+    for (const f of files) {
+      await documentRepository.create(
+        {
+          entity_type: 'project',
+          entity_id: id,
+          document_type: f.document_type,
+          custom_type_name: f.document_type === 'other' ? f.label : null,
+          file_url: f.file.name,
+          file_data: f.file,
+          file_name: f.file.name,
+          file_size: f.file.size,
+          mime_type: f.file.type,
+          is_public: false,
+          uploaded_by: createdBy,
+          uploaded_at: new Date().toISOString(),
+          notes: f.label,
+          status_event_id: logged.id,
+        },
+        createdBy,
+      );
+    }
 
     return this.update(id, {
       status,

@@ -1,13 +1,19 @@
 'use client';
 
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Check, CircleDashed, History } from 'lucide-react';
+import { Check, CircleDashed, FileText, History } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import type { ProjectStatusEvent } from '@/lib/db/types';
 import { PROJECT_STATUS_META } from '@/lib/domain/project';
-import { projectStatusEventRepository } from '@/lib/repositories';
-import { formatDate } from '@/lib/utils/format';
+import { stageRequirements } from '@/lib/domain/project-stages';
+import {
+  documentRepository,
+  projectRepository,
+  projectStatusEventRepository,
+} from '@/lib/repositories';
+import { useBlobUrl } from '@/components/ui/useBlobUrl';
+import { formatDate, humanize } from '@/lib/utils/format';
 
 function Detail({ label, value }: { label: string; value: string }) {
   return (
@@ -24,6 +30,9 @@ export function ProjectTimeline({ projectId }: { projectId: string }) {
     () => projectStatusEventRepository.listForProject(projectId),
     [projectId],
   );
+  const project = useLiveQuery(() => projectRepository.getById(projectId), [projectId]);
+  // the stage papers filed against each step (2026-10-11)
+  const docs = useLiveQuery(() => documentRepository.listForEntity('project', projectId), [projectId]);
 
   if (events === undefined) return <p className="text-sm text-ink-muted">Loading…</p>;
 
@@ -73,6 +82,36 @@ export function ProjectTimeline({ projectId }: { projectId: string }) {
                 </dl>
               )}
 
+              {event.details && Object.keys(event.details).length > 0 && (
+                <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {Object.entries(event.details).map(([key, value]) => (
+                    <Detail
+                      key={key}
+                      label={
+                        (project &&
+                          stageRequirements(event.to_status, project.project_type).fields.find(
+                            (f) => f.key === key,
+                          )?.label) ||
+                        humanize(key)
+                      }
+                      value={value}
+                    />
+                  ))}
+                </dl>
+              )}
+
+              {(docs ?? []).some((d) => d.status_event_id === event.id) && (
+                <ul className="mt-3 flex flex-wrap gap-2">
+                  {(docs ?? [])
+                    .filter((d) => d.status_event_id === event.id)
+                    .map((d) => (
+                      <li key={d.id}>
+                        <FileChip name={d.notes || humanize(d.document_type)} file={d.file_data} fileName={d.file_name ?? ''} />
+                      </li>
+                    ))}
+                </ul>
+              )}
+
               {event.remarks && (
                 <p className="mt-3 whitespace-pre-wrap border-t border-hairline pt-3 text-sm text-ink-muted">
                   {event.remarks}
@@ -85,5 +124,21 @@ export function ProjectTimeline({ projectId }: { projectId: string }) {
         );
       })}
     </ol>
+  );
+}
+
+/** A stage paper, opened in a new tab. */
+function FileChip({ name, file, fileName }: { name: string; file?: Blob | null; fileName: string }) {
+  const url = useBlobUrl(file ?? null);
+  return (
+    <a
+      href={url ?? undefined}
+      target="_blank"
+      rel="noreferrer"
+      title={fileName}
+      className="inline-flex items-center gap-1.5 rounded-lg border border-hairline bg-slate-50 px-2.5 py-1 text-xs font-medium text-ink hover:border-admin-300"
+    >
+      <FileText className="size-3.5 text-admin-600" /> {name}
+    </a>
   );
 }
