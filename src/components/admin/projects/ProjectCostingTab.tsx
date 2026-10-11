@@ -11,7 +11,13 @@ import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { Project } from '@/lib/db/types';
 import { canEdit } from '@/lib/domain/access';
-import { costingHeadsFor, type ProjectCosting } from '@/lib/domain/costing';
+import {
+  LAND_ESTIMATE_HEAD,
+  costingHeadsFor,
+  revenueBasis,
+  type ProjectCosting,
+} from '@/lib/domain/costing';
+import { PROJECT_TYPE_LABEL } from '@/lib/domain/project';
 import {
   financeDashboardRepository,
   projectBudgetRepository,
@@ -58,7 +64,7 @@ export function ProjectCostingTab({ project }: { project: Project }) {
       <Card>
         <CardHeader
           title="Cost & earnings"
-          subtitle="Estimate against what has happened. Land comes from the land records."
+          subtitle="Your estimate for this project, beside what has actually been spent"
           action={
             mayEdit && (
               <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
@@ -75,13 +81,9 @@ export function ProjectCostingTab({ project }: { project: Project }) {
             label="Expected revenue"
             value={costing.revenue.source === 'none' ? '—' : formatBdt(costing.revenue.expected)}
             hint={
-              costing.revenue.source === 'units'
-                ? costing.revenue.totalUnits > costing.revenue.companyUnits
-                  ? `developer share: ${costing.revenue.companyUnits} of ${costing.revenue.totalUnits} units`
-                  : `${costing.revenue.companyUnits} units for sale`
-                : costing.revenue.source === 'estimate'
-                  ? 'quick estimate: area × rate'
-                  : 'no units or estimate yet'
+              costing.revenue.source === 'estimate'
+                ? `${revenueBasis(project.project_type).qty.toLowerCase()} × ${revenueBasis(project.project_type).rate.toLowerCase()}`
+                : 'no expected sales entered yet'
             }
           />
           <Tile
@@ -105,7 +107,7 @@ export function ProjectCostingTab({ project }: { project: Project }) {
             hint={
               soldPct === null
                 ? 'no units yet'
-                : `${costing.revenue.soldUnits} of ${costing.revenue.companyUnits} · ${formatBdt(costing.revenue.booked)}`
+                : `${costing.revenue.soldUnits} of ${costing.revenue.companyUnits} company units`
             }
           />
           <Tile
@@ -174,8 +176,7 @@ function MarginLine({ costing }: { costing: ProjectCosting }) {
     return (
       <p className="mt-4 flex items-start gap-2 border-t border-hairline pt-4 text-xs text-ink-muted">
         <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
-        No revenue to compare against yet. Generate the units, or enter a saleable area and an
-        average rate in the estimate.
+        No expected sales yet. Enter them in the estimate to see the margin.
       </p>
     );
   }
@@ -183,7 +184,7 @@ function MarginLine({ costing }: { costing: ProjectCosting }) {
   return (
     <p className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-hairline pt-4 text-sm">
       <Icon className={cn('size-4', costing.margin >= 0 ? 'text-emerald-600' : 'text-red-500')} />
-      <span className="text-ink-muted">If everything sells at today&rsquo;s prices, the project</span>
+      <span className="text-ink-muted">On your estimate, the project</span>
       <span className={cn('font-semibold', costing.margin >= 0 ? 'text-emerald-700' : 'text-red-600')}>
         {costing.margin >= 0 ? 'earns' : 'loses'} {formatBdt(Math.abs(costing.margin))}
       </span>
@@ -205,7 +206,7 @@ function HeadTable({ costing }: { costing: ProjectCosting }) {
       note:
         costing.land.lands === 0
           ? 'no land linked'
-          : `${costing.land.lands} land${costing.land.lands === 1 ? '' : 's'}, from the land cost sheets`,
+          : `estimate typed by you; spent is from the land records (${costing.land.lands} land${costing.land.lands === 1 ? '' : 's'})`,
       estimated: costing.land.estimated,
       actual: costing.land.actual,
     },
@@ -317,13 +318,14 @@ function EstimateModal({
     ),
   );
   const [contingency, setContingency] = useState(String(project.contingency_pct ?? ''));
+  const [land, setLand] = useState(costing.land.estimated > 0 ? String(costing.land.estimated) : '');
+  const basis = revenueBasis(project.project_type);
   const [area, setArea] = useState(String(project.est_saleable_area ?? ''));
   const [rate, setRate] = useState(String(project.est_avg_rate ?? ''));
   const [quickArea, setQuickArea] = useState('');
   const [quickRate, setQuickRate] = useState('');
   const [saving, setSaving] = useState(false);
   const built = heads.some((h) => h.code === PROCUREMENT_BUDGET_HEAD);
-  const landUnit = project.project_type === 'land_share' || project.project_type === 'plot_development';
 
   function applyQuick() {
     const total = (Number(quickArea) || 0) * (Number(quickRate) || 0);
@@ -351,6 +353,7 @@ function EstimateModal({
         project.id,
         {
           heads: [
+            { cost_category: LAND_ESTIMATE_HEAD, budgeted_amount: Number(land) || 0 },
             ...heads.map((h) => ({ cost_category: h.code, budgeted_amount: Number(values[h.code]) || 0 })),
             ...stale,
           ],
@@ -371,7 +374,7 @@ function EstimateModal({
       open
       size="lg"
       title="Project estimate"
-      subtitle={`${project.code} · land is taken from the land cost sheets`}
+      subtitle={`${project.code} · your own plan for this ${PROJECT_TYPE_LABEL[project.project_type].toLowerCase()} project`}
       icon={Calculator}
       onClose={onClose}
       footer={
@@ -406,6 +409,17 @@ function EstimateModal({
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
+        {/*
+          The estimate is the owner's own plan (client feedback 2026-10-11):
+          land is typed here like every other head, not read from the land
+          records. What the land really cost is on the actual side.
+        */}
+        <Field
+          label={project.project_type === 'land_share' || project.project_type === 'plot_development' ? 'Land' : 'Land (or the JV signing money)'}
+          hint="What you expect the land to cost this project, with its fees"
+        >
+          <MoneyInput value={land} placeholder="0" onChange={(e) => setLand(e.target.value)} />
+        </Field>
         {heads.map((h) => (
           <Field key={h.code} label={h.label} hint={h.hint}>
             <MoneyInput
@@ -421,18 +435,18 @@ function EstimateModal({
       </div>
 
       <div className="mt-4 border-t border-hairline pt-4">
-        <p className="mb-2 text-sm font-medium text-ink">Revenue before units exist</p>
+        <p className="mb-2 text-sm font-medium text-ink">Expected sales</p>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={landUnit ? `Saleable land (${project.total_land_area_unit ?? 'katha'})` : 'Saleable area (sqft)'}>
-            <TextInput type="number" value={area} onChange={(e) => setArea(e.target.value)} placeholder={landUnit ? 'e.g. 20' : 'e.g. 30000'} />
+          <Field label={basis.qty}>
+            <TextInput type="number" value={area} onChange={(e) => setArea(e.target.value)} placeholder="0" />
           </Field>
-          <Field label={landUnit ? `Average rate per ${project.total_land_area_unit ?? 'katha'}` : 'Average rate per sqft'}>
-            <MoneyInput value={rate} onChange={(e) => setRate(e.target.value)} placeholder={landUnit ? 'e.g. 2500000' : 'e.g. 9500'} />
+          <Field label={basis.rate}>
+            <MoneyInput value={rate} onChange={(e) => setRate(e.target.value)} placeholder="0" />
           </Field>
         </div>
         <p className="mt-2 text-xs text-ink-muted">
-          Used only until units are generated. After that, revenue is read from the units and
-          bookings. The landowner&rsquo;s units on a JV are never counted.
+          Your own expectation. Actual sales and collections are shown separately, from the
+          bookings{project.project_type === 'land_share' ? '' : '; on a JV, count only the developer’s share'}.
         </p>
       </div>
     </Modal>

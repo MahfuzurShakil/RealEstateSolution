@@ -190,6 +190,20 @@ export const DEMO_PROJECTS: DemoProject[] = [
     is_public: true,
     is_featured: true,
     sales_status: 'open',
+    costing: {
+      heads: [
+        ['land_estimate', 7_500_000],
+        ['design_approval', 3_000_000],
+        ...construction(30_000, 3_400),
+        ['utility_connection', 2_800_000],
+        // deliberately low: selling has already run past it, so the demo shows an overrun,
+        ['marketing', 300_000],
+        ['sales_commission', 1_500_000],
+      ],
+      contingency_pct: 5,
+      est_saleable_area: 15_000,
+      est_avg_rate: 9_500,
+    },
     created_at: '2026-05-04T10:15:00.000Z',
     land_names: ['Bashundhara Block K corner plot'],
     towers: [
@@ -344,13 +358,16 @@ export const DEMO_PROJECTS: DemoProject[] = [
     sales_status: 'open',
     costing: {
       heads: [
+        ['land_estimate', 38_500_000],
         ['design_approval', 3_500_000],
         ...construction(22_000, 3_500),
         ['utility_connection', 3_000_000],
         ['marketing', 1_200_000],
-        ['sales_commission', 1_800_000],
+        ['sales_commission', 1_800_000],
       ],
       contingency_pct: 5,
+      est_saleable_area: 18_500,
+      est_avg_rate: 9_400,
     },
     created_at: '2026-07-21T09:30:00.000Z',
     land_names: ['Uttara Sector 13 residential plot'],
@@ -427,13 +444,16 @@ export const DEMO_PROJECTS: DemoProject[] = [
     sales_status: 'not_open',
     costing: {
       heads: [
+        ['land_estimate', 2_500_000],
         ['design_approval', 5_000_000],
         ...construction(48_000, 3_300),
         ['utility_connection', 9_000_000],
         ['marketing', 2_500_000],
-        ['sales_commission', 3_000_000],
+        ['sales_commission', 3_000_000],
       ],
       contingency_pct: 7,
+      est_saleable_area: 24_000,
+      est_avg_rate: 14_000,
     },
     created_at: '2026-06-09T14:00:00.000Z',
     land_names: ['Chattogram Agrabad commercial plot'],
@@ -526,6 +546,19 @@ export const DEMO_PROJECTS: DemoProject[] = [
     is_public: true,
     is_featured: true,
     sales_status: 'open',
+    costing: {
+      heads: [
+        ['land_estimate', 76_000_000],
+        ['design_approval', 3_500_000],
+        ...construction(18_000, 3_500),
+        ['utility_connection', 2_500_000],
+        ['marketing', 900_000],
+        ['sales_commission', 2_000_000],
+      ],
+      contingency_pct: 5,
+      est_saleable_area: 12_000,
+      est_avg_rate: 24_000,
+    },
     created_at: '2024-03-11T11:20:00.000Z',
     land_names: ['Dhanmondi Road 27 plot'],
     towers: [
@@ -682,12 +715,16 @@ export const DEMO_PROJECTS: DemoProject[] = [
     // the filling and roads are costed on the land, as land development
     costing: {
       heads: [
+        ['land_estimate', 36_000_000],
+        // the filling and roads are costed on the land, as land development,
         ['design_approval', 2_000_000],
         ['utility_connection', 6_000_000],
         ['marketing', 2_500_000],
-        ['sales_commission', 1_500_000],
+        ['sales_commission', 1_500_000],
       ],
       contingency_pct: 3,
+      est_saleable_area: 60,
+      est_avg_rate: 1_250_000,
     },
     created_at: '2026-02-14T06:00:00.000Z',
     land_names: ['Rupganj Kanchan tract'],
@@ -790,10 +827,13 @@ export const DEMO_PROJECTS: DemoProject[] = [
     construction_after_sale: 'planned',
     costing: {
       heads: [
+        ['land_estimate', 49_500_000],
         ['design_approval', 120_000],
         ['marketing', 150_000],
-        ['sales_commission', 100_000],
+        ['sales_commission', 100_000],
       ],
+      est_saleable_area: 20,
+      est_avg_rate: 2_900_000,
     },
     created_at: '2026-04-10T05:45:00.000Z',
     land_names: ['Savar Birulia riverside plot'],
@@ -853,16 +893,17 @@ export const DEMO_PROJECTS: DemoProject[] = [
     sales_status: 'open',
     costing: {
       heads: [
+        ['land_estimate', 22_400_000],
         ['design_approval', 6_000_000],
         ...construction(52_000, 3_600),
         ['utility_connection', 7_500_000],
         ['marketing', 3_000_000],
-        ['sales_commission', 4_000_000],
+        ['sales_commission', 4_000_000],
         ['other', 1_200_000],
       ],
       contingency_pct: 5,
-      est_saleable_area: 52_000,
-      est_avg_rate: 12_500,
+      est_saleable_area: 27_600,
+      est_avg_rate: 14_000,
     },
     created_at: '2026-02-02T09:00:00.000Z',
     land_names: ['Uttara Sector 18 lake-facing site'],
@@ -1097,13 +1138,16 @@ export const DEMO_PROJECTS: DemoProject[] = [
     ],
     costing: {
       heads: [
+        ['land_estimate', 37_000_000],
         ['design_approval', 4_500_000],
         ...construction(26_000, 3_600),
         ['utility_connection', 3_500_000],
         ['marketing', 1_500_000],
-        ['sales_commission', 2_300_000],
+        ['sales_commission', 2_300_000],
       ],
       contingency_pct: 5,
+      est_saleable_area: 19_400,
+      est_avg_rate: 11_300,
     },
   },
   {
@@ -1134,12 +1178,15 @@ export const DEMO_PROJECTS: DemoProject[] = [
     },
     costing: {
       heads: [
+        ['land_estimate', 150_000],
         ['design_approval', 150_000],
         ['marketing', 600_000],
-        ['sales_commission', 800_000],
+        ['sales_commission', 800_000],
         ['other', 200_000],
       ],
       contingency_pct: 3,
+      est_saleable_area: 30,
+      est_avg_rate: 900_000,
     },
   },
   {
@@ -1161,10 +1208,11 @@ export const DEMO_PROJECTS: DemoProject[] = [
     towers: [],
     costing: {
       heads: [
+        ['land_estimate', 46_000_000],
         ['design_approval', 6_000_000],
         ...construction(70_000, 3_000),
         ['utility_connection', 12_000_000],
-        ['marketing', 3_000_000],
+        ['marketing', 3_000_000],
       ],
       contingency_pct: 7,
       est_saleable_area: 60_000,

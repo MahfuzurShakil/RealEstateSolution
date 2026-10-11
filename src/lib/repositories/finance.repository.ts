@@ -15,7 +15,7 @@ import type {
   SupplierPaymentMethod,
   Unit,
 } from '../db/types';
-import { LAND_LINKED_COST_CATEGORIES } from '../db/types';
+import { LAND_LINKED_COST_CATEGORIES, PROCUREMENT_BUDGET_HEAD } from '../db/types';
 import {
   installmentStatus,
   money,
@@ -1198,7 +1198,6 @@ class FinanceDashboardRepository {
       installments,
       refunds,
       expenses,
-      vouchers,
       payments,
       landMappings,
       landCash,
@@ -1211,7 +1210,6 @@ class FinanceDashboardRepository {
       db.payment_installments.toArray(),
       db.refunds.toArray(),
       db.expenses.toArray(),
-      db.supplier_vouchers.toArray(),
       db.payments.toArray(),
       db.land_project_mapping.toArray(),
       landAcquisitionCostRepository.cashActualByLand(),
@@ -1316,11 +1314,17 @@ class FinanceDashboardRepository {
       row.cost_expenses = money(row.cost_expenses + (Number(expense.amount) || 0));
     }
 
-    for (const voucher of vouchers) {
-      if (!voucher.project_id) continue;
-      const row = byId.get(voucher.project_id);
-      if (!row) continue;
-      row.cost_procurement = money(row.cost_procurement + (Number(voucher.amount) || 0));
+    /*
+     * Material is project cost once it reaches the site (client decision
+     * 2026-10-11), at order prices, plus what was transferred in from the
+     * central store less what left. Paying the supplier is money out, not a
+     * second cost; supplier vouchers are shown as payments on the project's
+     * finance page. Loaded lazily: procurement's repository sits downstream.
+     */
+    const { procurementCostRepository } = await import('./procurement.repository');
+    for (const row of byId.values()) {
+      const m = await procurementCostRepository.forProject(row.project_id);
+      row.cost_procurement = money(m.received_value + m.transferred_in_value - m.transferred_out_value);
     }
 
     for (const m of landMappings) {
@@ -1393,11 +1397,59 @@ class FinanceDashboardRepository {
     };
   }
 
+  /**
+   * Money paid out against a project (client feedback 2026-10-11): expenses
+   * filed to it and supplier payments on its orders. Payments, not cost:
+   * material became cost when it was received.
+   */
+  async paymentsForProject(projectId: string): Promise<ProjectPaymentRow[]> {
+    const [expenses, vouchers, suppliers] = await Promise.all([
+      db.expenses.where('project_id').equals(projectId).toArray(),
+      db.supplier_vouchers.toArray(),
+      db.suppliers.toArray(),
+    ]);
+    const supplierName = new Map(suppliers.map((s) => [s.id, s.name]));
+    return [
+      ...expenses.map((e) => ({
+        id: e.id,
+        date: e.expense_date,
+        paid_to: e.paid_to,
+        sector: e.cost_category,
+        source: 'expense' as const,
+        amount: Number(e.amount) || 0,
+        link_id: e.id,
+      })),
+      ...vouchers
+        .filter((v) => v.project_id === projectId)
+        .map((v) => ({
+          id: v.id,
+          date: v.payment_date,
+          paid_to: supplierName.get(v.supplier_id) ?? 'Supplier',
+          sector: PROCUREMENT_BUDGET_HEAD,
+          source: 'supplier_payment' as const,
+          amount: Number(v.amount) || 0,
+          link_id: v.po_id,
+        })),
+    ];
+  }
+
   /** One project's figures, for the project detail page. */
   async forProject(projectId: string, today = todayLocal()): Promise<ProjectFinanceSummary | null> {
     const rows = await this.byProject(today);
     return rows.find((r) => r.project_id === projectId) ?? null;
   }
+}
+
+export interface ProjectPaymentRow {
+  id: string;
+  date: string;
+  paid_to: string;
+  /** cost category code, or the procurement head for supplier payments */
+  sector: string;
+  source: 'expense' | 'supplier_payment';
+  amount: number;
+  /** the expense id, or the purchase order the supplier was paid on */
+  link_id: string;
 }
 
 export const paymentScheduleRepository = new PaymentScheduleRepository();

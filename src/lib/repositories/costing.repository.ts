@@ -4,8 +4,10 @@ import { db } from '../db/database';
 import type { Project } from '../db/types';
 import { LAND_SIZE_UNIT_LABEL } from '../domain/land';
 import { money } from '../domain/finance';
+import { PROCUREMENT_BUDGET_HEAD } from '../db/types';
 import {
   LAND_COST_CATEGORIES,
+  LAND_ESTIMATE_HEAD,
   MATERIAL_SHARE_OF_CONSTRUCTION,
   summariseCosting,
   type ProjectCosting,
@@ -13,6 +15,7 @@ import {
 import { projectBudgetRepository } from './budget.repository';
 import { financeDashboardRepository } from './finance.repository';
 import { landAcquisitionCostRepository } from './negotiation.repository';
+import { procurementCostRepository } from './procurement.repository';
 import { projectRepository, unitRepository } from './project.repository';
 
 /**
@@ -24,24 +27,32 @@ import { projectRepository, unitRepository } from './project.repository';
 const SPOKEN_FOR: ReadonlySet<string> = new Set(['booked', 'sold', 'handed_over']);
 
 class ProjectCostingRepository {
+  /**
+   * Estimate and actual, side by side and independent (client feedback
+   * 2026-10-11).
+   *
+   * - **Estimate**: only what the owner typed for this project, by type:
+   *   land, each cost head, contingency, and the expected sales (quantity ×
+   *   price). Units, bookings and land sheets are never read for it.
+   * - **Actual**: what has really been spent against the project, wherever it
+   *   was recorded: land (payments, fees, historic cost, development, from
+   *   the land records), material **when received at site** (decision), and
+   *   every expense filed to the project by cost head.
+   */
   async forProject(projectId: string): Promise<ProjectCosting | null> {
     const project = await db.projects.get(projectId);
     if (!project) return null;
 
-    const [mappings, budget, actualsRaw, units, finance] = await Promise.all([
+    const [mappings, budget, expenses, materials, finance, units] = await Promise.all([
       db.land_project_mapping.where('project_id').equals(projectId).toArray(),
       projectBudgetRepository.listForProject(projectId),
-      projectBudgetRepository.actualsForProject(projectId),
-      unitRepository.listForProject(projectId),
+      db.expenses.where('project_id').equals(projectId).toArray(),
+      procurementCostRepository.forProject(projectId),
       financeDashboardRepository.forProject(projectId),
+      unitRepository.listForProject(projectId),
     ]);
 
-    /*
-     * Land, from each linked land's cost sheet. A land under two projects is
-     * split evenly, the same rule the finance roll-up uses, so the two never
-     * disagree about what this project's land cost.
-     */
-    let landEstimated = 0;
+    // actual land cost from the land records, split evenly if a land is shared
     let landActual = 0;
     let ownerShare: number | null = null;
     for (const m of mappings) {
@@ -50,64 +61,30 @@ class ProjectCostingRepository {
         db.land_project_mapping.where('land_id').equals(m.land_id).count(),
       ]);
       const split = Math.max(1, sharers);
-      landEstimated += sheet.landTotal.estimated / split;
       landActual += sheet.landTotal.actual / split;
       if (sheet.landownerShare) ownerShare = (ownerShare ?? 0) + sheet.landownerShare.value / split;
     }
+    const landEstimate = budget
+      .filter((b) => b.cost_category === LAND_ESTIMATE_HEAD)
+      .reduce((t, b) => t + (Number(b.budgeted_amount) || 0), 0);
 
-    // land money is on the land row; leaving it in the heads would count it twice
+    // actual by head: expenses on the project (land money is on the land row)
     const actuals: Record<string, number> = {};
-    for (const [code, v] of Object.entries(actualsRaw)) {
-      if (!LAND_COST_CATEGORIES.has(code)) actuals[code] = v;
+    for (const e of expenses) {
+      if (LAND_COST_CATEGORIES.has(e.cost_category)) continue;
+      actuals[e.cost_category] = money((actuals[e.cost_category] ?? 0) + (Number(e.amount) || 0));
     }
+    // material is project cost once it reaches the site (decision 2026-10-11)
+    const materialCost =
+      materials.received_value + materials.transferred_in_value - materials.transferred_out_value;
+    if (materialCost > 0) actuals[PROCUREMENT_BUDGET_HEAD] = money(materialCost);
 
-    /*
-     * Revenue: once units exist, what they are actually selling for — the
-     * final price on a live booking, the list price on what is still unsold.
-     * Only units the company sells: on a JV the landowner's flats are his to
-     * sell and earn the company nothing. Before units exist, the quick
-     * estimate on the project.
-     */
-    const companyUnits = units.filter((u) => u.for_sale_by === 'company');
-    const unitIds = new Set(companyUnits.map((u) => u.id));
-    const bookings = (await db.bookings.toArray()).filter(
-      (b) => unitIds.has(b.unit_id) && b.status !== 'cancelled',
-    );
-    const bookedUnit = new Map(bookings.map((b) => [b.unit_id, b]));
-    let booked = 0;
-    let unsold = 0;
-    for (const u of companyUnits) {
-      const b = bookedUnit.get(u.id);
-      if (b) booked += Number(b.final_price) || 0;
-      else unsold += Number(u.base_price) || 0;
-    }
     const quick = (Number(project.est_saleable_area) || 0) * (Number(project.est_avg_rate) || 0);
-    const revenue =
-      companyUnits.length > 0
-        ? {
-            source: 'units' as const,
-            expected: money(booked + unsold),
-            booked: money(booked),
-            unsold: money(unsold),
-            companyUnits: companyUnits.length,
-            totalUnits: units.length,
-            // by unit status: a unit handed over before bookings were recorded is still sold
-            soldUnits: companyUnits.filter((u) => SPOKEN_FOR.has(u.status)).length,
-          }
-        : {
-            source: quick > 0 ? ('estimate' as const) : ('none' as const),
-            expected: money(quick),
-            booked: 0,
-            unsold: 0,
-            companyUnits: 0,
-            totalUnits: 0,
-            soldUnits: 0,
-          };
-
+    const companyUnits = units.filter((u) => u.for_sale_by === 'company');
     return summariseCosting({
       type: project.project_type,
       land: {
-        estimated: money(landEstimated),
+        estimated: money(landEstimate),
         actual: money(landActual),
         lands: mappings.length,
         landownerShareValue: ownerShare === null ? null : money(ownerShare),
@@ -115,7 +92,15 @@ class ProjectCostingRepository {
       budget,
       actuals,
       contingencyPct: Number(project.contingency_pct) || 0,
-      revenue,
+      revenue: {
+        source: quick > 0 ? 'estimate' : 'none',
+        expected: money(quick),
+        booked: 0,
+        unsold: 0,
+        companyUnits: companyUnits.length,
+        totalUnits: units.length,
+        soldUnits: companyUnits.filter((u) => SPOKEN_FOR.has(u.status)).length,
+      },
       collected: finance?.collected ?? 0,
       area: this.area(project, units),
     });

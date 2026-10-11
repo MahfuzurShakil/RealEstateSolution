@@ -47,7 +47,6 @@ import {
   deliveryRepository,
   paymentScheduleRepository,
   bankAccountRepository,
-  projectBudgetRepository,
   projectCostingRepository,
   refundRepository,
   userProjectAssignmentRepository,
@@ -58,7 +57,6 @@ import type {
   MaterialRequestStatus,
   ProjectStatus,
 } from './types';
-import { PROCUREMENT_BUDGET_HEAD } from './types';
 import { getDb } from './database';
 import { landIsHeld } from '../domain/land';
 import { backfillMaterialItems } from './backfill-material-items';
@@ -2088,43 +2086,10 @@ async function seedDemoFinance(
   }
 
   /*
-   * A budget on two projects (Tier 3.2), written through the repository so the
-   * upsert and the drop-a-zero-line rule are exercised by the demo rather than
-   * bypassed by it.
-   *
-   * Dhanmondi is deliberately seeded **over** budget on contractor payment and
-   * with `land_extra_cost` left unbudgeted: a plan where everything is
-   * comfortably green demonstrates nothing, and the unbudgeted head is the case
-   * the screen exists to make visible.
+   * Project estimates are on each demo project (`costing` in
+   * demo-projects.ts) since 2026-10-11: the estimate is the owner's own plan,
+   * typed per project type, so every project carries one.
    */
-  const budgets: Array<[string, Array<[string, number]>]> = [
-    [
-      'Nokshi Dhanmondi Court',
-      [
-        [PROCUREMENT_BUDGET_HEAD, 2000000],
-        // v29 — no land line: land is costed on the land's own cost sheet
-        ['contractor_payment', 6000000],
-        ['marketing', 500000],
-      ],
-    ],
-    [
-      'Nokshi Green Residence',
-      [
-        [PROCUREMENT_BUDGET_HEAD, 6000000],
-        ['contractor_payment', 12000000],
-        ['marketing', 800000],
-      ],
-    ],
-  ];
-  for (const [name, lines] of budgets) {
-    const projectId = projectIds.get(name);
-    if (!projectId) continue;
-    await projectBudgetRepository.replaceForProject(
-      projectId,
-      lines.map(([cost_category, budgeted_amount]) => ({ cost_category, budgeted_amount })),
-      createdBy,
-    );
-  }
 
   const dhanmondiLandId = landIds.get('Dhanmondi Road 27 plot');
   if (dhanmondiLandId) {

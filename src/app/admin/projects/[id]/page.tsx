@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, Globe, Pencil, Star, Trash2 } from 'lucide-react';
+import { ArrowLeft, Globe, Pencil, Star, Trash2, Wallet } from 'lucide-react';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { JvAllocationCard } from '@/components/admin/projects/JvAllocationCard';
 import { ProjectLandCard } from '@/components/admin/projects/ProjectLandCard';
@@ -17,7 +17,6 @@ import { PlotDevelopmentCard } from '@/components/admin/projects/PlotDevelopment
 import { SuccessionCard } from '@/components/admin/projects/SuccessionCard';
 import { TowersUnitsPanel } from '@/components/admin/projects/TowersUnitsPanel';
 import { ProjectProcurementSummary } from '@/components/admin/procurement/ProjectProcurementSummary';
-import { ProjectCostingTab } from '@/components/admin/projects/ProjectCostingTab';
 import { ProjectProgressSummary } from '@/components/admin/site-progress/ProjectProgressSummary';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -41,7 +40,6 @@ type Tab =
   | 'towers'
   | 'progress'
   | 'materials'
-  | 'finance'
   | 'allocation'
   | 'timeline'
   | 'documents';
@@ -105,8 +103,6 @@ export default function ProjectDetailPage() {
     { key: 'overview', label: 'Overview' },
     { key: 'towers', label: inventoryLabel },
     ...(shapeIsBuilt(shape) ? [{ key: 'progress' as Tab, label: 'Site Progress' }] : []),
-    // one money tab: estimate vs actual, where it went, sales and collection (D1)
-    { key: 'finance', label: 'Finance' },
     // what was bought, is on site and was used; nothing to buy on a share register
     ...(shape.item !== 'share' ? [{ key: 'materials' as Tab, label: 'Materials' }] : []),
     // landowner allocation exists only on joint-venture land
@@ -129,6 +125,12 @@ export default function ProjectDetailPage() {
         subtitle={`${project.code} · ${project.location_summary ?? PROJECT_TYPE_LABEL[project.project_type]}`}
         action={
           <div className="flex gap-2">
+            {/* all money lives in Finance (client feedback 2026-10-11) */}
+            <Link href={`/admin/finance/projects/${project.id}`}>
+              <Button variant="outline">
+                <Wallet className="size-4" /> Finance
+              </Button>
+            </Link>
             <Link href={`/admin/projects/${project.id}/edit`}>
               <Button variant="outline">
                 <Pencil className="size-4" /> Edit
@@ -227,7 +229,6 @@ export default function ProjectDetailPage() {
           {tab === 'materials' && <ProjectProcurementSummary projectId={project.id} />}
 
           {/* Section 8.3 — what the project was planned to cost, against what it has */}
-          {tab === 'finance' && <ProjectCostingTab project={project} />}
 
           {tab === 'allocation' && <JvAllocationCard projectId={project.id} />}
 

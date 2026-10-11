@@ -104,8 +104,28 @@ export function costingHeadsFor(type: ProjectType): CostingHead[] {
   ).map((h) => ({ ...h, ...(HEAD_LABEL_BY_TYPE[type]?.[h.code] ?? {}) }));
 }
 
-/** Land money is costed on the land, never as a project head. */
-export const LAND_COST_CATEGORIES: ReadonlySet<string> = new Set(['land_payment', 'land_extra_cost']);
+/**
+ * The land line of the estimate (client feedback 2026-10-11). The estimate is
+ * the owner's own plan, typed by project type, and reads nothing recorded
+ * elsewhere: not the land sheets, not units, not bookings. The land's actual
+ * cost is tracked on the actual side; the two are compared, never mixed.
+ */
+export const LAND_ESTIMATE_HEAD = 'land_estimate';
+
+/** Land money: costed on the land row, never as a project head. */
+export const LAND_COST_CATEGORIES: ReadonlySet<string> = new Set([
+  'land_payment',
+  'land_extra_cost',
+  LAND_ESTIMATE_HEAD,
+]);
+
+/** What the quick sales estimate multiplies, per type. */
+export function revenueBasis(type: ProjectType): { qty: string; rate: string; unit: string } {
+  if (type === 'land_share') return { qty: 'Number of shares', rate: 'Price per share', unit: 'shares' };
+  if (type === 'plot_development')
+    return { qty: 'Saleable land (katha)', rate: 'Price per katha', unit: 'katha' };
+  return { qty: 'Saleable area (sqft)', rate: 'Price per sqft', unit: 'sqft' };
+}
 
 /** Typical Bangladesh split of a construction estimate, used by the quick estimate. */
 export const MATERIAL_SHARE_OF_CONSTRUCTION = 0.6;
@@ -127,7 +147,8 @@ export interface ProjectCosting {
   estimatedTotal: number;
   actualTotal: number;
   revenue: {
-    source: 'units' | 'estimate' | 'none';
+    /** the owner's own expected sales; never read from units (2026-10-11) */
+    source: 'estimate' | 'none';
     expected: number;
     /** confirmed bookings at their final price */
     booked: number;

@@ -58,7 +58,7 @@ export default function FinanceOverviewPage() {
     },
     { label: 'Due', value: data.due, hint: 'sales value not yet collected', icon: CircleDollarSign },
     { label: 'Refunded', value: data.refunded, hint: 'paid back on cancellations', icon: Undo2 },
-    { label: 'Total cost', value: data.total_cost, hint: 'land + ledger + procurement', icon: ReceiptText },
+    { label: 'Total cost', value: data.total_cost, hint: 'land, expenses and materials received', icon: ReceiptText },
     {
       label: 'Estimated profit',
       value: data.estimated_profit,
@@ -73,7 +73,7 @@ export default function FinanceOverviewPage() {
       key: 'project',
       header: 'Project',
       cell: (row) => (
-        <Link href={`/admin/projects/${row.project_id}`} className="font-medium text-ink hover:text-admin-700">
+        <Link href={`/admin/finance/projects/${row.project_id}`} className="font-medium text-ink hover:text-admin-700">
           {row.project_name}
           <span className="block text-xs font-normal text-ink-muted">
             {row.project_code} · {row.booking_count} booking{row.booking_count === 1 ? '' : 's'}
@@ -143,7 +143,7 @@ export default function FinanceOverviewPage() {
         <span className="text-sm text-ink">
           {formatBdt(row.total_cost )}
           <span className="block text-xs text-ink-muted">
-            {formatBdt(row.cost_land)} land · {formatBdt(row.cost_procurement)} material
+            {formatBdt(row.cost_land)} land · {formatBdt(row.cost_procurement)} materials received
           </span>
         </span>
       ),

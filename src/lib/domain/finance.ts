@@ -345,7 +345,7 @@ export interface ProjectFinanceSummary {
   collected: number;
   refunded: number;
   due: number;
-  /** expenses ledger + Module 6 supplier vouchers (8.3) */
+  /** expenses ledger, and material received at site at order prices (2026-10-11) */
   cost_expenses: number;
   cost_procurement: number;
   /**
