@@ -375,7 +375,9 @@ export function LandForm({
       next.asking_price = 'Enter an amount';
     if (owned && !ownedOn) next.acquired_on = 'When did it become yours?';
 
-    if (owners.some((o) => !o.owner_id)) next.owners = 'Pick a landowner for every row';
+    // a JV is an agreement with the landowners, so it names them (client decision 2026-10-11)
+    if (isJv && owners.length === 0) next.owners = 'A joint venture needs at least one landowner';
+    else if (owners.some((o) => !o.owner_id)) next.owners = 'Pick a landowner for every row';
     else if (new Set(owners.map((o) => o.owner_id)).size !== owners.length)
       next.owners = 'The same landowner is listed twice';
     else if (owners.length > 0 && Math.abs(ownerShareTotal - 100) > 0.01)

@@ -106,6 +106,12 @@ function QuickLandDialog({
     if (!owned && form.acquisition_type === 'direct_purchase' && !(Number(form.asking_price) >= 0 && form.asking_price.trim()))
       next.asking_price = 'Enter an amount';
     // a signed JV has a split; one still being chased gets its terms at signing
+    /*
+     * A JV must name its landowners (client decision 2026-10-11), and this
+     * quick dialog does not record owners, so a JV is added from the land
+     * form instead.
+     */
+    if (isJv) next.acquisition_type = 'A joint venture needs its landowners: add it from Lands → Add Land, then pick it here.';
     const devShare = Number(form.developer_share_pct);
     if (owned && isJv && !(devShare > 0 && devShare < 100)) next.developer_share_pct = 'Between 1 and 99';
     setErrors(next);
@@ -241,7 +247,7 @@ function QuickLandDialog({
             </SelectInput>
           </div>
         </Field>
-        <Field label="Acquisition type" required>
+        <Field label="Acquisition type" required error={errors.acquisition_type}>
           <SelectInput
             value={form.acquisition_type}
             onChange={(e) => set('acquisition_type', e.target.value)}
