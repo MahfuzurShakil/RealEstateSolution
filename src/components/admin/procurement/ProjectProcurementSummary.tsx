@@ -19,6 +19,7 @@ import {
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
+import { SubTabs } from '@/components/ui/SubTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PURCHASE_ORDER_STATUS_META, canReceiveAgainst } from '@/lib/domain/procurement';
@@ -62,6 +63,7 @@ export function ProjectProcurementSummary({ projectId }: { projectId: string }) 
   );
   const stock = useLiveQuery(() => stockRepository.list({ location: projectId }), [projectId]);
   const [receiving, setReceiving] = useState<PurchaseOrderWithRelations | null>(null);
+  const [sub, setSub] = useState<'overview' | 'requests' | 'orders' | 'stock' | 'used'>('overview');
   const requests = useLiveQuery(
     () => materialRequestRepository.list({ project_id: projectId }),
     [projectId],
@@ -274,18 +276,31 @@ export function ProjectProcurementSummary({ projectId }: { projectId: string }) 
   ];
 
   return (
-    <div className="space-y-5">
+    <div>
+      {/* one section at a time; the action that matters is at the top (2026-10-11) */}
+      <SubTabs
+        tabs={[
+          { key: 'overview', label: 'Overview' },
+          { key: 'requests', label: `Requests (${requests?.length ?? 0})` },
+          { key: 'orders', label: `Orders (${orders?.length ?? 0})` },
+          { key: 'stock', label: 'Stock on site' },
+          { key: 'used', label: 'Used' },
+        ]}
+        active={sub}
+        onChange={setSub}
+        actions={
+          <Link href={`/admin/material-requests/new?project=${projectId}`}>
+            <Button size="sm">
+              <ClipboardList className="size-4" /> Request material
+            </Button>
+          </Link>
+        }
+      />
+      {sub === 'overview' && (
       <Card>
         <CardHeader
           title="Material flow"
           subtitle="Ordered → received → on site → used"
-          action={
-            <Link href={`/admin/material-requests/new?project=${projectId}`}>
-              <Button size="sm">
-                <ClipboardList className="size-4" /> Request material
-              </Button>
-            </Link>
-          }
         />
 
         {nothingYet ? (
@@ -350,18 +365,13 @@ export function ProjectProcurementSummary({ projectId }: { projectId: string }) 
           </>
         )}
       </Card>
+      )}
 
+      {sub === 'requests' && (
       <Card>
         <CardHeader
           title="Material requests"
           subtitle="Raised from this project; procurement orders against them"
-          action={
-            <Link href={`/admin/material-requests/new?project=${projectId}`}>
-              <Button size="sm" variant="outline">
-                <ClipboardList className="size-4" /> New request
-              </Button>
-            </Link>
-          }
         />
         <DataTable
           rows={requests ?? []}
@@ -377,7 +387,9 @@ export function ProjectProcurementSummary({ projectId }: { projectId: string }) 
           }
         />
       </Card>
+      )}
 
+      {sub === 'orders' && (
       <Card>
         <CardHeader
           title="Orders from procurement"
@@ -397,7 +409,9 @@ export function ProjectProcurementSummary({ projectId }: { projectId: string }) 
           }
         />
       </Card>
+      )}
 
+      {sub === 'stock' && (
       <Card>
         <CardHeader
           title="Stock on this site"
@@ -421,7 +435,9 @@ export function ProjectProcurementSummary({ projectId }: { projectId: string }) 
           }
         />
       </Card>
+      )}
 
+      {sub === 'used' && (
       <Card>
         <CardHeader
           title="Materials used to date"
@@ -473,6 +489,7 @@ export function ProjectProcurementSummary({ projectId }: { projectId: string }) 
           }
         />
       </Card>
+      )}
       <GoodsReceiptModal
         open={receiving !== null}
         order={receiving!}

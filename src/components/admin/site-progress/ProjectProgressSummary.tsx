@@ -25,7 +25,9 @@ import {
   dayHeading,
   isSiteActive,
 } from '@/lib/domain/site-progress';
-import { projectProgressRepository } from '@/lib/repositories';
+import { projectProgressRepository, siteProgressUpdateRepository } from '@/lib/repositories';
+import { DataTable } from '@/components/ui/DataTable';
+import { SubTabs } from '@/components/ui/SubTabs';
 import { formatDate, todayLocal } from '@/lib/utils/format';
 import { ProgressBar } from './ProgressBar';
 import { ProgressUpdateModal } from './ProgressUpdateModal';
@@ -45,6 +47,12 @@ import { PublicProgressPreview } from './PublicProgressPreview';
 export function ProjectProgressSummary({ projectId }: { projectId: string }) {
   const today = todayLocal();
   const [logOpen, setLogOpen] = useState(false);
+  const [sub, setSub] = useState<'overview' | 'log'>('overview');
+  // every update logged on this project, newest first (client feedback 2026-10-11)
+  const updates = useLiveQuery(
+    () => siteProgressUpdateRepository.list({ project_id: projectId }),
+    [projectId],
+  );
 
   const row = useLiveQuery(
     () => projectProgressRepository.forProject(projectId, today),
@@ -72,8 +80,102 @@ export function ProjectProgressSummary({ projectId }: { projectId: string }) {
 
   const recent = (activity ?? []).slice(0, 5);
 
+  // the actions sit at the top, beside the sub-tabs (client feedback 2026-10-11)
+  const header = (
+    <SubTabs
+      tabs={[
+        { key: 'overview', label: 'Overview' },
+        { key: 'log', label: `Log updates (${updates?.length ?? 0})` },
+      ]}
+      active={sub}
+      onChange={setSub}
+      actions={
+        <>
+          <Button size="sm" onClick={() => setLogOpen(true)}>
+            <Plus className="size-4" /> Log site update
+          </Button>
+          <Link href={`/admin/site-progress/${projectId}`}>
+            <Button size="sm" variant="outline">
+              <HardHat className="size-4" /> Work items
+              <ArrowRight className="size-4" />
+            </Button>
+          </Link>
+        </>
+      }
+    />
+  );
+  const logModal = logOpen && (
+    <ProgressUpdateModal open projectId={projectId} onClose={() => setLogOpen(false)} />
+  );
+
+  if (sub === 'log') {
+    return (
+      <div>
+        {header}
+        <Card>
+          <DataTable
+            rows={updates ?? []}
+            columns={[
+              {
+                key: 'update_date',
+                header: 'Date',
+                cell: (u) => (
+                  <Link href={`/admin/site-progress/updates/${u.id}`} className="font-medium text-ink hover:text-admin-700">
+                    {formatDate(u.update_date)}
+                  </Link>
+                ),
+                sortValue: (u) => `${u.update_date}|${u.created_at}`,
+              },
+              {
+                key: 'tower',
+                header: 'Tower',
+                cell: (u) => u.tower?.name ?? '—',
+                sortValue: (u) => u.tower?.name ?? '',
+              },
+              {
+                key: 'work',
+                header: 'Work item',
+                cell: (u) => u.work_item?.name ?? '—',
+                sortValue: (u) => u.work_item?.name ?? '',
+              },
+              {
+                key: 'progress',
+                header: 'Progress',
+                align: 'right',
+                cell: (u) => `${u.progress_pct}%`,
+                sortValue: (u) => u.progress_pct,
+              },
+              {
+                key: 'by',
+                header: 'Logged by',
+                cell: (u) => u.reporter_name ?? '—',
+                sortValue: (u) => u.reporter_name ?? '',
+              },
+              {
+                key: 'remarks',
+                header: 'Remarks',
+                cell: (u) => <span className="line-clamp-1 text-ink-muted">{u.remarks ?? ''}</span>,
+              },
+            ]}
+            initialSort={{ key: 'update_date', direction: 'desc' }}
+            label="updates"
+            emptyState={
+              <EmptyState
+                icon={HardHat}
+                title="Nothing logged yet"
+                description="Log the first site update with the button above."
+              />
+            }
+          />
+        </Card>
+        {logModal}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
+      {header}
       <Card>
         <CardHeader
           title="Construction Progress"
@@ -205,21 +307,7 @@ export function ProjectProgressSummary({ projectId }: { projectId: string }) {
 
       <PublicProgressPreview projectId={projectId} isPublic={row.project.is_public} />
 
-      <div className="flex flex-wrap gap-2">
-        {/* the site log is written from the project (client feedback 2026-10-11) */}
-        <Button onClick={() => setLogOpen(true)}>
-          <Plus className="size-4" /> Log site update
-        </Button>
-        <Link href={`/admin/site-progress/${projectId}`}>
-          <Button variant="outline">
-            <HardHat className="size-4" /> Work items & full log
-            <ArrowRight className="size-4" />
-          </Button>
-        </Link>
-      </div>
-      {logOpen && (
-        <ProgressUpdateModal open projectId={projectId} onClose={() => setLogOpen(false)} />
-      )}
+      {logModal}
     </div>
   );
 }
