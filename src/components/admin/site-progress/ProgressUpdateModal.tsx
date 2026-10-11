@@ -88,6 +88,11 @@ export function ProgressUpdateModal({
       setError('An update date is required');
       return;
     }
+    // QA audit C-01 — a future date would become the "latest" reading for good
+    if (updateDate > todayLocal()) {
+      setError('The update date cannot be in the future');
+      return;
+    }
     setBusy(true);
     try {
       const saved = await siteProgressUpdateRepository.log(
@@ -104,6 +109,8 @@ export function ProgressUpdateModal({
       );
       onClose();
       if (andOpen) onSaved?.(saved.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'The update could not be saved.');
     } finally {
       setBusy(false);
     }
@@ -119,7 +126,7 @@ export function ProgressUpdateModal({
       onClose={onClose}
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={busy}>
+          <Button variant="outline" onClick={onClose} viewSafe disabled={busy}>
             Cancel
           </Button>
           <Button variant="outline" onClick={() => save(true)} disabled={busy}>

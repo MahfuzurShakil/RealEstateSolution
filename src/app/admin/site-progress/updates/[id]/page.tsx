@@ -15,6 +15,9 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { LocationCard } from '@/components/ui/map/LocationCard';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { ViewOnlyArea } from '@/components/ui/ViewOnly';
+import { useMockSession } from '@/lib/auth/mock-session';
+import { canEdit } from '@/lib/domain/access';
 import { PROJECT_STATUS_META, TOWER_STATUS_META } from '@/lib/domain/project';
 import {
   SCHEDULE_STATE_META,
@@ -46,6 +49,9 @@ export default function ProgressUpdateDetailPage() {
   const [tab, setTab] = useState<Tab>('overview');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
+  // QA audit X-01 — readings are the site's record; others read them
+  const { role } = useMockSession();
+  const mayEdit = canEdit(role, 'site_progress');
 
   const update = useLiveQuery(() => siteProgressUpdateRepository.getWithRelations(id), [id]);
 
@@ -95,17 +101,20 @@ export default function ProgressUpdateDetailPage() {
           update.tower ? ` · ${update.tower.name}` : ''
         } · reported ${formatDate(update.update_date)}`}
         action={
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setLogOpen(true)}>
-              <HardHat className="size-4" /> Log new reading
-            </Button>
-            <Button variant="dangerGhost" onClick={() => setConfirmDelete(true)}>
-              <Trash2 className="size-4" /> Delete
-            </Button>
-          </div>
+          mayEdit ? (
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setLogOpen(true)}>
+                <HardHat className="size-4" /> Log new reading
+              </Button>
+              <Button variant="dangerGhost" onClick={() => setConfirmDelete(true)}>
+                <Trash2 className="size-4" /> Delete
+              </Button>
+            </div>
+          ) : undefined
         }
       />
 
+      <ViewOnlyArea readOnly={!mayEdit}>
       <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
         <div className="min-w-0 lg:order-1">
           <div className="mb-4 flex flex-wrap gap-1 rounded-xl border border-hairline bg-white p-1">
@@ -294,6 +303,7 @@ export default function ProgressUpdateDetailPage() {
           </Card>
         </aside>
       </div>
+      </ViewOnlyArea>
 
       {logOpen && (
         <ProgressUpdateModal

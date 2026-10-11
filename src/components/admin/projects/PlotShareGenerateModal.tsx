@@ -190,10 +190,10 @@ export function PlotShareGenerateModal({
       onClose={onClose}
       footer={
         result ? (
-          <Button onClick={onClose}>Done</Button>
+          <Button onClick={onClose} viewSafe>Done</Button>
         ) : (
           <>
-            <Button variant="outline" onClick={onClose} disabled={busy}>
+            <Button variant="outline" onClick={onClose} viewSafe disabled={busy}>
               Cancel
             </Button>
             <Button

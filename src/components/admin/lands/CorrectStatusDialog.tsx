@@ -23,9 +23,18 @@ import { todayLocal } from '@/lib/utils/format';
  * and why the Lifecycle feed labels the row as a correction: an override that
  * does not explain itself is a back door.
  */
-export function CorrectStatusDialog({ land, onClose }: { land: Land; onClose: () => void }) {
+export function CorrectStatusDialog({
+  land,
+  inProject = false,
+  onClose,
+}: {
+  land: Land;
+  /** a project stands on it: only the "ours" statuses are offered (QA audit L-01) */
+  inProject?: boolean;
+  onClose: () => void;
+}) {
   const { userId } = useMockSession();
-  const options = correctableStatuses(land.status);
+  const options = correctableStatuses(land.status, inProject);
   const [to, setTo] = useState<LandStatus>(options[0] ?? land.status);
   const [eventDate, setEventDate] = useState(todayLocal());
   const [by, setBy] = useState('');

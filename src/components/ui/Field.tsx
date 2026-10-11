@@ -7,6 +7,7 @@ import type {
   TextareaHTMLAttributes,
 } from 'react';
 import { cn } from '@/lib/utils/cn';
+import { useReadOnly } from './ViewOnly';
 import { formatBdt, formatTakaWords } from '@/lib/utils/format';
 
 const CONTROL =
@@ -126,13 +127,17 @@ export function TextArea({
 export function Checkbox({
   label,
   className,
+  disabled,
   ...props
 }: InputHTMLAttributes<HTMLInputElement> & { label: string }) {
+  // a checkbox often saves on change, so a view-only area turns it off too
+  const readOnly = useReadOnly();
   return (
     <label className={cn('flex cursor-pointer items-center gap-2.5 text-sm text-ink', className)}>
       <input
         type="checkbox"
         className="size-4 rounded border-hairline text-admin-500 accent-admin-500"
+        disabled={disabled || readOnly}
         {...props}
       />
       {label}

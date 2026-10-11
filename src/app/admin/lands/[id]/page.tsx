@@ -31,6 +31,9 @@ import { LandEventDialog } from '@/components/admin/lands/LandEventDialog';
 import { CorrectStatusDialog } from '@/components/admin/lands/CorrectStatusDialog';
 import { OwnerAmountsDialog } from '@/components/admin/lands/OwnerAmountsDialog';
 import { Badge } from '@/components/ui/Badge';
+import { ViewOnlyArea, ViewOnlyNotice } from '@/components/ui/ViewOnly';
+import { useMockSession } from '@/lib/auth/mock-session';
+import { canCorrectLandStatus, canEdit } from '@/lib/domain/access';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -169,6 +172,9 @@ export default function LandDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('overview');
+  // QA audit X-01 — the land team acts; everyone else with access reads
+  const { role } = useMockSession();
+  const mayEdit = canEdit(role, 'land');
   const [section, setSection] = useState<TimelineSection>('site');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deciding, setDeciding] = useState<LandStatus | null>(null);
@@ -216,6 +222,7 @@ export default function LandDetailPage() {
   }
 
   const isJv = land.acquisition_type === 'joint_venture';
+  const inProject = (inProjects?.length ?? 0) > 0;
   const canEditOwnerAmounts =
     land.owners.length > 0 &&
     (Number(land.final_agreed_amount) || 0) > 0 &&
@@ -248,7 +255,7 @@ export default function LandDetailPage() {
   };
 
   return (
-    <>
+    <ViewOnlyArea readOnly={!mayEdit}>
       <Link
         href="/admin/lands"
         className="mb-4 inline-flex items-center gap-2 text-sm text-ink-muted hover:text-admin-700"
@@ -275,9 +282,10 @@ export default function LandDetailPage() {
         action={
           <div className="flex flex-wrap gap-2">
             {/* the decisions only a person can make — everything else follows the work */}
-            {allowedNextStatuses(land.status)
+            {mayEdit &&
+              allowedNextStatuses(land.status)
               // a project stands on it: the project has to release it first
-              .filter((to) => !(to === 'disposed' && (inProjects?.length ?? 0) > 0))
+              .filter((to) => !(to === 'disposed' && inProject))
               .map((to) => (
               <Button
                 key={to}
@@ -289,27 +297,35 @@ export default function LandDetailPage() {
               </Button>
             ))}
             {/* a parked land is put back where it was, and then re-checked */}
-            {land.status === 'on_hold' && (
+            {mayEdit && land.status === 'on_hold' && (
               <Button onClick={() => setResuming(true)}>
                 <PlayCircle className="size-4" /> Resume
               </Button>
             )}
-            {correctableStatuses(land.status).length > 0 && (
+            {/* QA audit L-01 — an override of the gates, so a director's call */}
+            {canCorrectLandStatus(role) && correctableStatuses(land.status, inProject).length > 0 && (
+              <ViewOnlyArea readOnly={false}>
               <Button variant="ghost" onClick={() => setCorrecting(true)} title="Correct this status">
                 <Wrench className="size-4" /> Correct status
               </Button>
+              </ViewOnlyArea>
             )}
-            <Link href={`/admin/lands/${land.id}/edit`}>
-              <Button variant="outline">
-                <Pencil className="size-4" /> Edit
+            {mayEdit && (
+              <Link href={`/admin/lands/${land.id}/edit`}>
+                <Button variant="outline">
+                  <Pencil className="size-4" /> Edit
+                </Button>
+              </Link>
+            )}
+            {mayEdit && (
+              <Button variant="dangerGhost" onClick={() => setConfirmDelete(true)}>
+                <Trash2 className="size-4" /> Delete
               </Button>
-            </Link>
-            <Button variant="dangerGhost" onClick={() => setConfirmDelete(true)}>
-              <Trash2 className="size-4" /> Delete
-            </Button>
+            )}
           </div>
         }
       />
+      {!mayEdit && <ViewOnlyNotice what="land" />}
 
       <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
         <div className="min-w-0 lg:order-1">
@@ -769,7 +785,11 @@ export default function LandDetailPage() {
       {deciding && (
         <LandEventDialog land={land} target={deciding} onClose={() => setDeciding(null)} />
       )}
-      {correcting && <CorrectStatusDialog land={land} onClose={() => setCorrecting(false)} />}
+      {correcting && (
+        <ViewOnlyArea readOnly={false}>
+          <CorrectStatusDialog land={land} inProject={inProject} onClose={() => setCorrecting(false)} />
+        </ViewOnlyArea>
+      )}
       {editingAmounts && <OwnerAmountsDialog land={land} onClose={() => setEditingAmounts(false)} />}
 
       <ConfirmDialog
@@ -807,6 +827,6 @@ export default function LandDetailPage() {
           router.push('/admin/lands');
         }}
       />
-    </>
+    </ViewOnlyArea>
   );
 }

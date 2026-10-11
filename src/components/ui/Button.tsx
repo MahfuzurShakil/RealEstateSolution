@@ -1,5 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { cn } from '@/lib/utils/cn';
+import { useReadOnly } from './ViewOnly';
 
 type Variant = 'primary' | 'outline' | 'ghost' | 'danger' | 'dangerGhost';
 type Size = 'sm' | 'md';
@@ -31,15 +32,22 @@ export function Button({
   type = 'button',
   className,
   children,
+  viewSafe = false,
+  disabled,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: Variant;
   size?: Size;
   children: ReactNode;
+  /** stays enabled in a view-only area: it only looks (view, download, close) */
+  viewSafe?: boolean;
 }) {
+  const readOnly = useReadOnly();
   return (
     <button
       type={type}
+      disabled={disabled || (readOnly && !viewSafe)}
+      title={readOnly && !viewSafe ? 'View only for your role' : props.title}
       className={cn(
         'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
         VARIANTS[variant],

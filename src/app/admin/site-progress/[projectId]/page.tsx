@@ -16,6 +16,7 @@ import { TowerProgressPanel } from '@/components/admin/site-progress/TowerProgre
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { ViewOnlyArea, ViewOnlyNotice } from '@/components/ui/ViewOnly';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { canEdit } from '@/lib/domain/access';
 import { materialRequestRepository, projectProgressRepository } from '@/lib/repositories';
@@ -41,6 +42,8 @@ export default function ProjectProgressPage() {
   const today = todayLocal();
   const [tab, setTab] = useState<Tab>('overview');
   const [logOpen, setLogOpen] = useState(false);
+  // QA audit X-01 — the site team and the PM log and edit; others read
+  const mayEdit = canEdit(role, 'site_progress');
 
   const row = useLiveQuery(
     () => projectProgressRepository.forProject(projectId, today),
@@ -101,9 +104,11 @@ export default function ProjectProgressPage() {
                 </Button>
               </Link>
             )}
-            <Button onClick={() => setLogOpen(true)}>
-              <Plus className="size-4" /> Log Update
-            </Button>
+            {mayEdit && (
+              <Button onClick={() => setLogOpen(true)}>
+                <Plus className="size-4" /> Log Update
+              </Button>
+            )}
             <Link href={`/admin/projects/${project.id}`}>
               <Button variant="ghost">
                 <Building2 className="size-4" /> Project record
@@ -131,6 +136,9 @@ export default function ProjectProgressPage() {
         ))}
       </div>
 
+      {!mayEdit && <ViewOnlyNotice what="site" />}
+
+      <ViewOnlyArea readOnly={!mayEdit}>
       {tab === 'overview' && <ProjectProgressSummary projectId={project.id} view="overview" />}
 
       {tab === 'breakdown' && <TowerProgressPanel projectId={project.id} showRollup={false} />}
@@ -161,6 +169,8 @@ export default function ProjectProgressPage() {
           <ActivityTimeline projectId={project.id} />
         </Card>
       )}
+
+      </ViewOnlyArea>
 
       {logOpen && (
         <ProgressUpdateModal open projectId={project.id} onClose={() => setLogOpen(false)} />

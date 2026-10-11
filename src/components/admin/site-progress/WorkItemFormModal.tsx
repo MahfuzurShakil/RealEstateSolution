@@ -97,7 +97,7 @@ export function WorkItemFormModal({
       onClose={onClose}
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={busy}>
+          <Button variant="outline" onClick={onClose} viewSafe disabled={busy}>
             Cancel
           </Button>
           <Button onClick={save} disabled={busy}>

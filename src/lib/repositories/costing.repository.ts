@@ -16,7 +16,7 @@ import { projectBudgetRepository } from './budget.repository';
 import { financeDashboardRepository } from './finance.repository';
 import { landAcquisitionCostRepository } from './negotiation.repository';
 import { procurementCostRepository } from './procurement.repository';
-import { projectRepository, unitRepository } from './project.repository';
+import { landProjectMappingRepository, projectRepository, unitRepository } from './project.repository';
 
 /**
  * v29 — a project's costing, assembled from what is already recorded
@@ -44,7 +44,8 @@ class ProjectCostingRepository {
     if (!project) return null;
 
     const [mappings, budget, expenses, materials, finance, units] = await Promise.all([
-      db.land_project_mapping.where('project_id').equals(projectId).toArray(),
+      // QA audit P-02 — the land whose cost this project carries
+      landProjectMappingRepository.costedMappingsFor(projectId),
       projectBudgetRepository.listForProject(projectId),
       db.expenses.where('project_id').equals(projectId).toArray(),
       procurementCostRepository.forProject(projectId),

@@ -33,6 +33,7 @@ import {
   type ProgressRollup,
 } from '../domain/site-progress';
 import { nextCode } from '../utils/id';
+import { todayLocal } from '../utils/format';
 import { BaseRepository, type NewRecord } from './base.repository';
 import { documentRepository } from './document.repository';
 
@@ -332,6 +333,15 @@ class SiteProgressUpdateRepository extends BaseRepository<SiteProgressUpdate> {
     },
     createdBy: string | null = null,
   ): Promise<SiteProgressUpdate> {
+    /*
+     * QA audit 2026-10-11 (C-01): the item takes the reading with the latest
+     * date, so one mistyped year (2027 for 2026) froze it and every genuine
+     * report after it was ignored. Nothing can be reported from the future.
+     */
+    if (!input.update_date) throw new Error('An update date is required.');
+    if (input.update_date > todayLocal()) {
+      throw new Error('The update date cannot be in the future.');
+    }
     const pct = clampPct(Number(input.progress_pct));
     const saved = await this.create({ ...input, progress_pct: pct }, createdBy);
     await applyLatestReading(input.work_item_id);

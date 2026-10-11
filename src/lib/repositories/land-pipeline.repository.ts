@@ -17,6 +17,7 @@ import {
   LAND_STATUS_META,
   allowedNextStatuses,
   closingBlockReason,
+  correctableStatuses,
   feasibilityGateBlockReason,
   landWaitingOn,
   nextAutomaticStep,
@@ -590,6 +591,16 @@ class LandPipelineRepository {
   ): Promise<LandStatusEvent | undefined> {
     const reason = details.reason.trim();
     if (!reason) throw new PipelineBlockedError('A correction needs a reason');
+    // QA audit L-01 — never off a land a project stands on (see correctableStatuses)
+    const inProject = (await db.land_project_mapping.where('land_id').equals(landId).count()) > 0;
+    const current = await landRepository.getById(landId);
+    if (current && !correctableStatuses(current.status, inProject).includes(to)) {
+      throw new PipelineBlockedError(
+        inProject
+          ? 'A project stands on this land, so it can only be corrected to Acquired, Under Development or Ready for Project. Release it from the project first.'
+          : 'This land cannot be corrected to that status.',
+      );
+    }
     const moved = await landRepository.setStatus(
       landId,
       to,

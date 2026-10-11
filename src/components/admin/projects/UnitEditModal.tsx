@@ -160,7 +160,7 @@ export function UnitEditModal({
       onClose={onClose}
       footer={
         locked ? (
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} viewSafe>
             Close
           </Button>
         ) : (
@@ -179,7 +179,7 @@ export function UnitEditModal({
                 </Button>
               </Link>
             )}
-            <Button variant="outline" onClick={onClose} disabled={saving}>
+            <Button variant="outline" onClick={onClose} viewSafe disabled={saving}>
               Cancel
             </Button>
             <Button onClick={save} disabled={saving}>

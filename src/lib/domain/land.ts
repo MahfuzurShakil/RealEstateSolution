@@ -547,10 +547,19 @@ export function nextAutomaticStep(
  * system existed, or moved by mistake. Land already owned when it is entered
  * should use the owned entry instead (v29), which records what was paid.
  */
-export function correctableStatuses(current: LandStatus): LandStatus[] {
+export function correctableStatuses(current: LandStatus, inProject = false): LandStatus[] {
   return (Object.keys(LAND_STATUS_META) as LandStatus[]).filter(
     // parking and dropping are decisions, recorded with a reason
-    (s) => s !== current && s !== 'on_hold',
+    (s) =>
+      s !== current &&
+      s !== 'on_hold' &&
+      /*
+       * QA audit 2026-10-11 (L-01): a project stands on this land, so a
+       * correction may only say which kind of "ours" it is. Taking it back
+       * into the pipeline, or rejecting or divesting it, would pull the land
+       * out from under the project; the project has to release it first.
+       */
+      (!inProject || landIsHeld(s)),
   );
 }
 

@@ -87,7 +87,7 @@ function LandownerDialog({
       onClose={onClose}
       footer={
         <>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} viewSafe>
             Cancel
           </Button>
           <Button onClick={save} disabled={saving}>

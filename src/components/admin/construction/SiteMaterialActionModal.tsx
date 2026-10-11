@@ -144,7 +144,7 @@ function Dialog({
       onClose={onClose}
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={busy}>
+          <Button variant="outline" onClick={onClose} viewSafe disabled={busy}>
             Cancel
           </Button>
           <Button variant={mode === 'write_off' ? 'danger' : 'primary'} onClick={save} disabled={busy}>

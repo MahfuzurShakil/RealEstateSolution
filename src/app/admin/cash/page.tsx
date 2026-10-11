@@ -290,7 +290,7 @@ function AccountModal({
       icon={Landmark}
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={saving}>
+          <Button variant="outline" onClick={onClose} viewSafe disabled={saving}>
             Cancel
           </Button>
           <Button
@@ -446,7 +446,7 @@ function StatementModal({
       )} at ${formatDate(account.opening_balance_date)}`}
       icon={Landmark}
       footer={
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="outline" onClick={onClose} viewSafe>
           Close
         </Button>
       }

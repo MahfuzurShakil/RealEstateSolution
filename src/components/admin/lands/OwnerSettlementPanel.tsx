@@ -240,7 +240,7 @@ function OwnerPlanDialog({
       onClose={onClose}
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={saving}>
+          <Button variant="outline" onClick={onClose} viewSafe disabled={saving}>
             Cancel
           </Button>
           <Button

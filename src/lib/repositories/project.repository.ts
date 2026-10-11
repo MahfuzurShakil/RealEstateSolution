@@ -565,9 +565,15 @@ class ProjectRepository extends BaseRepository<Project> {
     if (expenses) parts.push(`${expenses} expense${expenses === 1 ? '' : 's'}`);
     const paid = vouchers.filter((v) => v.project_id === id).length;
     if (paid) parts.push(`${paid} supplier payment${paid === 1 ? '' : 's'}`);
-    return parts.length
-      ? `This project has ${parts.join(', ')}. Deleting it would orphan them; close the project instead.`
-      : null;
+    if (parts.length) {
+      return `This project has ${parts.join(', ')}. Deleting it would orphan them; close the project instead.`;
+    }
+    // QA audit P-01 — the tower guard (site history) applies through the project too
+    for (const tower of await towerRepository.listForProject(id)) {
+      const reason = await towerRepository.deleteBlockReason(tower.id);
+      if (reason) return `${tower.name}: ${reason} Close the project instead.`;
+    }
+    return null;
   }
 
   async removeCascade(id: string): Promise<void> {
@@ -669,6 +675,38 @@ class LandProjectMappingRepository extends BaseRepository<LandProjectMapping> {
     for (const land_id of landIds) await this.create({ land_id, project_id: projectId });
   }
 
+  /**
+   * Which project carries a land's cost (QA audit 2026-10-11, P-02).
+   *
+   * Normally the project the land is mapped to. But when a land-share
+   * project's buyers commission a building, the mapping moves to the new
+   * project (one land, one project — D3) while the land was paid for, and
+   * sold, by the share project. Its cost stays there; otherwise the share
+   * project showed full revenue against no land and the construction project
+   * carried a land the shareholders had already bought.
+   */
+  async costHolderResolver(): Promise<(projectId: string) => string> {
+    const projects = await db.projects.toArray();
+    const byId = new Map(projects.map((p) => [p.id, p]));
+    return (projectId: string) => {
+      let current = byId.get(projectId);
+      const seen = new Set<string>();
+      while (current?.succeeds_project_id && !seen.has(current.id)) {
+        seen.add(current.id);
+        const predecessor = byId.get(current.succeeds_project_id);
+        if (!predecessor || predecessor.project_type !== 'land_share') break;
+        current = predecessor;
+      }
+      return current?.id ?? projectId;
+    };
+  }
+
+  /** The land mappings whose cost this project carries (see `costHolderResolver`). */
+  async costedMappingsFor(projectId: string): Promise<LandProjectMapping[]> {
+    const [all, holder] = await Promise.all([this.getAll(), this.costHolderResolver()]);
+    return all.filter((m) => holder(m.project_id) === projectId);
+  }
+
   /** Every land id that sits in at least one project — for list badges. */
   async linkedLandIds(): Promise<Set<string>> {
     const rows = await db.land_project_mapping.toArray();
@@ -753,8 +791,44 @@ class TowerRepository extends BaseRepository<Tower> {
     );
   }
 
+  /**
+   * Why a tower cannot be deleted, or null (QA audit 2026-10-11, P-01).
+   *
+   * Deleting a tower used to take every unit in it, booked and sold ones
+   * included, and its whole site log — leaving bookings and receipts pointing
+   * at flats that no longer existed, one level below the project's own guard.
+   */
+  async deleteBlockReason(id: string): Promise<string | null> {
+    const units = await db.units.where('tower_id').equals(id).toArray();
+    const held = await unitRepository.heldUnits(units.map((u) => u.id));
+    if (held.length > 0) {
+      const codes = held.slice(0, 5).map((u) => u.code).join(', ');
+      const more = held.length > 5 ? ` and ${held.length - 5} more` : '';
+      return `${held.length} unit${held.length === 1 ? '' : 's'} in this tower (${codes}${more}) ${held.length === 1 ? 'has' : 'have'} a buyer or a booking on record, so the tower cannot be deleted.`;
+    }
+    const items = await db.tower_work_items.where('tower_id').equals(id).toArray();
+    const itemIds = items.map((i) => i.id);
+    if (itemIds.length > 0) {
+      const [readings, used] = await Promise.all([
+        db.site_progress_updates.where('work_item_id').anyOf(itemIds).count(),
+        db.stock_consumptions.toArray(),
+      ]);
+      const usedHere = used.filter((c) => c.work_item_id && itemIds.includes(c.work_item_id)).length;
+      if (readings > 0 || usedHere > 0) {
+        const parts = [
+          readings ? `${readings} site reading${readings === 1 ? '' : 's'}` : '',
+          usedHere ? `${usedHere} material-use record${usedHere === 1 ? '' : 's'}` : '',
+        ].filter(Boolean);
+        return `This tower's work has ${parts.join(' and ')} against it, so deleting it would erase site history.`;
+      }
+    }
+    return null;
+  }
+
   /** Deleting a tower takes its units and its WBS (with the site log) with it. */
   async removeCascade(id: string): Promise<void> {
+    const blocked = await this.deleteBlockReason(id);
+    if (blocked) throw new Error(blocked);
     const units = await db.units.where('tower_id').equals(id).toArray();
     await db.units.bulkDelete(units.map((u) => u.id));
     await towerWorkItemRepository.removeForTower(id);
@@ -1133,7 +1207,34 @@ class UnitRepository extends BaseRepository<Unit> {
     for (const id of unitIds) await this.update(id, { status });
   }
 
+  /**
+   * Units that cannot be deleted, as a sentence, or null (QA audit P-01).
+   * A unit with a buyer, or with any booking on record (a cancelled one still
+   * carries its payments and refund), is history, not inventory.
+   */
+  async heldUnits(unitIds: string[]): Promise<Unit[]> {
+    if (unitIds.length === 0) return [];
+    const ids = new Set(unitIds);
+    const [units, bookings] = await Promise.all([db.units.bulkGet(unitIds), db.bookings.toArray()]);
+    const booked = new Set(bookings.filter((b) => ids.has(b.unit_id)).map((b) => b.unit_id));
+    return units.filter(
+      (u): u is Unit =>
+        Boolean(u) &&
+        (booked.has(u!.id) || ['reserved', 'booked', 'sold', 'handed_over'].includes(u!.status)),
+    );
+  }
+
+  async removalBlockReason(unitIds: string[]): Promise<string | null> {
+    const held = await this.heldUnits(unitIds);
+    if (held.length === 0) return null;
+    const codes = held.slice(0, 5).map((u) => u.code).join(', ');
+    const more = held.length > 5 ? ` and ${held.length - 5} more` : '';
+    return `${codes}${more} ${held.length === 1 ? 'has' : 'have'} a buyer or a booking on record, so ${held.length === 1 ? 'it' : 'they'} cannot be deleted. Cancel the booking instead, or leave ${held.length === 1 ? 'it' : 'them'} out of the selection.`;
+  }
+
   async bulkRemove(unitIds: string[]): Promise<void> {
+    const blocked = await this.removalBlockReason(unitIds);
+    if (blocked) throw new Error(blocked);
     await db.units.bulkDelete(unitIds);
   }
 

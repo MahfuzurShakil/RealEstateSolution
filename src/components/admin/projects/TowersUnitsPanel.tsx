@@ -95,6 +95,15 @@ export function TowersUnitsPanel({
   const [view, setView] = useState<ViewMode>('grid');
 
   const towers = useLiveQuery(() => towerRepository.listForProject(projectId), [projectId]);
+  // QA audit P-01 — say why a delete is refused before anyone confirms it
+  const towerDeleteBlocked = useLiveQuery(
+    () => (deleteTower ? towerRepository.deleteBlockReason(deleteTower.id) : Promise.resolve(null)),
+    [deleteTower?.id],
+  );
+  const unitsDeleteBlocked = useLiveQuery(
+    () => (deleteUnits ? unitRepository.removalBlockReason(selection) : Promise.resolve(null)),
+    [deleteUnits, selection.join(',')],
+  );
 
   /*
    * A share register's one container is created for it, not by the user.
@@ -529,7 +538,11 @@ export function TowersUnitsPanel({
         open={deleteTower !== null}
         title={deleteTower ? `Delete ${deleteTower.name}` : ''}
         confirmLabel="Delete tower"
-        message="The tower and every unit inside it are deleted. This cannot be undone."
+        message={
+          towerDeleteBlocked ??
+          'The tower, every unit inside it and its work breakdown are deleted. This cannot be undone.'
+        }
+        disabled={Boolean(towerDeleteBlocked)}
         onCancel={() => setDeleteTower(null)}
         onConfirm={async () => {
           if (deleteTower) {
@@ -544,7 +557,10 @@ export function TowersUnitsPanel({
         open={deleteUnits}
         title={`Delete ${selection.length} unit${selection.length === 1 ? '' : 's'}`}
         confirmLabel="Delete units"
-        message="The selected units are removed from this tower. This cannot be undone."
+        message={
+          unitsDeleteBlocked ?? 'The selected units are removed from this tower. This cannot be undone.'
+        }
+        disabled={Boolean(unitsDeleteBlocked)}
         onCancel={() => setDeleteUnits(false)}
         onConfirm={async () => {
           await unitRepository.bulkRemove(selection);

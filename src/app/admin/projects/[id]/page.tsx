@@ -18,6 +18,9 @@ import { PlotDevelopmentCard } from '@/components/admin/projects/PlotDevelopment
 import { SuccessionCard } from '@/components/admin/projects/SuccessionCard';
 import { TowersUnitsPanel } from '@/components/admin/projects/TowersUnitsPanel';
 import { Badge } from '@/components/ui/Badge';
+import { ViewOnlyArea, ViewOnlyNotice } from '@/components/ui/ViewOnly';
+import { useMockSession } from '@/lib/auth/mock-session';
+import { canEdit } from '@/lib/domain/access';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -56,6 +59,11 @@ export default function ProjectDetailPage() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('overview');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // QA audit X-01 — viewing a project is not changing it (Section 9.6)
+  const { role } = useMockSession();
+  const mayEdit = canEdit(role, 'project');
+  // opening, pausing and publishing sales is also the sales team's call
+  const maySell = mayEdit || canEdit(role, 'booking');
 
   const project = useLiveQuery(() => projectRepository.getWithRelations(id), [id]);
   const isJv = useProjectIsJv(id);
@@ -120,7 +128,7 @@ export default function ProjectDetailPage() {
         title={project.name}
         subtitle={`${project.code} · ${project.location_summary ?? PROJECT_TYPE_LABEL[project.project_type]}`}
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {/*
               Site work lives in Construction once building has started
               (PLATFORM-REPLAN.md Phase 2): work breakdown, site log,
@@ -139,17 +147,23 @@ export default function ProjectDetailPage() {
                 <Wallet className="size-4" /> Finance
               </Button>
             </Link>
-            <Link href={`/admin/projects/${project.id}/edit`}>
-              <Button variant="outline">
-                <Pencil className="size-4" /> Edit
+            {mayEdit && (
+              <Link href={`/admin/projects/${project.id}/edit`}>
+                <Button variant="outline">
+                  <Pencil className="size-4" /> Edit
+                </Button>
+              </Link>
+            )}
+            {mayEdit && (
+              <Button variant="dangerGhost" onClick={() => setConfirmDelete(true)}>
+                <Trash2 className="size-4" /> Delete
               </Button>
-            </Link>
-            <Button variant="dangerGhost" onClick={() => setConfirmDelete(true)}>
-              <Trash2 className="size-4" /> Delete
-            </Button>
+            )}
           </div>
         }
       />
+
+      {!mayEdit && <ViewOnlyNotice what="project" />}
 
       <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
         <div className="min-w-0 lg:order-1">
@@ -171,6 +185,7 @@ export default function ProjectDetailPage() {
             ))}
           </div>
 
+          <ViewOnlyArea readOnly={!mayEdit}>
           {tab === 'overview' && (
             <div className="space-y-5">
               <Card>
@@ -266,12 +281,17 @@ export default function ProjectDetailPage() {
               </Card>
             </div>
           )}
+          </ViewOnlyArea>
         </div>
 
         <aside className="min-w-0 space-y-5 lg:order-2">
-          <ProjectStatusCard project={project} />
+          <ViewOnlyArea readOnly={!mayEdit}>
+            <ProjectStatusCard project={project} />
+          </ViewOnlyArea>
           {/* v29 — selling runs beside the build stages, not inside them */}
-          <ProjectSalesCard project={project} lands={project.lands} />
+          <ViewOnlyArea readOnly={!maySell}>
+            <ProjectSalesCard project={project} lands={project.lands} />
+          </ViewOnlyArea>
 
           <Card>
             <CardHeader title="Inventory" />

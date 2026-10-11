@@ -322,7 +322,7 @@ function GeneratePlanModal({
       icon={CalendarClock}
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={saving}>
+          <Button variant="outline" onClick={onClose} viewSafe disabled={saving}>
             Cancel
           </Button>
           <Button
@@ -473,7 +473,7 @@ function EditLineModal({
       icon={Pencil}
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={saving}>
+          <Button variant="outline" onClick={onClose} viewSafe disabled={saving}>
             Cancel
           </Button>
           <Button

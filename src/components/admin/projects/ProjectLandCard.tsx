@@ -15,7 +15,7 @@ import {
   landStatusLabel,
 } from '@/lib/domain/land';
 import { LAND_READINESS_META, landReadiness } from '@/lib/domain/project';
-import { landAcquisitionCostRepository } from '@/lib/repositories';
+import { landAcquisitionCostRepository, projectRepository } from '@/lib/repositories';
 import { formatBdt } from '@/lib/utils/format';
 
 /**
@@ -27,6 +27,13 @@ import { formatBdt } from '@/lib/utils/format';
  * its land was finished sends people to finish it.
  */
 export function ProjectLandCard({ projectId, lands }: { projectId: string; lands: Land[] }) {
+  /*
+   * QA audit P-02 — a land-share project whose land moved to the project its
+   * shareholders commissioned still sold that land: say where it went rather
+   * than "no land yet".
+   */
+  const successors = useLiveQuery(() => projectRepository.successorsOf(projectId), [projectId]);
+  const handedTo = lands.length === 0 ? successors?.[0] : undefined;
   const readiness = landReadiness(lands);
   const meta = LAND_READINESS_META[readiness];
   const sheets = useLiveQuery(
@@ -43,10 +50,18 @@ export function ProjectLandCard({ projectId, lands }: { projectId: string; lands
     <Card>
       <CardHeader
         title="Land"
-        subtitle={meta.hint}
-        action={<Badge tone={meta.tone}>{meta.label}</Badge>}
+        subtitle={handedTo ? undefined : meta.hint}
+        action={handedTo ? <Badge tone="teal">Handed over</Badge> : <Badge tone={meta.tone}>{meta.label}</Badge>}
       />
-      {lands.length === 0 ? (
+      {handedTo ? (
+        <p className="rounded-xl border border-hairline p-4 text-sm text-ink-muted">
+          The land passed to{' '}
+          <Link href={`/admin/projects/${handedTo.id}`} className="font-medium text-admin-700 hover:underline">
+            {handedTo.code} {handedTo.name}
+          </Link>{' '}
+          when its construction started. Its cost stays with this project in Finance, which sold it.
+        </p>
+      ) : lands.length === 0 ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-hairline p-4">
           <p className="text-sm text-ink-muted">No land linked to this project yet.</p>
           <Link href={`/admin/projects/${projectId}/edit`}>

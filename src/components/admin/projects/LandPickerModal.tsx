@@ -129,7 +129,7 @@ function Picker({
             </Button>
           </>
         ) : (
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} viewSafe>
             Cancel
           </Button>
         )

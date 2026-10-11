@@ -266,6 +266,16 @@ export function canApprove(role: UserRole, module: ModuleKey): boolean {
   return level === 'full' || level === 'approve';
 }
 
+/**
+ * QA audit 2026-10-11 (L-01): "Correct status" skips the land gates
+ * (feasibility, due diligence, settlement) by design — it exists for land
+ * bought before the system and for mistakes. An override like that is a
+ * director's call, not the land team's own shortcut.
+ */
+export function canCorrectLandStatus(role: UserRole): boolean {
+  return role === 'super_admin' || role === 'management';
+}
+
 /** Accounts check a supplier bill against the order and the receipts. */
 export function canVerifyBill(role: UserRole): boolean {
   return role === 'accounts' || role === 'super_admin';

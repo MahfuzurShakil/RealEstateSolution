@@ -11,6 +11,7 @@ import { useMockSession } from '@/lib/auth/mock-session';
 import {
   MODULE_LABEL,
   USER_ROLE_META,
+  canEdit,
   canView,
   moduleForPath,
 } from '@/lib/domain/access';
@@ -34,14 +35,25 @@ export function AccessGate({ children }: { children: ReactNode }) {
   const { role } = useMockSession();
 
   const moduleKey = moduleForPath(pathname);
-  if (!moduleKey || canView(role, moduleKey)) return <>{children}</>;
+  /*
+   * QA audit 2026-10-11 (X-01): a form is not a view. A role that may only see
+   * a module could still type /new or /edit and save; those pages now need
+   * edit rights, the same right the page's own Edit button is gated on.
+   */
+  const isForm = /\/(new|edit)(\/|$)/.test(pathname);
+  if (!moduleKey) return <>{children}</>;
+  if (isForm ? canEdit(role, moduleKey) : canView(role, moduleKey)) return <>{children}</>;
 
   const meta = USER_ROLE_META[role];
 
   return (
     <EmptyState
       icon={ShieldAlert}
-      title={`${MODULE_LABEL[moduleKey]} is not open to this role`}
+      title={
+        isForm && canView(role, moduleKey)
+          ? `${MODULE_LABEL[moduleKey]} is view only for this role`
+          : `${MODULE_LABEL[moduleKey]} is not open to this role`
+      }
       description={`${meta.label} — ${meta.description} Switch role from the topbar to see this screen, or ask a Super Admin for access.`}
       action={
         <div className="flex flex-wrap items-center justify-center gap-2">

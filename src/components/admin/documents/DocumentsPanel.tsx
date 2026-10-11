@@ -155,6 +155,7 @@ export function DocumentsPanel({
                   variant="ghost"
                   size="sm"
                   aria-label="View document"
+                  viewSafe
                   onClick={() => setViewing(doc)}
                 >
                   <Eye className="size-4" />
@@ -288,7 +289,7 @@ function UploadDialog({
       onClose={onClose}
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={saving}>
+          <Button variant="outline" onClick={onClose} viewSafe disabled={saving}>
             Cancel
           </Button>
           <Button onClick={save} disabled={saving}>
@@ -429,12 +430,14 @@ export function DocumentViewer({
         <>
           {url && (
             <a href={url} download={doc.file_name ?? doc.file_url}>
-              <Button variant="outline">
+              <Button variant="outline" viewSafe>
                 <Download className="size-4" /> Download
               </Button>
             </a>
           )}
-          <Button onClick={onClose}>Close</Button>
+          <Button onClick={onClose} viewSafe>
+            Close
+          </Button>
         </>
       }
     >

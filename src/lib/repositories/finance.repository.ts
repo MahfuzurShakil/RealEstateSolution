@@ -1327,8 +1327,11 @@ class FinanceDashboardRepository {
       row.cost_procurement = money(m.received_value + m.transferred_in_value - m.transferred_out_value);
     }
 
+    // QA audit P-02 — a land-share project keeps the cost of the land it sold
+    const { landProjectMappingRepository } = await import('./project.repository');
+    const landCostHolder = await landProjectMappingRepository.costHolderResolver();
     for (const m of landMappings) {
-      const row = byId.get(m.project_id);
+      const row = byId.get(landCostHolder(m.project_id));
       if (!row) continue;
       const share = (landCash.get(m.land_id) ?? 0) / (projectsPerLand.get(m.land_id) ?? 1);
       row.cost_land = money(row.cost_land + share);

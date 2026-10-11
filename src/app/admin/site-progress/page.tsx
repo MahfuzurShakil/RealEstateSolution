@@ -25,6 +25,8 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Field, SelectInput, TextInput } from '@/components/ui/Field';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { useMockSession } from '@/lib/auth/mock-session';
+import { canEdit } from '@/lib/domain/access';
 import { PROJECT_STATUS_META } from '@/lib/domain/project';
 import { STALE_AFTER_DAYS, scheduleBadge, scheduleCaption } from '@/lib/domain/site-progress';
 import { projectProgressRepository, type ProjectProgressRow } from '@/lib/repositories';
@@ -53,6 +55,8 @@ export default function SiteProgressBoardPage() {
   const [state, setState] = useState('all');
   const [projectStatus, setProjectStatus] = useState('all');
   const [logOpen, setLogOpen] = useState(false);
+  // QA audit X-01 — only the site team and the PM log progress
+  const { role } = useMockSession();
 
   const rows = useLiveQuery(
     () => projectProgressRepository.board(today, { search, state, project_status: projectStatus }),
@@ -114,9 +118,11 @@ export default function SiteProgressBoardPage() {
         title="Construction"
         subtitle="Every project under construction, the ones that need you first. Open one to manage its site."
         action={
-          <Button onClick={() => setLogOpen(true)}>
-            <Plus className="size-4" /> Log Update
-          </Button>
+          canEdit(role, 'site_progress') ? (
+            <Button onClick={() => setLogOpen(true)}>
+              <Plus className="size-4" /> Log Update
+            </Button>
+          ) : undefined
         }
       />
 

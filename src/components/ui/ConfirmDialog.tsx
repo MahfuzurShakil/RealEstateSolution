@@ -52,7 +52,7 @@ export function ConfirmDialog({
       onClose={onCancel}
       footer={
         <>
-          <Button variant="outline" onClick={onCancel} disabled={busy}>
+          <Button variant="outline" onClick={onCancel} disabled={busy} viewSafe>
             {cancelLabel}
           </Button>
           <Button
