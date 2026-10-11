@@ -29,6 +29,7 @@ import {
   landDevelopmentProgressRepository,
   landownerRepository,
   materialRequestRepository,
+  supplierBillRepository,
   siteProgressUpdateRepository,
   towerWorkItemRepository,
   goodsReceiptRepository,
@@ -1772,11 +1773,48 @@ async function seedDemoProcurement(
       });
     }
 
-    for (const voucher of demo.vouchers ?? []) {
+    /*
+     * Phase 2 step 4: a payment goes against an approved bill. The demo
+     * supplier billed what arrived, at the order's rates; accounts verified
+     * it and management approved it before the first payment.
+     */
+    const vouchers = demo.vouchers ?? [];
+    let billId: string | null = null;
+    if (vouchers.length > 0) {
+      const billedLines = (await purchaseOrderItemRepository.listForOrder(order.id))
+        .filter((l) => l.quantity_received > 0)
+        .map((l) => ({ po_item_id: l.id, quantity_billed: l.quantity_received, rate_billed: l.unit_price }));
+      if (billedLines.length > 0) {
+        const firstPaid = Math.max(...vouchers.map((v) => v.days_ago));
+        const billDay = daysFromToday(-(firstPaid + 2)).slice(0, 10);
+        const bill = await supplierBillRepository.record(
+          { po_id: order.id, bill_no: `INV-${order.code.slice(-3)}`, bill_date: billDay, items: billedLines },
+          createdBy,
+        );
+        const full = await supplierBillRepository.getWithRelations(bill.id);
+        await supplierBillRepository.verify(bill.id, {
+          payable_amount: full?.match.matched_value ?? bill.payable_amount,
+          by: userIds.get('faruk') ?? null,
+          date: billDay,
+        });
+        await supplierBillRepository.approve(bill.id, {
+          by: userIds.get('chairman') ?? null,
+          date: billDay,
+          note: full?.match.clean ? null : 'Accepted as delivered.',
+        });
+        billId = bill.id;
+      }
+    }
+
+    for (const voucher of vouchers) {
+      if (!billId) break;
+      const bill = await supplierBillRepository.getWithRelations(billId);
+      const amount = Math.min(voucher.amount, bill?.balance ?? 0);
+      if (amount <= 0) break;
       const saved = await supplierVoucherRepository.pay(
         {
-          po_id: order.id,
-          amount: voucher.amount,
+          bill_id: billId,
+          amount,
           payment_date: daysFromToday(-voucher.days_ago).slice(0, 10),
           payment_method: voucher.payment_method,
           reference_no: voucher.reference_no ?? null,
@@ -1812,6 +1850,12 @@ async function seedDemoProcurement(
       createdBy,
     );
     const movedAt = daysFromToday(-demo.days_ago);
+    // these demo moves all arrived; the site counted them in the same day
+    await stockTransferRepository.receive(saved.id, {
+      quantity_received: saved.quantity,
+      received_date: movedAt.slice(0, 10),
+      received_by: userIds.get(demo.transferred_by_key) ?? null,
+    });
     await db.stock_transfers.update(saved.id, { created_at: movedAt, updated_at: movedAt });
   }
 
@@ -2256,6 +2300,8 @@ export async function clearDemoData(): Promise<void> {
     db.project_budget_lines.clear(),
     db.bank_accounts.clear(),
     db.supplier_vouchers.clear(),
+    db.supplier_bills.clear(),
+    db.supplier_bill_items.clear(),
     db.payment_schedules.clear(),
     db.payment_installments.clear(),
     db.refunds.clear(),

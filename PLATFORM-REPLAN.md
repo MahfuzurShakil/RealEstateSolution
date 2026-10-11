@@ -255,6 +255,211 @@ shown in Finance → project. Phase 2 also audits that every step links to the o
 "Completed"); plot projects not included yet.
 **Progress:** steps 1–3 done 2026-10-11. Next: step 4, the money-chain audit.
 
+### Step 4 — The material flow: request to payment (plan, 2026-10-11)
+
+#### 4.1 How it works on a Bangladeshi site today
+
+- **Site.** The site engineer writes a requisition (*chahida patra*) from the work plan:
+  "450 bags cement, 6 ton 16 mm rod for 5th-floor slab". The Project Manager checks it against
+  the drawings and the progress, and often cuts it ("300 bags now, the rest next week").
+- **Procurement.** Procurement gets quotes, places the order (*karyadesh*) and tells the
+  supplier where to unload. Cement, rod, sand and brick normally go **straight to site** from
+  the dealer or brickfield. Tiles, fittings, electrical and anything bought in bulk at a good
+  rate often go to the **main store** (central godown) first and are sent to sites later.
+- **Delivery.** The lorry comes with a **challan** (delivery note). The site storekeeper
+  counts and checks, signs the challan, writes it in the site store register, and turns back
+  wet cement or under-size rod. Deliveries come in parts: 6 ton ordered, 4 today, 2 next week.
+- **Bill.** Days or weeks later the supplier submits a **bill** (invoice), often for several
+  challans together and sometimes at a different rate ("rod went up ৳2,000 a ton").
+- **Checking.** Procurement or accounts checks the bill against the order and the signed
+  challans (the **three-way match**: ordered × received × billed). They prepare a **bill
+  voucher** with "prepared by / checked by / approved by" signatures. Management (MD or a
+  director) approves it. This is the **final billable voucher**.
+- **Payment.** Accounts pays by cheque or bank transfer **against that voucher**, often in
+  parts (an advance, a running payment, then the final payment). VAT and AIT are deducted at
+  source.
+- **On site.** The storekeeper hands material out to the mason or sub-contractor's foreman
+  (**in use**). The engineer records what went into which slab or wall (**used**). At the end
+  of the job, leftovers (half a pallet of tiles, rod off-cuts) go **back to the main store**
+  for the next project.
+
+#### 4.2 What the system has and where the chain breaks
+
+| Step | Built today | Gap |
+|---|---|---|
+| Request | `material_requests`, line `quantity_approved` (partial approval exists), status history | Procurement approves the requests it then buys against (no separation). No partly-received state: a request is "received" or not. |
+| Order | `purchase_orders` + lines | No **delivery point**: a project PO always lands in the project's store, a central PO always in the main store. |
+| Delivery | `goods_receipts`, quality check, site presses Receive | Material sent from the main store (`stock_transfers`) arrives **instantly**. The site never confirms it, so there is nothing to Receive and shortages go unseen. Material sent ahead with no request has no place on the site's screen. |
+| Bill | — | **Missing.** `supplier_vouchers` *is* the payment. The supplier's bill, its scan, the match and the approval are not recorded anywhere. |
+| Payment | `supplier_vouchers` (paid against a PO, any amount) | Paid against an order, not a checked bill. A bill at a higher rate, or for more than arrived, is paid without anyone seeing it. |
+| Site stock | stock row (site store) + issues → site balance → used / back to store / written off | Shown as separate "Stock on site" and "Used" tabs, with money. Leftovers can only go back to the site's own store, not to the main store. |
+| Cost | material cost = received at site at order price (decision 2026-10-11) | A price difference on the bill never reaches the project's cost. |
+
+#### 4.3 The flow (target)
+
+```
+ SITE                       PROJECT MGR         PROCUREMENT                 MAIN STORE        ACCOUNTS / MANAGEMENT        FINANCE
+ Request ───────────────▶  Approve (full /  ─▶ Order PO ─ deliver to ─┬──▶ site: site Receives (challan, accepted/rejected)
+ (Pending)                  part / reject)      (Ordered)              └──▶ main store: store Receives ─▶ Send to site ─▶ site Receives
+                                                Send ahead (no request) ──────────────────────────────▶ site Receives
+                                                Record supplier bill + scan ─▶ 3-way match ─▶ Verify ─▶ Approve = payable voucher ─▶ Pay (part / full)
+ Site materials: Received ─▶ In use ─▶ Used          leftovers: Send back ─▶ main store Receives
+```
+
+**Material request status** (shown from the moment it is raised):
+
+| Status | Meaning | Set by |
+|---|---|---|
+| Pending approval | raised by the site | Site engineer / site manager |
+| Approved / Rejected | each line approved in full, cut down (partial approval) or rejected, with a note | **Project Manager** (see 4.6) |
+| Ordered | procurement has ordered it or is sending it from the main store | automatic, from the PO or dispatch |
+| In main store | arrived at the main store, not sent yet (main-store route only) | automatic, from the store receipt |
+| On the way | sent to the site, waiting for the site to receive | automatic, from the dispatch |
+| Partly received | the site has received some of the approved quantity | automatic, from the site's receipts |
+| Received | the site has received everything approved (or closed it short with a note) | automatic, or **Close short** by the site |
+| Cancelled | withdrawn before ordering | requester |
+
+"Partly received" and "Received" are worked out per line: approved quantity against what the
+site actually received for that request.
+
+**Delivery point on every order.** A PO says **Deliver to: Site** (a project's site) or
+**Main store**. A main-store PO may still name the project it is meant for, for information.
+
+**Receiving.**
+- **At site:** the Materials tab gets an **Incoming** list holding three kinds of delivery:
+  - site-delivered POs (with or without a request);
+  - material sent from the main store against a request;
+  - material **sent ahead** with no request, labelled as such.
+
+  **Receive** records the challan no., date, and the accepted and rejected quantity per line.
+  A short receipt leaves the rest pending.
+- **At the main store:** the same Receive, on the Stock page.
+- **Sent between stores:** a dispatch is **On the way** until the other side receives it. Only
+  then does the stock move. A shortage (sent 100, received 96) is recorded on the dispatch.
+
+**Site materials** (renamed from "Stock on site"): one tab, one row per item.
+
+| Item | Received | In store | In use | Used | Sent back |
+|---|---|---|---|---|---|
+| Cement (bag) | 1,200 | 180 | 120 | 900 | 0 |
+
+The status chips filter the table: **In store** (received, not handed out), **In use** (handed
+out to the work), **Used**. The row actions are:
+- **Hand out** (In store → In use)
+- **Mark used**, partly or fully, against a work item. It can be done straight from In store
+  too, because most sites hand out and use the same day.
+- **Back to store** (In use → In store)
+- **Send back to main store** for leftovers. It is On the way until the main store receives it.
+- **Write off**, which stays as today.
+
+There is no money anywhere in Construction: quantities and statuses only. The money Overview
+sub-tab goes, and the Work breakdown's "৳ of material used" becomes a quantity.
+
+**Supplier bill → payable voucher → payment.** This adds a new record, the **supplier bill**
+(`BILL-2026-001`).
+1. **Recorded** (procurement): supplier, PO, the supplier's bill no. and date, the scan
+   (compulsory), and per PO line the billed quantity and billed rate, plus VAT and AIT.
+2. **Three-way match**, worked out on screen per line: ordered vs received (accepted) vs
+   billed, quantity and rate. The flags are:
+   - **Billed more than received**
+   - **Rate above order**
+   - **Billed twice** (the quantity already billed on an earlier bill)
+   - **Matched**
+3. **Verified** (accounts): confirms the match. The **payable amount** defaults to the matched
+   value: billed rate × the quantity that is both received and not billed before. The verifier
+   may change it, and must write a note when they do.
+4. **Approved = final billable voucher** (management): the voucher prints with the prepared,
+   checked and approved names and dates. **Rejected / returned to supplier** is the other
+   outcome, with a reason.
+5. **Paid** (Finance): Finance → **Bills to pay** lists approved vouchers with the balance due.
+   - **Pay** records a supplier payment against the voucher: account, method, cheque or
+     reference, VAT/AIT deducted. Part-payments are allowed.
+   - The voucher's status follows the payments: **Approved → Part paid → Paid**.
+   - A payment can no longer be made against a bare PO. Old payments with no bill stay
+     readable, marked "paid before bills were recorded".
+
+Rules, following "transparency, not restriction":
+- Nothing blocks a bill for being over budget or above the order rate.
+- Every difference is shown on the bill, on the voucher and in Finance, and needs a note from
+  whoever accepts it.
+
+**Returns.**
+- *Rejected at delivery* is the GRN's rejected quantity. It never enters stock and can never
+  be billed (the match uses accepted quantity).
+- *Site leftovers* go back to the main store (above).
+- *Return to supplier after acceptance*, a debit note against a bill, is deferred to
+  OPEN-ITEMS. It is rare, and the bill note covers it for now.
+
+**Cost in Finance** (per project, never in Construction):
+- **Material cost** is material received at site, at order price (unchanged decision). That
+  covers direct site deliveries, plus dispatches the site received from the main store at
+  store cost, less leftovers sent back.
+- **Bill price difference** is new: approved payable minus order value for what that bill
+  covers, shown on its own line.
+- **Paid / still owed** comes from the approved vouchers and the payments against them.
+
+#### 4.4 Who does what, and which screen
+
+| Who | Screen | Actions |
+|---|---|---|
+| Site engineer / site manager | Construction → project → Materials (Requests · Incoming · Site materials) | raise request, receive, hand out, mark used, back to store, send back, close short |
+| Project Manager | same Requests sub-tab, and Procurement → Material Requests | approve, cut down or reject lines |
+| Procurement | Material Requests · Purchase Orders · Stock (main store) · **Supplier Bills** | order (deliver to site or main store), receive at main store, send to site, send ahead, record bills |
+| Accounts | **Supplier Bills** (verify) · Finance → **Bills to pay** · Supplier Payments | verify the match, pay against vouchers |
+| Management | Supplier Bills (to approve) | approve bills into payable vouchers |
+
+Menu changes:
+- **Procurement → Supplier Bills** is new.
+- "Supplier Vouchers" becomes **Finance → Supplier Payments**.
+- **Finance → Bills to pay** is new.
+
+#### 4.5 Schema (Dexie v30, one new block; old blocks untouched)
+
+- `supplier_bills` (new): `code, po_id, supplier_id, project_id, bill_no, bill_date, status,
+  billed_amount, vat_amount, ait_amount, payable_amount, payable_note, verified_by/at,
+  approved_by/at, decision_note, notes`.
+  - Status ENUM: `recorded | verified | approved | part_paid | paid | rejected`.
+- `supplier_bill_items` (new): `bill_id, po_item_id, quantity_billed, rate_billed`.
+- `supplier_vouchers` + `bill_id` (indexed). This table is now the payment against a voucher.
+- `purchase_orders` + `deliver_to: 'site' | 'main_store'`. Migration: project POs become
+  `site`, central POs become `main_store`.
+- `goods_receipts` + `challan_no`.
+- `stock_transfers`:
+  - adds `status: 'on_the_way' | 'received'`, `quantity_received`, `received_date`,
+    `received_by`;
+  - `to_project_id` may be null (main store);
+  - migration: existing transfers become `received`.
+- `material_requests` status ENUM gains `partially_received` and `cancelled`. The labels are
+  renamed to the table above. `received` keeps meaning "in main store", and `fulfilled` is
+  "received at site".
+- No new `item_name` table, so `backfillMaterialItems` is unchanged. `supplier_bill_items`
+  points at PO lines.
+
+#### 4.6 Decisions (client, 2026-10-11)
+
+1. **The Project Manager approves material requests** and can cut lines. Procurement buys only
+   what was approved.
+2. **Accounts verify a bill and Management approves it** into the payable voucher.
+3. **A bill rate above the order rate is allowed with a note.** It is flagged on the bill and
+   the voucher, and shown in Finance.
+
+#### 4.7 Build batches (each browser-checked, one commit each)
+
+1. **Schema v30 and domain:** statuses, match calculation, request progress per line,
+   repositories for bills, deliver-to and on-the-way dispatches.
+2. **Construction Materials tab:** Requests (status, approve and cut for the PM), Incoming with
+   Receive, and Site materials as one tab with statuses and actions. All money removed from
+   Construction.
+3. **Procurement:** PO deliver-to, main-store receiving, Send to site and Send ahead,
+   receiving leftovers back at the main store.
+4. **Supplier bills:** record with scan, three-way match, verify, approve, printable payable
+   voucher.
+5. **Finance:** Bills to pay, pay against a voucher, Supplier Payments moved to Finance, the
+   project finance page with the bill price difference and paid / owed.
+6. **Demo data** for every status (a part-approved request, a part delivery, a main-store
+   dispatch on the way, something sent ahead, a bill at a higher rate, a bill billed twice, a
+   part-paid voucher, leftovers sent back), plus OPEN-ITEMS and the scope-doc addendum.
+
 ## Verification
 
 - `npx tsc --noEmit` and lint. Do not run `next build` while the dev server on 3001 is running.

@@ -297,14 +297,21 @@ export const MATERIAL_REQUEST_STATUS_META: Record<
   MaterialRequestStatus,
   { label: string; tone: BadgeTone }
 > = {
-  pending: { label: 'Pending', tone: 'amber' },
+  pending: { label: 'Pending approval', tone: 'amber' },
   approved: { label: 'Approved', tone: 'blue' },
   rejected: { label: 'Rejected', tone: 'red' },
   ordered: { label: 'Ordered', tone: 'teal' },
-  received: { label: 'In Store', tone: 'teal' },
-  delivered: { label: 'Sent to Site', tone: 'blue' },
-  fulfilled: { label: 'Received at Site', tone: 'green' },
+  received: { label: 'In main store', tone: 'teal' },
+  delivered: { label: 'On the way', tone: 'blue' },
+  partially_received: { label: 'Partly received', tone: 'amber' },
+  fulfilled: { label: 'Received', tone: 'green' },
+  cancelled: { label: 'Cancelled', tone: 'neutral' },
 };
+
+/** Requests nobody needs to act on any more. */
+export function isRequestClosed(status: MaterialRequestStatus): boolean {
+  return status === 'fulfilled' || status === 'rejected' || status === 'cancelled';
+}
 
 /** The happy path, for the step list on the status card. */
 export const MATERIAL_REQUEST_PIPELINE: MaterialRequestStatus[] = [
@@ -313,6 +320,7 @@ export const MATERIAL_REQUEST_PIPELINE: MaterialRequestStatus[] = [
   'ordered',
   'received',
   'delivered',
+  'partially_received',
   'fulfilled',
 ];
 
@@ -326,7 +334,7 @@ export function allowedNextRequestStatuses(
 ): MaterialRequestStatus[] {
   switch (current) {
     case 'pending':
-      return ['approved', 'rejected'];
+      return ['approved', 'rejected', 'cancelled'];
     case 'approved':
       /*
        * `received` is reachable without passing through `ordered` because
@@ -336,9 +344,9 @@ export function allowedNextRequestStatuses(
        * this, route (b) left the request stuck on `approved` for ever: the
        * site had its material and the queue still said it was waiting.
        */
-      return ['ordered', 'received'];
+      return ['ordered', 'received', 'delivered', 'partially_received', 'fulfilled', 'cancelled'];
     case 'ordered':
-      return ['received'];
+      return ['received', 'delivered', 'partially_received', 'fulfilled'];
     case 'received':
       /*
        * `fulfilled` straight from `received` is deliberate, and it is not a
@@ -348,9 +356,16 @@ export function allowedNextRequestStatuses(
        * paperwork step nobody performs. The site still has to say so, which is
        * the check that matters.
        */
-      return ['delivered', 'fulfilled'];
+      return ['delivered', 'partially_received', 'fulfilled'];
     case 'delivered':
-      return ['fulfilled'];
+      return ['partially_received', 'fulfilled'];
+    /*
+     * Phase 2 step 4: a part delivery can be followed by another dispatch
+     * (`delivered`), the rest arriving (`fulfilled`), or the site closing the
+     * request short.
+     */
+    case 'partially_received':
+      return ['delivered', 'fulfilled'];
     default:
       return [];
   }
@@ -372,7 +387,8 @@ export function allowedNextRequestStatuses(
 export function manualNextRequestStatuses(
   current: MaterialRequestStatus,
 ): MaterialRequestStatus[] {
-  if (current === 'pending') return ['approved', 'rejected'];
+  if (current === 'pending') return ['approved', 'rejected', 'cancelled'];
+  if (current === 'approved') return ['cancelled'];
   /*
    * The closing step is a person's, not a consequence of a document. Everything
    * between approval and the store is driven by the purchase order, the goods
@@ -380,7 +396,14 @@ export function manualNextRequestStatuses(
    * amount" is a claim only the site can make, and the value of the step is
    * exactly that nothing else can make it on their behalf.
    */
-  if (current === 'received' || current === 'delivered') return ['fulfilled'];
+  /*
+   * Phase 2 step 4: the site receives through Receive, and the request closes
+   * on its own when every approved line has arrived. What is left by hand is
+   * closing it short — the rest is no longer needed — which needs a note.
+   */
+  if (current === 'ordered' || current === 'received' || current === 'delivered' || current === 'partially_received') {
+    return ['fulfilled'];
+  }
   return [];
 }
 
@@ -389,13 +412,16 @@ export function manualNextRequestStatuses(
  * now drives them from the Purchase Order and the Goods Receipt.
  */
 export const REQUEST_STEP_OWNER: Record<MaterialRequestStatus, string> = {
-  pending: 'Site Manager',
-  approved: 'Procurement',
-  rejected: 'Procurement',
+  pending: 'Site',
+  // the Project Manager approves (client decision 2026-10-11)
+  approved: 'Project Manager',
+  rejected: 'Project Manager',
   ordered: 'Procurement',
-  received: 'Store',
-  delivered: 'Store',
-  fulfilled: 'Site Manager',
+  received: 'Main store',
+  delivered: 'Procurement',
+  partially_received: 'Site',
+  fulfilled: 'Site',
+  cancelled: 'Site',
 };
 
 export interface RequestStepConfig {
@@ -414,7 +440,7 @@ export const MATERIAL_REQUEST_STEP_CONFIG: Record<
   approved: {
     title: 'Approve this request',
     message:
-      'Procurement accepts the request. Approved quantities can be trimmed per item before approving; a blank quantity means the full amount asked for.',
+      'The Project Manager accepts the request. Approved quantities can be cut per item before approving; a blank quantity means the full amount asked for, and 0 drops the line.',
     confirmLabel: 'Approve request',
     tone: 'success',
     needsNote: false,
@@ -450,13 +476,27 @@ export const MATERIAL_REQUEST_STEP_CONFIG: Record<
     tone: 'default',
     needsNote: false,
   },
-  fulfilled: {
-    title: 'Confirm it arrived at site',
-    message:
-      'The site has the material and the request is closed. Only the site can say this — if the quantity is short or something is missing, say so in the note rather than confirming.',
-    confirmLabel: 'Confirm receipt',
-    tone: 'success',
+  partially_received: {
+    title: 'Partly received',
+    message: 'Set by the site receiving part of the approved quantity.',
+    confirmLabel: 'Mark partly received',
+    tone: 'default',
     needsNote: false,
+  },
+  fulfilled: {
+    title: 'Close this request',
+    message:
+      'The request closes as it stands. Use this when the rest is no longer needed; say why in the note. A request closes on its own when everything approved has been received.',
+    confirmLabel: 'Close request',
+    tone: 'warning',
+    needsNote: true,
+  },
+  cancelled: {
+    title: 'Cancel this request',
+    message: 'The request is withdrawn before anything was ordered. A reason is required.',
+    confirmLabel: 'Cancel request',
+    tone: 'danger',
+    needsNote: true,
   },
 };
 

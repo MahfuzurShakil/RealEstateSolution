@@ -8,75 +8,41 @@ import { Button } from '@/components/ui/Button';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { Field } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
-import { paymentSummary } from '@/lib/domain/procurement';
-import { purchaseOrderRepository } from '@/lib/repositories';
+import { supplierBillRepository } from '@/lib/repositories';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
 /**
  * Paying a supplier from the Finance screen.
  *
- * A supplier payment is a `supplier_voucher`, not an `expense`, and that stays
- * true here — the cash position adds receipts and subtracts expenses, vouchers
- * and refunds as *disjoint* record sets, so a payment that could be entered as
- * either would be countable twice and no arithmetic could tell the duplicate
- * from two genuine payments of the same amount.
- *
- * What was wrong was not the schema but the map: the only way to pay a supplier
- * was to know it lived under Procurement, find the order and pay it from there.
- * Accounts thinks "I am paying BSRM", not "I am editing purchase order 14".
- *
- * So this is a way in, not a second way to record. It finds the order and hands
- * it to the same dialog the Procurement module uses, which writes the same
- * voucher.
+ * A supplier payment is a `supplier_voucher`, not an `expense`, so the cash
+ * position never counts it twice. Phase 2 step 4: it is made against an
+ * approved bill (the final billable voucher), not against a bare order, so
+ * this picks a voucher with a balance and hands it to the payment dialog.
  */
 export function PaySupplierModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [orderId, setOrderId] = useState<string | null>(null);
+  const [billId, setBillId] = useState<string | null>(null);
+  const bills = useLiveQuery(() => supplierBillRepository.list({ status: 'payable' }), []);
 
-  const orders = useLiveQuery(() => purchaseOrderRepository.list(), []);
+  const payable = (bills ?? []).filter((b) => b.balance > 0.009).sort((a, b) => b.balance - a.balance);
 
-  /*
-   * Orders that owe money, most owed first.
-   *
-   * A cancelled order is excluded because its undelivered balance is void —
-   * paying against one is the advance-recovery case, which needs a debit note
-   * rather than another voucher. A draft is excluded because it has not been
-   * placed: paying for an order the supplier has never been sent is not a
-   * payment, it is a mistake.
-   */
-  const payable = (orders ?? [])
-    .filter((o) => o.status !== 'cancelled' && o.status !== 'draft')
-    .map((o) => ({ order: o, summary: paymentSummary(o.totals.value, o.vouchers) }))
-    .filter((r) => r.summary.due > 0.009)
-    .sort((a, b) => b.summary.due - a.summary.due);
-
-  const options: ComboboxOption[] = payable.map(({ order, summary }) => ({
-    id: order.id,
-    label: `${order.supplier?.name ?? 'Supplier removed'} — ${formatBdt(summary.due)} due`,
-    hint: `${order.code} · ${order.project?.name ?? 'Central stock'} · ordered ${formatDate(order.order_date)}`,
-    // the buyer knows the order code or the project, not the supplier alone
-    keywords: `${order.code} ${order.project?.name ?? 'central'} ${order.request?.code ?? ''}`,
+  const options: ComboboxOption[] = payable.map((bill) => ({
+    id: bill.id,
+    label: `${bill.supplier?.name ?? 'Supplier removed'} — ${formatBdt(bill.balance)} due`,
+    hint: `${bill.code} · bill ${bill.bill_no} · ${bill.project?.name ?? 'Main store'} · ${formatDate(bill.bill_date)}`,
+    keywords: `${bill.code} ${bill.bill_no} ${bill.order?.code ?? ''} ${bill.project?.name ?? 'main store'}`,
   }));
 
-  const picked = payable.find((r) => r.order.id === orderId) ?? null;
+  const picked = payable.find((b) => b.id === billId) ?? null;
 
   function close() {
-    setOrderId(null);
+    setBillId(null);
     onClose();
   }
 
   if (!open) return null;
 
-  // once an order is chosen the Procurement dialog takes over completely, so
-  // this one gets out of the way rather than stacking behind it
   if (picked) {
-    return (
-      <SupplierVoucherModal
-        open
-        order={picked.order}
-        onClose={() => setOrderId(null)}
-        onSaved={close}
-      />
-    );
+    return <SupplierVoucherModal open bill={picked} onClose={() => setBillId(null)} onSaved={close} />;
   }
 
   return (
@@ -84,7 +50,7 @@ export function PaySupplierModal({ open, onClose }: { open: boolean; onClose: ()
       open
       onClose={close}
       title="Pay a supplier"
-      subtitle="Against a purchase order that still owes money"
+      subtitle="Against an approved bill voucher with a balance"
       icon={Truck}
       footer={
         <Button variant="outline" onClick={close}>
@@ -92,33 +58,27 @@ export function PaySupplierModal({ open, onClose }: { open: boolean; onClose: ()
         </Button>
       }
     >
-      {orders === undefined ? (
-        <p className="text-sm text-ink-muted">Loading orders…</p>
+      {bills === undefined ? (
+        <p className="text-sm text-ink-muted">Loading vouchers…</p>
       ) : payable.length === 0 ? (
         <p className="text-sm text-ink-muted">
-          Every placed purchase order is paid in full. A payment has to sit against an order —
-          that is what ties it to a project and to the material it bought.
+          No approved bill is waiting for payment. A supplier is paid against a bill that
+          procurement recorded, accounts verified and management approved.
         </p>
       ) : (
         <>
-          <Field
-            label="Purchase order"
-            required
-            hint="Search by supplier, order code or project"
-          >
+          <Field label="Bill voucher" required hint="Search by supplier, voucher, bill no. or project">
             <Combobox
-              value={orderId}
+              value={billId}
               options={options}
-              onChange={setOrderId}
-              placeholder="Type a supplier or order code…"
-              emptyLabel="No unpaid order matches"
+              onChange={setBillId}
+              placeholder="Type a supplier or voucher code…"
+              emptyLabel="No payable voucher matches"
             />
           </Field>
           <p className="mt-3 text-xs text-ink-muted">
-            {payable.length} order{payable.length === 1 ? '' : 's'} still owing{' '}
-            {formatBdt(payable.reduce((sum, r) => sum + r.summary.due, 0))} in total. The payment is
-            recorded as a supplier voucher, which is where Procurement and the cash position both
-            read it from.
+            {payable.length} voucher{payable.length === 1 ? '' : 's'} owing{' '}
+            {formatBdt(payable.reduce((sum, b) => sum + b.balance, 0))} in total.
           </p>
         </>
       )}

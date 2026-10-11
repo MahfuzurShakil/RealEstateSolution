@@ -117,6 +117,7 @@ export const MODULE_KEYS = [
   'material_request',
   'procurement',
   'supplier_voucher',
+  'supplier_bill',
   'finance_collection',
   'finance_expense',
   'dashboard',
@@ -133,7 +134,8 @@ export const MODULE_LABEL: Record<ModuleKey, string> = {
   site_progress: 'Site Progress',
   material_request: 'Material Request',
   procurement: 'Procurement (PO / GRN / Stock)',
-  supplier_voucher: 'Supplier Voucher',
+  supplier_voucher: 'Supplier Payment',
+  supplier_bill: 'Supplier Bill',
   finance_collection: 'Finance — Collection',
   finance_expense: 'Finance — Expense Ledger',
   dashboard: 'Dashboard (Revenue / Cost)',
@@ -185,20 +187,36 @@ export const PERMISSION_MATRIX: Record<ModuleKey, Record<UserRole, Permission>> 
     sales_executive: N, sales_manager: N, head_of_sales: N,
     site_manager: FS, procurement: N, accounts: N,
   },
+  /*
+   * The Project Manager approves (client decision 2026-10-11, PLATFORM-REPLAN
+   * §4.6). Procurement used to approve the requests it then bought against;
+   * it now sees them and buys what was approved.
+   */
   material_request: {
     super_admin: F, management: V, land_team: N, project_manager: AS,
     sales_executive: N, sales_manager: N, head_of_sales: N,
-    site_manager: CS, procurement: { level: 'approve' }, accounts: N,
+    site_manager: CS, procurement: V, accounts: N,
   },
   procurement: {
     super_admin: F, management: V, land_team: N, project_manager: VS,
     sales_executive: N, sales_manager: N, head_of_sales: N,
     site_manager: N, procurement: F, accounts: V,
   },
+  // payments against approved bills: Finance pays (Phase 2 step 4)
   supplier_voucher: {
     super_admin: F, management: V, land_team: N, project_manager: N,
     sales_executive: N, sales_manager: N, head_of_sales: N,
-    site_manager: N, procurement: F, accounts: F,
+    site_manager: N, procurement: V, accounts: F,
+  },
+  /*
+   * Procurement records the bill, Accounts verify it, Management approves it
+   * into the payable voucher (client decision 2026-10-11). Who may verify and
+   * who may approve is `canVerifyBill` / `canApproveBill` below.
+   */
+  supplier_bill: {
+    super_admin: F, management: { level: 'approve' }, land_team: N, project_manager: N,
+    sales_executive: N, sales_manager: N, head_of_sales: N,
+    site_manager: N, procurement: { level: 'create' }, accounts: { level: 'approve' },
   },
   finance_collection: {
     super_admin: F, management: V, land_team: N, project_manager: VS,
@@ -246,6 +264,16 @@ export function canEdit(role: UserRole, module: ModuleKey): boolean {
 export function canApprove(role: UserRole, module: ModuleKey): boolean {
   const { level } = permissionFor(role, module);
   return level === 'full' || level === 'approve';
+}
+
+/** Accounts check a supplier bill against the order and the receipts. */
+export function canVerifyBill(role: UserRole): boolean {
+  return role === 'accounts' || role === 'super_admin';
+}
+
+/** Management turns a verified bill into the final billable voucher. */
+export function canApproveBill(role: UserRole): boolean {
+  return role === 'management' || role === 'super_admin';
 }
 
 /* ------------------------------------------------------------------ *
@@ -308,6 +336,8 @@ const ROUTE_MODULES: Array<[string, ModuleKey]> = [
   ['/admin/stock', 'procurement'],
   ['/admin/material-items', 'procurement'],
   ['/admin/supplier-vouchers', 'supplier_voucher'],
+  ['/admin/bills-to-pay', 'supplier_voucher'],
+  ['/admin/supplier-bills', 'supplier_bill'],
   ['/admin/collections', 'finance_collection'],
   ['/admin/refunds', 'finance_collection'],
   ['/admin/expenses', 'finance_expense'],

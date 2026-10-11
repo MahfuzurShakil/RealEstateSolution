@@ -18,7 +18,6 @@ import {
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { GoodsReceiptModal } from '@/components/admin/procurement/GoodsReceiptModal';
 import { PurchaseOrderStatusCard } from '@/components/admin/procurement/PurchaseOrderStatusCard';
-import { SupplierVoucherModal } from '@/components/admin/procurement/SupplierVoucherModal';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -64,7 +63,6 @@ export default function PurchaseOrderDetailPage() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('items');
   const [grnOpen, setGrnOpen] = useState(false);
-  const [voucherOpen, setVoucherOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteBlocked, setDeleteBlocked] = useState<string | null>(null);
   const [deleteGrn, setDeleteGrn] = useState<GoodsReceiptWithRelations | null>(null);
@@ -259,11 +257,6 @@ export default function PurchaseOrderDetailPage() {
                 <PackageCheck className="size-4" /> Record Receipt
               </Button>
             )}
-            {order.status !== 'draft' && (
-              <Button variant="outline" onClick={() => setVoucherOpen(true)}>
-                <Receipt className="size-4" /> Pay Supplier
-              </Button>
-            )}
             <Link href={`/admin/purchase-orders/${order.id}/edit`}>
               <Button variant="outline">
                 <Pencil className="size-4" /> Edit
@@ -426,13 +419,7 @@ export default function PurchaseOrderDetailPage() {
             <Card>
               <CardHeader
                 title="Payments to the supplier"
-                action={
-                  order.status !== 'draft' ? (
-                    <Button size="sm" variant="outline" onClick={() => setVoucherOpen(true)}>
-                      <Receipt className="size-4" /> Pay supplier
-                    </Button>
-                  ) : undefined
-                }
+                subtitle="Finance pays against approved bill vouchers"
               />
               <DataTable
                 rows={vouchers ?? []}
@@ -446,7 +433,7 @@ export default function PurchaseOrderDetailPage() {
                     description={
                       order.status === 'draft'
                         ? 'Place the order first — a draft is not a commitment to pay.'
-                        : 'Supplier vouchers are paid directly, with no approval step (Section 7.9).'
+                        : 'Finance pays once the supplier’s bill is recorded, verified and approved.'
                     }
                   />
                 }
@@ -623,11 +610,6 @@ export default function PurchaseOrderDetailPage() {
       </div>
 
       <GoodsReceiptModal open={grnOpen} order={order} onClose={() => setGrnOpen(false)} />
-      <SupplierVoucherModal
-        open={voucherOpen}
-        order={order}
-        onClose={() => setVoucherOpen(false)}
-      />
 
       <ConfirmDialog
         open={confirmDelete}

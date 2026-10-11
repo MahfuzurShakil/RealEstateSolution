@@ -1,8 +1,13 @@
 import type { BadgeTone } from '@/components/ui/Badge';
 import type {
   GoodsReceiptItem,
+  PoDeliverTo,
+  PurchaseOrder,
   PurchaseOrderItem,
   PurchaseOrderStatus,
+  StockTransfer,
+  SupplierBillStatus,
+  TransferStatus,
   QualityCheck,
   SupplierPaymentMethod,
   SupplierType,
@@ -269,6 +274,12 @@ export interface ProjectCostSummary {
   draft_value: number;
   /** what has physically arrived, at PO prices */
   received_value: number;
+  /** of that, unloaded at this project's site (Phase 2 step 4) */
+  site_received_value: number;
+  /** approved supplier bills (payable vouchers) on this project's orders */
+  approved_bill_value: number;
+  /** what those bills pay above the order rate for what they cover */
+  price_difference_value: number;
   /** what has been paid to suppliers on those orders */
   paid_value: number;
   /** stock sitting on this project's site, at weighted average cost */
@@ -509,4 +520,182 @@ export function siteBalance(
       (r) => Math.abs(r.at_site_quantity) > 0.0005 || r.used_quantity > 0 || r.written_off_quantity > 0,
     )
     .sort((a, b) => b.at_site_value - a.at_site_value || a.item_name.localeCompare(b.item_name));
+}
+
+/* ------------------------------------------------------------------ *
+ * Phase 2 step 4 — delivery point, dispatches, bills (PLATFORM-REPLAN §4.3)
+ * ------------------------------------------------------------------ */
+
+export const PO_DELIVER_TO_META: Record<PoDeliverTo, { label: string; tone: BadgeTone }> = {
+  site: { label: 'Straight to site', tone: 'teal' },
+  main_store: { label: 'Main store', tone: 'blue' },
+};
+
+/**
+ * Whether the supplier unloads at the project's site. Rows before v30 carry no
+ * `deliver_to`; they keep the old rule — an order for a project went to it.
+ * An order with no project has no site to go to.
+ */
+export function poDeliversToSite(order: Pick<PurchaseOrder, 'deliver_to' | 'project_id'>): boolean {
+  if (!order.project_id) return false;
+  return (order.deliver_to ?? 'site') === 'site';
+}
+
+/** The store a goods receipt on this order lands in: the site's, or the main store (null). */
+export function receivingStore(order: Pick<PurchaseOrder, 'deliver_to' | 'project_id'>): string | null {
+  return poDeliversToSite(order) ? (order.project_id ?? null) : null;
+}
+
+export const TRANSFER_STATUS_META: Record<TransferStatus, { label: string; tone: BadgeTone }> = {
+  on_the_way: { label: 'On the way', tone: 'amber' },
+  received: { label: 'Received', tone: 'green' },
+};
+
+/** Transfers before v30 moved instantly, so no status means received. */
+export function transferStatus(t: Pick<StockTransfer, 'status'>): TransferStatus {
+  return t.status ?? 'received';
+}
+
+/** What actually arrived — the full quantity on a pre-v30 transfer. */
+export function transferReceivedQuantity(
+  t: Pick<StockTransfer, 'status' | 'quantity' | 'quantity_received'>,
+): number {
+  if (transferStatus(t) !== 'received') return 0;
+  return qty(Number(t.quantity_received ?? t.quantity) || 0);
+}
+
+export const SUPPLIER_BILL_STATUS_META: Record<
+  SupplierBillStatus,
+  { label: string; tone: BadgeTone; owner: string }
+> = {
+  recorded: { label: 'To verify', tone: 'amber', owner: 'Accounts' },
+  verified: { label: 'To approve', tone: 'blue', owner: 'Management' },
+  approved: { label: 'Payable', tone: 'teal', owner: 'Finance' },
+  part_paid: { label: 'Part paid', tone: 'amber', owner: 'Finance' },
+  paid: { label: 'Paid', tone: 'green', owner: '—' },
+  rejected: { label: 'Rejected', tone: 'red', owner: '—' },
+};
+
+/** Approved bills are payable vouchers; these are the ones Finance can pay. */
+export function isBillPayable(status: SupplierBillStatus): boolean {
+  return status === 'approved' || status === 'part_paid';
+}
+
+/** Bills that still count against the order — a rejected one billed nothing. */
+export function billCounts(status: SupplierBillStatus): boolean {
+  return status !== 'rejected';
+}
+
+export type MatchFlag = 'over_received' | 'billed_before' | 'rate_above_order' | 'rate_below_order';
+
+export const MATCH_FLAG_META: Record<MatchFlag, { label: string; tone: BadgeTone }> = {
+  over_received: { label: 'Billed more than received', tone: 'red' },
+  billed_before: { label: 'Already billed', tone: 'red' },
+  rate_above_order: { label: 'Rate above order', tone: 'amber' },
+  rate_below_order: { label: 'Rate below order', tone: 'blue' },
+};
+
+export interface MatchLine {
+  po_item_id: string;
+  item_name: string;
+  unit: string;
+  ordered: number;
+  /** accepted at delivery — rejected material can never be billed */
+  received: number;
+  /** on other, non-rejected bills of the same order */
+  billed_before: number;
+  billed: number;
+  order_rate: number;
+  billed_rate: number;
+  /** received, not billed before, and billed now: what we owe for */
+  matched_quantity: number;
+  matched_value: number;
+  billed_value: number;
+  /** the matched quantity at the order's rate — the base of the price difference */
+  matched_at_order_rate: number;
+  flags: MatchFlag[];
+}
+
+export interface MatchResult {
+  lines: MatchLine[];
+  billed_value: number;
+  matched_value: number;
+  matched_at_order_rate: number;
+  clean: boolean;
+}
+
+/**
+ * The three-way match (order × receipt × bill), per order line.
+ *
+ * What we owe for is the quantity that arrived, was accepted and has not been
+ * billed already, at the billed rate. Everything beyond that is flagged, never
+ * silently dropped: transparency, not restriction (client decision
+ * 2026-10-11) — a higher rate is payable with a note, but nobody can miss it.
+ */
+export function threeWayMatch(
+  lines: Array<{
+    po_item: Pick<
+      PurchaseOrderItem,
+      'id' | 'item_name' | 'unit' | 'quantity_ordered' | 'quantity_received' | 'unit_price'
+    >;
+    billed_before: number;
+    quantity_billed: number;
+    rate_billed: number;
+  }>,
+): MatchResult {
+  const out: MatchLine[] = lines.map((l) => {
+    const ordered = qty(Number(l.po_item.quantity_ordered) || 0);
+    const received = qty(Number(l.po_item.quantity_received) || 0);
+    const before = qty(Number(l.billed_before) || 0);
+    const billed = qty(Number(l.quantity_billed) || 0);
+    const orderRate = money(Number(l.po_item.unit_price) || 0);
+    const rate = money(Number(l.rate_billed) || 0);
+    const open = qty(Math.max(0, received - before));
+    const matched = qty(Math.min(billed, open));
+    const flags: MatchFlag[] = [];
+    if (billed > open + 0.0005) {
+      // it would have fitted what arrived, had part of it not been billed already
+      flags.push(before > 0 && billed <= received + 0.0005 ? 'billed_before' : 'over_received');
+    }
+    if (billed > 0 && rate > orderRate + 0.004) flags.push('rate_above_order');
+    if (billed > 0 && rate < orderRate - 0.004) flags.push('rate_below_order');
+    return {
+      po_item_id: l.po_item.id,
+      item_name: l.po_item.item_name,
+      unit: l.po_item.unit,
+      ordered,
+      received,
+      billed_before: before,
+      billed,
+      order_rate: orderRate,
+      billed_rate: rate,
+      matched_quantity: matched,
+      matched_value: money(matched * rate),
+      billed_value: money(billed * rate),
+      matched_at_order_rate: money(matched * orderRate),
+      flags,
+    };
+  });
+  const sum = (pick: (l: MatchLine) => number) => money(out.reduce((t, l) => t + pick(l), 0));
+  return {
+    lines: out,
+    billed_value: sum((l) => l.billed_value),
+    matched_value: sum((l) => l.matched_value),
+    matched_at_order_rate: sum((l) => l.matched_at_order_rate),
+    clean: out.every((l) => l.flags.length === 0),
+  };
+}
+
+/**
+ * How far a request has got at the site: approved against what the site has
+ * received for it, line by line (Phase 2 step 4).
+ */
+export function requestSiteProgress(
+  lines: Array<{ approved: number; received: number }>,
+): 'none' | 'part' | 'all' {
+  const live = lines.filter((l) => l.approved > 0);
+  if (live.length === 0) return 'none';
+  const any = live.some((l) => l.received > 0.0005);
+  const all = live.every((l) => l.received >= l.approved - 0.0005);
+  return all ? 'all' : any ? 'part' : 'none';
 }

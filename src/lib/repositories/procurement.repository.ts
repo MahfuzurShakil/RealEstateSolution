@@ -18,6 +18,9 @@ import type {
   StockRow,
   StockTransfer,
   Supplier,
+  SupplierBill,
+  SupplierBillItem,
+  SupplierBillStatus,
   SupplierType,
   SupplierVoucher,
   Tower,
@@ -38,9 +41,18 @@ import {
   weightedAverage,
   type PoTotals,
   type ProjectCostSummary,
+  billCounts,
+  isBillPayable,
+  poDeliversToSite,
+  receivingStore,
+  requestSiteProgress,
+  threeWayMatch,
+  transferReceivedQuantity,
+  transferStatus,
+  type MatchResult,
 } from '../domain/procurement';
 import { allowedNextRequestStatuses } from '../domain/site-progress';
-import { nextCode } from '../utils/id';
+import { newId, nextCode } from '../utils/id';
 import { BaseRepository, type NewRecord } from './base.repository';
 import { documentRepository } from './document.repository';
 import { materialRequestRepository } from './site-progress.repository';
@@ -493,6 +505,12 @@ class PurchaseOrderRepository extends BaseRepository<PurchaseOrder> {
     const request = await db.material_requests.get(order.request_id);
     if (!request) return;
 
+    // Phase 2 step 4: delivered straight to site, the site's receipts move it
+    if (poDeliversToSite(order)) {
+      await syncRequestFromSite(order.request_id, actor);
+      return;
+    }
+
     if (next === 'received' && allowedNextRequestStatuses(request.status).includes('received')) {
       await materialRequestRepository.setStatus(order.request_id, 'received', {
         decided_by: actor,
@@ -525,28 +543,23 @@ class PurchaseOrderRepository extends BaseRepository<PurchaseOrder> {
   }
 }
 
-/** Section 6.5: raising the order tells the site its request is being bought. */
 /**
- * Route (b) of Section 7.8a: an approved request met from the central store,
- * with nothing bought. Without this the request sat on `approved` for ever —
- * the site had its material and the procurement queue still listed it as
- * waiting to be ordered.
- *
- * Only a request still at `approved` is closed. One that already went through
- * a purchase order is Module 6's to finish, and a transfer topping it up
- * should not close it early.
+ * Route (b) of Section 7.8a: an approved request met from the main store, with
+ * nothing bought. Phase 2 step 4: sending it puts the request **on the way**;
+ * the site receiving it is what moves it to Partly received / Received
+ * (`syncRequestFromSite`).
  */
 async function markRequestReceivedByTransfer(
   transfer: StockTransfer,
   actor: string | null,
 ): Promise<void> {
-  if (!transfer.request_id) return;
+  if (!transfer.request_id || !transfer.to_project_id) return;
   const request = await db.material_requests.get(transfer.request_id);
-  if (!request || request.status !== 'approved') return;
+  if (!request || !allowedNextRequestStatuses(request.status).includes('delivered')) return;
 
-  await materialRequestRepository.setStatus(transfer.request_id, 'received', {
+  await materialRequestRepository.setStatus(transfer.request_id, 'delivered', {
     decided_by: actor,
-    decision_note: `Met from stock — transfer ${transfer.code}, no purchase needed.`,
+    decision_note: `Sent from the main store — ${transfer.code}.`,
   });
 }
 
@@ -557,7 +570,7 @@ async function reopenRequestClosedByTransfer(transfer: StockTransfer): Promise<v
   const request = await db.material_requests.get(transfer.request_id);
   // as above: once the site has confirmed, deleting the paperwork does not
   // take the material back off the site
-  if (!request || request.status !== 'received') return;
+  if (!request || request.status !== 'delivered') return;
 
   await materialRequestRepository.setStatus(transfer.request_id, 'approved', {
     decided_by: request.created_by ?? null,
@@ -566,42 +579,66 @@ async function reopenRequestClosedByTransfer(transfer: StockTransfer): Promise<v
 }
 
 /**
- * Issuing material against a request is what "sent to site" means.
- *
- * `stock_transfers` has carried `request_id` since Section 7.8a, so the
- * central-store route could move a request forward. The ordinary route — the
- * storekeeper handing out material from the project's own store — carried
- * nothing, so a request sat at `received` however much of it had gone out.
- *
- * Only a request in the store is moved. One the site has already confirmed is
- * finished, and one still on order has not arrived, so an issue against it is
- * meeting it from stock that was there anyway rather than from this purchase.
+ * What the site has received for each line of a request (Phase 2 step 4):
+ * accepted quantity on goods receipts of site-delivered orders raised against
+ * it, plus dispatches from the main store it has counted in. Keyed by request
+ * line id; a line is matched by catalogue item, or by spelling for old rows.
  */
-async function markRequestDeliveredByIssue(
-  issue: StockIssue,
-  actor: string | null,
-): Promise<void> {
-  if (!issue.request_id) return;
-  const request = await db.material_requests.get(issue.request_id);
-  if (!request || request.status !== 'received') return;
+export async function receivedAtSiteForRequest(requestId: string): Promise<Map<string, number>> {
+  const [lines, orders, transfers] = await Promise.all([
+    db.material_request_items.where('request_id').equals(requestId).toArray(),
+    db.purchase_orders.where('request_id').equals(requestId).toArray(),
+    db.stock_transfers.toArray(),
+  ]);
+  const keyOf = (r: { item_id?: string | null; item_name: string; unit: string }) =>
+    r.item_id ?? `name:${r.item_name}|${r.unit}`;
+  const got = new Map<string, number>();
+  const add = (k: string, q: number) => got.set(k, qty((got.get(k) ?? 0) + q));
 
-  await materialRequestRepository.setStatus(issue.request_id, 'delivered', {
-    decided_by: actor,
-    decision_note: `Issued to site — ${issue.code}.`,
-  });
+  for (const order of orders) {
+    if (!poDeliversToSite(order)) continue;
+    const items = await db.purchase_order_items.where('po_id').equals(order.id).toArray();
+    for (const item of items) add(keyOf(item), Number(item.quantity_received) || 0);
+  }
+  for (const t of transfers) {
+    if (t.request_id !== requestId) continue;
+    add(keyOf(t), transferReceivedQuantity(t));
+  }
+
+  const out = new Map<string, number>();
+  for (const line of lines) {
+    const k = keyOf(line);
+    const alt = `name:${line.item_name}|${line.unit}`;
+    out.set(line.id, got.get(k) ?? got.get(alt) ?? 0);
+  }
+  return out;
 }
 
-/** The other half: cancelling the issue puts the material back on the shelf,
- *  so it has not been sent anywhere. A request the site already confirmed is
- *  left alone, as everywhere else. */
-async function reopenRequestSentByIssue(issue: StockIssue): Promise<void> {
-  if (!issue.request_id) return;
-  const request = await db.material_requests.get(issue.request_id);
-  if (!request || request.status !== 'delivered') return;
-
-  await materialRequestRepository.setStatus(issue.request_id, 'received', {
-    decided_by: request.created_by ?? null,
-    decision_note: `Issue ${issue.code} was cancelled — the material went back to the store.`,
+/**
+ * Moves a request to Partly received / Received from what the site actually
+ * has. Never moves it backwards past what the site confirmed, and leaves a
+ * closed request alone.
+ */
+export async function syncRequestFromSite(requestId: string, actor: string | null): Promise<void> {
+  const request = await db.material_requests.get(requestId);
+  if (!request) return;
+  const lines = await db.material_request_items.where('request_id').equals(requestId).toArray();
+  const received = await receivedAtSiteForRequest(requestId);
+  const progress = requestSiteProgress(
+    lines.map((l) => ({
+      approved: Number(l.quantity_approved ?? l.quantity_requested) || 0,
+      received: received.get(l.id) ?? 0,
+    })),
+  );
+  const next = progress === 'all' ? 'fulfilled' : progress === 'part' ? 'partially_received' : null;
+  if (!next || next === request.status) return;
+  if (!allowedNextRequestStatuses(request.status).includes(next)) return;
+  await materialRequestRepository.setStatus(requestId, next, {
+    decided_by: actor,
+    decision_note:
+      next === 'fulfilled'
+        ? 'Everything approved has been received at site.'
+        : 'Part of the approved quantity has been received at site.',
   });
 }
 
@@ -768,8 +805,9 @@ class GoodsReceiptRepository extends BaseRepository<GoodsReceipt> {
       });
 
       if (stockable > 0) {
+        // Phase 2 step 4: the site's store, or the main store, as the order says
         await stockRepository.receive(
-          order?.project_id ?? null,
+          order ? receivingStore(order) : null,
           { item_id: poItem.item_id ?? null, item_name: poItem.item_name, unit: poItem.unit },
           stockable,
           poItem.unit_price,
@@ -855,7 +893,7 @@ class GoodsReceiptRepository extends BaseRepository<GoodsReceipt> {
 
       if (stockable > 0 && poItem) {
         await stockRepository.withdraw(
-          order?.project_id ?? null,
+          order ? receivingStore(order) : null,
           { item_id: poItem.item_id ?? null, item_name: poItem.item_name, unit: poItem.unit },
           stockable,
         );
@@ -1177,7 +1215,6 @@ class StockIssueRepository extends BaseRepository<StockIssue> {
     );
 
     await stockRepository.withdraw(input.project_id, key, quantity);
-    await markRequestDeliveredByIssue(issue, createdBy);
     return issue;
   }
 
@@ -1225,7 +1262,6 @@ class StockIssueRepository extends BaseRepository<StockIssue> {
   async removeCascade(id: string): Promise<void> {
     const issue = await this.getById(id);
     if (!issue) return;
-    await reopenRequestSentByIssue(issue);
     await stockRepository.receive(
       issue.project_id,
       { item_id: issue.item_id ?? null, item_name: issue.item_name, unit: issue.unit },
@@ -1252,6 +1288,7 @@ export interface StockTransferWithRelations extends StockTransfer {
   from_label: string;
   to_label: string;
   transferred_by_name?: string | null;
+  received_by_name?: string | null;
   value: number;
 }
 
@@ -1266,20 +1303,31 @@ class StockTransferRepository extends BaseRepository<StockTransfer> {
   }
 
   /**
-   * Moves material between stores (Section 7.8a) — the central-stock route of
-   * the advance-stocking scenario. The source's average cost travels with the
-   * goods, so the destination's own weighted average absorbs it at what the
-   * material actually cost rather than at a made-up rate.
+   * Sends material from one store to another (Section 7.8a): main store → a
+   * site, site → site, or a site's leftovers back to the main store
+   * (`to_project_id = null`).
+   *
+   * Phase 2 step 4: the material leaves the source now and is **on the way**
+   * until the other side counts it in (`receive`). Moving it instantly meant
+   * the site never confirmed anything, so a short load was invisible. The
+   * source's average cost travels with the goods.
+   *
+   * A dispatch to a site with no `request_id` is material sent ahead — the
+   * site still receives it.
    */
   async transfer(
-    input: Omit<NewRecord<StockTransfer>, 'code' | 'unit_cost_snapshot'> & { code?: string },
+    input: Omit<
+      NewRecord<StockTransfer>,
+      'code' | 'unit_cost_snapshot' | 'status' | 'quantity_received' | 'received_date' | 'received_by'
+    > & { code?: string },
     createdBy: string | null = null,
   ): Promise<StockTransfer> {
     const quantity = qty(Number(input.quantity) || 0);
     const from = input.from_project_id ?? null;
+    const to = input.to_project_id ?? null;
 
-    if (quantity <= 0) throw new Error('Transfer a quantity greater than zero.');
-    if (from === input.to_project_id) throw new Error('Source and destination are the same store.');
+    if (quantity <= 0) throw new Error('Send a quantity greater than zero.');
+    if (from === to) throw new Error('Source and destination are the same store.');
 
     const key = { item_id: input.item_id ?? null, item_name: input.item_name, unit: input.unit };
     const source = await stockRepository.findRow(from, key);
@@ -1292,14 +1340,74 @@ class StockTransferRepository extends BaseRepository<StockTransfer> {
     const code = input.code?.trim() ? input.code : await this.generateCode();
 
     const transfer = await this.create(
-      { ...input, code, quantity, unit_cost_snapshot: unitCost },
+      {
+        ...input,
+        to_project_id: to,
+        code,
+        quantity,
+        unit_cost_snapshot: unitCost,
+        status: 'on_the_way',
+        quantity_received: null,
+        received_date: null,
+        received_by: null,
+      },
       createdBy,
     );
 
     await stockRepository.withdraw(from, key, quantity);
-    await stockRepository.receive(input.to_project_id, key, quantity, unitCost, createdBy);
     await markRequestReceivedByTransfer(transfer, createdBy);
     return transfer;
+  }
+
+  /**
+   * The other side counts it in. What arrived goes on its shelf at the cost it
+   * left with; a shortfall stays on the record with a note rather than
+   * disappearing.
+   */
+  async receive(
+    id: string,
+    input: { quantity_received: number; received_date: string; received_by: string | null; note?: string | null },
+  ): Promise<StockTransfer | undefined> {
+    const transfer = await this.getById(id);
+    if (!transfer) return undefined;
+    if (transferStatus(transfer) === 'received') throw new Error('This dispatch has already been received.');
+
+    const got = qty(Number(input.quantity_received) || 0);
+    if (got < 0) throw new Error('Received quantity cannot be negative.');
+    if (got > transfer.quantity + 0.0005) {
+      throw new Error(`Only ${transfer.quantity} ${transfer.unit} was sent.`);
+    }
+    if (got < transfer.quantity - 0.0005 && !input.note?.trim()) {
+      throw new Error('Less arrived than was sent — say what happened in the note.');
+    }
+
+    const key = { item_id: transfer.item_id ?? null, item_name: transfer.item_name, unit: transfer.unit };
+    if (got > 0) {
+      await stockRepository.receive(
+        transfer.to_project_id ?? null,
+        key,
+        got,
+        transfer.unit_cost_snapshot,
+        input.received_by,
+      );
+    }
+    const saved = await this.update(id, {
+      status: 'received',
+      quantity_received: got,
+      received_date: input.received_date,
+      received_by: input.received_by,
+      receive_note: input.note?.trim() || null,
+    });
+    if (transfer.request_id) await syncRequestFromSite(transfer.request_id, input.received_by);
+    return saved;
+  }
+
+  /** Dispatches a store has not counted in yet; `null` = the main store. */
+  async onTheWayTo(projectId: string | null): Promise<StockTransferWithRelations[]> {
+    const rows = await this.list();
+    return rows.filter(
+      (r) => transferStatus(r) === 'on_the_way' && (r.to_project_id ?? null) === (projectId ?? null),
+    );
   }
 
   async list(filters: StockTransferFilters = {}): Promise<StockTransferWithRelations[]> {
@@ -1315,13 +1423,16 @@ class StockTransferRepository extends BaseRepository<StockTransfer> {
       const fromProject = transfer.from_project_id
         ? projectById.get(transfer.from_project_id)
         : undefined;
-      const toProject = projectById.get(transfer.to_project_id);
+      const toProject = transfer.to_project_id ? projectById.get(transfer.to_project_id) : undefined;
       return {
         ...transfer,
         from_project: fromProject,
         to_project: toProject,
-        from_label: fromProject?.name ?? 'Central Store',
-        to_label: toProject?.name ?? 'Unknown project',
+        from_label: fromProject?.name ?? 'Main store',
+        to_label: transfer.to_project_id ? (toProject?.name ?? 'Unknown project') : 'Main store',
+        received_by_name: transfer.received_by
+          ? (userById.get(transfer.received_by)?.name ?? null)
+          : null,
         transferred_by_name: transfer.transferred_by
           ? (userById.get(transfer.transferred_by)?.name ?? null)
           : null,
@@ -1349,7 +1460,11 @@ class StockTransferRepository extends BaseRepository<StockTransfer> {
     );
   }
 
-  /** Reverses the move — back out of the destination, back into the source. */
+  /**
+   * Reverses the move — back out of the destination (only what it counted
+   * in), back into the source (all of it: a shortfall reversed is a shortfall
+   * that never happened).
+   */
   async removeCascade(id: string): Promise<void> {
     const transfer = await this.getById(id);
     if (!transfer) return;
@@ -1361,7 +1476,8 @@ class StockTransferRepository extends BaseRepository<StockTransfer> {
       item_name: transfer.item_name,
       unit: transfer.unit,
     };
-    await stockRepository.withdraw(transfer.to_project_id, key, transfer.quantity);
+    const arrived = transferReceivedQuantity(transfer);
+    if (arrived > 0) await stockRepository.withdraw(transfer.to_project_id ?? null, key, arrived);
     await stockRepository.receive(
       transfer.from_project_id ?? null,
       key,
@@ -1403,32 +1519,49 @@ class SupplierVoucherRepository extends BaseRepository<SupplierVoucher> {
   }
 
   /**
-   * Pays a supplier (Section 7.9 — direct, no approval step). `project_id` is
-   * copied off the order rather than chosen: Section 7.11 makes the PO the
-   * link in the cost chain, and letting the two disagree is exactly how a
-   * payment ends up rolled up against the wrong project.
+   * Pays a supplier against an approved bill — the final billable voucher
+   * (Phase 2 step 4). Order, supplier and project are copied off the bill
+   * rather than chosen: Section 7.11 makes the PO the link in the cost chain,
+   * and letting them disagree is how a payment lands on the wrong project.
+   *
+   * Paying more than the voucher's balance is refused. That is not a budget
+   * rule — it is a second payment of the same bill, which is the mistake this
+   * whole chain exists to catch.
    */
   async pay(
-    input: Omit<NewRecord<SupplierVoucher>, 'code' | 'supplier_id' | 'project_id'> & {
+    input: Omit<NewRecord<SupplierVoucher>, 'code' | 'supplier_id' | 'project_id' | 'po_id'> & {
       code?: string;
+      bill_id: string;
     },
     createdBy: string | null = null,
   ): Promise<SupplierVoucher> {
-    const order = await db.purchase_orders.get(input.po_id);
-    if (!order) throw new Error('The purchase order this voucher pays no longer exists.');
-    if (money(Number(input.amount) || 0) <= 0) throw new Error('Enter an amount greater than zero.');
+    const bill = await db.supplier_bills.get(input.bill_id);
+    if (!bill) throw new Error('The bill this payment settles no longer exists.');
+    if (!isBillPayable(bill.status)) {
+      throw new Error('Only an approved bill (a payable voucher) can be paid.');
+    }
+    const amount = money(Number(input.amount) || 0);
+    if (amount <= 0) throw new Error('Enter an amount greater than zero.');
+    const paid = await supplierBillRepository.paidOn(bill.id);
+    const balance = money(bill.payable_amount - paid);
+    if (amount > balance + 0.009) {
+      throw new Error(`Only ${balance.toLocaleString('en-IN')} is left to pay on ${bill.code}.`);
+    }
 
     const code = input.code?.trim() ? input.code : await this.generateCode();
-    return this.create(
+    const saved = await this.create(
       {
         ...input,
         code,
-        amount: money(Number(input.amount) || 0),
-        supplier_id: order.supplier_id,
-        project_id: order.project_id ?? null,
+        amount,
+        po_id: bill.po_id,
+        supplier_id: bill.supplier_id,
+        project_id: bill.project_id ?? null,
       },
       createdBy,
     );
+    await supplierBillRepository.syncPaid(bill.id);
+    return saved;
   }
 
   async list(filters: SupplierVoucherFilters = {}): Promise<SupplierVoucherWithRelations[]> {
@@ -1494,7 +1627,321 @@ class SupplierVoucherRepository extends BaseRepository<SupplierVoucher> {
   }
 
   async removeCascade(id: string): Promise<void> {
+    const voucher = await this.getById(id);
     await documentRepository.removeForEntity('supplier_voucher', id);
+    await this.remove(id);
+    if (voucher?.bill_id) await supplierBillRepository.syncPaid(voucher.bill_id);
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Supplier bills → payable vouchers (Phase 2 step 4, PLATFORM-REPLAN §4.3)
+ * ------------------------------------------------------------------ */
+
+export interface SupplierBillLineInput {
+  po_item_id: string;
+  quantity_billed: number;
+  rate_billed: number;
+}
+
+export interface SupplierBillFilters {
+  search?: string;
+  status?: SupplierBillStatus | 'all' | 'payable';
+  supplier_id?: string;
+  project_id?: string;
+  po_id?: string;
+}
+
+export interface SupplierBillWithRelations extends SupplierBill {
+  items: SupplierBillItem[];
+  order?: PurchaseOrder;
+  supplier?: Supplier;
+  project?: Project;
+  match: MatchResult;
+  paid: number;
+  balance: number;
+  /** payable above the matched lines at the order's rate — the price difference */
+  price_difference: number;
+  recorded_by_name?: string | null;
+  verified_by_name?: string | null;
+  approved_by_name?: string | null;
+  has_scan: boolean;
+}
+
+class SupplierBillRepository extends BaseRepository<SupplierBill> {
+  constructor() {
+    super(() => db.supplier_bills);
+  }
+
+  async generateCode(): Promise<string> {
+    const codes = (await db.supplier_bills.toArray()).map((r) => r.code);
+    return nextCode('BILL', codes);
+  }
+
+  /**
+   * The match for a set of billed lines on one order, against what other
+   * (non-rejected) bills on that order already billed.
+   */
+  async matchFor(
+    poId: string,
+    lines: SupplierBillLineInput[],
+    excludeBillId: string | null = null,
+  ): Promise<MatchResult> {
+    const [poItems, bills] = await Promise.all([
+      purchaseOrderItemRepository.listForOrder(poId),
+      db.supplier_bills.where('po_id').equals(poId).toArray(),
+    ]);
+    const others = bills.filter((b) => b.id !== excludeBillId && billCounts(b.status));
+    const otherItems = others.length
+      ? await db.supplier_bill_items.where('bill_id').anyOf(others.map((b) => b.id)).toArray()
+      : [];
+    const before = new Map<string, number>();
+    for (const i of otherItems) {
+      before.set(i.po_item_id, qty((before.get(i.po_item_id) ?? 0) + (Number(i.quantity_billed) || 0)));
+    }
+    const byId = new Map(poItems.map((i) => [i.id, i]));
+    return threeWayMatch(
+      lines
+        .filter((l) => byId.has(l.po_item_id))
+        .map((l) => ({
+          po_item: byId.get(l.po_item_id)!,
+          billed_before: before.get(l.po_item_id) ?? 0,
+          quantity_billed: l.quantity_billed,
+          rate_billed: l.rate_billed,
+        })),
+    );
+  }
+
+  /**
+   * Procurement records the supplier's bill. Lines with nothing billed are
+   * dropped. The payable starts at the matched value; the verifier settles it.
+   */
+  async record(
+    input: {
+      po_id: string;
+      bill_no: string;
+      bill_date: string;
+      vat_amount?: number | null;
+      ait_amount?: number | null;
+      notes?: string | null;
+      code?: string;
+      items: SupplierBillLineInput[];
+    },
+    createdBy: string | null = null,
+  ): Promise<SupplierBill> {
+    const order = await db.purchase_orders.get(input.po_id);
+    if (!order) throw new Error('The purchase order this bill is for no longer exists.');
+    if (!input.bill_no.trim()) throw new Error("Enter the supplier's bill number.");
+    const lines = input.items.filter((l) => (Number(l.quantity_billed) || 0) > 0);
+    if (lines.length === 0) throw new Error('Bill at least one line.');
+
+    const duplicate = (await db.supplier_bills.where('supplier_id').equals(order.supplier_id).toArray()).find(
+      (b) => b.bill_no.trim().toLowerCase() === input.bill_no.trim().toLowerCase() && b.status !== 'rejected',
+    );
+    if (duplicate) {
+      throw new Error(`This supplier's bill ${input.bill_no} is already recorded as ${duplicate.code}.`);
+    }
+
+    const match = await this.matchFor(order.id, lines);
+    const code = input.code?.trim() ? input.code : await this.generateCode();
+    const bill = await this.create(
+      {
+        code,
+        po_id: order.id,
+        supplier_id: order.supplier_id,
+        project_id: order.project_id ?? null,
+        bill_no: input.bill_no.trim(),
+        bill_date: input.bill_date,
+        status: 'recorded',
+        billed_amount: match.billed_value,
+        vat_amount: input.vat_amount ?? null,
+        ait_amount: input.ait_amount ?? null,
+        payable_amount: match.matched_value,
+        payable_note: null,
+        notes: input.notes?.trim() || null,
+      },
+      createdBy,
+    );
+    for (const line of lines) {
+      await db.supplier_bill_items.add({
+        id: newId(),
+        bill_id: bill.id,
+        po_item_id: line.po_item_id,
+        quantity_billed: qty(Number(line.quantity_billed) || 0),
+        rate_billed: money(Number(line.rate_billed) || 0),
+        created_at: bill.created_at,
+        updated_at: bill.created_at,
+        created_by: createdBy,
+      });
+    }
+    return bill;
+  }
+
+  /**
+   * Accounts confirm the match and settle what we will pay. A payable that is
+   * not the matched value needs a note — that is the whole audit trail of a
+   * difference.
+   */
+  async verify(
+    id: string,
+    input: { payable_amount: number; payable_note?: string | null; by: string | null; date: string },
+  ): Promise<SupplierBill | undefined> {
+    const bill = await this.getWithRelations(id);
+    if (!bill) return undefined;
+    if (bill.status !== 'recorded') throw new Error('Only a bill waiting to be verified can be verified.');
+    const payable = money(Number(input.payable_amount) || 0);
+    if (payable <= 0) throw new Error('The payable amount must be greater than zero.');
+    if (Math.abs(payable - bill.match.matched_value) > 0.009 && !input.payable_note?.trim()) {
+      throw new Error('The payable differs from the matched value — say why in the note.');
+    }
+    return this.update(id, {
+      status: 'verified',
+      payable_amount: payable,
+      payable_note: input.payable_note?.trim() || null,
+      verified_by: input.by,
+      verified_at: input.date,
+    });
+  }
+
+  /**
+   * Management approves: the bill becomes the final billable voucher. A rate
+   * above the order is allowed with a note (client decision 2026-10-11).
+   */
+  async approve(
+    id: string,
+    input: { by: string | null; date: string; note?: string | null },
+  ): Promise<SupplierBill | undefined> {
+    const bill = await this.getWithRelations(id);
+    if (!bill) return undefined;
+    if (bill.status !== 'verified') throw new Error('Only a verified bill can be approved.');
+    if (!bill.match.clean && !input.note?.trim()) {
+      throw new Error('This bill does not match the order and receipts — note why it is approved.');
+    }
+    return this.update(id, {
+      status: 'approved',
+      approved_by: input.by,
+      approved_at: input.date,
+      decision_note: input.note?.trim() || bill.decision_note || null,
+    });
+  }
+
+  /** Sent back to the supplier, at verification or approval. */
+  async reject(id: string, input: { by: string | null; date: string; reason: string }) {
+    const bill = await this.getById(id);
+    if (!bill) return undefined;
+    if (bill.status !== 'recorded' && bill.status !== 'verified') {
+      throw new Error('A bill that is approved or paid cannot be rejected.');
+    }
+    if (!input.reason.trim()) throw new Error('Give the reason for rejecting it.');
+    return this.update(id, {
+      status: 'rejected',
+      decision_note: input.reason.trim(),
+      ...(bill.status === 'recorded'
+        ? { verified_by: input.by, verified_at: input.date }
+        : { approved_by: input.by, approved_at: input.date }),
+    });
+  }
+
+  async paidOn(billId: string): Promise<number> {
+    const rows = await db.supplier_vouchers.where('bill_id').equals(billId).toArray();
+    return money(rows.reduce((t, v) => t + (Number(v.amount) || 0), 0));
+  }
+
+  /** Approved → Part paid → Paid follows the payments; never set by hand. */
+  async syncPaid(billId: string): Promise<void> {
+    const bill = await this.getById(billId);
+    if (!bill || !['approved', 'part_paid', 'paid'].includes(bill.status)) return;
+    const paid = await this.paidOn(billId);
+    const next: SupplierBillStatus =
+      paid <= 0.009 ? 'approved' : paid >= bill.payable_amount - 0.009 ? 'paid' : 'part_paid';
+    if (next !== bill.status) await this.update(billId, { status: next });
+  }
+
+  async list(filters: SupplierBillFilters = {}): Promise<SupplierBillWithRelations[]> {
+    let bills = await db.supplier_bills.toArray();
+    if (filters.po_id) bills = bills.filter((b) => b.po_id === filters.po_id);
+    if (filters.supplier_id) bills = bills.filter((b) => b.supplier_id === filters.supplier_id);
+    if (filters.project_id) {
+      bills =
+        filters.project_id === 'central'
+          ? bills.filter((b) => !b.project_id)
+          : bills.filter((b) => b.project_id === filters.project_id);
+    }
+    if (filters.status === 'payable') bills = bills.filter((b) => isBillPayable(b.status));
+    else if (filters.status && filters.status !== 'all') bills = bills.filter((b) => b.status === filters.status);
+
+    const full = await Promise.all(bills.map((b) => this.relate(b)));
+    let out = full;
+    if (filters.search?.trim()) {
+      const q = filters.search.trim().toLowerCase();
+      out = out.filter((r) =>
+        [r.code, r.bill_no, r.notes, r.supplier?.name, r.order?.code, r.project?.name]
+          .filter(Boolean)
+          .some((f) => String(f).toLowerCase().includes(q)),
+      );
+    }
+    return out.sort((a, b) => b.bill_date.localeCompare(a.bill_date) || b.created_at.localeCompare(a.created_at));
+  }
+
+  async getWithRelations(id: string): Promise<SupplierBillWithRelations | null> {
+    const bill = await this.getById(id);
+    return bill ? this.relate(bill) : null;
+  }
+
+  private async relate(bill: SupplierBill): Promise<SupplierBillWithRelations> {
+    const [items, order, supplier, project, paid, docs] = await Promise.all([
+      db.supplier_bill_items.where('bill_id').equals(bill.id).toArray(),
+      db.purchase_orders.get(bill.po_id),
+      db.suppliers.get(bill.supplier_id),
+      bill.project_id ? db.projects.get(bill.project_id) : Promise.resolve(undefined),
+      this.paidOn(bill.id),
+      db.documents.where('entity_id').equals(bill.id).toArray(),
+    ]);
+    const match = await this.matchFor(
+      bill.po_id,
+      items.map((i) => ({ po_item_id: i.po_item_id, quantity_billed: i.quantity_billed, rate_billed: i.rate_billed })),
+      bill.id,
+    );
+    const userIds = [bill.created_by, bill.verified_by, bill.approved_by].filter(Boolean) as string[];
+    const users = userIds.length ? await db.users.bulkGet(userIds) : [];
+    const name = (id?: string | null) => (id ? (users.find((u) => u?.id === id)?.name ?? null) : null);
+    const payableLive = isBillPayable(bill.status) || bill.status === 'paid';
+    return {
+      ...bill,
+      items,
+      order,
+      supplier,
+      project,
+      match,
+      paid,
+      balance: payableLive ? money(Math.max(0, bill.payable_amount - paid)) : 0,
+      price_difference: money(bill.payable_amount - match.matched_at_order_rate),
+      recorded_by_name: name(bill.created_by),
+      verified_by_name: name(bill.verified_by),
+      approved_by_name: name(bill.approved_by),
+      has_scan: docs.some((d) => d.entity_type === 'supplier_bill'),
+    };
+  }
+
+  async countByStatus(): Promise<Record<string, number>> {
+    const rows = await db.supplier_bills.toArray();
+    return rows.reduce<Record<string, number>>((acc, r) => {
+      acc[r.status] = (acc[r.status] ?? 0) + 1;
+      return acc;
+    }, {});
+  }
+
+  async blockedByPayments(id: string): Promise<number> {
+    return db.supplier_vouchers.where('bill_id').equals(id).count();
+  }
+
+  async removeCascade(id: string): Promise<void> {
+    if ((await this.blockedByPayments(id)) > 0) {
+      throw new Error('Payments have been made against this bill; delete those first.');
+    }
+    const items = await db.supplier_bill_items.where('bill_id').equals(id).toArray();
+    await db.supplier_bill_items.bulkDelete(items.map((i) => i.id));
+    await documentRepository.removeForEntity('supplier_bill', id);
     await this.remove(id);
   }
 }
@@ -1909,6 +2356,222 @@ class StockReturnRepository extends BaseRepository<StockReturn> {
 }
 
 /* ------------------------------------------------------------------ *
+ * The site's view of its material (Phase 2 step 4) — quantities, no money
+ * ------------------------------------------------------------------ */
+
+export interface IncomingDelivery {
+  /** `po:<id>` or `trf:<id>` */
+  id: string;
+  kind: 'order' | 'dispatch';
+  code: string;
+  /** supplier, or the store it was sent from */
+  from_label: string;
+  date: string;
+  request_code?: string | null;
+  /** material sent ahead: nobody on site asked for it */
+  sent_ahead: boolean;
+  lines: Array<{ item_name: string; unit: string; quantity: number; outstanding: number }>;
+  order?: PurchaseOrderWithRelations;
+  transfer?: StockTransferWithRelations;
+}
+
+export interface SiteMaterialRow {
+  id: string;
+  item_id: string | null;
+  item_name: string;
+  unit: string;
+  /** everything that reached the site: supplier deliveries + dispatches counted in */
+  received: number;
+  /** in the site store, not handed out */
+  in_store: number;
+  /** handed out to the work, not yet recorded as used */
+  in_use: number;
+  used: number;
+  written_off: number;
+  /** leftovers sent to the main store or another site */
+  sent_back: number;
+  /** on the way back, not yet counted in by the other side */
+  sending: number;
+  oldest_in_use_days: number;
+}
+
+class SiteMaterialsRepository {
+  /**
+   * What is coming to this site and has not been received: orders unloading
+   * here, and dispatches from the main store (or another site), with or without
+   * a request.
+   */
+  async incoming(projectId: string): Promise<IncomingDelivery[]> {
+    const [orders, dispatches, requests] = await Promise.all([
+      purchaseOrderRepository.list({ project_id: projectId }),
+      stockTransferRepository.onTheWayTo(projectId),
+      db.material_requests.where('project_id').equals(projectId).toArray(),
+    ]);
+    const requestCode = new Map(requests.map((r) => [r.id, r.code]));
+    const out: IncomingDelivery[] = [];
+    for (const order of orders) {
+      if (!poDeliversToSite(order)) continue;
+      if (order.status !== 'ordered' && order.status !== 'partially_received') continue;
+      out.push({
+        id: `po:${order.id}`,
+        kind: 'order',
+        code: order.code,
+        from_label: order.supplier?.name ?? 'Supplier',
+        date: order.order_date,
+        request_code: order.request_id ? (requestCode.get(order.request_id) ?? null) : null,
+        sent_ahead: !order.request_id,
+        lines: order.items.map((i) => ({
+          item_name: i.item_name,
+          unit: i.unit,
+          quantity: i.quantity_ordered,
+          outstanding: outstanding(i),
+        })),
+        order,
+      });
+    }
+    for (const t of dispatches) {
+      out.push({
+        id: `trf:${t.id}`,
+        kind: 'dispatch',
+        code: t.code,
+        from_label: t.from_label,
+        date: t.transfer_date,
+        request_code: t.request_id ? (requestCode.get(t.request_id) ?? null) : null,
+        sent_ahead: !t.request_id,
+        lines: [{ item_name: t.item_name, unit: t.unit, quantity: t.quantity, outstanding: t.quantity }],
+        transfer: t,
+      });
+    }
+    return out.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  /**
+   * One row per item: received, in the site store, in use, used, sent back.
+   * The client's three statuses (received / in use / used) as quantities of
+   * the same row rather than separate tabs.
+   */
+  async forProject(projectId: string): Promise<SiteMaterialRow[]> {
+    const [orders, poItems, grnItems, transfers, stock, site, items] = await Promise.all([
+      db.purchase_orders.where('project_id').equals(projectId).toArray(),
+      db.purchase_order_items.toArray(),
+      db.goods_receipt_items.toArray(),
+      db.stock_transfers.toArray(),
+      db.stock.where('project_id').equals(projectId).toArray(),
+      siteMovementsFor(projectId),
+      db.material_items.toArray(),
+    ]);
+    const itemName = new Map(items.map((i) => [i.id, i.name]));
+    const rows = new Map<string, SiteMaterialRow>();
+    const keyOf = (r: { item_id?: string | null; item_name: string; unit: string }) =>
+      r.item_id ?? `name:${r.item_name}|${r.unit}`;
+    const row = (r: { item_id?: string | null; item_name: string; unit: string }) => {
+      const k = keyOf(r);
+      let hit = rows.get(k);
+      if (!hit) {
+        hit = {
+          id: k,
+          item_id: r.item_id ?? null,
+          item_name: (r.item_id ? itemName.get(r.item_id) : undefined) ?? r.item_name,
+          unit: r.unit,
+          received: 0,
+          in_store: 0,
+          in_use: 0,
+          used: 0,
+          written_off: 0,
+          sent_back: 0,
+          sending: 0,
+          oldest_in_use_days: 0,
+        };
+        rows.set(k, hit);
+      }
+      return hit;
+    };
+
+    const siteOrders = new Set(orders.filter(poDeliversToSite).map((o) => o.id));
+    const poItemById = new Map(poItems.filter((i) => siteOrders.has(i.po_id)).map((i) => [i.id, i]));
+    for (const line of grnItems) {
+      const poItem = poItemById.get(line.po_item_id);
+      if (!poItem) continue;
+      const r = row(poItem);
+      r.received = qty(r.received + stockableQuantity(line));
+    }
+    for (const t of transfers) {
+      if (t.to_project_id === projectId) {
+        const r = row(t);
+        r.received = qty(r.received + transferReceivedQuantity(t));
+      }
+      if (t.from_project_id === projectId) {
+        const r = row(t);
+        if (transferStatus(t) === 'received') r.sent_back = qty(r.sent_back + t.quantity);
+        else r.sending = qty(r.sending + t.quantity);
+      }
+    }
+    for (const s of stock) {
+      const r = row(s);
+      r.in_store = qty(r.in_store + (Number(s.quantity_available) || 0));
+    }
+    for (const b of site.balance) {
+      const r = row(b);
+      r.in_use = qty(r.in_use + Math.max(0, b.at_site_quantity));
+      r.used = qty(r.used + b.used_quantity);
+      r.written_off = qty(r.written_off + b.written_off_quantity);
+      r.oldest_in_use_days = Math.max(r.oldest_in_use_days, b.at_site_quantity > 0 ? b.days_on_site : 0);
+    }
+
+    return [...rows.values()]
+      .filter((r) => r.received + r.in_store + r.in_use + r.used + r.sent_back + r.sending > 0.0005)
+      .sort((a, b) => a.item_name.localeCompare(b.item_name));
+  }
+
+  /**
+   * Mark used straight from the site store: most sites hand out and use the
+   * same day, so the hand-out is recorded with it rather than as a second step.
+   */
+  async useFromStore(
+    input: {
+      project_id: string;
+      item_id?: string | null;
+      item_name: string;
+      unit: string;
+      quantity: number;
+      work_item_id?: string | null;
+      date: string;
+      by: string | null;
+      notes?: string | null;
+    },
+  ): Promise<void> {
+    const issue = await stockIssueRepository.issue(
+      {
+        project_id: input.project_id,
+        work_item_id: input.work_item_id ?? null,
+        item_id: input.item_id ?? null,
+        item_name: input.item_name,
+        unit: input.unit,
+        quantity_issued: input.quantity,
+        issue_date: input.date,
+        issued_by: input.by,
+        notes: 'Handed out and used the same day.',
+      },
+      input.by,
+    );
+    await stockConsumptionRepository.use(
+      {
+        project_id: input.project_id,
+        work_item_id: input.work_item_id ?? null,
+        item_id: issue.item_id ?? null,
+        item_name: issue.item_name,
+        unit: issue.unit,
+        quantity_used: issue.quantity_issued,
+        used_date: input.date,
+        recorded_by: input.by,
+        notes: input.notes ?? null,
+      },
+      input.by,
+    );
+  }
+}
+
+/* ------------------------------------------------------------------ *
  * Project cost traceability (Section 7.11)
  * ------------------------------------------------------------------ */
 
@@ -1935,6 +2598,7 @@ class ProcurementCostRepository {
     const projectOrders = orders.filter((o) => o.project_id === projectId);
 
     let orderedValue = 0;
+    let siteReceivedValue = 0;
     let draftValue = 0;
     let receivedValue = 0;
     let openPos = 0;
@@ -1958,13 +2622,31 @@ class ProcurementCostRepository {
       }
       orderedValue += totals.value;
       receivedValue += totals.received_value;
+      // Phase 2 step 4: only what was unloaded at the site is the site's yet;
+      // a main-store order reaches the project through a dispatch
+      if (poDeliversToSite(order)) siteReceivedValue += totals.received_value;
       if (order.status === 'ordered' || order.status === 'partially_received') openPos += 1;
+    }
+
+    const bills = (await db.supplier_bills.where('project_id').equals(projectId).toArray()).filter(
+      (b) => b.status === 'approved' || b.status === 'part_paid' || b.status === 'paid',
+    );
+    let payable = 0;
+    let priceDifference = 0;
+    for (const bill of bills) {
+      const full = await supplierBillRepository.getWithRelations(bill.id);
+      if (!full) continue;
+      payable += full.payable_amount;
+      priceDifference += full.price_difference;
     }
 
     return {
       ordered_value: money(orderedValue),
       draft_value: money(draftValue),
       received_value: money(receivedValue),
+      site_received_value: money(siteReceivedValue),
+      approved_bill_value: money(payable),
+      price_difference_value: money(priceDifference),
       paid_value: money(
         vouchers
           .filter((v) => v.project_id === projectId)
@@ -1996,10 +2678,11 @@ class ProcurementCostRepository {
         site.writtenOff.reduce((sum, w) => sum + (Number(w.total_cost) || 0), 0),
       ),
       at_site_value: money(site.balance.reduce((sum, r) => sum + r.at_site_value, 0)),
+      // counted in by the site — a dispatch on the lorry is nobody's cost yet
       transferred_in_value: money(
         transfers
           .filter((t) => t.to_project_id === projectId)
-          .reduce((sum, t) => sum + t.quantity * t.unit_cost_snapshot, 0),
+          .reduce((sum, t) => sum + transferReceivedQuantity(t) * t.unit_cost_snapshot, 0),
       ),
       transferred_out_value: money(
         transfers
@@ -2104,6 +2787,8 @@ export const stockReturnRepository = new StockReturnRepository();
 export const stockWriteOffRepository = new StockWriteOffRepository();
 export const stockTransferRepository = new StockTransferRepository();
 export const supplierVoucherRepository = new SupplierVoucherRepository();
+export const supplierBillRepository = new SupplierBillRepository();
 export const procurementCostRepository = new ProcurementCostRepository();
+export const siteMaterialsRepository = new SiteMaterialsRepository();
 
 export { outstanding };

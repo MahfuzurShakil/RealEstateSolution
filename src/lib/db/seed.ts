@@ -25,6 +25,7 @@ import {
   PURCHASE_ORDER_DOCUMENT_TYPES,
   REFUND_DOCUMENT_TYPES,
   SUPPLIER_VOUCHER_DOCUMENT_TYPES,
+  SUPPLIER_BILL_DOCUMENT_TYPES,
   SITE_PROGRESS_DOCUMENT_TYPES,
   SITE_VISIT_DOCUMENT_TYPES,
   DD_CHECKLIST_SEED,
@@ -65,6 +66,7 @@ async function runSeed(): Promise<void> {
   await ensureOptions('document_type', 'site_progress_update', [...SITE_PROGRESS_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'purchase_order', [...PURCHASE_ORDER_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'supplier_voucher', [...SUPPLIER_VOUCHER_DOCUMENT_TYPES]);
+  await ensureOptions('document_type', 'supplier_bill', [...SUPPLIER_BILL_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'expense', [...EXPENSE_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'refund', [...REFUND_DOCUMENT_TYPES]);
   await ensureOptions('land_size_unit', null, [...LAND_SIZE_UNITS]);

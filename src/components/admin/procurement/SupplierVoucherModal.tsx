@@ -9,64 +9,61 @@ import { AccountPicker } from '@/components/admin/finance/AccountPicker';
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { SUPPLIER_PAYMENT_METHODS, type SupplierPaymentMethod } from '@/lib/db/types';
-import { SUPPLIER_PAYMENT_METHOD_META, paymentSummary } from '@/lib/domain/procurement';
-import type { PurchaseOrderWithRelations } from '@/lib/repositories';
+import { SUPPLIER_PAYMENT_METHOD_META } from '@/lib/domain/procurement';
+import type { SupplierBillWithRelations } from '@/lib/repositories';
 import { supplierVoucherRepository, userRepository } from '@/lib/repositories';
 import { formatBdt, todayLocal } from '@/lib/utils/format';
 
 /**
- * Pay a supplier against a purchase order (Section 7.9) — direct, with no
- * approval step, which is what the scope specifies for procurement payments.
- *
- * The amount defaults to what is still due rather than to the order value, so
- * a second payment on a part-paid order does not quietly double it.
+ * Finance pays a supplier against an approved bill — the final billable
+ * voucher (Phase 2 step 4). The amount defaults to the voucher's balance, and
+ * part-payments are allowed; paying more than the balance is refused by the
+ * repository, because that is the same bill paid twice.
  */
 export function SupplierVoucherModal({
   open,
-  order,
+  bill,
   onClose,
   onSaved,
 }: {
   open: boolean;
-  order: PurchaseOrderWithRelations;
+  bill: SupplierBillWithRelations | null;
   onClose: () => void;
   onSaved?: () => void;
 }) {
-  if (!open) return null;
-  return <VoucherDialog order={order} onClose={onClose} onSaved={onSaved} />;
+  if (!open || !bill) return null;
+  return <VoucherDialog bill={bill} onClose={onClose} onSaved={onSaved} />;
 }
 
 function VoucherDialog({
-  order,
+  bill,
   onClose,
   onSaved,
 }: {
-  order: PurchaseOrderWithRelations;
+  bill: SupplierBillWithRelations;
   onClose: () => void;
   onSaved?: () => void;
 }) {
   const { userId } = useMockSession();
-  const summary = paymentSummary(order.totals.value, order.vouchers);
 
-  const [amount, setAmount] = useState(summary.due > 0 ? String(summary.due) : '');
+  const [amount, setAmount] = useState(bill.balance > 0 ? String(bill.balance) : '');
   const [paymentDate, setPaymentDate] = useState(todayLocal());
-  const [method, setMethod] = useState<SupplierPaymentMethod>('bank');
+  const [method, setMethod] = useState<SupplierPaymentMethod>('cheque');
   const [reference, setReference] = useState('');
   const [paidBy, setPaidBy] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [accountId, setAccountId] = useState('');
-  const [vat, setVat] = useState('');
-  const [ait, setAit] = useState('');
+  const [vat, setVat] = useState(bill.vat_amount ? String(bill.vat_amount) : '');
+  const [ait, setAit] = useState(bill.ait_amount ? String(bill.ait_amount) : '');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   const financeTeam = useLiveQuery(
-    () => userRepository.listByRole(['accounts', 'procurement', 'management', 'super_admin']),
+    () => userRepository.listByRole(['accounts', 'management', 'super_admin']),
     [],
   );
 
   const value = Number(amount) || 0;
-  const willOverpay = value > summary.due + 0.009;
 
   async function save() {
     if (value <= 0) {
@@ -77,7 +74,7 @@ function VoucherDialog({
     try {
       await supplierVoucherRepository.pay(
         {
-          po_id: order.id,
+          bill_id: bill.id,
           amount: value,
           payment_date: paymentDate,
           payment_method: method,
@@ -102,8 +99,8 @@ function VoucherDialog({
   return (
     <Modal
       open
-      title="Pay Supplier"
-      subtitle={`${order.code} · ${order.supplier?.name ?? 'Supplier removed'}`}
+      title="Pay against voucher"
+      subtitle={`${bill.code} · ${bill.supplier?.name ?? 'Supplier removed'} · bill ${bill.bill_no}`}
       icon={Receipt}
       onClose={onClose}
       footer={
@@ -119,16 +116,16 @@ function VoucherDialog({
     >
       <div className="mb-4 grid grid-cols-3 gap-3 rounded-xl border border-hairline bg-white p-3 text-center">
         <div>
-          <p className="text-xs text-ink-muted">Order value</p>
-          <p className="text-sm font-semibold text-ink">{formatBdt(summary.po_value)}</p>
+          <p className="text-xs text-ink-muted">Payable</p>
+          <p className="text-sm font-semibold text-ink">{formatBdt(bill.payable_amount)}</p>
         </div>
         <div>
           <p className="text-xs text-ink-muted">Already paid</p>
-          <p className="text-sm font-semibold text-ink">{formatBdt(summary.paid)}</p>
+          <p className="text-sm font-semibold text-ink">{formatBdt(bill.paid)}</p>
         </div>
         <div>
-          <p className="text-xs text-ink-muted">Still due</p>
-          <p className="text-sm font-semibold text-admin-700">{formatBdt(summary.due)}</p>
+          <p className="text-xs text-ink-muted">Balance</p>
+          <p className="text-sm font-semibold text-admin-700">{formatBdt(bill.balance)}</p>
         </div>
       </div>
 
@@ -186,49 +183,26 @@ function VoucherDialog({
 
         <AccountPicker value={accountId} onChange={setAccountId} label="Paid from" />
 
-
         {/* Memo only — the amount above is what actually leaves the account. */}
-
-
         <Field label="VAT withheld" hint="Optional, for the return">
-
-
           <TextInput type="number" min={0} step="any" value={vat} onChange={(e) => setVat(e.target.value)} placeholder="0" />
-
-
         </Field>
-
-
         <Field label="AIT withheld" hint="Optional, for the return">
-
-
           <TextInput type="number" min={0} step="any" value={ait} onChange={(e) => setAit(e.target.value)} placeholder="0" />
-
-
         </Field>
-
-
 
         <Field label="Notes" className="sm:col-span-2">
           <TextArea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="Advance against delivery, part payment, retention released…"
+            placeholder="Part payment, final payment, retention released…"
           />
         </Field>
       </div>
 
-      {willOverpay && (
-        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
-          This pays {formatBdt(value - summary.due)} more than the order is worth. That is usually a
-          duplicate voucher — check the payments already recorded before saving.
-        </p>
-      )}
-
       <p className="mt-4 text-xs text-ink-muted">
-        The project is taken from the order, not chosen here (Section 7.11) — that is what keeps the
-        cost rolling up to the right project, including for central-store purchases, which carry no
-        project at all.
+        Order, supplier and project come from the voucher, not chosen here, so the payment rolls up
+        to the right project.
       </p>
     </Modal>
   );

@@ -38,6 +38,7 @@ export type EntityType =
   | 'site_progress_update'
   | 'purchase_order'
   | 'supplier_voucher'
+  | 'supplier_bill'
   | 'blog_post';
 
 export interface DocumentRecord extends BaseEntity {
@@ -1758,6 +1759,15 @@ export const MATERIAL_REQUEST_STATUSES = [
   'received',
   'delivered',
   'fulfilled',
+  /*
+   * Phase 2 step 4 (PLATFORM-REPLAN.md §4.3): deliveries come in parts — 6 ton
+   * ordered, 4 today, 2 next week — so "received at site" is worked out per
+   * line, approved quantity against what the site actually received, and the
+   * in-between state is a status of its own. `cancelled` is the requester
+   * withdrawing a request nobody has acted on yet.
+   */
+  'partially_received',
+  'cancelled',
 ] as const;
 export type MaterialRequestStatus = (typeof MATERIAL_REQUEST_STATUSES)[number];
 
@@ -1918,8 +1928,18 @@ export interface PurchaseOrder extends BaseEntity {
   supplier_id: UUID;
   order_date: ISODate;
   status: PurchaseOrderStatus;
+  /**
+   * Phase 2 step 4: where the supplier unloads. Cement, rod and brick go
+   * straight to the site; fittings bought in bulk go to the main store and are
+   * sent on later. Absent on rows before v30 — read through `poDeliversToSite`,
+   * which keeps the old rule (a project order went to its site).
+   */
+  deliver_to?: PoDeliverTo | null;
   notes?: string | null;
 }
+
+export const PO_DELIVER_TO = ['site', 'main_store'] as const;
+export type PoDeliverTo = (typeof PO_DELIVER_TO)[number];
 
 export interface PurchaseOrderItem extends BaseEntity {
   po_id: UUID;
@@ -1949,6 +1969,8 @@ export interface GoodsReceipt extends BaseEntity {
   po_id: UUID;
   receipt_date: ISODate;
   received_by: UUID | null;
+  /** Phase 2 step 4: the supplier's delivery note (challan) number */
+  challan_no?: string | null;
   notes?: string | null;
 }
 
@@ -2122,8 +2144,20 @@ export interface StockTransfer extends BaseEntity {
   quantity: number;
   /** null = from central stock */
   from_project_id?: UUID | null;
-  to_project_id: UUID;
+  /** null = to the main store (leftovers sent back from a site, Phase 2 step 4) */
+  to_project_id?: UUID | null;
   unit_cost_snapshot: number;
+  /**
+   * Phase 2 step 4: a dispatch is on the lorry until the other side counts it
+   * in. Only then does the stock arrive, and a shortfall (sent 100, received
+   * 96) is recorded instead of disappearing. Absent on rows before v30, which
+   * moved instantly — read as `received`.
+   */
+  status?: TransferStatus | null;
+  quantity_received?: number | null;
+  received_date?: ISODate | null;
+  received_by?: UUID | null;
+  receive_note?: string | null;
   transfer_date: ISODate;
   transferred_by: UUID | null;
   /**
@@ -2153,6 +2187,12 @@ export interface SupplierVoucher extends BaseEntity {
   supplier_id: UUID;
   /** copied from the PO — null when it was a central-stock purchase */
   project_id?: UUID | null;
+  /**
+   * Phase 2 step 4: the approved bill (payable voucher) this payment is made
+   * against. Required for new payments; null on payments made before bills
+   * were recorded.
+   */
+  bill_id?: UUID | null;
   amount: number;
   payment_date: ISODate;
   payment_method: SupplierPaymentMethod;
@@ -2161,9 +2201,71 @@ export interface SupplierVoucher extends BaseEntity {
   notes?: string | null;
 }
 
+export const TRANSFER_STATUSES = ['on_the_way', 'received'] as const;
+export type TransferStatus = (typeof TRANSFER_STATUSES)[number];
+
+/**
+ * Phase 2 step 4 (PLATFORM-REPLAN.md §4.3): the supplier's bill, checked
+ * against the order and what arrived (three-way match), verified by accounts
+ * and approved by management. Once approved it is the **final billable
+ * voucher**, and Finance pays against it (`supplier_vouchers.bill_id`).
+ *
+ * `part_paid` and `paid` follow the payments; they are written by the payment
+ * repository, never chosen by hand.
+ */
+export const SUPPLIER_BILL_STATUSES = [
+  'recorded',
+  'verified',
+  'approved',
+  'part_paid',
+  'paid',
+  'rejected',
+] as const;
+export type SupplierBillStatus = (typeof SUPPLIER_BILL_STATUSES)[number];
+
+export interface SupplierBill extends BaseEntity {
+  code: string;                       // BILL-2026-001
+  po_id: UUID;
+  /** copied from the PO, like a payment's */
+  supplier_id: UUID;
+  project_id?: UUID | null;
+  /** the supplier's own invoice number and date */
+  bill_no: string;
+  bill_date: ISODate;
+  status: SupplierBillStatus;
+  /** sum of billed lines (quantity × rate), net of VAT/AIT */
+  billed_amount: number;
+  vat_amount?: number | null;
+  ait_amount?: number | null;
+  /**
+   * What we will pay. Defaults to the matched value — billed rate × the
+   * quantity that both arrived and was not billed before — and the verifier
+   * may change it with `payable_note`.
+   */
+  payable_amount: number;
+  payable_note?: string | null;
+  /** who entered the bill is `created_by` */
+  verified_by?: UUID | null;
+  verified_at?: ISODate | null;
+  approved_by?: UUID | null;
+  approved_at?: ISODate | null;
+  /** the reason when rejected, or the approver's note on a difference */
+  decision_note?: string | null;
+  notes?: string | null;
+}
+
+export interface SupplierBillItem extends BaseEntity {
+  bill_id: UUID;
+  po_item_id: UUID;
+  quantity_billed: number;
+  /** BDT per unit, as billed — may differ from the order's rate */
+  rate_billed: number;
+}
+
 /** Document types (Section 7.10) */
 export const PURCHASE_ORDER_DOCUMENT_TYPES = ['quotation', 'invoice', 'other'] as const;
 export const SUPPLIER_VOUCHER_DOCUMENT_TYPES = ['payment_receipt', 'cheque_copy', 'other'] as const;
+export const SUPPLIER_BILL_DOCUMENT_TYPES = ['supplier_bill', 'challan', 'other'] as const;
 
 /* ------------------------------------------------------------------ *
  * Module 7 — Finance (Section 8)

@@ -42,6 +42,8 @@ import type {
   StockRow,
   StockTransfer,
   Supplier,
+  SupplierBill,
+  SupplierBillItem,
   SupplierVoucher,
   Expense,
   PaymentInstallment,
@@ -141,6 +143,8 @@ export class AppDatabase extends Dexie {
   stock_write_offs!: EntityTable<StockWriteOff, 'id'>;
   stock_transfers!: EntityTable<StockTransfer, 'id'>;
   supplier_vouchers!: EntityTable<SupplierVoucher, 'id'>;
+  supplier_bills!: EntityTable<SupplierBill, 'id'>;
+  supplier_bill_items!: EntityTable<SupplierBillItem, 'id'>;
 
   // Module 7 — Finance
   payment_schedules!: EntityTable<PaymentSchedule, 'id'>;
@@ -697,6 +701,55 @@ export class AppDatabase extends Dexie {
           await tx
             .table('projects')
             .update(project.id, { sales_status: booked.has(project.id) ? 'open' : 'not_open' });
+        }
+      });
+
+    /*
+     * v30 — Phase 2 step 4: the material flow, request to payment
+     * (PLATFORM-REPLAN.md §4.5).
+     *
+     * 1. `supplier_bills` / `supplier_bill_items` are new: the supplier's bill,
+     *    matched against the order and the receipts, verified and approved
+     *    into the payable voucher Finance pays against.
+     * 2. `supplier_vouchers` gains an indexed `bill_id` — the payment now
+     *    points at the voucher it settles. The full index set is restated
+     *    because a stores() spec replaces it (the v15 trap).
+     * 3. `stock_transfers` gains an indexed `status`: a dispatch is on the way
+     *    until the other side receives it. Every existing transfer moved
+     *    instantly, so it is stamped `received` with its full quantity.
+     * 4. `purchase_orders.deliver_to` (not indexed): an order for a project
+     *    went to its site, a central one to the main store, so that is what
+     *    existing rows get.
+     *
+     * `goods_receipts.challan_no` and the two new request statuses need no
+     * rewrite.
+     */
+    this.version(30)
+      .stores({
+        supplier_bills: 'id, &code, po_id, supplier_id, project_id, status, bill_date, created_at',
+        supplier_bill_items: 'id, bill_id, po_item_id',
+        supplier_vouchers:
+          'id, &code, po_id, bill_id, supplier_id, project_id, payment_date, payment_method, paid_by, account_id',
+        stock_transfers:
+          'id, &code, from_project_id, to_project_id, item_name, item_id, status, transfer_date',
+      })
+      .upgrade(async (tx) => {
+        const transfers = await tx.table('stock_transfers').toArray();
+        for (const t of transfers) {
+          if (t.status) continue;
+          await tx.table('stock_transfers').update(t.id, {
+            status: 'received',
+            quantity_received: t.quantity,
+            received_date: t.transfer_date,
+            received_by: t.transferred_by ?? null,
+          });
+        }
+        const orders = await tx.table('purchase_orders').toArray();
+        for (const o of orders) {
+          if (o.deliver_to) continue;
+          await tx
+            .table('purchase_orders')
+            .update(o.id, { deliver_to: o.project_id ? 'site' : 'main_store' });
         }
       });
   }

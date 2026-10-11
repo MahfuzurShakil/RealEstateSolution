@@ -38,7 +38,9 @@ const ICONS: Record<Exclude<MaterialRequestStatus, 'pending'>, typeof ThumbsUp> 
   ordered: ShoppingCart,
   received: Warehouse,
   delivered: Truck,
+  partially_received: PackageCheck,
   fulfilled: PackageCheck,
+  cancelled: Ban,
 };
 
 /**
