@@ -8,6 +8,7 @@ import { Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { money } from '@/lib/domain/procurement';
+import { isSiteActive } from '@/lib/domain/site-progress';
 import {
   projectRepository,
   stockRepository,
@@ -16,8 +17,10 @@ import {
 } from '@/lib/repositories';
 import { formatBdt, formatBdtRate, todayLocal } from '@/lib/utils/format';
 
-/** `''` is the central store; a project id is that project's own store. */
+/** `''` is the main store; a project id is that project's own (site) store. */
 const CENTRAL = '';
+/** the main store as a destination — `''` already means "not chosen" there */
+const MAIN_STORE = '__main';
 
 export interface TransferDefaults {
   from_project_id?: string | null;
@@ -112,11 +115,12 @@ function TransferDialog({
   const selected = (available ?? []).find((r) => r.id === effectiveKey);
   const requested = Number(quantity) || 0;
   const tooMuch = Boolean(selected) && requested > (selected?.quantity_available ?? 0);
-  const sameStore = Boolean(toId) && (fromId || null) === toId;
+  const toStore = toId === MAIN_STORE ? null : toId || null;
+  const sameStore = Boolean(toId) && (fromId || null) === toStore;
 
   async function save() {
     if (!toId) {
-      setError('Pick the project the material is going to');
+      setError('Pick where the material is going');
       return;
     }
     if (sameStore) {
@@ -136,7 +140,7 @@ function TransferDialog({
           unit: selected.unit,
           quantity: requested,
           from_project_id: fromId || null,
-          to_project_id: toId,
+          to_project_id: toStore,
           transfer_date: transferDate,
           transferred_by: transferredBy || userId,
           request_id: defaults?.request_id ?? null,
@@ -156,11 +160,11 @@ function TransferDialog({
   return (
     <Modal
       open
-      title="Transfer Stock"
+      title="Send material"
       subtitle={
         defaults?.request_code
-          ? `Meeting ${defaults.request_code} from stock — no purchase needed`
-          : 'Central store → project, or project → project'
+          ? `For ${defaults.request_code}, from stock — nothing to buy`
+          : 'Main store → a site, site → site, or a site back to the main store'
       }
       icon={ArrowLeftRight}
       onClose={onClose}
@@ -170,7 +174,7 @@ function TransferDialog({
             Cancel
           </Button>
           <Button onClick={save} disabled={busy || tooMuch || sameStore}>
-            {busy ? 'Saving…' : 'Transfer stock'}
+            {busy ? 'Saving…' : 'Send'}
           </Button>
         </>
       }
@@ -184,7 +188,7 @@ function TransferDialog({
               setStockKey('');
             }}
           >
-            <option value={CENTRAL}>Central Store</option>
+            <option value={CENTRAL}>Main store</option>
             {(projects ?? []).map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -196,9 +200,11 @@ function TransferDialog({
         <Field label="To" required error={sameStore ? 'Pick a different store' : undefined}>
           <SelectInput value={toId} onChange={(e) => setToId(e.target.value)} invalid={sameStore}>
             <option value="">Select…</option>
-            {(projects ?? []).map((p) => (
+            <option value={MAIN_STORE}>Main store</option>
+            {/* only a site that is being built can receive material */}
+            {(projects ?? []).filter((p) => isSiteActive(p.status) || p.id === toId).map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name}
+                {p.name} site
               </option>
             ))}
           </SelectInput>
@@ -245,7 +251,7 @@ function TransferDialog({
           />
         </Field>
 
-        <Field label="Transfer date" required>
+        <Field label="Sent on" required>
           <TextInput
             type="date"
             value={transferDate}
@@ -253,7 +259,7 @@ function TransferDialog({
           />
         </Field>
 
-        <Field label="Transferred by" className="sm:col-span-2">
+        <Field label="Sent by" className="sm:col-span-2">
           <SelectInput
             value={transferredBy ?? userId}
             onChange={(e) => setTransferredBy(e.target.value)}
@@ -277,10 +283,11 @@ function TransferDialog({
 
       {selected && requested > 0 && !tooMuch && (
         <p className="mt-4 rounded-xl border border-hairline bg-white p-3 text-xs text-ink-muted">
-          Moving {formatBdt(money(requested * selected.average_unit_price))} of material at{' '}
-          {formatBdtRate(selected.average_unit_price)} per {selected.unit}. The destination store
-          recalculates its own weighted average with this cost, so the project is charged what the
-          material really cost rather than a nominal rate.
+          Sending {formatBdt(money(requested * selected.average_unit_price))} of material at{' '}
+          {formatBdtRate(selected.average_unit_price)} per {selected.unit}. It leaves this store now
+          and is <span className="font-medium text-ink">on the way</span> until the other side
+          receives it; the cost travels with it.
+          {!defaults?.request_id && toStore && ' No request is attached, so the site sees it as sent ahead.'}
         </p>
       )}
 

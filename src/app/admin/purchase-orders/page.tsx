@@ -225,7 +225,7 @@ export default function PurchaseOrdersPage() {
               <Field label="Project" hint="Central purchases carry no project">
                 <SelectInput value={projectId} onChange={(e) => setProjectId(e.target.value)}>
                   <option value="">All purchases</option>
-                  <option value="central">Central / company stock</option>
+                  <option value="central">Main store (no project)</option>
                   {(projects ?? []).map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}

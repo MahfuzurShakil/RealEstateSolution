@@ -8,6 +8,7 @@ import {
   ArrowLeftRight,
   Building2,
   HardHat,
+  PackageCheck,
   PackageMinus,
   Trash2,
   TriangleAlert,
@@ -21,6 +22,7 @@ import {
 } from '@/components/admin/procurement/SiteStockModal';
 import { StockIssueModal } from '@/components/admin/procurement/StockIssueModal';
 import { StockTransferModal } from '@/components/admin/procurement/StockTransferModal';
+import { SiteReceiveModal } from '@/components/admin/construction/SiteReceiveModal';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -31,6 +33,7 @@ import { Checkbox } from '@/components/ui/Field';
 import { FilterBar, FilterSelect } from '@/components/ui/FilterBar';
 import { PageHeader } from '@/components/ui/PageHeader';
 import type {
+  IncomingDelivery,
   StockConsumptionWithRelations,
   StockIssueWithRelations,
   StockReturnWithRelations,
@@ -40,6 +43,7 @@ import type {
 } from '@/lib/repositories';
 import {
   projectRepository,
+  siteMaterialsRepository,
   siteStockRepository,
   stockConsumptionRepository,
   stockIssueRepository,
@@ -48,7 +52,13 @@ import {
   stockTransferRepository,
   stockWriteOffRepository,
 } from '@/lib/repositories';
-import { SITE_AGEING_DAYS, isStaleOnSite, type SiteBalanceRow } from '@/lib/domain/procurement';
+import {
+  SITE_AGEING_DAYS,
+  TRANSFER_STATUS_META,
+  isStaleOnSite,
+  transferStatus,
+  type SiteBalanceRow,
+} from '@/lib/domain/procurement';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatBdtRate, formatDate } from '@/lib/utils/format';
 
@@ -82,6 +92,9 @@ function StockPage() {
   const [deleteTransfer, setDeleteTransfer] = useState<StockTransferWithRelations | null>(null);
 
   const projects = useLiveQuery(() => projectRepository.list(), []);
+  // Phase 2 step 4: what the main store has to count in
+  const incoming = useLiveQuery(() => siteMaterialsRepository.incomingToMainStore(), []);
+  const [receiving, setReceiving] = useState<IncomingDelivery | null>(null);
   const stock = useLiveQuery(
     () => stockRepository.list({ search, location, in_stock_only: inStockOnly }),
     [search, location, inStockOnly],
@@ -189,7 +202,7 @@ function StockPage() {
           </Link>
         ) : (
           <Badge tone="neutral">
-            <Warehouse className="size-3.5" /> Central Store
+            <Warehouse className="size-3.5" /> Main store
           </Badge>
         ),
       sortValue: (row) => row.location_label,
@@ -606,10 +619,11 @@ function StockPage() {
             {row.from_label}
           </Badge>
           <ArrowLeftRight className="size-3.5 text-slate-400" />
-          <Badge tone="teal">
-            <Building2 className="size-3.5" />
+          <Badge tone={row.to_project_id ? 'teal' : 'neutral'}>
+            {row.to_project_id ? <Building2 className="size-3.5" /> : <Warehouse className="size-3.5" />}
             {row.to_label}
           </Badge>
+          {!row.request_id && row.to_project_id && <Badge tone="amber">Sent ahead</Badge>}
         </span>
       ),
       sortValue: (row) => `${row.from_label}${row.to_label}`,
@@ -622,8 +636,26 @@ function StockPage() {
       sortValue: (row) => row.quantity,
     },
     {
+      key: 'status',
+      header: 'Status',
+      cell: (row) => {
+        const st = transferStatus(row);
+        const short =
+          st === 'received' && row.quantity_received != null && row.quantity_received < row.quantity - 0.0005;
+        return (
+          <span className="flex flex-col items-start gap-0.5">
+            <Badge tone={short ? 'red' : TRANSFER_STATUS_META[st].tone}>
+              {short ? `Short: ${row.quantity_received} received` : TRANSFER_STATUS_META[st].label}
+            </Badge>
+            {row.receive_note && <span className="text-[11px] text-ink-muted">{row.receive_note}</span>}
+          </span>
+        );
+      },
+      sortValue: (row) => transferStatus(row),
+    },
+    {
       key: 'transfer_date',
-      header: 'Date',
+      header: 'Sent',
       cell: (row) => formatDate(row.transfer_date),
       sortValue: (row) => row.transfer_date,
     },
@@ -658,7 +690,7 @@ function StockPage() {
     used: `Used (${used?.length ?? 0})`,
     returns: `Returned (${returns?.length ?? 0})`,
     write_offs: `Written Off (${writeOffs?.length ?? 0})`,
-    transfers: `Transfers (${transfers?.length ?? 0})`,
+    transfers: `Sent between stores (${transfers?.length ?? 0})`,
   };
 
   return (
@@ -669,7 +701,7 @@ function StockPage() {
         action={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => setTransferOpen(true)}>
-              <ArrowLeftRight className="size-4" /> Transfer
+              <ArrowLeftRight className="size-4" /> Send material
             </Button>
             <Button variant="outline" onClick={() => setSiteMode('write_off')}>
               <TriangleAlert className="size-4" /> Write Off
@@ -696,7 +728,7 @@ function StockPage() {
             icon: Warehouse,
           },
           {
-            label: 'In the central store',
+            label: 'In the main store',
             value: `${totals.central}`,
             hint: 'items bought ahead of a project',
             icon: Building2,
@@ -726,6 +758,40 @@ function StockPage() {
           </Card>
         ))}
       </div>
+
+      {(incoming ?? []).length > 0 && (
+        <Card className="mb-5">
+          <div className="mb-3 flex items-center gap-2">
+            <PackageCheck className="size-4 text-admin-600" />
+            <p className="text-sm font-semibold text-ink">To receive at the main store</p>
+            <span className="text-xs text-ink-muted">
+              orders delivered here, and leftovers sites have sent back
+            </span>
+          </div>
+          <ul className="divide-y divide-hairline">
+            {(incoming ?? []).map((d) => (
+              <li key={d.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-ink">
+                    {d.code} <span className="font-normal text-ink-muted">· from {d.from_label}</span>
+                  </p>
+                  <p className="text-xs text-ink-muted">
+                    {d.lines
+                      .filter((l) => l.outstanding > 0)
+                      .map((l) => `${l.item_name} ${l.outstanding} ${l.unit}`)
+                      .join(', ')}
+                    {' · since '}
+                    {formatDate(d.date)}
+                  </p>
+                </div>
+                <Button size="sm" onClick={() => setReceiving(d)}>
+                  <PackageCheck className="size-4" /> Receive
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {stale.length > 0 && (
         <button
@@ -783,7 +849,7 @@ function StockPage() {
             <option value="">All stores</option>
             {/* the central store has no project, so issues and transfers
                 filtered by project deliberately ignore this option */}
-            {tab === 'on_hand' && <option value="central">Central Store</option>}
+            {tab === 'on_hand' && <option value="central">Main store</option>}
             {(projects ?? []).map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -933,6 +999,7 @@ function StockPage() {
         defaults={{ project_id: location && location !== 'central' ? location : undefined }}
         onClose={() => setIssueOpen(false)}
       />
+      <SiteReceiveModal delivery={receiving} atLabel="the main store" onClose={() => setReceiving(null)} />
       <StockTransferModal open={transferOpen} onClose={() => setTransferOpen(false)} />
       <SiteStockModal
         open={siteMode !== null}

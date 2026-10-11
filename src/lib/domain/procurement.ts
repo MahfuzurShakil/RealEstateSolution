@@ -229,7 +229,7 @@ export function stockValue(row: { quantity_available: number; average_unit_price
 
 /** Where a stock row lives. Central stock is `project_id = null` (7.7). */
 export function stockLocationLabel(projectName?: string | null): string {
-  return projectName ?? 'Central Store';
+  return projectName ?? 'Main store';
 }
 
 /* ------------------------------------------------------------------ *

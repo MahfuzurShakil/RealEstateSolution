@@ -7,6 +7,7 @@ import type {
   GoodsReceiptItem,
   MaterialRequest,
   Project,
+  PoDeliverTo,
   PurchaseOrder,
   PurchaseOrderItem,
   PurchaseOrderStatus,
@@ -358,11 +359,30 @@ class PurchaseOrderRepository extends BaseRepository<PurchaseOrder> {
       project_id?: string | null;
       supplier_id?: string;
       order_date?: string;
+      deliver_to?: PoDeliverTo | null;
       notes?: string | null;
     },
     items: PurchaseOrderItemInput[],
     createdBy: string | null = null,
   ): Promise<PurchaseOrder | undefined> {
+    /*
+     * Where the goods were unloaded is history once a receipt exists: moving
+     * the order to another store would leave the received stock in the old
+     * one (Phase 2 step 4).
+     */
+    const before = await this.getById(id);
+    if (before) {
+      const received = (await db.goods_receipts.where('po_id').equals(id).count()) > 0;
+      const moved =
+        receivingStore(before) !==
+        receivingStore({
+          project_id: changes.project_id !== undefined ? changes.project_id : before.project_id,
+          deliver_to: changes.deliver_to !== undefined ? changes.deliver_to : before.deliver_to,
+        });
+      if (received && moved) {
+        throw new Error('Goods have already been received on this order, so its project and delivery point cannot change.');
+      }
+    }
     await purchaseOrderItemRepository.replaceForOrder(id, items, createdBy);
     const saved = await this.update(id, changes as never);
     // trimming a line to what has already arrived can complete the order
@@ -1084,7 +1104,7 @@ class StockRepository extends BaseRepository<StockRow> {
       return {
         ...row,
         project,
-        location_label: project?.name ?? 'Central Store',
+        location_label: project?.name ?? 'Main store',
         display_name: item?.name ?? row.item_name,
         value: stockValue(row),
       };
@@ -2405,6 +2425,47 @@ export interface SiteMaterialRow {
   oldest_in_use_days: number;
 }
 
+/** An order as something to receive — the same Receive at a site or the main store. */
+export function orderAsDelivery(
+  order: PurchaseOrderWithRelations,
+  requestCode: string | null = order.request?.code ?? null,
+): IncomingDelivery {
+  return {
+    id: `po:${order.id}`,
+    kind: 'order',
+    code: order.code,
+    from_label: order.supplier?.name ?? 'Supplier',
+    date: order.order_date,
+    request_code: requestCode,
+    sent_ahead: !order.request_id,
+    lines: order.items.map((i) => ({
+      item_name: i.item_name,
+      unit: i.unit,
+      quantity: i.quantity_ordered,
+      outstanding: outstanding(i),
+    })),
+    order,
+  };
+}
+
+/** A dispatch as something to receive. */
+export function transferAsDelivery(
+  t: StockTransferWithRelations,
+  requestCode: string | null = null,
+): IncomingDelivery {
+  return {
+    id: `trf:${t.id}`,
+    kind: 'dispatch',
+    code: t.code,
+    from_label: t.from_label,
+    date: t.transfer_date,
+    request_code: requestCode,
+    sent_ahead: !t.request_id,
+    lines: [{ item_name: t.item_name, unit: t.unit, quantity: t.quantity, outstanding: t.quantity }],
+    transfer: t,
+  };
+}
+
 export type SiteMaterialMode = 'hand_out' | 'use' | 'back_to_store' | 'send_back' | 'write_off';
 
 export interface SiteMaterialAction {
@@ -2437,37 +2498,31 @@ class SiteMaterialsRepository {
     for (const order of orders) {
       if (!poDeliversToSite(order)) continue;
       if (order.status !== 'ordered' && order.status !== 'partially_received') continue;
-      out.push({
-        id: `po:${order.id}`,
-        kind: 'order',
-        code: order.code,
-        from_label: order.supplier?.name ?? 'Supplier',
-        date: order.order_date,
-        request_code: order.request_id ? (requestCode.get(order.request_id) ?? null) : null,
-        sent_ahead: !order.request_id,
-        lines: order.items.map((i) => ({
-          item_name: i.item_name,
-          unit: i.unit,
-          quantity: i.quantity_ordered,
-          outstanding: outstanding(i),
-        })),
-        order,
-      });
+      out.push(orderAsDelivery(order, order.request_id ? (requestCode.get(order.request_id) ?? null) : null));
     }
     for (const t of dispatches) {
-      out.push({
-        id: `trf:${t.id}`,
-        kind: 'dispatch',
-        code: t.code,
-        from_label: t.from_label,
-        date: t.transfer_date,
-        request_code: t.request_id ? (requestCode.get(t.request_id) ?? null) : null,
-        sent_ahead: !t.request_id,
-        lines: [{ item_name: t.item_name, unit: t.unit, quantity: t.quantity, outstanding: t.quantity }],
-        transfer: t,
-      });
+      out.push(transferAsDelivery(t, t.request_id ? (requestCode.get(t.request_id) ?? null) : null));
     }
     return out.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  /**
+   * What the main store has to receive: orders delivered to it, and leftovers
+   * sites have sent back (Phase 2 step 4).
+   */
+  async incomingToMainStore(): Promise<IncomingDelivery[]> {
+    const [orders, dispatches, requests] = await Promise.all([
+      purchaseOrderRepository.list(),
+      stockTransferRepository.onTheWayTo(null),
+      db.material_requests.toArray(),
+    ]);
+    const requestCode = new Map(requests.map((r) => [r.id, r.code]));
+    return [
+      ...orders
+        .filter((o) => !poDeliversToSite(o) && (o.status === 'ordered' || o.status === 'partially_received'))
+        .map((o) => orderAsDelivery(o, o.request_id ? (requestCode.get(o.request_id) ?? null) : null)),
+      ...dispatches.map((t) => transferAsDelivery(t, null)),
+    ].sort((a, b) => a.date.localeCompare(b.date));
   }
 
   /**

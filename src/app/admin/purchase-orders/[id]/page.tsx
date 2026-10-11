@@ -16,7 +16,7 @@ import {
   Warehouse,
 } from 'lucide-react';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
-import { GoodsReceiptModal } from '@/components/admin/procurement/GoodsReceiptModal';
+import { SiteReceiveModal } from '@/components/admin/construction/SiteReceiveModal';
 import { PurchaseOrderStatusCard } from '@/components/admin/procurement/PurchaseOrderStatusCard';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -33,6 +33,7 @@ import {
   QUALITY_CHECK_META,
   SUPPLIER_PAYMENT_METHOD_META,
   canReceiveAgainst,
+  poDeliversToSite,
   lineTotal,
   outstanding,
   paymentSummary,
@@ -40,6 +41,7 @@ import {
 import type { GoodsReceiptWithRelations, SupplierVoucherWithRelations } from '@/lib/repositories';
 import {
   goodsReceiptRepository,
+  orderAsDelivery,
   purchaseOrderRepository,
   supplierVoucherRepository,
 } from '@/lib/repositories';
@@ -92,7 +94,7 @@ export default function PurchaseOrderDetailPage() {
    * Materials tab (decision 2026-10-11). Procurement receives only what comes
    * into the central store.
    */
-  const receivedAtSite = Boolean(order.project_id);
+  const receivedAtSite = poDeliversToSite(order);
   const canReceive = canReceiveAgainst(order.status) && !receivedAtSite;
 
   const itemColumns: Column<PurchaseOrderItem>[] = [
@@ -248,8 +250,8 @@ export default function PurchaseOrderDetailPage() {
       <PageHeader
         title={order.code}
         subtitle={`${order.supplier?.name ?? 'Supplier removed'} · ${
-          order.project?.name ?? 'Central / company stock'
-        } · ${formatBdt(order.totals.value)}`}
+          order.project?.name ?? 'Main store (no project)'
+        } · deliver to ${receivedAtSite ? 'the site' : 'the main store'} · ${formatBdt(order.totals.value)}`}
         action={
           <div className="flex flex-wrap gap-2">
             {canReceive && (
@@ -351,7 +353,7 @@ export default function PurchaseOrderDetailPage() {
                     receivedAtSite && canReceiveAgainst(order.status)
                       ? 'This order is delivered to the project site. The site records the receipt from the project’s Materials tab.'
                       : canReceive
-                      ? 'Record the delivery when the material reaches the store — only quantities that pass the quality check go into stock.'
+                      ? 'Receive the delivery when it reaches the main store — accepted quantity goes into stock, anything turned back never does.'
                       : 'This order has to be placed with the supplier before anything can be received against it.'
                   }
                 />
@@ -365,6 +367,7 @@ export default function PurchaseOrderDetailPage() {
                           <p className="text-xs text-ink-muted">
                             {formatDate(receipt.receipt_date)}
                             {receipt.received_by_name && ` · received by ${receipt.received_by_name}`}
+                            {receipt.challan_no && ` · challan ${receipt.challan_no}`}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -544,7 +547,7 @@ export default function PurchaseOrderDetailPage() {
                     <Warehouse className="size-5" />
                   </span>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-ink">Central / company stock</p>
+                    <p className="text-sm font-medium text-ink">Main store (no project)</p>
                     <p className="text-xs text-ink-muted">
                       Bought in advance — transfer it to a project when one needs it.
                     </p>
@@ -609,7 +612,11 @@ export default function PurchaseOrderDetailPage() {
         </aside>
       </div>
 
-      <GoodsReceiptModal open={grnOpen} order={order} onClose={() => setGrnOpen(false)} />
+      <SiteReceiveModal
+        delivery={grnOpen ? orderAsDelivery(order) : null}
+        atLabel="the main store"
+        onClose={() => setGrnOpen(false)}
+      />
 
       <ConfirmDialog
         open={confirmDelete}

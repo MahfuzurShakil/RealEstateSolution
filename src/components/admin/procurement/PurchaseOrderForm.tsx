@@ -11,7 +11,7 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
 import { MaterialItemPicker } from './MaterialItemPicker';
 import { useMockSession } from '@/lib/auth/mock-session';
-import type { PurchaseOrderStatus } from '@/lib/db/types';
+import type { PoDeliverTo, PurchaseOrderStatus } from '@/lib/db/types';
 import { lineTotal, money } from '@/lib/domain/procurement';
 import type { MaterialRequestWithRelations, PurchaseOrderWithRelations } from '@/lib/repositories';
 import {
@@ -141,6 +141,10 @@ export function PurchaseOrderForm({
   );
   const [supplierId, setSupplierId] = useState(order?.supplier_id ?? '');
   const [orderDate, setOrderDate] = useState(order?.order_date ?? todayLocal());
+  // Phase 2 step 4: where the supplier unloads
+  const [deliverTo, setDeliverTo] = useState<PoDeliverTo>(
+    order?.deliver_to ?? (order && !order.project_id ? 'main_store' : 'site'),
+  );
   const [status, setStatus] = useState<PurchaseOrderStatus>(order?.status ?? 'draft');
   const [notes, setNotes] = useState(order?.notes ?? '');
   const [supplierModal, setSupplierModal] = useState(false);
@@ -232,6 +236,8 @@ export function PurchaseOrderForm({
         project_id: projectId || null,
         supplier_id: supplierId,
         order_date: orderDate,
+        // an order for no project has no site to go to
+        deliver_to: projectId ? deliverTo : ('main_store' as const),
         notes: notes.trim() || null,
       };
       const items = filled.map((l) => ({
@@ -244,7 +250,12 @@ export function PurchaseOrderForm({
       }));
 
       if (order) {
-        await purchaseOrderRepository.updateOrder(order.id, payload, items, userId);
+        try {
+          await purchaseOrderRepository.updateOrder(order.id, payload, items, userId);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'The order could not be saved.');
+          return;
+        }
         router.push(`/admin/purchase-orders/${order.id}`);
       } else {
         const saved = await purchaseOrderRepository.createOrder(
@@ -288,12 +299,30 @@ export function PurchaseOrderForm({
               onChange={(e) => setProjectId(e.target.value)}
               disabled={Boolean(selectedRequest)}
             >
-              <option value="">Central / company stock</option>
+              <option value="">Main store (no project)</option>
               {(projects ?? []).map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>
               ))}
+            </SelectInput>
+          </Field>
+
+          <Field
+            label="Deliver to"
+            hint={
+              projectId
+                ? 'Straight to site: the site receives it. Main store: the store receives it and sends it on.'
+                : 'An order for no project goes to the main store'
+            }
+          >
+            <SelectInput
+              value={projectId ? deliverTo : 'main_store'}
+              onChange={(e) => setDeliverTo(e.target.value as PoDeliverTo)}
+              disabled={!projectId}
+            >
+              <option value="site">Straight to the project site</option>
+              <option value="main_store">Main store</option>
             </SelectInput>
           </Field>
 

@@ -139,6 +139,8 @@ export {
   supplierBillRepository,
   siteMaterialsRepository,
   receivedAtSiteForRequest,
+  orderAsDelivery,
+  transferAsDelivery,
   type SupplierBillFilters,
   type SupplierBillWithRelations,
   type SupplierBillLineInput,
