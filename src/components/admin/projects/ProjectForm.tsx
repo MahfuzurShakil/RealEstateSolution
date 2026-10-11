@@ -29,6 +29,7 @@ import {
   type ProjectType,
 } from '@/lib/db/types';
 import { LAND_SIZE_UNIT_LABEL, developmentGateBlockReason } from '@/lib/domain/land';
+import { isSiteActive } from '@/lib/domain/site-progress';
 import {
   CONSTRUCTION_AFTER_SALE_LABEL,
   PROJECT_TYPE_HINT,
@@ -148,8 +149,17 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
 
   const kind = kindOf(form.project_type);
   const timeline = TIMELINE[kind];
-  // the inventory is shaped by the type, so the type is fixed once there is any
-  const typeLocked = Boolean(project && project.unit_total > 0);
+  // the inventory is shaped by the type, so the type is fixed once there is any —
+  // a tower counts too: it carries a work breakdown a share or plot never has (QA P-12)
+  const typeLocked = Boolean(project && (project.unit_total > 0 || project.towers.length > 0));
+  /*
+   * QA audit P-10: a project in Planning or Design often has no real dates
+   * yet, and forcing them produced made-up dates that later drove "behind
+   * schedule". They are asked for from Approval on.
+   */
+  const datesRequired = Boolean(project && !['planning', 'design'].includes(project.status));
+  // QA audit P-11 — the actual start belongs to a project whose construction has begun
+  const showActualStart = Boolean(project && isSiteActive(project.status)) || Boolean(project?.actual_start_date);
 
   /** Area from the land, never typed: summed when the lands share a unit. */
   const area = useMemo(() => {
@@ -194,9 +204,9 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
     if (!form.name.trim()) next.name = 'Project name is required';
     else if (takenNames?.has(form.name.trim().toLowerCase()))
       next.name = 'Another project already has this name';
-    if (!form.expected_start_date) next.expected_start_date = 'Required';
-    if (!form.expected_completion_date) next.expected_completion_date = 'Required';
-    else if (form.expected_start_date && form.expected_completion_date < form.expected_start_date) {
+    if (datesRequired && !form.expected_start_date) next.expected_start_date = 'Required';
+    if (datesRequired && !form.expected_completion_date) next.expected_completion_date = 'Required';
+    else if (form.expected_start_date && form.expected_completion_date && form.expected_completion_date < form.expected_start_date) {
       next.expected_completion_date = `${timeline.end} cannot be before ${timeline.start.toLowerCase()}`;
     }
     if (gateOn && blockedLands.length > 0) next.lands = blockedLands.join(' ');
@@ -208,6 +218,24 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
     e.preventDefault();
     if (!validate()) return;
     setSaving(true);
+    /*
+     * QA audit P-08: the land link is checked before anything is written, so a
+     * land taken by another project in the meantime no longer leaves a new
+     * project saved without its land.
+     */
+    for (const land of lands) {
+      const holders = (await landProjectMappingRepository.projectsForLand(land.id)).filter(
+        (p) => p.id !== project?.id,
+      );
+      if (holders.length > 0) {
+        setErrors((prev) => ({
+          ...prev,
+          lands: `${land.code} is already the land of ${holders[0].code}. A land can belong to one project only.`,
+        }));
+        setSaving(false);
+        return;
+      }
+    }
     try {
       const payload = {
         name: form.name.trim(),
@@ -216,8 +244,8 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
         total_land_area: area?.total ?? null,
         total_land_area_unit: area?.unit ?? 'katha',
         location_summary: form.location_summary.trim() || null,
-        expected_start_date: form.expected_start_date,
-        expected_completion_date: form.expected_completion_date,
+        expected_start_date: form.expected_start_date || null,
+        expected_completion_date: form.expected_completion_date || null,
         actual_start_date: kind === 'built' ? form.actual_start_date || null : null,
         architect: kind === 'share' ? null : form.architect.trim() || null,
         project_manager: form.project_manager || null,
@@ -270,6 +298,9 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
         return;
       }
       router.push(`/admin/projects/${saved.id}`);
+    } catch (err) {
+      // QA audit P-08 — a failure is said, not swallowed
+      setErrors((prev) => ({ ...prev, form: err instanceof Error ? err.message : String(err) }));
     } finally {
       setSaving(false);
     }
@@ -319,7 +350,13 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
       <Card>
         <CardHeader
           title="Project type"
-          subtitle={typeLocked ? 'Fixed: this project already has inventory.' : 'Decides what is sold and which details are asked below'}
+          subtitle={
+            typeLocked
+              ? 'Fixed: this project already has towers or inventory.'
+              : project && project.project_type !== form.project_type && kindOf(form.project_type) === 'share'
+                ? 'Saving as a land share clears the architect, amenities and actual start.'
+                : 'Decides what is sold and which details are asked below'
+          }
         />
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
           {PROJECT_TYPES.map((t) => {
@@ -389,7 +426,12 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
 
         <p className="mb-3 mt-5 text-sm font-medium text-ink">{timeline.title}</p>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Field label={timeline.start} required hint={timeline.startHint} error={errors.expected_start_date}>
+          <Field
+            label={timeline.start}
+            required={datesRequired}
+            hint={datesRequired ? timeline.startHint : `${timeline.startHint}. Can be left empty until Approval.`}
+            error={errors.expected_start_date}
+          >
             <TextInput
               type="date"
               value={form.expected_start_date}
@@ -397,7 +439,7 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
               invalid={Boolean(errors.expected_start_date)}
             />
           </Field>
-          <Field label={timeline.end} required hint={timeline.endHint} error={errors.expected_completion_date}>
+          <Field label={timeline.end} required={datesRequired} hint={timeline.endHint} error={errors.expected_completion_date}>
             <TextInput
               type="date"
               value={form.expected_completion_date}
@@ -405,7 +447,7 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
               invalid={Boolean(errors.expected_completion_date)}
             />
           </Field>
-          {kind === 'built' && project && (
+          {kind === 'built' && showActualStart && (
             <Field label="Actual construction start" hint="Stamped when the project moves to Under Construction">
               <TextInput
                 type="date"
@@ -557,6 +599,7 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
         </div>
       </Card>
 
+      {errors.form && <p className="text-right text-sm text-red-600">{errors.form}</p>}
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={() => router.back()} disabled={saving}>
           Cancel
@@ -575,8 +618,8 @@ function toFormState(project: ProjectWithRelations): FormState {
     name: project.name,
     project_type: project.project_type,
     location_summary: str(project.location_summary),
-    expected_start_date: project.expected_start_date,
-    expected_completion_date: project.expected_completion_date,
+    expected_start_date: project.expected_start_date ?? '',
+    expected_completion_date: project.expected_completion_date ?? '',
     actual_start_date: str(project.actual_start_date),
     architect: str(project.architect),
     project_manager: str(project.project_manager),

@@ -94,9 +94,13 @@ export function LandTimeline({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <Badge tone={meta.tone}>{landStatusLabel(event.to_status, acquisitionType)}</Badge>
-                  <span className="text-xs text-ink-muted">
-                    from {landStatusLabel(event.from_status, acquisitionType)}
-                  </span>
+                  {event.source === 'created' ? (
+                    <Badge tone="teal">Recorded</Badge>
+                  ) : (
+                    <span className="text-xs text-ink-muted">
+                      from {landStatusLabel(event.from_status, acquisitionType)}
+                    </span>
+                  )}
                   {/* L7 — say when the system moved it, or a person corrected it */}
                   {event.source === 'automatic' && <Badge>Automatic</Badge>}
                   {event.source === 'correction' && <Badge tone="amber">Corrected</Badge>}

@@ -1161,7 +1161,7 @@ export const LAND_READINESS_META: Record<
   ready: {
     label: 'Ready to build',
     tone: 'green',
-    hint: 'All land is owned and needs no further development.',
+    hint: 'All land is owned or under a signed JV, and needs no further development.',
   },
 };
 
@@ -1265,9 +1265,16 @@ export function salesOpenChecks(f: SalesGateFacts): { warnings: string[]; blocke
     );
   }
   const needsApproval = f.shape.item !== 'share';
-  if (needsApproval && f.status !== 'approval' && !PAST_APPROVAL.has(f.status)) {
+  /*
+   * QA audit P-07: "Approval" here is the stage the plan is *submitted* to
+   * RAJUK/CDA, so being in it is not having it approved. The warning lifts
+   * once the project has moved past it.
+   */
+  if (needsApproval && !PAST_APPROVAL.has(f.status)) {
     const text =
-      'The plan approval stage has not been reached. The Real Estate Development and Management Act 2010 expects an approved plan before a project is advertised or sold.';
+      f.status === 'approval'
+        ? 'The plan is submitted but not yet approved. The Real Estate Development and Management Act 2010 expects an approved plan before a project is advertised or sold.'
+        : 'The plan approval stage has not been reached. The Real Estate Development and Management Act 2010 expects an approved plan before a project is advertised or sold.';
     (f.block_before_approval ? blockers : warnings).push(text);
   }
   return { warnings, blockers };

@@ -19,6 +19,7 @@ import { ViewOnlyArea } from '@/components/ui/ViewOnly';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { canEdit } from '@/lib/domain/access';
 import { PROJECT_STATUS_META, TOWER_STATUS_META } from '@/lib/domain/project';
+import { isSiteActive } from '@/lib/domain/site-progress';
 import {
   SCHEDULE_STATE_META,
   WORK_ITEM_STATUS_META,
@@ -325,7 +326,15 @@ export default function ProgressUpdateDetailPage() {
         onConfirm={async () => {
           const projectId = update.project?.id;
           await siteProgressUpdateRepository.removeCascade(update.id);
-          router.push(projectId ? `/admin/site-progress/${projectId}` : '/admin/site-progress');
+          // QA audit C-06 — a project not under construction has no workspace to return to
+          const active = update.project && isSiteActive(update.project.status);
+          router.push(
+            projectId
+              ? active
+                ? `/admin/site-progress/${projectId}`
+                : `/admin/projects/${projectId}`
+              : '/admin/site-progress',
+          );
         }}
       />
     </>

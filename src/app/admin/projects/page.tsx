@@ -24,11 +24,15 @@ import { ResultCard } from '@/components/ui/ResultCard';
 import { ResultsLayout, ViewToggle, type ViewMode } from '@/components/ui/ViewToggle';
 import { PROJECT_STATUSES, PROJECT_TYPES, type ProjectStatus, type ProjectType } from '@/lib/db/types';
 import {
+  PROJECT_SALES_STATUS_META,
+  PROJECT_SHAPE,
   PROJECT_STATUS_META,
   PROJECT_TYPE_LABEL,
+  projectSalesStatus,
   projectShape,
   projectStatusLabel,
 } from '@/lib/domain/project';
+import { PROJECT_SALES_STATUSES, type ProjectSalesStatus } from '@/lib/db/types';
 import { projectRepository, unitRepository } from '@/lib/repositories';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
@@ -40,6 +44,8 @@ export default function ProjectsListPage() {
   const [status, setStatus] = useState<ProjectStatus | 'all'>('all');
   const [projectType, setProjectType] = useState<ProjectType | 'all'>('all');
   const [publicOnly, setPublicOnly] = useState(false);
+  // QA audit P-09 — sales status is a key project fact, so it can be filtered
+  const [sales, setSales] = useState<ProjectSalesStatus | 'all'>('all');
   const [sort, setSort] = useState<SortKey>('newest');
   const [view, setView] = useState<ViewMode>('list');
 
@@ -74,30 +80,33 @@ export default function ProjectsListPage() {
   const commercials = useLiveQuery(() => projectRepository.commercialSummaries(), []);
 
   const rows = useMemo(() => {
-    const list = [...(projects ?? [])];
+    const list = (projects ?? []).filter((p) => sales === 'all' || projectSalesStatus(p) === sales);
     switch (sort) {
       case 'oldest':
         return list.sort((a, b) => a.created_at.localeCompare(b.created_at));
       case 'completion_soon':
+        // undated projects (still planning) sort last
         return list.sort((a, b) =>
-          a.expected_completion_date.localeCompare(b.expected_completion_date),
+          (a.expected_completion_date ?? '9999').localeCompare(b.expected_completion_date ?? '9999'),
         );
       case 'name':
         return list.sort((a, b) => a.name.localeCompare(b.name));
       default:
         return list.sort((a, b) => b.created_at.localeCompare(a.created_at));
     }
-  }, [projects, sort]);
+  }, [projects, sort, sales]);
 
   const paged = usePagination(rows);
 
   const loading = projects === undefined;
   const hasAny = (allProjects?.length ?? 0) > 0;
-  const filtersActive = Boolean(search) || status !== 'all' || projectType !== 'all' || publicOnly;
+  const filtersActive =
+    Boolean(search) || status !== 'all' || projectType !== 'all' || publicOnly || sales !== 'all';
 
   function resetFilters() {
     setSearch('');
     setStatus('all');
+    setSales('all');
     setProjectType('all');
     setPublicOnly(false);
   }
@@ -106,7 +115,7 @@ export default function ProjectsListPage() {
     <>
       <PageHeader
         title="Projects"
-        subtitle="Developments built on acquired or JV-signed land, with their towers and units."
+        subtitle="Every development, from planning to handover: towers, plots or shares, with or without land yet."
         action={
           <Link href="/admin/projects/new">
             <Button>
@@ -139,9 +148,32 @@ export default function ProjectsListPage() {
                   onChange={(e) => setStatus(e.target.value as ProjectStatus | 'all')}
                 >
                   <option value="all">All statuses</option>
-                  {PROJECT_STATUSES.map((s) => (
+                  {/* QA audit P-09 — the names a card actually shows for that stage */}
+                  {PROJECT_STATUSES.map((s) => {
+                    const alt = [...new Set(
+                      [PROJECT_SHAPE.plot_development, PROJECT_SHAPE.land_share]
+                        .map((shape) => projectStatusLabel(s, shape))
+                        .filter((l) => l !== PROJECT_STATUS_META[s].label),
+                    )];
+                    return (
+                      <option key={s} value={s}>
+                        {PROJECT_STATUS_META[s].label}
+                        {alt.length ? ` / ${alt.join(' / ')}` : ''}
+                      </option>
+                    );
+                  })}
+                </SelectInput>
+              </Field>
+
+              <Field label="Sales">
+                <SelectInput
+                  value={sales}
+                  onChange={(e) => setSales(e.target.value as ProjectSalesStatus | 'all')}
+                >
+                  <option value="all">Any</option>
+                  {PROJECT_SALES_STATUSES.map((s) => (
                     <option key={s} value={s}>
-                      {PROJECT_STATUS_META[s].label}
+                      {PROJECT_SALES_STATUS_META[s].label}
                     </option>
                   ))}
                 </SelectInput>
@@ -266,13 +298,24 @@ export default function ProjectsListPage() {
                             </Badge>
                           )}
                           <Badge>{PROJECT_TYPE_LABEL[project.project_type]}</Badge>
-                          <Badge>
-                            <CalendarDays className="size-3.5" />
-                            Completion {formatDate(project.expected_completion_date)}
+                          {project.expected_completion_date && (
+                            <Badge>
+                              <CalendarDays className="size-3.5" />
+                              Completion {formatDate(project.expected_completion_date)}
+                            </Badge>
+                          )}
+                          <Badge tone={PROJECT_SALES_STATUS_META[projectSalesStatus(project)].tone}>
+                            {PROJECT_SALES_STATUS_META[projectSalesStatus(project)].label}
                           </Badge>
                           {stats && stats.total > 0 && (
                             <Badge tone="teal">
-                              {stats.total} units · {stats.available} available
+                              {/* shares and plots are not "units" (QA audit P-09) */}
+                              {stats.total}{' '}
+                              {(stats.total === 1
+                                ? projectShape(project.project_type).labels.item
+                                : projectShape(project.project_type).labels.itemPlural
+                              ).toLowerCase()}{' '}
+                              · {stats.available} available
                             </Badge>
                           )}
                           {money && money.units > 0 && (

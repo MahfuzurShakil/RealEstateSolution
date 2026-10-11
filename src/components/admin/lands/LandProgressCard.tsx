@@ -238,7 +238,7 @@ export function LandProgressCard({
                 Status moves on its own as this work is recorded.{' '}
                 {isJv
                   ? 'JV signing is recorded on the Joint Venture tab'
-                  : 'Registration is recorded under Negotiation & Acquisition'}
+                  : 'Registration is recorded from the Registered step above (Timeline → Negotiation & Acquisition)'}
                 ; reject or divest from the page header.
               </>
             )}

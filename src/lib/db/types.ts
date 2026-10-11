@@ -434,7 +434,8 @@ export interface LandStatusEvent extends BaseEntity {
 }
 
 /** `owned_entry` (v29) — the land was entered as already ours, skipping the pipeline */
-export const LAND_STATUS_EVENT_SOURCES = ['manual', 'automatic', 'correction', 'owned_entry'] as const;
+// `created` — the land being recorded at all (QA audit 2026-10-11, L-06)
+export const LAND_STATUS_EVENT_SOURCES = ['manual', 'automatic', 'correction', 'owned_entry', 'created'] as const;
 export type LandStatusEventSource = (typeof LAND_STATUS_EVENT_SOURCES)[number];
 
 /* ------------------------------------------------------------------ *
@@ -1118,8 +1119,8 @@ export interface Project extends BaseEntity {
   total_land_area_unit?: LandSizeUnit;
   /** Public Portal P2 — marketing address, not the cadastral one */
   location_summary?: string | null;
-  expected_start_date: ISODate;
-  expected_completion_date: ISODate;
+  expected_start_date?: ISODate | null;
+  expected_completion_date?: ISODate | null;
   actual_start_date?: ISODate | null;
   status: ProjectStatus;
   project_manager?: UUID | null;

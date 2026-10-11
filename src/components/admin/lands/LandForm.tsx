@@ -42,6 +42,7 @@ import {
   lookupRepository,
   landOwnerMappingRepository,
   landRepository,
+  landStatusEventRepository,
   landownerRepository,
   userRepository,
   type LandWithRelations,
@@ -252,6 +253,15 @@ export function LandForm({
     setForm((f) => ({ ...f, [key]: value }));
 
   const isJv = form.acquisition_type === 'joint_venture';
+  const takenNames = useLiveQuery(
+    async () =>
+      new Set(
+        (await landRepository.getAll())
+          .filter((l) => l.id !== land?.id)
+          .map((l) => l.name.trim().toLowerCase()),
+      ),
+    [land?.id],
+  );
   // the JV is already signed when it is entered as owned, or the land is held
   const jvSigned = owned || Boolean(land && landIsHeld(land.status));
   const purchasePricing = landUsesPurchasePricing(form.acquisition_type);
@@ -348,6 +358,9 @@ export function LandForm({
   function validate(): boolean {
     const next: Record<string, string> = {};
     if (!form.name.trim()) next.name = 'Land name is required';
+    // QA audit L-05 — two plots with one name are confused in every picker
+    else if (takenNames?.has(form.name.trim().toLowerCase()))
+      next.name = 'Another land already has this name';
     if (!form.location_division.trim()) next.location_division = 'Required';
     if (!form.location_district.trim()) next.location_district = 'Required';
     if (!form.location_area.trim()) next.location_area = 'Required';
@@ -447,6 +460,24 @@ export function LandForm({
           status: 'sourced',
           entry_mode: 'pipeline',
         });
+        /*
+         * QA audit L-06: the history started at the first move, so a new land
+         * said "No status changes yet" and when it entered the pipeline was
+         * nowhere. Owned entries log their own Acquired row below.
+         */
+        if (!owned) {
+          await landStatusEventRepository.create({
+            land_id: saved.id,
+            from_status: 'sourced',
+            to_status: 'sourced',
+            event_date: todayLocal(),
+            performed_by: null,
+            amount: null,
+            reference_no: null,
+            remarks: 'Land recorded.',
+            source: 'created',
+          });
+        }
       }
 
       // Owner mappings: updated in place, so payments and plans keep their owner.

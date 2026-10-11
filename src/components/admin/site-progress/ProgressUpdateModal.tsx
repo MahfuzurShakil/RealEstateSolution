@@ -88,6 +88,11 @@ export function ProgressUpdateModal({
       setError('An update date is required');
       return;
     }
+    // QA audit C-07 — going backwards is unusual enough to explain
+    if (pct < previous && !remarks.trim()) {
+      setError(`Progress goes down from ${previous}% to ${pct}%: say why in the remarks`);
+      return;
+    }
     // QA audit C-01 — a future date would become the "latest" reading for good
     if (updateDate > todayLocal()) {
       setError('The update date cannot be in the future');

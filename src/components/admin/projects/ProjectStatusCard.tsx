@@ -25,7 +25,7 @@ import {
   projectStatusWarnings,
   type ProjectStepField,
 } from '@/lib/domain/project';
-import { projectRepository } from '@/lib/repositories';
+import { projectRepository, projectStatusEventRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { todayLocal } from '@/lib/utils/format';
 
@@ -82,6 +82,15 @@ export function ProjectStatusCard({ project }: { project: Project }) {
    * allowed.
    */
   const readiness = useLiveQuery(() => projectRepository.readiness(project.id), [project.id]);
+  // QA audit P-13 — a stage cannot be dated before the one it follows
+  const lastEventDate = useLiveQuery(
+    async () =>
+      (await projectStatusEventRepository.listForProject(project.id))
+        .map((e) => e.event_date)
+        .sort()
+        .at(-1) ?? null,
+    [project.id, project.status],
+  );
   const blockersFor = (status: ProjectStatus) =>
     readiness ? projectStatusBlockers(status, readiness, shape) : [];
   const warningsFor = (status: ProjectStatus) =>
@@ -124,6 +133,25 @@ export function ProjectStatusCard({ project }: { project: Project }) {
     const missing = config.fields.find((f) => f.required && !values[f.key]?.trim());
     if (missing) {
       setError(`${missing.label.replace(' (required)', '')} is required`);
+      return;
+    }
+    // QA audit P-13 — dated today or earlier, and not before the previous stage
+    if (values.event_date && values.event_date > todayLocal()) {
+      setError('The date cannot be in the future');
+      return;
+    }
+    if (values.event_date && lastEventDate && values.event_date < lastEventDate) {
+      setError(`The date cannot be before the previous stage move (${lastEventDate})`);
+      return;
+    }
+    // QA audit P-10 — dates may wait during planning and design, not past them
+    if (
+      forwardMove &&
+      target &&
+      order(target) >= order('approval') &&
+      (!project.expected_start_date || !project.expected_completion_date)
+    ) {
+      setError('Set the expected start and completion dates on the project (Edit) before moving it on');
       return;
     }
     // the stage's key details and papers are compulsory (decision 2026-10-11)

@@ -257,6 +257,76 @@ export const DEMO_TOWER_PROGRESS: DemoTowerProgress[] = [
   },
 
   /* ---------------------------------------------------------------- *
+   * Nokshi Lakeview Residence — the showcase project, five months into
+   * construction (QA audit 2026-10-11, C-08): piling and foundation done,
+   * the ground floor going up on both towers.
+   * ---------------------------------------------------------------- */
+  {
+    project_name: 'Nokshi Lakeview Residence',
+    tower_name: 'Tower A',
+    items: [
+      {
+        name: 'Foundation',
+        weight_pct: 15,
+        planned_start_in_days: -146,
+        planned_end_in_days: -40,
+        readings: [
+          { days_ago: 130, progress_pct: 20, remarks: 'Piling started — 36 bored piles, rig on site.', gps: [23.8731, 90.3868], by: 'jahangir' },
+          { days_ago: 95, progress_pct: 60, remarks: 'Piling complete; pile caps being cast.', gps: [23.8731, 90.3868], by: 'jahangir' },
+          { days_ago: 48, progress_pct: 100, remarks: 'Foundation and grade beams cast. Backfilling done.', gps: [23.8731, 90.3868], by: 'jahangir' },
+        ],
+      },
+      {
+        name: 'Ground Floor',
+        weight_pct: 10,
+        planned_start_in_days: -40,
+        planned_end_in_days: 20,
+        readings: [
+          { days_ago: 30, progress_pct: 25, remarks: 'Ground-floor columns cast, shuttering for the slab.', gps: [23.8731, 90.3868], by: 'jahangir' },
+          { days_ago: 5, progress_pct: 55, remarks: 'Ground-floor slab rod binding, casting planned next week.', gps: [23.8731, 90.3868], by: 'jahangir' },
+        ],
+      },
+      { name: 'Superstructure', weight_pct: 35, planned_start_in_days: 20, planned_end_in_days: 420 },
+      { name: 'Roof', weight_pct: 5, planned_start_in_days: 420, planned_end_in_days: 460 },
+      { name: 'Electrical', weight_pct: 10, planned_start_in_days: 440, planned_end_in_days: 640 },
+      { name: 'Plumbing', weight_pct: 10, planned_start_in_days: 440, planned_end_in_days: 640 },
+      { name: 'Finishing', weight_pct: 10, planned_start_in_days: 620, planned_end_in_days: 900 },
+      { name: 'External Works', weight_pct: 5, planned_start_in_days: 860, planned_end_in_days: 950 },
+    ],
+  },
+  {
+    project_name: 'Nokshi Lakeview Residence',
+    tower_name: 'Tower B',
+    items: [
+      {
+        name: 'Foundation',
+        weight_pct: 15,
+        planned_start_in_days: -146,
+        planned_end_in_days: -40,
+        readings: [
+          { days_ago: 110, progress_pct: 30, remarks: 'Piling on the lake side, slower: water table high.', gps: [23.8735, 90.3874], by: 'salma' },
+          { days_ago: 60, progress_pct: 80, remarks: 'Pile caps cast; dewatering pump running.', gps: [23.8735, 90.3874], by: 'salma' },
+          { days_ago: 38, progress_pct: 100, remarks: 'Foundation complete after the load test passed.', gps: [23.8735, 90.3874], by: 'salma' },
+        ],
+      },
+      {
+        name: 'Ground Floor',
+        weight_pct: 10,
+        planned_start_in_days: -40,
+        planned_end_in_days: 20,
+        readings: [
+          { days_ago: 12, progress_pct: 30, remarks: 'Ground-floor columns cast.', gps: [23.8735, 90.3874], by: 'salma' },
+        ],
+      },
+      { name: 'Superstructure', weight_pct: 35, planned_start_in_days: 20, planned_end_in_days: 420 },
+      { name: 'Roof', weight_pct: 5, planned_start_in_days: 420, planned_end_in_days: 460 },
+      { name: 'Electrical', weight_pct: 10, planned_start_in_days: 440, planned_end_in_days: 640 },
+      { name: 'Plumbing', weight_pct: 10, planned_start_in_days: 440, planned_end_in_days: 640 },
+      { name: 'Finishing', weight_pct: 10, planned_start_in_days: 620, planned_end_in_days: 900 },
+      { name: 'External Works', weight_pct: 5, planned_start_in_days: 860, planned_end_in_days: 950 },
+    ],
+  },
+  /* ---------------------------------------------------------------- *
    * Nokshi Agrabad Trade Centre — still at Approval, so the work plan is
    * laid out but nothing is reported: a site log only starts once
    * construction does (QA audit 2026-10-11, C-02).

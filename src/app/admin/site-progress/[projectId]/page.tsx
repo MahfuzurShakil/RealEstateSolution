@@ -19,7 +19,12 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { ViewOnlyArea, ViewOnlyNotice } from '@/components/ui/ViewOnly';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { canEdit } from '@/lib/domain/access';
-import { materialRequestRepository, projectProgressRepository } from '@/lib/repositories';
+import {
+  materialRequestRepository,
+  projectProgressRepository,
+  projectRepository,
+} from '@/lib/repositories';
+import { PROJECT_STATUS_META } from '@/lib/domain/project';
 import { cn } from '@/lib/utils/cn';
 import { todayLocal } from '@/lib/utils/format';
 
@@ -49,6 +54,11 @@ export default function ProjectProgressPage() {
     () => projectProgressRepository.forProject(projectId, today),
     [projectId, today],
   );
+  // QA audit C-06 — tell "not under construction" apart from "gone"
+  const plain = useLiveQuery(
+    async () => (await projectRepository.getById(projectId)) ?? null,
+    [projectId],
+  );
   const requests = useLiveQuery(
     () => materialRequestRepository.list({ project_id: projectId }),
     [projectId],
@@ -58,7 +68,18 @@ export default function ProjectProgressPage() {
   if (!row) {
     return (
       <Card>
-        <p className="text-sm text-ink-muted">This project no longer exists.</p>
+        <p className="text-sm text-ink-muted">
+          {plain
+            ? `${plain.code} ${plain.name} is not under construction (${PROJECT_STATUS_META[plain.status].label}), so it has no construction workspace yet.`
+            : 'This project no longer exists.'}
+        </p>
+        {plain && (
+          <Link href={`/admin/projects/${plain.id}`} className="mt-3 mr-2 inline-block">
+            <Button variant="outline" size="sm">
+              <Building2 className="size-4" /> Open the project
+            </Button>
+          </Link>
+        )}
         <Link href="/admin/site-progress" className="mt-3 inline-block">
           <Button variant="outline" size="sm">
             <ArrowLeft className="size-4" /> Back to construction

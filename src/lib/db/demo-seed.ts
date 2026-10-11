@@ -1,5 +1,6 @@
 'use client';
 
+import { resetCodeMarks } from '../utils/id';
 import {
   bookingRepository,
   customerRepository,
@@ -2244,6 +2245,8 @@ function daysFromToday(offset: number): string {
 /** Wipes every Module 1 record (master data and company settings stay). */
 export async function clearDemoData(): Promise<void> {
   const db = getDb();
+  // every record goes, so the issued-code marks start again too (QA audit X-02)
+  resetCodeMarks();
   await Promise.all([
     db.lands.clear(),
     db.landowners.clear(),
