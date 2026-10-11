@@ -15,7 +15,9 @@ import {
   PROJECT_PIPELINE_STEPS,
   PROJECT_STATUS_META,
   PROJECT_STEP_CONFIG,
+  BACK_MOVE_FIELDS,
   allowedNextProjectStatuses,
+  projectBackMoveWarnings,
   pipelineSteps,
   projectStatusLabel,
   projectShape,
@@ -57,7 +59,19 @@ export function ProjectStatusCard({ project }: { project: Project }) {
   const order = (s: ProjectStatus) => PROJECT_PIPELINE_STEPS.indexOf(s);
   const currentOrder = order(project.status);
   const nextStatuses = allowedNextProjectStatuses(project.status, shape);
-  const config = target ? PROJECT_STEP_CONFIG[target] : null;
+  const forwardTarget = target !== null && PROJECT_PIPELINE_STEPS.indexOf(target) > PROJECT_PIPELINE_STEPS.indexOf(project.status);
+  // QA audit P-03 — a step back has its own words and always asks why
+  const config = target
+    ? forwardTarget
+      ? PROJECT_STEP_CONFIG[target]
+      : {
+          title: `Move back to ${projectStatusLabel(target, projectShape(project.project_type))}`,
+          question: 'A step back is a correction or a setback, so it records why.',
+          confirmLabel: 'Move back',
+          tone: 'warning' as const,
+          fields: BACK_MOVE_FIELDS,
+        }
+    : null;
   const label = (s: ProjectStatus) => projectStatusLabel(s, shape);
 
   /*
@@ -78,7 +92,13 @@ export function ProjectStatusCard({ project }: { project: Project }) {
   // asked only when moving forward: stepping back records why, not new papers
   const stage =
     target && order(target) > currentOrder ? stageRequirements(target, project.project_type) : null;
-  const targetWarnings = target ? warningsFor(target) : [];
+  const targetWarnings = target
+    ? forwardMove
+      ? warningsFor(target)
+      : readiness
+        ? projectBackMoveWarnings(project.status, target, readiness, shape)
+        : []
+    : [];
 
   function open(status: ProjectStatus) {
     setTarget(status);
@@ -86,8 +106,11 @@ export function ProjectStatusCard({ project }: { project: Project }) {
     setDetails(order(status) > currentOrder ? { completed_on: todayLocal() } : {});
     setFiles({});
     setValues({
+      // the original start is kept on a step back, so the dialog asks for today
       event_date:
-        status === 'under_construction' ? (project.actual_start_date ?? todayLocal()) : todayLocal(),
+        status === 'under_construction' && order(status) > currentOrder
+          ? (project.actual_start_date ?? todayLocal())
+          : todayLocal(),
     });
     setError('');
   }
@@ -255,11 +278,13 @@ export function ProjectStatusCard({ project }: { project: Project }) {
         title={
           forwardMove && target
             ? `Complete ${label(project.status)} → start ${label(target)}`
-            : target && shape.container === 'tower'
-              ? (config?.title ?? '')
-              : target
-                ? `Move to ${label(target)}`
-                : ''
+            : !forwardMove && target
+              ? `Move back to ${label(target)}`
+              : target && shape.container === 'tower'
+                ? (config?.title ?? '')
+                : target
+                  ? `Move to ${label(target)}`
+                  : ''
         }
         subtitle={`${project.code} · ${project.name}`}
         tone={config?.tone ?? 'default'}
@@ -267,7 +292,9 @@ export function ProjectStatusCard({ project }: { project: Project }) {
         confirmLabel={
           forwardMove && target
             ? `Complete & start ${label(target)}`
-            : shape.container === 'tower'
+            : !forwardMove
+              ? 'Move back'
+              : shape.container === 'tower'
               ? (config?.confirmLabel ?? 'Confirm')
               : target
                 ? label(target)
@@ -283,7 +310,8 @@ export function ProjectStatusCard({ project }: { project: Project }) {
         {targetWarnings.length > 0 && (
           <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
             <p className="flex items-center gap-1.5 text-sm font-medium text-amber-800">
-              <AlertTriangle className="size-4" /> The records do not agree with this yet
+              <AlertTriangle className="size-4" />{' '}
+              {forwardMove ? 'The records do not agree with this yet' : 'Before you move it back'}
             </p>
             <ul className="mt-1 space-y-1 text-xs text-amber-700">
               {targetWarnings.map((w) => (

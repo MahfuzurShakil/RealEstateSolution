@@ -257,8 +257,9 @@ export const DEMO_TOWER_PROGRESS: DemoTowerProgress[] = [
   },
 
   /* ---------------------------------------------------------------- *
-   * Nokshi Agrabad Trade Centre — barely begun, one early reading, so
-   * the "in progress but nothing else" state is covered too.
+   * Nokshi Agrabad Trade Centre — still at Approval, so the work plan is
+   * laid out but nothing is reported: a site log only starts once
+   * construction does (QA audit 2026-10-11, C-02).
    * ---------------------------------------------------------------- */
   {
     project_name: 'Nokshi Agrabad Trade Centre',
@@ -269,15 +270,6 @@ export const DEMO_TOWER_PROGRESS: DemoTowerProgress[] = [
         weight_pct: 15,
         planned_start_in_days: -20,
         planned_end_in_days: 150,
-        readings: [
-          {
-            days_ago: 4,
-            progress_pct: 15,
-            remarks: 'Site cleared and test piles cast. Awaiting the load test report.',
-            gps: [22.3269, 91.8123],
-            by: 'salma',
-          },
-        ],
       },
       { name: 'Ground Floor', weight_pct: 8, planned_start_in_days: 150, planned_end_in_days: 210 },
       { name: 'Superstructure', weight_pct: 32, planned_start_in_days: 210, planned_end_in_days: 560 },

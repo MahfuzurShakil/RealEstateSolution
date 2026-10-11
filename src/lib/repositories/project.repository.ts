@@ -23,6 +23,7 @@ import {
   jvAllocationSummary,
   priceOnFloor,
   defaultInstallmentPlan,
+  PROJECT_PIPELINE_STEPS,
   projectShape,
   shapeIsBuilt,
   unitCode,
@@ -261,9 +262,16 @@ class ProjectRepository extends BaseRepository<Project> {
       );
     }
 
+    /*
+     * QA audit P-03: only the first arrival at construction is its start.
+     * Coming back to it from Nearly Complete re-ran this and overwrote the real
+     * start date with the day of the step back.
+     */
+    const arrivesFromBefore =
+      PROJECT_PIPELINE_STEPS.indexOf(current.status) < PROJECT_PIPELINE_STEPS.indexOf('under_construction');
     return this.update(id, {
       status,
-      ...(status === 'under_construction' ? { actual_start_date: event.event_date } : {}),
+      ...(status === 'under_construction' && arrivesFromBefore ? { actual_start_date: event.event_date } : {}),
     });
   }
 
@@ -565,6 +573,29 @@ class ProjectRepository extends BaseRepository<Project> {
     if (expenses) parts.push(`${expenses} expense${expenses === 1 ? '' : 's'}`);
     const paid = vouchers.filter((v) => v.project_id === id).length;
     if (paid) parts.push(`${paid} supplier payment${paid === 1 ? '' : 's'}`);
+    /*
+     * QA audit P-04: material reaches a site by dispatch too, with no order
+     * behind it. Its stock, movements and use records would be left pointing
+     * at a deleted project, and the main store's history would stop adding up.
+     */
+    const [stock, transfers, issues, used, returned, writtenOff] = await Promise.all([
+      db.stock.where('project_id').equals(id).toArray(),
+      db.stock_transfers.toArray(),
+      db.stock_issues.where('project_id').equals(id).count(),
+      db.stock_consumptions.where('project_id').equals(id).count(),
+      db.stock_returns.where('project_id').equals(id).count(),
+      db.stock_write_offs.where('project_id').equals(id).count(),
+    ]);
+    const moved = transfers.filter((t) => t.to_project_id === id || t.from_project_id === id).length;
+    const materialRecords = issues + used + returned + writtenOff + moved;
+    const held = stock.filter((r) => (Number(r.quantity_available) || 0) > 0).length;
+    if (held || materialRecords) {
+      parts.push(
+        held
+          ? `material in its site store (${held} item${held === 1 ? '' : 's'})`
+          : `${materialRecords} material record${materialRecords === 1 ? '' : 's'}`,
+      );
+    }
     if (parts.length) {
       return `This project has ${parts.join(', ')}. Deleting it would orphan them; close the project instead.`;
     }
@@ -593,7 +624,7 @@ class ProjectRepository extends BaseRepository<Project> {
     // material requests are raised against the project, not the tower, so the
     // tower cascade above does not reach them
     for (const request of await materialRequestRepository.list({ project_id: id })) {
-      await materialRequestRepository.removeCascade(request.id);
+      await materialRequestRepository.removeCascade(request.id, true);
     }
 
     await installmentPlanTemplateRepository.removeForProject(id);
@@ -707,6 +738,13 @@ class LandProjectMappingRepository extends BaseRepository<LandProjectMapping> {
     return all.filter((m) => holder(m.project_id) === projectId);
   }
 
+  /** Land id → the code of the project standing on it, for the land list (QA audit L-04). */
+  async projectCodeByLand(): Promise<Map<string, string>> {
+    const [rows, projects] = await Promise.all([db.land_project_mapping.toArray(), db.projects.toArray()]);
+    const code = new Map(projects.map((p) => [p.id, p.code]));
+    return new Map(rows.map((r) => [r.land_id, code.get(r.project_id) ?? 'a project']));
+  }
+
   /** Every land id that sits in at least one project — for list badges. */
   async linkedLandIds(): Promise<Set<string>> {
     const rows = await db.land_project_mapping.toArray();
@@ -806,21 +844,10 @@ class TowerRepository extends BaseRepository<Tower> {
       const more = held.length > 5 ? ` and ${held.length - 5} more` : '';
       return `${held.length} unit${held.length === 1 ? '' : 's'} in this tower (${codes}${more}) ${held.length === 1 ? 'has' : 'have'} a buyer or a booking on record, so the tower cannot be deleted.`;
     }
-    const items = await db.tower_work_items.where('tower_id').equals(id).toArray();
-    const itemIds = items.map((i) => i.id);
-    if (itemIds.length > 0) {
-      const [readings, used] = await Promise.all([
-        db.site_progress_updates.where('work_item_id').anyOf(itemIds).count(),
-        db.stock_consumptions.toArray(),
-      ]);
-      const usedHere = used.filter((c) => c.work_item_id && itemIds.includes(c.work_item_id)).length;
-      if (readings > 0 || usedHere > 0) {
-        const parts = [
-          readings ? `${readings} site reading${readings === 1 ? '' : 's'}` : '',
-          usedHere ? `${usedHere} material-use record${usedHere === 1 ? '' : 's'}` : '',
-        ].filter(Boolean);
-        return `This tower's work has ${parts.join(' and ')} against it, so deleting it would erase site history.`;
-      }
+    // QA audit P-01/C-03 — a tower is as deletable as its work items
+    for (const item of await db.tower_work_items.where('tower_id').equals(id).toArray()) {
+      const reason = await towerWorkItemRepository.deleteBlockReason(item.id);
+      if (reason) return `${item.name}: ${reason.replace('Set its weight to 0 to take it out of the tower figure instead.', '').trim()}`;
     }
     return null;
   }

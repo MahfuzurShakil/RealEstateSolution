@@ -59,6 +59,18 @@ export function WorkItemFormModal({
       setError('Weight must be between 0 and 100');
       return;
     }
+    /*
+     * QA audit C-04: the weights are shares of one tower. Past 100% in total
+     * the tower figure stops meaning anything, so the extra is refused here;
+     * below 100% is normal while the breakdown is being built, and the panel
+     * keeps warning until it adds up.
+     */
+    if (weightValue > remainingWeight + 0.005) {
+      setError(
+        `Only ${Math.round(remainingWeight * 100) / 100}% of this tower is unallocated. Lower another item's weight first.`,
+      );
+      return;
+    }
     if (start && end && end < start) {
       setError('The planned end date cannot be before the start date');
       return;

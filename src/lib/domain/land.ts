@@ -586,6 +586,40 @@ export const STATUS_EXPECTS: Record<LandStatus, string> = {
 
 /* ---------------------------- validations ---------------------------- */
 
+/**
+ * QA audit 2026-10-11 (L-03): a JV split where either side gets nothing is
+ * not a joint venture. Returns the problem, or null.
+ */
+export function jvSplitProblem(developer: number, landowner: number): string | null {
+  if (!Number.isFinite(developer) || !Number.isFinite(landowner)) {
+    return 'Both shares are required for a joint venture';
+  }
+  if (developer <= 0 || developer >= 100 || landowner <= 0 || landowner >= 100) {
+    return 'Each share must be more than 0% and less than 100%';
+  }
+  if (Math.abs(developer + landowner - 100) > 0.01) {
+    return `Developer + landowner share must total 100% (currently ${Math.round((developer + landowner) * 100) / 100}%)`;
+  }
+  return null;
+}
+
+/**
+ * QA audit L-03: coordinates must be a real place, and every plot this
+ * company deals in is in Bangladesh — so a point outside it is almost always
+ * a typo or latitude and longitude swapped. Returns the problem, or null.
+ */
+export function gpsProblem(lat: number | null, lng: number | null): string | null {
+  if (lat === null && lng === null) return null;
+  if (lat === null || lng === null) return 'Enter both latitude and longitude, or neither';
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    return 'Latitude must be between −90 and 90, longitude between −180 and 180';
+  }
+  if (lat < 20.5 || lat > 26.7 || lng < 88 || lng > 92.7) {
+    return 'This point is outside Bangladesh. Check that latitude (about 20–27) and longitude (about 88–93) are not swapped.';
+  }
+  return null;
+}
+
 /** Statuses at which the company holds the land — development happens here. */
 export function landIsHeld(status: LandStatus): boolean {
   return (

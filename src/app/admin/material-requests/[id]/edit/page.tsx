@@ -42,7 +42,17 @@ export default function EditMaterialRequestPage() {
         subtitle="Quantities already approved stay on the lines they belong to."
       />
 
-      <MaterialRequestForm request={request} />
+      {/* QA audit C-05 — a decided request is not edited */}
+      {request.status === 'pending' ? (
+        <MaterialRequestForm request={request} />
+      ) : (
+        <Card>
+          <p className="text-sm text-ink-muted">
+            {request.code} has already been decided, so it can no longer be changed. Raise a new
+            request for anything more.
+          </p>
+        </Card>
+      )}
     </>
   );
 }

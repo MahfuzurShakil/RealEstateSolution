@@ -58,6 +58,8 @@ export default function MaterialRequestDetailPage() {
   const orders = useLiveQuery(() => purchaseOrderRepository.list({ request_id: id }), [id]);
   // Phase 2 step 4: what the site has actually received, per line
   const receivedAtSite = useLiveQuery(() => receivedAtSiteForRequest(id), [id]);
+  // QA audit C-05 — say why a delete is refused before anyone confirms it
+  const deleteBlocked = useLiveQuery(() => materialRequestRepository.deleteBlockReason(id), [id]);
 
   if (request === undefined) return <p className="text-sm text-ink-muted">Loading…</p>;
   if (!request) {
@@ -141,11 +143,14 @@ export default function MaterialRequestDetailPage() {
         } · ${totals.lines} item${totals.lines === 1 ? '' : 's'}`}
         action={
           <div className="flex gap-2">
-            <Link href={`/admin/material-requests/${request.id}/edit`}>
-              <Button variant="outline">
-                <Pencil className="size-4" /> Edit
-              </Button>
-            </Link>
+            {/* QA audit C-05 — changed only while it waits for the PM */}
+            {request.status === 'pending' && (
+              <Link href={`/admin/material-requests/${request.id}/edit`}>
+                <Button variant="outline">
+                  <Pencil className="size-4" /> Edit
+                </Button>
+              </Link>
+            )}
             <Button variant="dangerGhost" onClick={() => setConfirmDelete(true)}>
               <Trash2 className="size-4" /> Delete
             </Button>
@@ -341,7 +346,11 @@ export default function MaterialRequestDetailPage() {
         open={confirmDelete}
         title={`Delete ${request.code}`}
         confirmLabel="Delete request"
-        message="The request and its item lines are removed. Rejecting instead keeps the record and the reason — that is usually what you want."
+        message={
+          deleteBlocked ??
+          'The request and its item lines are removed. Rejecting or cancelling instead keeps the record and the reason — that is usually what you want.'
+        }
+        disabled={Boolean(deleteBlocked)}
         onCancel={() => setConfirmDelete(false)}
         onConfirm={async () => {
           await materialRequestRepository.removeCascade(request.id);

@@ -284,8 +284,13 @@ export default function LandDetailPage() {
             {/* the decisions only a person can make — everything else follows the work */}
             {mayEdit &&
               allowedNextStatuses(land.status)
-              // a project stands on it: the project has to release it first
-              .filter((to) => !(to === 'disposed' && inProject))
+              /*
+               * A project stands on it: the project has to release it first.
+               * QA audit L-02 — that goes for parking or dropping it too, not
+               * only divesting: the project would otherwise sit on a rejected
+               * land with nothing on the project saying why.
+               */
+              .filter((to) => !(inProject && ['disposed', 'on_hold', 'rejected'].includes(to)))
               .map((to) => (
               <Button
                 key={to}

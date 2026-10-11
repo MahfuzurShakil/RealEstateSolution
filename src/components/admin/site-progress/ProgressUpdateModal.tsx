@@ -9,7 +9,7 @@ import { Modal } from '@/components/ui/Modal';
 import { MapPicker } from '@/components/ui/map/MapPicker';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { TowerWorkItem } from '@/lib/db/types';
-import { WORK_ITEM_STATUS_META, clampPct, statusForProgress } from '@/lib/domain/site-progress';
+import { WORK_ITEM_STATUS_META, clampPct, isSiteActive, statusForProgress } from '@/lib/domain/site-progress';
 import {
   projectRepository,
   siteProgressUpdateRepository,
@@ -152,11 +152,14 @@ export function ProgressUpdateModal({
                 disabled={Boolean(fixedProjectId)}
               >
                 <option value="">Select…</option>
-                {(projects ?? []).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
+                {/* QA audit C-02 — only sites being built report progress */}
+                {(projects ?? [])
+                  .filter((p) => isSiteActive(p.status))
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
               </SelectInput>
             </Field>
 

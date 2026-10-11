@@ -19,13 +19,14 @@ import {
   closingBlockReason,
   correctableStatuses,
   feasibilityGateBlockReason,
+  jvSplitProblem,
   landWaitingOn,
   nextAutomaticStep,
   splitAmountByShare,
   type LandWorkFacts,
   type WaitingKey,
 } from '../domain/land';
-import { localDay } from '../utils/format';
+import { localDay, todayLocal } from '../utils/format';
 import type { NewRecord, UpdateRecord } from './base.repository';
 import { landDdRepository } from './dd.repository';
 import {
@@ -516,8 +517,11 @@ class LandPipelineRepository {
     },
     actor: string | null,
   ): Promise<LandStatusEvent> {
-    if (Math.abs(details.developer_share_pct + details.landowner_share_pct - 100) > 0.001) {
-      throw new PipelineBlockedError('Developer + landowner share must total 100%.');
+    // QA audit L-03 — each side gets something, and together they make 100%
+    const split = jvSplitProblem(details.developer_share_pct, details.landowner_share_pct);
+    if (split) throw new PipelineBlockedError(split);
+    if (details.event_date > todayLocal()) {
+      throw new PipelineBlockedError('The JV cannot be signed on a future date.');
     }
     const blocked = await this.closingBlockReason(landId);
     if (blocked) throw new PipelineBlockedError(blocked);
@@ -572,6 +576,15 @@ class LandPipelineRepository {
       throw new PipelineBlockedError(
         `A land that is ${LAND_STATUS_META[land.status].label} cannot be marked ${LAND_STATUS_META[to].label}.`,
       );
+    }
+    // QA audit L-02 — not out from under a project
+    if (['disposed', 'on_hold', 'rejected'].includes(to)) {
+      const projects = await db.land_project_mapping.where('land_id').equals(landId).count();
+      if (projects > 0) {
+        throw new PipelineBlockedError(
+          'A project stands on this land. Remove the land from the project first, then park, reject or divest it.',
+        );
+      }
     }
     const moved = await landRepository.setStatus(landId, to, { ...details, source: 'manual' }, actor);
     if (!moved) throw new PipelineBlockedError('This land no longer exists.');

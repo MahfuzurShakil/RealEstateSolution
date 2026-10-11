@@ -29,8 +29,12 @@ import {
   LAND_SIZE_UNIT_LABEL,
   finalAmountHint,
   finalAmountLabel,
+  gpsProblem,
+  jvSplitProblem,
+  landIsHeld,
   landUsesPurchasePricing,
 } from '@/lib/domain/land';
+import { todayLocal } from '@/lib/utils/format';
 import { USER_ROLE_META } from '@/lib/domain/access';
 import {
   landJvRepository,
@@ -248,6 +252,8 @@ export function LandForm({
     setForm((f) => ({ ...f, [key]: value }));
 
   const isJv = form.acquisition_type === 'joint_venture';
+  // the JV is already signed when it is entered as owned, or the land is held
+  const jvSigned = owned || Boolean(land && landIsHeld(land.status));
   const purchasePricing = landUsesPurchasePricing(form.acquisition_type);
   // an owned land has no asking price — nobody is asking anything any more
   const asksAskingPrice = purchasePricing && !owned;
@@ -363,14 +369,22 @@ export function LandForm({
       next.owners = `Ownership shares must total 100% (currently ${ownerShareTotal}%)`;
 
     if (isJv) {
-      const dev = Number(form.developer_share_pct);
-      const own = Number(form.landowner_share_pct);
-      if (!form.developer_share_pct.trim() || !form.landowner_share_pct.trim())
-        next.jv_share = 'Both shares are required for a joint venture';
-      else if (Math.abs(dev + own - 100) > 0.01)
-        next.jv_share = `Developer + landowner share must total 100% (currently ${dev + own}%)`;
-      if (!form.agreement_date) next.agreement_date = 'Required';
+      const dev = form.developer_share_pct.trim() ? Number(form.developer_share_pct) : NaN;
+      const own = form.landowner_share_pct.trim() ? Number(form.landowner_share_pct) : NaN;
+      const split = jvSplitProblem(dev, own);
+      if (split) next.jv_share = split;
+      // QA audit L-03 — the date is the signing; a JV still being chased has none
+      if (jvSigned && !form.agreement_date) next.agreement_date = 'Required';
+      else if (form.agreement_date && form.agreement_date > todayLocal()) {
+        next.agreement_date = 'The agreement cannot be signed in the future';
+      }
     }
+
+    const gps = gpsProblem(
+      form.gps_lat.trim() ? Number(form.gps_lat) : null,
+      form.gps_lng.trim() ? Number(form.gps_lng) : null,
+    );
+    if (gps) next.gps = gps;
 
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -452,7 +466,7 @@ export function LandForm({
         await landJvRepository.upsertForLand(saved.id, {
           developer_share_pct: Number(form.developer_share_pct),
           landowner_share_pct: Number(form.landowner_share_pct),
-          agreement_date: form.agreement_date,
+          agreement_date: form.agreement_date || null,
           power_of_attorney: form.power_of_attorney,
           poa_reference: form.poa_reference.trim() || null,
           jv_share_basis: form.jv_share_basis,
@@ -964,10 +978,16 @@ export function LandForm({
                 invalid={Boolean(errors.jv_share)}
               />
             </Field>
-            <Field label="Agreement Date" required error={errors.agreement_date}>
+            <Field
+              label="Agreement Date"
+              required={jvSigned}
+              error={errors.agreement_date}
+              hint={jvSigned ? undefined : 'Filled in when the JV is signed; the shares above are the proposed split'}
+            >
               <TextInput
                 type="date"
                 value={form.agreement_date}
+                max={todayLocal()}
                 onChange={(e) => set('agreement_date', e.target.value)}
                 invalid={Boolean(errors.agreement_date)}
               />
@@ -1018,6 +1038,7 @@ export function LandForm({
           lng={form.gps_lng}
           onChange={(lat, lng) => setForm((f) => ({ ...f, gps_lat: lat, gps_lng: lng }))}
         />
+        {errors.gps && <p className="mt-2 text-xs text-red-600">{errors.gps}</p>}
 
         {/*
           These two were stacked in a one-column grid, which left Nearby

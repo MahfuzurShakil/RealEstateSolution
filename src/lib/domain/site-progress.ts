@@ -38,7 +38,8 @@ export function towerProgressPct(items: Array<Pick<TowerWorkItem, 'actual_progre
     (sum, item) => sum + (Number(item.actual_progress_pct) || 0) * (Number(item.weight_pct) || 0),
     0,
   );
-  return Math.round((total / 100) * 100) / 100;
+  // QA audit C-04 — weights above 100% in total cannot make a tower more than built
+  return Math.min(100, Math.round((total / 100) * 100) / 100);
 }
 
 export function totalWeight(items: Array<Pick<TowerWorkItem, 'weight_pct'>>): number {

@@ -19,6 +19,7 @@ import {
   userRepository,
 } from '@/lib/repositories';
 import { todayLocal } from '@/lib/utils/format';
+import { isSiteActive } from '@/lib/domain/site-progress';
 
 interface LineRow {
   /** existing row id, so an approved quantity survives an edit */
@@ -114,9 +115,30 @@ export function MaterialRequestForm({
       setError('Pick the project this material is for');
       return;
     }
-    const filled = lines.filter((l) => l.item_name.trim() && Number(l.quantity_requested) > 0);
+    /*
+     * QA audit C-05: a line with an item but no quantity, or a quantity but no
+     * item, used to vanish on save — the request went out shorter than typed.
+     */
+    const touched = lines.filter((l) => l.item_name.trim() || l.quantity_requested.trim());
+    const half = touched.find((l) => !l.item_name.trim() || !(Number(l.quantity_requested) > 0));
+    if (half) {
+      setError(
+        half.item_name.trim()
+          ? `${half.item_name.trim()}: enter a quantity above 0, or remove the line`
+          : 'A line has a quantity but no item: pick the item, or remove the line',
+      );
+      return;
+    }
+    const filled = touched;
     if (filled.length === 0) {
       setError('Add at least one item with a quantity');
+      return;
+    }
+    const keyOf = (l: LineRow) => l.item_id ?? `${l.item_name.trim().toLowerCase()}|${l.unit}`;
+    const seen = new Set<string>();
+    const dup = filled.find((l) => (seen.has(keyOf(l)) ? true : (seen.add(keyOf(l)), false)));
+    if (dup) {
+      setError(`${dup.item_name.trim()} is on two lines; put the whole quantity on one`);
       return;
     }
 
@@ -168,7 +190,10 @@ export function MaterialRequestForm({
               }}
             >
               <option value="">Select…</option>
-              {(projects ?? []).map((p) => (
+              {/* QA audit C-05 — material goes to a site that is being built */}
+              {(projects ?? [])
+                .filter((p) => isSiteActive(p.status) || p.id === request?.project_id)
+                .map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>

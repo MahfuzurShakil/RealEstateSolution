@@ -289,6 +289,16 @@ class BookingRepository extends BaseRepository<Booking> {
   async createBooking(input: BookingInput, createdBy: string | null = null): Promise<Booking> {
     const unit = await db.units.get(input.unit_id);
     if (!unit) throw new Error('Unit not found');
+    /*
+     * QA audit 2026-10-11 (P-05): the booking form only lists projects whose
+     * sales are open, but nothing stopped a booking arriving another way —
+     * which is how a "not open" project came to hold BDT 18.4M of bookings.
+     */
+    const tower = await db.towers.get(unit.tower_id);
+    const project = tower ? await db.projects.get(tower.project_id) : undefined;
+    if (project && (project.sales_status ?? 'not_open') !== 'open') {
+      throw new Error(`Sales are not open on ${project.code}, so it cannot take a booking. Open sales on the project first.`);
+    }
 
     const seller = input.booked_by ? await db.users.get(input.booked_by) : undefined;
     const ceiling = await discountApprovalRuleRepository.maxDiscountPctFor(seller?.role);

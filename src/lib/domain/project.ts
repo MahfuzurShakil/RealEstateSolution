@@ -277,6 +277,51 @@ export function projectStatusWarnings(
   return warnings;
 }
 
+/**
+ * Moving a project back a stage (QA audit 2026-10-11, P-03).
+ *
+ * The forward dialogs ("Submit for approval — record that the design has gone
+ * to the authority") were reused for going back, with the reason optional. A
+ * step back is a correction or a setback, so it has its own words and always
+ * says why.
+ */
+export const BACK_MOVE_FIELDS: ProjectStepField[] = [
+  { key: 'event_date', label: 'Moved back on', placeholder: '', type: 'date', required: true },
+  {
+    key: 'remarks',
+    label: 'Reason for going back (required)',
+    placeholder: 'Plan sent back by RAJUK, work stopped by court order, moved on by mistake…',
+    type: 'textarea',
+    required: true,
+  },
+];
+
+/** What a step back leaves behind that the person should know about. */
+export function projectBackMoveWarnings(
+  current: ProjectStatus,
+  target: ProjectStatus,
+  facts: ProjectReadiness,
+  shape: ProjectShape = PROJECT_SHAPE.apartment,
+): string[] {
+  const out: string[] = [];
+  const order = (s: ProjectStatus) => PROJECT_PIPELINE_STEPS.indexOf(s);
+  const leavesConstruction =
+    order(current) >= order('under_construction') && order(target) < order('under_construction');
+  if (leavesConstruction && shapeIsBuilt(shape)) {
+    out.push(
+      facts.progress_pct > 0
+        ? `Construction is reported at ${facts.progress_pct.toFixed(1)}%. The project leaves the Construction list and no progress can be logged until it is back under construction; its site log and materials stay.`
+        : 'The project leaves the Construction list and no progress can be logged until it is back under construction.',
+    );
+  }
+  if (facts.units_spoken_for > 0) {
+    out.push(
+      `${facts.units_spoken_for} ${shape.labels.itemPlural.toLowerCase()} are booked or sold. Going back does not change those bookings.`,
+    );
+  }
+  return out;
+}
+
 /** `actual_start_date` is stamped when construction actually begins. */
 export function statusStartsConstruction(status: ProjectStatus): boolean {
   return status === 'under_construction';

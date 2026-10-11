@@ -96,6 +96,17 @@ export function ProjectSalesCard({ project, lands }: { project: Project; lands: 
             ? 'Taking bookings. The project appears in the booking form.'
             : 'Not taking bookings. The project is left out of the booking form.'}
         </p>
+        {/* QA audit P-05 — bookings recorded while sales were never opened */}
+        {current === 'not_open' && (readiness?.units_spoken_for ?? 0) > 0 && (
+          <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+            <span>
+              {readiness?.units_spoken_for}{' '}
+              {projectShape(project.project_type).labels.itemPlural.toLowerCase()} already have buyers
+              although sales were never opened. Open sales so the record matches what was sold.
+            </span>
+          </div>
+        )}
         {current === 'open' && allSpokenFor && (
           <div className="mb-3 rounded-xl border border-admin-200 bg-admin-50 p-3 text-sm text-admin-800">
             Every {projectShape(project.project_type).labels.item.toLowerCase()} has a buyer.

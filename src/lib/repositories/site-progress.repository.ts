@@ -139,8 +139,34 @@ class TowerWorkItemRepository extends BaseRepository<TowerWorkItem> {
     return saved;
   }
 
-  /** Deleting a work item takes its daily log and its attachments with it. */
+  /**
+   * Why a work item cannot be deleted, or null (QA audit 2026-10-11, C-03).
+   *
+   * Deleting one used to erase its whole daily log and photos, and left
+   * material issued or used "for" it pointing at nothing. Once the site has
+   * reported against it, it is history: set its weight to 0 to take it out of
+   * the tower figure instead.
+   */
+  async deleteBlockReason(id: string): Promise<string | null> {
+    const [readings, issues, used] = await Promise.all([
+      db.site_progress_updates.where('work_item_id').equals(id).count(),
+      db.stock_issues.where('work_item_id').equals(id).count(),
+      db.stock_consumptions.toArray(),
+    ]);
+    const usedHere = used.filter((c) => c.work_item_id === id).length;
+    const parts = [
+      readings ? `${readings} site reading${readings === 1 ? '' : 's'}` : '',
+      issues + usedHere ? `${issues + usedHere} material record${issues + usedHere === 1 ? '' : 's'}` : '',
+    ].filter(Boolean);
+    return parts.length
+      ? `This item has ${parts.join(' and ')} against it, so deleting it would erase site history. Set its weight to 0 to take it out of the tower figure instead.`
+      : null;
+  }
+
+  /** Deleting a work item takes its (empty) plan with it; see `deleteBlockReason`. */
   async removeCascade(id: string): Promise<void> {
+    const blocked = await this.deleteBlockReason(id);
+    if (blocked) throw new Error(blocked);
     const item = await this.getById(id);
     const updates = await db.site_progress_updates.where('work_item_id').equals(id).toArray();
     for (const update of updates) {
@@ -342,6 +368,17 @@ class SiteProgressUpdateRepository extends BaseRepository<SiteProgressUpdate> {
     if (input.update_date > todayLocal()) {
       throw new Error('The update date cannot be in the future.');
     }
+    /*
+     * QA audit C-02: a site log starts when construction does. Readings on a
+     * project still in design or approval (or a land share) fed its progress
+     * and tower status as if it were being built.
+     */
+    const item = await db.tower_work_items.get(input.work_item_id);
+    const tower = item ? await db.towers.get(item.tower_id) : undefined;
+    const project = tower ? await db.projects.get(tower.project_id) : undefined;
+    if (!project || !isSiteActive(project.status)) {
+      throw new Error('Progress is logged only on a project under construction.');
+    }
     const pct = clampPct(Number(input.progress_pct));
     const saved = await this.create({ ...input, progress_pct: pct }, createdBy);
     await applyLatestReading(input.work_item_id);
@@ -448,6 +485,44 @@ class MaterialRequestRepository extends BaseRepository<MaterialRequest> {
     return request;
   }
 
+  /**
+   * QA audit 2026-10-11 (C-05): once the Project Manager has decided, the
+   * request is what was approved, and changing the asked-for quantities
+   * behind that decision rewrites history. Only a pending request is edited;
+   * after that the site raises a new one.
+   */
+  async editBlockReason(id: string): Promise<string | null> {
+    const request = await this.getById(id);
+    if (!request) return 'This request no longer exists.';
+    if (request.status !== 'pending') {
+      return 'Only a request still waiting for approval can be changed. Raise a new request for anything more.';
+    }
+    return null;
+  }
+
+  /**
+   * A request something was ordered or sent against is the start of that
+   * chain; deleting it would leave the order pointing at nothing (C-05).
+   * An approved one with nothing against it is cancelled, not deleted, so the
+   * decision stays on record.
+   */
+  async deleteBlockReason(id: string): Promise<string | null> {
+    const request = await this.getById(id);
+    if (!request) return null;
+    const [orders, transfers] = await Promise.all([
+      db.purchase_orders.where('request_id').equals(id).count(),
+      db.stock_transfers.toArray(),
+    ]);
+    const sent = transfers.filter((t) => t.request_id === id).length;
+    if (orders > 0 || sent > 0) {
+      return `${orders + sent} order${orders + sent === 1 ? ' or dispatch was' : 's or dispatches were'} made against this request, so it cannot be deleted. Close it instead.`;
+    }
+    if (!['pending', 'rejected', 'cancelled'].includes(request.status)) {
+      return 'This request has been approved. Cancel it instead, so the decision stays on record.';
+    }
+    return null;
+  }
+
   async updateRequest(
     id: string,
     changes: {
@@ -461,6 +536,8 @@ class MaterialRequestRepository extends BaseRepository<MaterialRequest> {
     items: MaterialRequestItemInput[],
     createdBy: string | null = null,
   ): Promise<MaterialRequest | undefined> {
+    const blocked = await this.editBlockReason(id);
+    if (blocked) throw new Error(blocked);
     await materialRequestItemRepository.replaceForRequest(id, items, createdBy);
     return this.update(id, changes as never);
   }
@@ -613,7 +690,12 @@ class MaterialRequestRepository extends BaseRepository<MaterialRequest> {
     }, {});
   }
 
-  async removeCascade(id: string): Promise<void> {
+  /** `force` is the project delete, which has already checked for orders. */
+  async removeCascade(id: string, force = false): Promise<void> {
+    if (!force) {
+      const blocked = await this.deleteBlockReason(id);
+      if (blocked) throw new Error(blocked);
+    }
     await materialRequestItemRepository.removeForRequest(id);
     const history = await db.material_request_status_history.where('request_id').equals(id).toArray();
     await db.material_request_status_history.bulkDelete(history.map((h) => h.id));

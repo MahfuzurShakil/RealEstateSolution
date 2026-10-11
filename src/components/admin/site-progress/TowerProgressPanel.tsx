@@ -72,6 +72,11 @@ export function TowerProgressPanel({
     open: false,
   });
   const [deleteItem, setDeleteItem] = useState<TowerWorkItem | null>(null);
+  // QA audit C-03 — say why a delete is refused before anyone confirms it
+  const deleteItemBlocked = useLiveQuery(
+    () => (deleteItem ? towerWorkItemRepository.deleteBlockReason(deleteItem.id) : Promise.resolve(null)),
+    [deleteItem?.id],
+  );
   const [resetTowerId, setResetTowerId] = useState<string | null>(null);
 
   const towers = useLiveQuery(() => towerRepository.listForProject(projectId), [projectId]);
@@ -422,7 +427,11 @@ export function TowerProgressPanel({
         title={`Delete ${deleteItem?.name ?? 'work item'}`}
         subtitle={activeTower?.name}
         confirmLabel="Delete work item"
-        message="Every site update logged against this item — and the photos attached to them — is deleted with it, and the tower percentage is recalculated."
+        message={
+          deleteItemBlocked ??
+          'Nothing has been reported against this item yet, so only its plan is removed and the tower percentage is recalculated.'
+        }
+        disabled={Boolean(deleteItemBlocked)}
         onCancel={() => setDeleteItem(null)}
         onConfirm={async () => {
           if (deleteItem) await towerWorkItemRepository.removeCascade(deleteItem.id);

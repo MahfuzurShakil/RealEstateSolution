@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { KeyRound, MapPin, Plus, Ruler, Search, Wallet } from 'lucide-react';
+import { Building2, KeyRound, MapPin, Plus, Ruler, Search, Wallet } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -28,7 +28,7 @@ import {
   type LandStage,
   type WaitingKey,
 } from '@/lib/domain/land';
-import { landPipelineRepository, landRepository } from '@/lib/repositories';
+import { landPipelineRepository, landProjectMappingRepository, landRepository } from '@/lib/repositories';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
 type SortKey = 'newest' | 'oldest' | 'price_high' | 'price_low' | 'size_high';
@@ -67,6 +67,8 @@ export default function LandsListPage() {
   const waitingOn = result?.waitingOn;
 
   const allLands = useLiveQuery(() => landRepository.getAll(), []);
+  // QA audit L-04 — which plots are already spoken for by a project
+  const inProject = useLiveQuery(() => landProjectMappingRepository.projectCodeByLand(), []);
   const districts = useMemo(
     () => [...new Set((allLands ?? []).map((l) => l.location_district).filter(Boolean))].sort(),
     [allLands],
@@ -291,6 +293,7 @@ export default function LandsListPage() {
               <ResultsLayout view={view}>
                 {paged.pageRows.map((land) => {
                   const meta = LAND_STATUS_META[land.status];
+                  const projectCode = inProject?.get(land.id);
                   return (
                     <ResultCard
                       key={land.id}
@@ -299,9 +302,17 @@ export default function LandsListPage() {
                       code={land.code}
                       title={land.name}
                       status={
-                        <Badge tone={meta.tone}>
-                          {landStatusLabel(land.status, land.acquisition_type)}
-                        </Badge>
+                        /*
+                         * "Ready for Project" on a plot a project already
+                         * stands on read as free land (QA audit L-04).
+                         */
+                        projectCode && land.status === 'ready_for_project' ? (
+                          <Badge tone="teal">In project</Badge>
+                        ) : (
+                          <Badge tone={meta.tone}>
+                            {landStatusLabel(land.status, land.acquisition_type)}
+                          </Badge>
+                        )
                       }
                       footer={
                         waitingOn?.get(land.id) && waitingOn.get(land.id)!.key !== 'nothing'
@@ -339,6 +350,12 @@ export default function LandsListPage() {
                           >
                             {ACQUISITION_TYPE_LABEL[land.acquisition_type]}
                           </Badge>
+                          {projectCode && (
+                            <Badge tone="blue">
+                              <Building2 className="size-3.5" />
+                              {projectCode}
+                            </Badge>
+                          )}
                         </>
                       }
                     />

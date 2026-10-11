@@ -387,7 +387,13 @@ export interface LandJvDetails extends BaseEntity {
   land_id: UUID;
   developer_share_pct: number;
   landowner_share_pct: number;
-  agreement_date: ISODate;
+  /**
+   * When the JV agreement was signed. QA audit 2026-10-11 (L-03): empty
+   * while the JV is still being chased — the shares are then the proposed
+   * split, and signing (`recordJvSigning`) fills the date in. Not indexed,
+   * so the change needs no version block.
+   */
+  agreement_date?: ISODate | null;
   power_of_attorney: boolean;
   poa_reference?: string | null;
   /**
