@@ -125,6 +125,8 @@ export interface ProjectReadiness {
   /** units that are booked, sold or handed over */
   units_spoken_for: number;
   units_handed_over: number;
+  /** E2E 2026-10-12 #10 — company-sold units with no price above 0 */
+  units_unpriced?: number;
   /** money still owed on confirmed bookings for this project */
   outstanding_amount: number;
   /** v29 — how secure the land under the project is (`landReadiness`) */
@@ -874,6 +876,41 @@ export function previewUnitCodes(input: UnitPatternInput): string[] {
   );
 }
 
+/**
+ * Shops and offices carry no bedrooms, and a JV split counted in flats does
+ * not count them (E2E 2026-10-12 #30/#31). Unit types are master data, so this
+ * matches by name rather than by a fixed list.
+ */
+export function isResidentialUnitType(unitType: string | null | undefined): boolean {
+  return !/shop|office|commercial|retail|showroom|parking/i.test(unitType ?? '');
+}
+
+/**
+ * What is wrong with a floor pattern before anything is written (E2E
+ * 2026-10-12 #3/#4): every row needs a size and a price above 0, room counts
+ * cannot be negative, and the range must sit inside the tower.
+ */
+export function unitPatternProblems(input: UnitPatternInput, floorCount: number | null): string[] {
+  const problems: string[] = [];
+  if (floorsInRange(input).length === 0) problems.push('The floor range is empty');
+  if (floorCount && input.floor_to > floorCount)
+    problems.push(`The tower has ${floorCount} floors; "To floor" cannot be above it`);
+  input.rows.forEach((row, i) => {
+    const label = `Row ${row.suffix || i + 1}`;
+    if (!(Number(row.size_sqft) > 0)) problems.push(`${label}: enter a size above 0`);
+    if (!(Number(row.price_value) > 0)) problems.push(`${label}: enter a price above 0`);
+    for (const [key, name] of [
+      ['bedroom_count', 'bedrooms'],
+      ['bathroom_count', 'bathrooms'],
+      ['balcony_count', 'balconies'],
+      ['parking_allocated', 'parking'],
+    ] as const) {
+      if (Number(row[key]) < 0) problems.push(`${label}: ${name} cannot be negative`);
+    }
+  });
+  return problems;
+}
+
 /** The pattern row's own price, before any floor premium. */
 export function priceFor(row: UnitPatternRow): number {
   const value = Number(row.price_value) || 0;
@@ -1236,6 +1273,7 @@ export interface SalesGateFacts {
   block_before_approval: boolean;
   /** units, plots or shares generated so far */
   unit_count?: number;
+  units_unpriced?: number;
 }
 
 /**
@@ -1262,6 +1300,11 @@ export function salesOpenChecks(f: SalesGateFacts): { warnings: string[]; blocke
   if (f.unit_count === 0) {
     warnings.push(
       `No ${f.shape.labels.itemPlural.toLowerCase()} have been generated yet, so nothing can be booked until they are.`,
+    );
+  }
+  if (f.units_unpriced) {
+    warnings.push(
+      `${f.units_unpriced} ${f.shape.labels.itemPlural.toLowerCase()} have no price above 0. A booking would start from BDT 0 — set their prices first.`,
     );
   }
   const needsApproval = f.shape.item !== 'share';

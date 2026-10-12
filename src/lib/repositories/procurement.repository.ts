@@ -390,6 +390,24 @@ class PurchaseOrderRepository extends BaseRepository<PurchaseOrder> {
     return order;
   }
 
+  /**
+   * Quantity already on live orders against a request, keyed by catalogue
+   * item id (or lower-cased name for an older typed line).
+   */
+  async orderedAgainstRequest(requestId: string, exceptOrderId: string | null): Promise<Record<string, number>> {
+    const orders = (await db.purchase_orders.where('request_id').equals(requestId).toArray()).filter(
+      (o) => o.id !== exceptOrderId && o.status !== 'cancelled',
+    );
+    if (orders.length === 0) return {};
+    const lines = await db.purchase_order_items.where('po_id').anyOf(orders.map((o) => o.id)).toArray();
+    const out: Record<string, number> = {};
+    for (const l of lines) {
+      const key = l.item_id ?? l.item_name.trim().toLowerCase();
+      out[key] = (out[key] ?? 0) + Number(l.quantity_ordered);
+    }
+    return out;
+  }
+
   async updateOrder(
     id: string,
     changes: {
@@ -2660,6 +2678,9 @@ class SiteMaterialsRepository {
   async act(input: SiteMaterialAction): Promise<void> {
     const quantity = qty(Number(input.quantity) || 0);
     if (quantity <= 0) throw new Error('Enter a quantity greater than zero.');
+    // E2E 2026-10-12 #20 — site records are of what happened, never ahead of today
+    if (!input.date) throw new Error('Enter the date.');
+    if (input.date > todayLocal()) throw new Error('The date cannot be in the future.');
     const rows = await this.forProject(input.project_id);
     const row = rows.find((r) => r.id === input.row_id);
     if (!row) throw new Error('This item is no longer on the site.');

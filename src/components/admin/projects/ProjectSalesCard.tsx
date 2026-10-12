@@ -56,7 +56,11 @@ export function ProjectSalesCard({ project, lands }: { project: Project; lands: 
     block_without_land: Boolean(settings?.block_sales_without_land),
     block_before_approval: Boolean(settings?.block_sales_before_approval),
     unit_count: readiness?.unit_count,
+    units_unpriced: readiness?.units_unpriced,
   });
+  // E2E 2026-10-12 #9 — sold out while stock is still unsold is said out loud
+  const unsold = readiness ? readiness.unit_count - readiness.units_spoken_for : 0;
+  const itemPlural = projectShape(project.project_type).labels.itemPlural.toLowerCase();
 
   async function confirm() {
     if (!target) return;
@@ -175,7 +179,11 @@ export function ProjectSalesCard({ project, lands }: { project: Project; lands: 
         title={target ? SALES_MOVE_LABEL[target] : ''}
         subtitle={`${project.code} · ${project.name}`}
         icon={ShoppingBag}
-        tone={opening && checks.warnings.length > 0 ? 'warning' : 'default'}
+        tone={
+          (opening && checks.warnings.length > 0) || (target === 'sold_out' && unsold > 0)
+            ? 'warning'
+            : 'default'
+        }
         confirmLabel={target ? SALES_MOVE_LABEL[target] : 'Confirm'}
         message={target ? MOVE_QUESTION[target] : undefined}
         busy={busy}
@@ -183,6 +191,17 @@ export function ProjectSalesCard({ project, lands }: { project: Project; lands: 
         onCancel={() => setTarget(null)}
         onConfirm={confirm}
       >
+        {target === 'sold_out' && unsold > 0 && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            <p className="flex items-center gap-1.5 text-sm font-medium">
+              <AlertTriangle className="size-4" /> {unsold} {itemPlural} are still unsold
+            </p>
+            <p className="mt-1">
+              They will drop out of the booking form. Use Pause sales instead if the stock is only held back
+              for now.
+            </p>
+          </div>
+        )}
         {opening && checks.warnings.length > 0 && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
             <p className="flex items-center gap-1.5 text-sm font-medium text-amber-800">

@@ -20,6 +20,8 @@ import type {
 } from '../db/types';
 import {
   floorsInRange,
+  isResidentialUnitType,
+  unitPatternProblems,
   jvAllocationSummary,
   priceOnFloor,
   defaultInstallmentPlan,
@@ -199,6 +201,7 @@ class ProjectRepository extends BaseRepository<Project> {
       progress_pct: rollup.actual_pct,
       units_spoken_for: units.filter((u) => SPOKEN_FOR.has(u.status)).length,
       units_handed_over: units.filter((u) => u.status === 'handed_over').length,
+      units_unpriced: units.filter((u) => u.for_sale_by !== 'owner_direct' && !(Number(u.base_price) > 0)).length,
       outstanding_amount: Math.round(outstanding * 100) / 100,
       land_readiness: landReadiness(lands),
     };
@@ -269,10 +272,14 @@ class ProjectRepository extends BaseRepository<Project> {
      */
     const arrivesFromBefore =
       PROJECT_PIPELINE_STEPS.indexOf(current.status) < PROJECT_PIPELINE_STEPS.indexOf('under_construction');
-    return this.update(id, {
+    const saved = await this.update(id, {
       status,
       ...(status === 'under_construction' && arrivesFromBefore ? { actual_start_date: event.event_date } : {}),
     });
+    if (status === 'under_construction' && arrivesFromBefore && event.event_date) {
+      await rebaseUntouchedSchedule(id, event.event_date);
+    }
+    return saved;
   }
 
   /**
@@ -395,18 +402,21 @@ class ProjectRepository extends BaseRepository<Project> {
     const unassigned = EMPTY_TOTALS();
 
     for (const unit of units) {
+      // E2E 2026-10-12 #30: shops and offices are floor area, not flats — they
+      // count toward a sqft split but not toward a split counted in flats
+      const flat = isResidentialUnitType(unit.unit_type) ? 1 : 0;
       const bucket = unit.allocation_type === 'landowner_share' ? totals.landowner : totals.developer;
-      bucket.flat_count += 1;
+      bucket.flat_count += flat;
       bucket.total_sqft += Number(unit.size_sqft) || 0;
 
       if (unit.allocation_type !== 'landowner_share') continue;
       if (!unit.allocated_to_owner_id) {
-        unassigned.flat_count += 1;
+        unassigned.flat_count += flat;
         unassigned.total_sqft += Number(unit.size_sqft) || 0;
         continue;
       }
       const entry = perOwner.get(unit.allocated_to_owner_id) ?? EMPTY_TOTALS();
-      entry.flat_count += 1;
+      entry.flat_count += flat;
       entry.total_sqft += Number(unit.size_sqft) || 0;
       perOwner.set(unit.allocated_to_owner_id, entry);
     }
@@ -964,8 +974,35 @@ class UnitRepository extends BaseRepository<Unit> {
     input: UnitPatternInput,
     createdBy: string | null = null,
   ): Promise<BulkGenerateResult> {
+    const tower = await db.towers.get(towerId);
+    const problems = unitPatternProblems(input, tower?.floor_count ?? null);
+    if (problems.length > 0) throw new Error(problems.join('. '));
+
     const existing = await this.projectUnitCodes(towerId);
     const floors = floorsInRange(input);
+
+    /*
+     * E2E 2026-10-12 #29: a second run with another prefix used to stack more
+     * units onto floors that were already full. A floor may hold at most the
+     * tower's units-per-floor.
+     */
+    const perFloor = tower?.unit_per_floor ?? null;
+    if (perFloor && perFloor > 0) {
+      const onTower = await db.units.where('tower_id').equals(towerId).toArray();
+      const full: number[] = [];
+      for (const floor of floors) {
+        const fresh = input.rows.filter(
+          (row) => !existing.has(unitCode(input.prefix, input.separator, floor, row.suffix)),
+        ).length;
+        const already = onTower.filter((u) => u.floor === floor).length;
+        if (fresh > 0 && already + fresh > perFloor) full.push(floor);
+      }
+      if (full.length > 0) {
+        throw new Error(
+          `${tower!.name} takes ${perFloor} units per floor; floor${full.length === 1 ? '' : 's'} ${full.join(', ')} would go over. Change the range, or edit the tower's units per floor.`,
+        );
+      }
+    }
 
     const created: Unit[] = [];
     const skipped: string[] = [];
@@ -978,6 +1015,7 @@ class UnitRepository extends BaseRepository<Unit> {
           continue;
         }
         existing.add(code);
+        const residential = isResidentialUnitType(row.unit_type);
         created.push(
           await this.create(
             {
@@ -985,9 +1023,9 @@ class UnitRepository extends BaseRepository<Unit> {
               tower_id: towerId,
               floor,
               unit_type: row.unit_type,
-              bedroom_count: numOrNull(row.bedroom_count),
-              bathroom_count: numOrNull(row.bathroom_count),
-              balcony_count: numOrNull(row.balcony_count),
+              bedroom_count: residential ? numOrNull(row.bedroom_count) : null,
+              bathroom_count: residential ? numOrNull(row.bathroom_count) : null,
+              balcony_count: residential ? numOrNull(row.balcony_count) : null,
               size_sqft: Number(row.size_sqft) || 0,
               facing: row.facing.trim() || null,
               base_price: priceOnFloor(row, floor, input),
@@ -1025,6 +1063,8 @@ class UnitRepository extends BaseRepository<Unit> {
     input: PlotPatternInput,
     createdBy: string | null = null,
   ): Promise<BulkGenerateResult> {
+    if (!(Number(input.land_size) > 0)) throw new Error('Enter a plot size above 0');
+    if (!(Number(input.rate_per_katha) > 0)) throw new Error('Enter a rate per katha above 0');
     const existing = await this.projectUnitCodes(towerId);
     const created: Unit[] = [];
     const skipped: string[] = [];
@@ -1120,6 +1160,7 @@ class UnitRepository extends BaseRepository<Unit> {
     input: SharePatternInput,
     createdBy: string | null = null,
   ): Promise<BulkGenerateResult> {
+    if (!(Number(input.price_per_share) > 0)) throw new Error('Enter a price per share above 0');
     const existing = await this.projectUnitCodes(towerId);
     const created: Unit[] = [];
     const skipped: string[] = [];
@@ -1288,6 +1329,34 @@ class UnitRepository extends BaseRepository<Unit> {
     );
     const clash = await db.units.where('code').equals(code).filter((u) => towerIds.has(u.tower_id)).first();
     return Boolean(clash && clash.id !== exceptId);
+  }
+}
+
+/**
+ * E2E 2026-10-12 #12: the default work breakdown is spread from the expected
+ * start. When construction actually begins on another day and nothing has
+ * been reported yet, the whole plan shifts to the real start, keeping each
+ * item's length. A plan someone has already worked against is left alone.
+ */
+async function rebaseUntouchedSchedule(projectId: string, actualStart: string): Promise<void> {
+  const towerIds = (await db.towers.where('project_id').equals(projectId).toArray()).map((t) => t.id);
+  if (towerIds.length === 0) return;
+  const items = await db.tower_work_items.where('tower_id').anyOf(towerIds).toArray();
+  const dated = items.filter((i) => i.planned_start_date);
+  if (dated.length === 0 || items.some((i) => Number(i.actual_progress_pct) > 0)) return;
+  const first = dated.map((i) => i.planned_start_date as string).sort()[0];
+  const shiftDays = Math.round((Date.parse(actualStart) - Date.parse(first)) / 86_400_000);
+  if (!Number.isFinite(shiftDays) || shiftDays === 0) return;
+  const move = (d: string | null | undefined) => {
+    if (!d) return d ?? null;
+    const t = new Date(Date.parse(d) + shiftDays * 86_400_000);
+    return t.toISOString().slice(0, 10);
+  };
+  for (const item of dated) {
+    await db.tower_work_items.update(item.id, {
+      planned_start_date: move(item.planned_start_date),
+      planned_end_date: move(item.planned_end_date),
+    });
   }
 }
 

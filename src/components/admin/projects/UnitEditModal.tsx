@@ -36,6 +36,7 @@ import {
   bookingRepository,
   lookupRepository,
   projectRepository,
+  towerRepository,
   unitRepository,
 } from '@/lib/repositories';
 
@@ -106,6 +107,19 @@ export function UnitEditModal({
     }
     if (form.allocation_type === 'landowner_share' && !form.allocated_to_owner_id) {
       return setError(`Pick the landowner this ${shape.labels.item.toLowerCase()} belongs to`);
+    }
+    // E2E 2026-10-12 #28 — a floor the tower does not have, or a negative size/price
+    if (uses('floor')) {
+      const tower = await towerRepository.getById(unit.tower_id);
+      const floor = Number(form.floor);
+      if (!Number.isInteger(floor) || floor < 0 || (tower?.floor_count && floor > tower.floor_count)) {
+        return setError(`Floor must be between 0 and ${tower?.floor_count ?? 'the floor count'}`);
+      }
+    }
+    if (uses('size_sqft') && !(Number(form.size_sqft) > 0)) return setError('Enter a size above 0');
+    if (!(Number(form.base_price) > 0)) return setError('Enter a base price above 0');
+    for (const key of ['bedroom_count', 'bathroom_count', 'balcony_count', 'parking_allocated'] as const) {
+      if (Number(form[key]) < 0) return setError('Room and parking counts cannot be negative');
     }
     // a register is the whole land and never more (client walkthrough 2026-10-10)
     if (uses('share_pct')) {

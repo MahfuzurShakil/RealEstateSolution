@@ -69,7 +69,7 @@ const BUILT: Partial<Record<ProjectStatus, StageRequirements>> = {
   // leaving approval
   under_construction: {
     fields: [
-      { key: 'approval_date', label: 'Approval date', type: 'text', placeholder: 'e.g. 05 Oct 2026', required: true },
+      { key: 'approval_date', label: 'Plan approval date (on the permit)', type: 'date', required: true },
       { key: 'contractor', label: 'Main contractor', type: 'text', placeholder: 'e.g. Nirman Construction Services' },
     ],
     documents: [

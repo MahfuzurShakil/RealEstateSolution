@@ -20,6 +20,7 @@ import {
 } from '@/lib/domain/land';
 import { landJvRepository, landPipelineRepository, landRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
+import { todayLocal } from '@/lib/utils/format';
 
 /**
  * v29 — add the land a project stands on without leaving the project form
@@ -99,10 +100,19 @@ function QuickLandDialog({
   async function save() {
     const next: Record<string, string> = {};
     if (!form.name.trim()) next.name = 'Required';
+    // E2E 2026-10-12 #22 — the same check the full land form makes
+    else {
+      const name = form.name.trim().toLowerCase();
+      if ((await landRepository.getAll()).some((l) => l.name.trim().toLowerCase() === name))
+        next.name = 'Another land already has this name';
+    }
+    if (!form.location_division.trim()) next.location_division = 'Required';
     if (!form.location_district.trim()) next.location_district = 'Required';
     if (!form.location_area.trim()) next.location_area = 'Required';
     if (!(Number(form.land_size) > 0)) next.land_size = 'Enter a size above 0';
     if (owned && !form.owned_on) next.owned_on = 'Required';
+    // E2E 2026-10-12 #23 — owned since a day that has not come yet
+    else if (owned && form.owned_on > todayLocal()) next.owned_on = 'Cannot be in the future';
     if (!owned && form.acquisition_type === 'direct_purchase' && !(Number(form.asking_price) >= 0 && form.asking_price.trim()))
       next.asking_price = 'Enter an amount';
     // a signed JV has a split; one still being chased gets its terms at signing
@@ -206,6 +216,14 @@ function QuickLandDialog({
             placeholder="e.g. Purbachal Sector 12 plot"
             invalid={Boolean(errors.name)}
             autoFocus
+          />
+        </Field>
+        <Field label="Division" required error={errors.location_division}>
+          <TextInput
+            value={form.location_division}
+            onChange={(e) => set('location_division', e.target.value)}
+            placeholder="e.g. Dhaka"
+            invalid={Boolean(errors.location_division)}
           />
         </Field>
         <Field label="District" required error={errors.location_district}>

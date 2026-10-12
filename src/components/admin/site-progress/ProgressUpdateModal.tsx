@@ -110,6 +110,12 @@ export function ProgressUpdateModal({
       setError('An update date is required');
       return;
     }
+    // E2E 2026-10-12 #11 — 150 is a typo for 15, not "done"
+    const typed = Number(progress);
+    if (!Number.isFinite(typed) || typed < 0 || typed > 100) {
+      setError('Progress must be between 0% and 100%');
+      return;
+    }
     // QA audit C-07 — going backwards is unusual enough to explain
     if (pct < previous && !remarks.trim()) {
       setError(`Progress goes down from ${previous}% to ${pct}%: say why in the remarks`);

@@ -7,7 +7,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { ArrowLeft } from 'lucide-react';
 import { PurchaseOrderForm } from '@/components/admin/procurement/PurchaseOrderForm';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { materialRequestRepository } from '@/lib/repositories';
+import { materialRequestRepository, purchaseOrderRepository } from '@/lib/repositories';
 
 function NewPurchaseOrder() {
   const params = useSearchParams();
@@ -26,8 +26,13 @@ function NewPurchaseOrder() {
     [requestId],
   );
 
+  const ordered = useLiveQuery(
+    () => (requestId ? purchaseOrderRepository.orderedAgainstRequest(requestId, null) : Promise.resolve({})),
+    [requestId],
+  );
+
   // `undefined` is "still loading"; `null` is "there is no request to wait for"
-  if (requestId && request === undefined) {
+  if (requestId && (request === undefined || ordered === undefined)) {
     return <p className="text-sm text-ink-muted">Loading the material request…</p>;
   }
 
@@ -49,6 +54,7 @@ function NewPurchaseOrder() {
         defaults={{
           request: request ?? undefined,
           project_id: params.get('project') ?? undefined,
+          ordered: ordered ?? {},
         }}
       />
     </>

@@ -110,3 +110,18 @@ export function formatPhone(phone?: string | null): string {
   const digits = phone.replace(/\D/g, '');
   return digits.length === 11 ? `${digits.slice(0, 5)} ${digits.slice(5)}` : phone;
 }
+
+/**
+ * E2E 2026-10-12 #21 — a Bangladeshi mobile number: 11 digits starting 01[3-9],
+ * optionally prefixed +880 / 880. Spaces and dashes are allowed between digits.
+ */
+export function isValidBdPhone(phone: string): boolean {
+  const digits = phone.replace(/[\s-]/g, '');
+  return /^(\+?880)?01[3-9]\d{8}$/.test(digits);
+}
+
+/** A national ID: 10 (smart card), 13 or 17 (older paper card) digits. */
+export function isValidNid(nid: string): boolean {
+  const digits = nid.replace(/[\s-]/g, '');
+  return /^\d+$/.test(digits) && [10, 13, 17].includes(digits.length);
+}

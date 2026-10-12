@@ -202,15 +202,38 @@ export default function ProjectDetailPage() {
                       : '—'
                   }
                 />
-                <Row label="Architect" value={project.architect} />
+                {/* E2E 2026-10-12 #27 — the same words the project form uses for this type */}
+                {shape.item !== 'share' && (
+                  <Row
+                    label={shape.item === 'plot' ? 'Layout planner / architect' : 'Architect'}
+                    value={project.architect}
+                  />
+                )}
                 {/* Scope v3 §3.3 — who runs this project (2026-10-04) */}
                 <Row label="Project manager" value={manager?.name} />
-                <Row label="Expected start" value={formatDate(project.expected_start_date)} />
                 <Row
-                  label="Expected completion"
+                  label={
+                    shape.item === 'share'
+                      ? 'Sales start'
+                      : shape.item === 'plot'
+                        ? 'Development start'
+                        : 'Construction start'
+                  }
+                  value={formatDate(project.expected_start_date)}
+                />
+                <Row
+                  label={
+                    shape.item === 'share'
+                      ? 'Target sell-out'
+                      : shape.item === 'plot'
+                        ? 'Plot handover target'
+                        : 'Handover target'
+                  }
                   value={formatDate(project.expected_completion_date)}
                 />
-                <Row label="Actual start" value={formatDate(project.actual_start_date)} />
+                {shape.item !== 'share' && (
+                  <Row label="Actual start" value={formatDate(project.actual_start_date)} />
+                )}
               </Card>
 
               {/* v29 — the land under the project, its status and cost */}

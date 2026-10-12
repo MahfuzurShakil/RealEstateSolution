@@ -140,6 +140,11 @@ export function PlotShareGenerateModal({
   /** A register has to add up to the whole plot, so unequal shares are a later edit. */
   const sharePct = n > 0 ? 100 / n : 0;
 
+  // E2E 2026-10-12 #26 — nothing goes on sale at BDT 0
+  const priceMissing = isPlot
+    ? !(Number(plotSize) > 0) || !(Number(ratePerKatha) > 0)
+    : !(Number(sharePrice) > 0);
+
   async function generate() {
     setBusy(true);
     try {
@@ -201,6 +206,7 @@ export function PlotShareGenerateModal({
               disabled={
                 busy ||
                 n === 0 ||
+                priceMissing ||
                 (!isPlot && (!shareContext || shareContext.lands.length === 0 || shareContext.sold > 0))
               }
             >

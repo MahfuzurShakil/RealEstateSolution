@@ -6,6 +6,7 @@ import { Field, TextArea, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { UserPlus } from 'lucide-react';
 import type { Landowner } from '@/lib/db/types';
+import { isValidBdPhone, isValidNid } from '@/lib/utils/format';
 import { landownerRepository } from '@/lib/repositories';
 
 /**
@@ -58,6 +59,14 @@ function LandownerDialog({
   async function save() {
     if (!form.name.trim()) {
       setError('Name is required');
+      return;
+    }
+    if (form.phone.trim() && !isValidBdPhone(form.phone)) {
+      setError('Phone must be a Bangladeshi mobile number, e.g. 01711 223344');
+      return;
+    }
+    if (form.nid.trim() && !isValidNid(form.nid)) {
+      setError('NID must be 10, 13 or 17 digits');
       return;
     }
     setSaving(true);

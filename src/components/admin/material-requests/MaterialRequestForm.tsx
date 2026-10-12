@@ -107,8 +107,14 @@ export function MaterialRequestForm({
    * the staff list loads asynchronously — so the default is derived at render
    * rather than written into state by an effect. `null` means "untouched".
    */
-  const actingIsSiteStaff = (siteTeam ?? []).some((u) => u.id === userId);
-  const requesterValue = requestedBy ?? (actingIsSiteStaff ? userId : '');
+  // E2E 2026-10-12 #13 — whoever raises a new request is its requester by
+  // default, site staff or not; the acting user is always on the list
+  const actingUser = useLiveQuery(() => (userId ? userRepository.getById(userId) : undefined), [userId]);
+  const requesterOptions = [
+    ...(siteTeam ?? []),
+    ...(actingUser && !(siteTeam ?? []).some((u) => u.id === actingUser.id) ? [actingUser] : []),
+  ];
+  const requesterValue = requestedBy ?? (request ? '' : (userId ?? ''));
 
   function setLine(index: number, patch: Partial<LineRow>) {
     setLines((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
@@ -277,7 +283,7 @@ export function MaterialRequestForm({
               onChange={(e) => setRequestedBy(e.target.value)}
             >
               <option value="">Not recorded</option>
-              {(siteTeam ?? []).map((u) => (
+              {requesterOptions.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.name}
                 </option>

@@ -91,8 +91,14 @@ export function ProjectStatusCard({ project }: { project: Project }) {
         .at(-1) ?? null,
     [project.id, project.status],
   );
-  const blockersFor = (status: ProjectStatus) =>
-    readiness ? projectStatusBlockers(status, readiness, shape) : [];
+  // E2E 2026-10-12 #32 — say so on the button, not after the dialog is filled in
+  const datesMissing = !project.expected_start_date || !project.expected_completion_date;
+  const blockersFor = (status: ProjectStatus) => [
+    ...(datesMissing && order(status) > currentOrder && order(status) >= order('approval')
+      ? ['Set the expected start and completion dates on the project (Edit) first']
+      : []),
+    ...(readiness ? projectStatusBlockers(status, readiness, shape) : []),
+  ];
   const warningsFor = (status: ProjectStatus) =>
     readiness ? projectStatusWarnings(status, readiness, shape) : [];
 
@@ -130,43 +136,42 @@ export function ProjectStatusCard({ project }: { project: Project }) {
       setError(targetBlockers[0]);
       return;
     }
-    const missing = config.fields.find((f) => f.required && !values[f.key]?.trim());
-    if (missing) {
-      setError(`${missing.label.replace(' (required)', '')} is required`);
-      return;
+    /*
+     * E2E 2026-10-12 #5/#6/#8: every problem is listed at once, the stage
+     * dates must run in order, and numbers cannot be negative.
+     */
+    const problems: string[] = [];
+    for (const f of config.fields) {
+      if (f.required && !values[f.key]?.trim()) problems.push(`${f.label.replace(' (required)', '')} is required`);
     }
-    // QA audit P-13 — dated today or earlier, and not before the previous stage
-    if (values.event_date && values.event_date > todayLocal()) {
-      setError('The date cannot be in the future');
-      return;
-    }
+    const today = todayLocal();
+    if (values.event_date && values.event_date > today) problems.push('The date cannot be in the future');
     if (values.event_date && lastEventDate && values.event_date < lastEventDate) {
-      setError(`The date cannot be before the previous stage move (${lastEventDate})`);
-      return;
+      problems.push(`The date cannot be before the previous stage move (${lastEventDate})`);
     }
-    // QA audit P-10 — dates may wait during planning and design, not past them
-    if (
-      forwardMove &&
-      target &&
-      order(target) >= order('approval') &&
-      (!project.expected_start_date || !project.expected_completion_date)
-    ) {
-      setError('Set the expected start and completion dates on the project (Edit) before moving it on');
-      return;
+    if (forwardMove) {
+      const done = details.completed_on;
+      if (!done) problems.push(`Say when ${label(project.status).toLowerCase()} was completed`);
+      else {
+        if (done > today) problems.push(`${label(project.status)} cannot be completed in the future`);
+        if (lastEventDate && done < lastEventDate)
+          problems.push(`${label(project.status)} cannot be completed before it started (${lastEventDate})`);
+        if (values.event_date && values.event_date < done)
+          problems.push(`${label(target)} cannot start before ${label(project.status).toLowerCase()} was completed (${done})`);
+      }
     }
-    // the stage's key details and papers are compulsory (decision 2026-10-11)
-    if (forwardMove && !details.completed_on) {
-      setError(`Say when ${label(project.status).toLowerCase()} was completed`);
-      return;
+    for (const f of stage?.fields ?? []) {
+      const v = details[f.key]?.trim();
+      if (f.required && !v) problems.push(`${f.label} is required for this stage`);
+      else if (v && f.type === 'number' && !(Number(v) >= 0)) problems.push(`${f.label} cannot be negative`);
+      else if (v && f.type === 'number' && f.required && !(Number(v) > 0)) problems.push(`${f.label} must be above 0`);
+      else if (v && f.type === 'date' && v > today) problems.push(`${f.label} cannot be in the future`);
     }
-    const missingDetail = stage?.fields.find((f) => f.required && !details[f.key]?.trim());
-    if (missingDetail) {
-      setError(`${missingDetail.label} is required for this stage`);
-      return;
+    for (const d of stage?.documents ?? []) {
+      if (d.required && !files[d.label]) problems.push(`Upload the ${d.label.toLowerCase()} to move on`);
     }
-    const missingDoc = stage?.documents.find((d) => d.required && !files[d.label]);
-    if (missingDoc) {
-      setError(`Upload the ${missingDoc.label.toLowerCase()} to move on`);
+    if (problems.length > 0) {
+      setError(problems.join('\n'));
       return;
     }
 
@@ -420,7 +425,7 @@ export function ProjectStatusCard({ project }: { project: Project }) {
           {config?.fields.map(renderField)}
         </div>
         </div>
-        {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+        {error && <p className="mt-2 whitespace-pre-line text-xs text-red-600">{error}</p>}
       </ConfirmDialog>
     </>
   );

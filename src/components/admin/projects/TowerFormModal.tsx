@@ -89,6 +89,10 @@ export function TowerFormModal({
     // a block has no floors, so there is nothing to require
     if (isTower && (!form.floor_count.trim() || Number(form.floor_count) <= 0))
       next.floor_count = 'Enter a floor count above 0';
+    // E2E 2026-10-12 #1 — a negative lift or road width is a typo, not a tower
+    for (const key of ['unit_per_floor', 'lift_count', 'front_road_width_ft'] as const) {
+      if (form[key].trim() && !(Number(form[key]) >= 0)) next[key] = 'Must be 0 or more';
+    }
     setErrors(next);
     if (Object.keys(next).length > 0) return;
 
@@ -164,7 +168,7 @@ export function TowerFormModal({
                 placeholder="e.g. B+G+10"
               />
             </Field>
-            <Field label="Units per Floor">
+            <Field label="Units per Floor" error={errors.unit_per_floor}>
               <TextInput
                 type="number"
                 min="0"
@@ -173,7 +177,7 @@ export function TowerFormModal({
                 placeholder="e.g. 4"
               />
             </Field>
-            <Field label="Lift Count">
+            <Field label="Lift Count" error={errors.lift_count}>
               <TextInput
                 type="number"
                 min="0"
@@ -186,6 +190,7 @@ export function TowerFormModal({
         )}
         <Field
           label="Front Road Width (ft)"
+          error={errors.front_road_width_ft}
           hint={isTower ? undefined : 'What the plots in this block front onto'}
         >
           <TextInput

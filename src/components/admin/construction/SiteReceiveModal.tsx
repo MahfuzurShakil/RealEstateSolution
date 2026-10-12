@@ -82,6 +82,11 @@ function OrderReceive({
         ...(bad > 0 ? [{ po_item_id: i.id, quantity_received: bad, quality_check: 'failed' as const }] : []),
       ];
     });
+    // E2E 2026-10-12 #17 — a negative count was silently dropped
+    if (pending.some((i) => Number(accepted[i.id]) < 0 || Number(rejected[i.id]) < 0)) {
+      setError('Quantities cannot be negative.');
+      return;
+    }
     if (lines.length === 0) {
       setError('Enter what arrived on at least one line.');
       return;
@@ -89,6 +94,16 @@ function OrderReceive({
     const over = pending.find((i) => (Number(accepted[i.id]) || 0) > outstanding(i) + 0.0005);
     if (over) {
       setError(`${over.item_name}: only ${outstanding(over)} ${over.unit} is still to come on this order.`);
+      return;
+    }
+    // E2E 2026-10-12 #18 — accepted and turned back together cannot exceed what is due
+    const overAll = pending.find(
+      (i) => (Number(accepted[i.id]) || 0) + (Number(rejected[i.id]) || 0) > outstanding(i) + 0.0005,
+    );
+    if (overAll) {
+      setError(
+        `${overAll.item_name}: accepted plus turned back is more than the ${outstanding(overAll)} ${overAll.unit} still to come. Record only what this order delivered.`,
+      );
       return;
     }
     const short = pending.some((i) => (Number(accepted[i.id]) || 0) < outstanding(i) - 0.0005);

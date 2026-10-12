@@ -83,6 +83,8 @@ function applyRequestLines(
       quantity_approved?: number | null;
     }[];
   },
+  /** E2E 2026-10-12 — what other live orders already cover, by item id or name */
+  ordered: Record<string, number> = {},
 ): LineRow[] {
   const kept = rows.filter(
     (r) =>
@@ -98,7 +100,13 @@ function applyRequestLines(
     item_name: item.item_name,
     unit: item.unit,
     // what Procurement approved, not what the site asked for
-    quantity_ordered: String(item.quantity_approved ?? item.quantity_requested),
+    quantity_ordered: String(
+      Math.max(
+        0,
+        (item.quantity_approved ?? item.quantity_requested) -
+          (ordered[item.item_id ?? item.item_name.trim().toLowerCase()] ?? 0),
+      ),
+    ),
     unit_price: '',
     from_request: request.id,
   }));
@@ -127,7 +135,12 @@ export function PurchaseOrderForm({
    * seeded synchronously — a form that has to wait for it renders once as a
    * central-store purchase with nothing on it.
    */
-  defaults?: { request?: MaterialRequestWithRelations; project_id?: string };
+  defaults?: {
+    request?: MaterialRequestWithRelations;
+    project_id?: string;
+    /** quantities other live orders already cover on that request */
+    ordered?: Record<string, number>;
+  };
 }) {
   const router = useRouter();
   const { userId } = useMockSession();
@@ -164,7 +177,7 @@ export function PurchaseOrderForm({
         }))
       : // arriving from a request: its approved quantities, ready to be priced
         defaults?.request
-        ? applyRequestLines([], defaults.request)
+        ? applyRequestLines([], defaults.request, defaults.ordered)
         : [EMPTY_LINE()],
   );
 
@@ -184,6 +197,7 @@ export function PurchaseOrderForm({
     (r) => r.status === 'approved' || r.id === order?.request_id,
   );
   const selectedRequest = selectableRequests.find((r) => r.id === requestId);
+
 
   const total = money(
     lines.reduce(
@@ -205,13 +219,14 @@ export function PurchaseOrderForm({
    * delete — and they keep their `from_request` tag, so picking the request
    * again recognises them instead of copying a second set.
    */
-  function applyRequest(id: string) {
+  async function applyRequest(id: string) {
     setRequestId(id);
     const request = selectableRequests.find((r) => r.id === id);
     if (!request) return;
 
     setProjectId(request.project_id);
-    setLines((rows) => applyRequestLines(rows, request));
+    const ordered = await purchaseOrderRepository.orderedAgainstRequest(id, order?.id ?? null);
+    setLines((rows) => applyRequestLines(rows, request, ordered));
   }
 
   async function save() {
@@ -304,7 +319,14 @@ export function PurchaseOrderForm({
               disabled={Boolean(selectedRequest)}
             >
               <option value="">Main store (no project)</option>
-              {(projects ?? []).map((p) => (
+              {(projects ?? [])
+                // E2E 2026-10-12 #16 — nothing is built on a land share, nothing more on a closed project
+                .filter(
+                  (p) =>
+                    p.id === order?.project_id ||
+                    (p.project_type !== 'land_share' && p.status !== 'closed'),
+                )
+                .map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>

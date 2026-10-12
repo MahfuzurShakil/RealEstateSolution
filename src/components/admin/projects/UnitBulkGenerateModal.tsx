@@ -12,6 +12,7 @@ import {
   previewUnitCodes,
   priceFor,
   priceOnFloor,
+  unitPatternProblems,
   type UnitPatternRow,
 } from '@/lib/domain/project';
 import { lookupRepository, unitRepository } from '@/lib/repositories';
@@ -110,6 +111,8 @@ export function UnitBulkGenerateModal({
 
   const rangeInvalid = floors.length === 0;
   const overFloorCount = Number(floorTo) > tower.floor_count;
+  const problems = unitPatternProblems(pattern, tower.floor_count);
+  const [error, setError] = useState('');
 
   function updateRow(index: number, patch: Partial<UnitPatternRow>) {
     setRows((list) => list.map((row, i) => (i === index ? { ...row, ...patch } : row)));
@@ -117,9 +120,12 @@ export function UnitBulkGenerateModal({
 
   async function generate() {
     setBusy(true);
+    setError('');
     try {
       const { created, skipped } = await unitRepository.bulkGenerate(tower.id, pattern);
       setResult({ created: created.length, skipped });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -141,7 +147,7 @@ export function UnitBulkGenerateModal({
             <Button variant="outline" onClick={onClose} viewSafe disabled={busy}>
               Cancel
             </Button>
-            <Button onClick={generate} disabled={busy || rangeInvalid || codes.length === 0}>
+            <Button onClick={generate} disabled={busy || problems.length > 0 || codes.length === 0}>
               {busy ? 'Generating…' : `Generate ${codes.length} unit${codes.length === 1 ? '' : 's'}`}
             </Button>
           </>
@@ -426,6 +432,14 @@ export function UnitBulkGenerateModal({
                 </>
               )}
             </div>
+            {(problems.length > 0 || error) && (
+              <ul className="mt-3 space-y-0.5 text-xs text-red-600">
+                {problems.map((p) => (
+                  <li key={p}>{p}</li>
+                ))}
+                {error && <li>{error}</li>}
+              </ul>
+            )}
           </section>
         </div>
       )}
