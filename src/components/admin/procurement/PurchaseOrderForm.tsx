@@ -224,10 +224,11 @@ export function PurchaseOrderForm({
       setError('Add at least one item with a quantity');
       return;
     }
-    if (filled.some((l) => Number(l.unit_price) < 0)) {
-      setError('A unit price cannot be negative');
+    if (filled.some((l) => !(Number(l.unit_price) > 0))) {
+      setError('Every line needs a unit price above 0');
       return;
     }
+    setError('');
 
     setBusy(true);
     try {
@@ -258,10 +259,13 @@ export function PurchaseOrderForm({
         }
         router.push(`/admin/purchase-orders/${order.id}`);
       } else {
-        const saved = await purchaseOrderRepository.createOrder(
-          { ...payload, status, items },
-          userId,
-        );
+        let saved;
+        try {
+          saved = await purchaseOrderRepository.createOrder({ ...payload, status, items }, userId);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'The order could not be saved.');
+          return;
+        }
         router.push(`/admin/purchase-orders/${saved.id}`);
       }
     } finally {

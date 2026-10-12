@@ -311,6 +311,43 @@ export interface PurchaseOrderItemInput {
   unit_price: number;
 }
 
+/**
+ * E2E test 2026-10-12 #14/#15: every line needs a real price, and an order
+ * against a material request may not buy more than was approved, less what
+ * other live orders on that request already cover.
+ */
+async function assertOrderLines(
+  items: PurchaseOrderItemInput[],
+  requestId: string | null,
+  orderId: string | null,
+): Promise<void> {
+  const unpriced = items.find((l) => !(Number(l.unit_price) > 0));
+  if (unpriced) throw new Error(`${unpriced.item_name}: enter a unit price above 0`);
+  if (!requestId) return;
+
+  const requestLines = await db.material_request_items.where('request_id').equals(requestId).toArray();
+  const otherOrders = (await db.purchase_orders.where('request_id').equals(requestId).toArray()).filter(
+    (o) => o.id !== orderId && o.status !== 'cancelled',
+  );
+  const otherLines = otherOrders.length
+    ? await db.purchase_order_items.where('po_id').anyOf(otherOrders.map((o) => o.id)).toArray()
+    : [];
+  const sameItem = (a: { item_id?: string | null; item_name: string }, b: typeof a) =>
+    a.item_id && b.item_id ? a.item_id === b.item_id : a.item_name.trim().toLowerCase() === b.item_name.trim().toLowerCase();
+
+  for (const req of requestLines) {
+    const approved = Number(req.quantity_approved ?? req.quantity_requested) || 0;
+    const already = otherLines.filter((l) => sameItem(l, req)).reduce((s, l) => s + Number(l.quantity_ordered), 0);
+    const here = items.filter((l) => sameItem(l, req)).reduce((s, l) => s + Number(l.quantity_ordered), 0);
+    if (here + already > approved + 1e-9) {
+      const left = Math.max(0, approved - already);
+      throw new Error(
+        `${req.item_name}: ${approved} ${req.unit} approved${already ? `, ${already} already on other orders` : ''} — this order can take at most ${left} ${req.unit}.`,
+      );
+    }
+  }
+}
+
 /** Older rows predate `sort_order`; fall back to when they were created. */
 function poLineOrder(a: PurchaseOrderItem, b: PurchaseOrderItem): number {
   return (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.created_at.localeCompare(b.created_at);
@@ -343,6 +380,7 @@ class PurchaseOrderRepository extends BaseRepository<PurchaseOrder> {
     createdBy: string | null = null,
   ): Promise<PurchaseOrder> {
     const { items, ...rest } = input;
+    await assertOrderLines(items, rest.request_id ?? null, null);
     const code = rest.code?.trim() ? rest.code : await this.generateCode();
 
     const order = await this.create({ ...rest, code }, createdBy);
@@ -371,6 +409,11 @@ class PurchaseOrderRepository extends BaseRepository<PurchaseOrder> {
      * one (Phase 2 step 4).
      */
     const before = await this.getById(id);
+    await assertOrderLines(
+      items,
+      changes.request_id !== undefined ? changes.request_id : (before?.request_id ?? null),
+      id,
+    );
     if (before) {
       const received = (await db.goods_receipts.where('po_id').equals(id).count()) > 0;
       const moved =

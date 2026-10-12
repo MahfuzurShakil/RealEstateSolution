@@ -964,7 +964,7 @@ class UnitRepository extends BaseRepository<Unit> {
     input: UnitPatternInput,
     createdBy: string | null = null,
   ): Promise<BulkGenerateResult> {
-    const existing = new Set((await db.units.toArray()).map((u) => u.code));
+    const existing = await this.projectUnitCodes(towerId);
     const floors = floorsInRange(input);
 
     const created: Unit[] = [];
@@ -1025,7 +1025,7 @@ class UnitRepository extends BaseRepository<Unit> {
     input: PlotPatternInput,
     createdBy: string | null = null,
   ): Promise<BulkGenerateResult> {
-    const existing = new Set((await db.units.toArray()).map((u) => u.code));
+    const existing = await this.projectUnitCodes(towerId);
     const created: Unit[] = [];
     const skipped: string[] = [];
 
@@ -1120,7 +1120,7 @@ class UnitRepository extends BaseRepository<Unit> {
     input: SharePatternInput,
     createdBy: string | null = null,
   ): Promise<BulkGenerateResult> {
-    const existing = new Set((await db.units.toArray()).map((u) => u.code));
+    const existing = await this.projectUnitCodes(towerId);
     const created: Unit[] = [];
     const skipped: string[] = [];
 
@@ -1265,9 +1265,29 @@ class UnitRepository extends BaseRepository<Unit> {
     await db.units.bulkDelete(unitIds);
   }
 
+  /**
+   * Unit codes are unique within a project, not across the company (E2E
+   * 2026-10-12 #2): every project's first tower is "Tower A", so a company-wide
+   * check made A-2A impossible on the second project.
+   */
+  async projectUnitCodes(towerId: string): Promise<Set<string>> {
+    const tower = await db.towers.get(towerId);
+    if (!tower) return new Set();
+    const towerIds = (await db.towers.where('project_id').equals(tower.project_id).toArray()).map((t) => t.id);
+    const units = await db.units.where('tower_id').anyOf(towerIds).toArray();
+    return new Set(units.map((u) => u.code));
+  }
+
   async isCodeTaken(code: string, exceptId?: string): Promise<boolean> {
-    const existing = await db.units.where('code').equals(code).first();
-    return Boolean(existing && existing.id !== exceptId);
+    const self = exceptId ? await db.units.get(exceptId) : undefined;
+    if (!self) return Boolean(await db.units.where('code').equals(code).first());
+    const towerIds = new Set(
+      (await db.towers.where('project_id').equals((await db.towers.get(self.tower_id))?.project_id ?? '').toArray()).map(
+        (t) => t.id,
+      ),
+    );
+    const clash = await db.units.where('code').equals(code).filter((u) => towerIds.has(u.tower_id)).first();
+    return Boolean(clash && clash.id !== exceptId);
   }
 }
 

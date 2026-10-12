@@ -752,6 +752,16 @@ export class AppDatabase extends Dexie {
             .update(o.id, { deliver_to: o.project_id ? 'site' : 'main_store' });
         }
       });
+
+    /*
+     * v31 — unit codes are unique per project, not company-wide (E2E test
+     * 2026-10-12 #2/#25). `code` stays indexed for lookups but loses `&`; the
+     * repository enforces uniqueness inside the project. No data rewrite.
+     */
+    this.version(31).stores({
+      units:
+        'id, code, tower_id, floor, status, unit_type, allocation_type, allocated_to_owner_id, for_sale_by, [tower_id+floor]',
+    });
   }
 }
 
