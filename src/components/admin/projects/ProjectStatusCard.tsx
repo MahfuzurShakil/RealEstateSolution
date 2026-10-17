@@ -134,6 +134,8 @@ export function ProjectStatusCard({ project }: { project: Project }) {
 
   async function confirm() {
     if (!target || !config) return;
+    // the gates need the project's records; never move on before they load
+    if (!readiness) return;
     if (targetBlockers.length > 0) {
       setError(targetBlockers[0]);
       return;
@@ -283,7 +285,7 @@ export function ProjectStatusCard({ project }: { project: Project }) {
                     variant={forward ? 'primary' : 'outline'}
                     size="sm"
                     className="w-full"
-                    disabled={blocked.length > 0}
+                    disabled={blocked.length > 0 || readiness === undefined}
                     onClick={() => open(status)}
                   >
                     {blocked.length > 0 ? (

@@ -147,7 +147,7 @@ export function ProjectSalesCard({ project, lands }: { project: Project; lands: 
                   size="sm"
                   className="w-full"
                   variant={to === 'open' ? 'primary' : 'outline'}
-                  disabled={blocked}
+                  disabled={blocked || readiness === undefined}
                   onClick={() => setTarget(to)}
                 >
                   {blocked ? <Lock className="size-4" /> : <ShoppingBag className="size-4" />}
