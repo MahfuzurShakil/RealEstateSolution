@@ -127,6 +127,8 @@ export interface ProjectReadiness {
   units_handed_over: number;
   /** E2E 2026-10-12 #10 — company-sold units with no price above 0 */
   units_unpriced?: number;
+  /** company-sold units nobody has booked or bought yet (2026-10-17) */
+  units_unsold_for_sale?: number;
   /** money still owed on confirmed bookings for this project */
   outstanding_amount: number;
   /** v29 — how secure the land under the project is (`landReadiness`) */
@@ -205,15 +207,31 @@ export function projectStatusBlockers(
   /*
    * A land share's "Sold Out" stage is a fact, not a choice (client
    * walkthrough 2026-10-10): the register has to actually be sold.
+   *
+   * 2026-10-17 — and a register that was never generated cannot be sold out,
+   * have its deeds registered or be closed: the life cycle starts with the
+   * shares. Generate → open sales → sell every share → Sold Out → register
+   * every deed → Closed.
    */
-  if (
-    shape.item === 'share' &&
-    target === 'nearly_complete' &&
-    facts.unit_count > 0 &&
-    facts.units_spoken_for < facts.unit_count
-  ) {
+  const shareForward =
+    shape.item === 'share' && ['nearly_complete', 'handover_ongoing', 'closed'].includes(target);
+  if (shareForward && facts.unit_count === 0) {
+    blockers.push('No shares have been generated yet. Generate the share register and sell it first.');
+  }
+  if (shareForward && facts.unit_count > 0 && facts.units_spoken_for < facts.unit_count) {
     const left = facts.unit_count - facts.units_spoken_for;
     blockers.push(`${left} share${left === 1 ? ' is' : 's are'} still unsold`);
+  }
+  if (
+    shape.item === 'share' &&
+    target === 'closed' &&
+    facts.unit_count > 0 &&
+    facts.units_handed_over < facts.unit_count
+  ) {
+    const left = facts.unit_count - facts.units_handed_over;
+    blockers.push(
+      `${left} share deed${left === 1 ? ' is' : 's are'} not registered yet. Record each deed on its booking before closing.`,
+    );
   }
 
   /*
@@ -1238,7 +1256,19 @@ export function projectSalesStatus(project: {
 }
 
 /** The moves a person can make from each sales status. */
-export function allowedSalesMoves(current: ProjectSalesStatus): ProjectSalesStatus[] {
+export function allowedSalesMoves(
+  current: ProjectSalesStatus,
+  /** 2026-10-17 — where the project is decides whether selling is still possible */
+  project?: { status: ProjectStatus; shape: ProjectShape },
+): ProjectSalesStatus[] {
+  // a closed project sells nothing more
+  if (project?.status === 'closed') return [];
+  /*
+   * A land share past "Register Open" is sold out or registering deeds. A
+   * cancellation there means moving the project back to Register Open first,
+   * which is where its sales are managed.
+   */
+  if (project?.shape.item === 'share' && project.status !== 'planning') return [];
   const map: Record<ProjectSalesStatus, ProjectSalesStatus[]> = {
     not_open: ['open'],
     open: ['paused', 'sold_out'],
@@ -1247,6 +1277,31 @@ export function allowedSalesMoves(current: ProjectSalesStatus): ProjectSalesStat
     sold_out: ['open'],
   };
   return map[current];
+}
+
+/**
+ * Why a sales move cannot be made yet (2026-10-17): nothing can be booked
+ * before the inventory exists, and "sold out" is a fact, not a choice.
+ */
+export function salesMoveBlockers(
+  to: ProjectSalesStatus,
+  facts: Pick<ProjectReadiness, 'unit_count' | 'units_unsold_for_sale'>,
+  shape: ProjectShape,
+): string[] {
+  const items = shape.labels.itemPlural.toLowerCase();
+  if (to === 'open' && facts.unit_count === 0) {
+    return [`Generate the ${items} first. There is nothing to book yet.`];
+  }
+  if (to === 'sold_out') {
+    if (facts.unit_count === 0) return [`No ${items} have been generated yet.`];
+    const left = facts.units_unsold_for_sale ?? 0;
+    if (left > 0) {
+      return [
+        `${left} ${left === 1 ? shape.labels.item.toLowerCase() : items} still unsold. Sold out is marked when everything is booked; use Pause sales to hold stock back.`,
+      ];
+    }
+  }
+  return [];
 }
 
 export const SALES_MOVE_LABEL: Record<ProjectSalesStatus, string> = {
@@ -1296,12 +1351,7 @@ export function salesOpenChecks(f: SalesGateFacts): { warnings: string[]; blocke
         : 'The land under this project is still being acquired. If the deal falls through, every booking has to be refunded.';
     (f.block_without_land ? blockers : warnings).push(text);
   }
-  // QA 2026-10-11 — nothing to book yet: sales would open on an empty list
-  if (f.unit_count === 0) {
-    warnings.push(
-      `No ${f.shape.labels.itemPlural.toLowerCase()} have been generated yet, so nothing can be booked until they are.`,
-    );
-  }
+  // nothing to book yet is a hard stop now: see salesMoveBlockers (2026-10-17)
   if (f.units_unpriced) {
     warnings.push(
       `${f.units_unpriced} ${f.shape.labels.itemPlural.toLowerCase()} have no price above 0. A booking would start from BDT 0 — set their prices first.`,

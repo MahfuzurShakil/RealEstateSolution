@@ -20,7 +20,9 @@ import type {
 } from '../db/types';
 import {
   floorsInRange,
+  allowedSalesMoves,
   isResidentialUnitType,
+  salesMoveBlockers,
   unitPatternProblems,
   jvAllocationSummary,
   priceOnFloor,
@@ -202,6 +204,7 @@ class ProjectRepository extends BaseRepository<Project> {
       units_spoken_for: units.filter((u) => SPOKEN_FOR.has(u.status)).length,
       units_handed_over: units.filter((u) => u.status === 'handed_over').length,
       units_unpriced: units.filter((u) => u.for_sale_by !== 'owner_direct' && !(Number(u.base_price) > 0)).length,
+      units_unsold_for_sale: units.filter((u) => u.for_sale_by !== 'owner_direct' && !SPOKEN_FOR.has(u.status)).length,
       outstanding_amount: Math.round(outstanding * 100) / 100,
       land_readiness: landReadiness(lands),
     };
@@ -214,6 +217,22 @@ class ProjectRepository extends BaseRepository<Project> {
    * has to show the warnings anyway; this only writes.
    */
   async setSalesStatus(projectId: string, sales_status: ProjectSalesStatus): Promise<void> {
+    // 2026-10-17 — the same rules the Sales card shows, so no caller skips them
+    const project = await this.getById(projectId);
+    if (!project) return;
+    const shape = projectShape(project.project_type);
+    const current = project.sales_status ?? 'not_open';
+    if (current !== sales_status) {
+      if (!allowedSalesMoves(current, { status: project.status, shape }).includes(sales_status)) {
+        throw new Error(
+          project.status === 'closed'
+            ? 'The project is closed, so its sales cannot change.'
+            : 'Move the project back to Register Open to change its sales.',
+        );
+      }
+      const blocked = salesMoveBlockers(sales_status, await this.readiness(projectId), shape);
+      if (blocked.length > 0) throw new Error(blocked[0]);
+    }
     await this.update(projectId, { sales_status });
   }
 
@@ -272,7 +291,19 @@ class ProjectRepository extends BaseRepository<Project> {
      */
     const arrivesFromBefore =
       PROJECT_PIPELINE_STEPS.indexOf(current.status) < PROJECT_PIPELINE_STEPS.indexOf('under_construction');
+    /*
+     * 2026-10-17 — sales follow the life cycle: a land share at Sold Out is
+     * sold out, and a closed project of any type sells nothing more.
+     */
+    const salesNow = current.sales_status ?? 'not_open';
+    const shareSoldOut =
+      projectShape(current.project_type).item === 'share' && status === 'nearly_complete';
+    const salesAfter =
+      (shareSoldOut || status === 'closed') && (salesNow === 'open' || salesNow === 'paused')
+        ? ('sold_out' as const)
+        : undefined;
     const saved = await this.update(id, {
+      ...(salesAfter ? { sales_status: salesAfter } : {}),
       status,
       ...(status === 'under_construction' && arrivesFromBefore ? { actual_start_date: event.event_date } : {}),
     });

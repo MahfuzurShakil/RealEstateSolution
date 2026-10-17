@@ -13,6 +13,7 @@ import {
   PROJECT_SALES_STATUS_META,
   SALES_MOVE_LABEL,
   allowedSalesMoves,
+  salesMoveBlockers,
   landReadiness,
   projectSalesStatus,
   projectShape,
@@ -40,15 +41,19 @@ const MOVE_QUESTION: Record<ProjectSalesStatus, string> = {
 export function ProjectSalesCard({ project, lands }: { project: Project; lands: Land[] }) {
   const [target, setTarget] = useState<ProjectSalesStatus | null>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   const settings = useLiveQuery(() => companySettingsRepository.get(), []);
   const readiness = useLiveQuery(() => projectRepository.readiness(project.id), [project.id, project.updated_at]);
   // every unit has a buyer: suggest closing sales rather than waiting for somebody to notice
   const allSpokenFor =
     readiness !== undefined && readiness.unit_count > 0 && readiness.units_spoken_for >= readiness.unit_count;
-  const isShare = projectShape(project.project_type).item === 'share';
+  const shape = projectShape(project.project_type);
+  const isShare = shape.item === 'share';
 
   const current = projectSalesStatus(project);
   const meta = PROJECT_SALES_STATUS_META[current];
+  // 2026-10-17 — what can be done with sales depends on where the project is
+  const moves = allowedSalesMoves(current, { status: project.status, shape });
   const checks = salesOpenChecks({
     status: project.status,
     shape: projectShape(project.project_type),
@@ -65,6 +70,7 @@ export function ProjectSalesCard({ project, lands }: { project: Project; lands: 
   async function confirm() {
     if (!target) return;
     setBusy(true);
+    setError('');
     try {
       await projectRepository.setSalesStatus(project.id, target);
       /*
@@ -85,6 +91,8 @@ export function ProjectSalesCard({ project, lands }: { project: Project; lands: 
         );
       }
       setTarget(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -120,8 +128,19 @@ export function ProjectSalesCard({ project, lands }: { project: Project; lands: 
           </div>
         )}
         <div className="space-y-2">
-          {allowedSalesMoves(current).map((to) => {
-            const blocked = to === 'open' && checks.blockers.length > 0;
+          {moves.length === 0 && (
+            <p className="text-xs text-ink-muted">
+              {project.status === 'closed'
+                ? 'The project is closed, so nothing more is sold.'
+                : 'Sold out. If a buyer cancels, move the project back to Register Open to sell the share again.'}
+            </p>
+          )}
+          {moves.map((to) => {
+            const reasons = [
+              ...(to === 'open' ? checks.blockers : []),
+              ...(readiness ? salesMoveBlockers(to, readiness, shape) : []),
+            ];
+            const blocked = reasons.length > 0;
             return (
               <div key={to}>
                 <Button
@@ -136,7 +155,7 @@ export function ProjectSalesCard({ project, lands }: { project: Project; lands: 
                 </Button>
                 {blocked && (
                   <ul className="mt-1.5 space-y-1 text-xs text-amber-700">
-                    {checks.blockers.map((b) => (
+                    {reasons.map((b) => (
                       <li key={b}>• {b}</li>
                     ))}
                   </ul>
@@ -188,9 +207,13 @@ export function ProjectSalesCard({ project, lands }: { project: Project; lands: 
         message={target ? MOVE_QUESTION[target] : undefined}
         busy={busy}
         disabled={opening && checks.blockers.length > 0}
-        onCancel={() => setTarget(null)}
+        onCancel={() => {
+          setTarget(null);
+          setError('');
+        }}
         onConfirm={confirm}
       >
+        {error && <p className="text-sm text-red-600">{error}</p>}
         {target === 'sold_out' && unsold > 0 && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
             <p className="flex items-center gap-1.5 text-sm font-medium">

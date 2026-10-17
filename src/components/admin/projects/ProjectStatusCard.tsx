@@ -92,7 +92,9 @@ export function ProjectStatusCard({ project }: { project: Project }) {
     [project.id, project.status],
   );
   // E2E 2026-10-12 #32 — say so on the button, not after the dialog is filled in
-  const datesMissing = !project.expected_start_date || !project.expected_completion_date;
+  // a land share builds nothing, so its sale window dates are optional
+  const datesMissing =
+    shape.item !== 'share' && (!project.expected_start_date || !project.expected_completion_date);
   const blockersFor = (status: ProjectStatus) => [
     ...(datesMissing && order(status) > currentOrder && order(status) >= order('approval')
       ? ['Set the expected start and completion dates on the project (Edit) first']
