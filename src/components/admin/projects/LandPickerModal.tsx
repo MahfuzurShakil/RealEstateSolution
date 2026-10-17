@@ -22,8 +22,8 @@ import {
   projectRepository,
 } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
-import { formatBdt } from '@/lib/utils/format';
-import { QuickLandModal } from './QuickLandModal';
+import { formatBdt, formatDate } from '@/lib/utils/format';
+import { QuickLandModal, createQuickLand, type QuickLandDraft } from './QuickLandModal';
 
 /**
  * Choosing the land a project stands on (client walkthrough 2026-10-10).
@@ -65,6 +65,10 @@ function Picker({
   const [query, setQuery] = useState('');
   const [chosen, setChosen] = useState<Land | null>(null);
   const [adding, setAdding] = useState<LandEntryMode | null>(null);
+  /* a new land under review: not saved until it is confirmed (2026-10-17) */
+  const [draft, setDraft] = useState<QuickLandDraft | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const data = useLiveQuery(async () => {
     const [lands, mappings, projects] = await Promise.all([
@@ -101,12 +105,55 @@ function Picker({
       <QuickLandModal
         open
         initialMode={adding}
-        onClose={() => setAdding(null)}
-        onCreated={(land) => {
+        initialDraft={draft ?? undefined}
+        onClose={() => {
           setAdding(null);
-          setChosen(land);
+          setDraft(null);
+        }}
+        onReview={(d) => {
+          setAdding(null);
+          setDraft(d);
         }}
       />
+    );
+  }
+
+  async function confirmDraft() {
+    if (!draft) return;
+    setSaving(true);
+    setSaveError('');
+    try {
+      onConfirm(await createQuickLand(draft));
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'The land could not be saved.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (draft) {
+    return (
+      <Modal
+        open
+        size="lg"
+        title="Confirm the land"
+        subtitle="Nothing is saved yet. Go back to change anything."
+        icon={MapPin}
+        onClose={onClose}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setAdding(draft.mode)} disabled={saving}>
+              <ArrowLeft className="size-4" /> Back to edit
+            </Button>
+            <Button onClick={confirmDraft} disabled={saving}>
+              <Check className="size-4" /> {saving ? 'Saving…' : 'Confirm this land'}
+            </Button>
+          </>
+        }
+      >
+        <DraftFacts draft={draft} />
+        {saveError && <p className="mt-2 text-sm text-red-600">{saveError}</p>}
+      </Modal>
     );
   }
 
@@ -210,7 +257,10 @@ export function LandFacts({ land }: { land: Land }) {
     ['Land', `${land.code} · ${land.name}`],
     ['Location', [land.location_area, land.location_upazila, land.location_district].filter(Boolean).join(', ')],
     ['Size', `${land.land_size} ${LAND_SIZE_UNIT_LABEL[land.land_size_unit]}`],
-    ['Mouza / Dag / Khatian', [land.mouza, land.dag_number, land.khatian_number].map((v) => v || '—').join(' / ')],
+    // only when something is recorded: a quick-added land has none yet (2026-10-17)
+    ...((land.mouza || land.dag_number || land.khatian_number
+      ? [['Mouza / Dag / Khatian', [land.mouza, land.dag_number, land.khatian_number].map((v) => v || '—').join(' / ')]]
+      : []) as [string, string][]),
     ['Acquired how', `${ACQUISITION_TYPE_LABEL[land.acquisition_type]} · ${LAND_ENTRY_MODE_LABEL[landEntryMode(land)]}`],
     ['Status', landStatusLabel(land.status, land.acquisition_type)],
     ...landMoney(land, sheet),
@@ -219,6 +269,47 @@ export function LandFacts({ land }: { land: Land }) {
     <dl className="divide-y divide-hairline rounded-xl border border-hairline bg-white">
       {facts.map(([k, v]) => (
         <div key={k} className="flex items-start justify-between gap-4 px-4 py-2.5">
+          <dt className="text-sm text-ink-muted">{k}</dt>
+          <dd className="text-right text-sm font-medium text-ink">{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** The same facts for a land that is not saved yet. */
+function DraftFacts({ draft }: { draft: QuickLandDraft }) {
+  const { form } = draft;
+  const owned = draft.mode === 'owned';
+  const isJv = form.acquisition_type === 'joint_venture';
+  const price = Number(form.price_paid) || 0;
+  const fees = Number(form.registration_paid) || 0;
+  const other = draft.other_costs.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const facts: [string, string][] = [
+    ['Land', `${form.name.trim()} (code on save)`],
+    ['Location', [form.location_area, form.location_district, form.location_division].filter(Boolean).join(', ')],
+    ['Size', `${form.land_size} ${LAND_SIZE_UNIT_LABEL[form.land_size_unit]}`],
+    ['Acquired how', `${ACQUISITION_TYPE_LABEL[form.acquisition_type]} · ${LAND_ENTRY_MODE_LABEL[draft.mode]}`],
+    ...((owned
+      ? [
+          [isJv ? 'JV signed on' : 'Owned since', formatDate(form.owned_on)],
+          ...(isJv ? [['Developer share', `${form.developer_share_pct}%`]] : []),
+          [
+            isJv ? 'Signing money paid' : 'Land price paid',
+            form.acquisition_type === 'inherited' && price === 0 ? 'Inherited, no price paid' : formatBdt(price),
+          ],
+          ['Registration & fees', formatBdt(fees)],
+          ...draft.other_costs.map((r) => [r.label.trim(), formatBdt(Number(r.amount))]),
+          ['Total paid so far', formatBdt(price + fees + other)],
+        ]
+      : form.acquisition_type === 'direct_purchase'
+        ? [['Asking price', formatBdt(Number(form.asking_price) || 0)]]
+        : []) as [string, string][]),
+  ];
+  return (
+    <dl className="divide-y divide-hairline rounded-xl border border-hairline bg-white">
+      {facts.map(([k, v], i) => (
+        <div key={`${k}-${i}`} className="flex items-start justify-between gap-4 px-4 py-2.5">
           <dt className="text-sm text-ink-muted">{k}</dt>
           <dd className="text-right text-sm font-medium text-ink">{v}</dd>
         </div>

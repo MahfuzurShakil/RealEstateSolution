@@ -1035,6 +1035,8 @@ export const LAND_DOCUMENT_TYPES = [
   'site_photo',
   'jv_agreement',
   'power_of_attorney',
+  // owned / inherited land (LAND-OWNED-FLOW-PLAN.md): the warishan certificate
+  'succession_certificate',
   'other',
 ] as const;
 

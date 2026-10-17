@@ -158,11 +158,13 @@ class LandAcquisitionCostRepository extends BaseRepository<LandAcquisitionCost> 
     head: AcquisitionCostHead,
     paid: number,
     createdBy: string | null = null,
+    remarks?: string,
   ): Promise<void> {
     const existing = (await this.listForLand(landId)).find((r) => r.cost_head === head);
     if (existing) {
       await this.update(existing.id, {
         historic_paid_amount: paid,
+        ...(remarks ? { remarks } : {}),
         ...(Number(existing.estimated_amount) > 0 ? {} : { estimated_amount: paid }),
       });
       return;
@@ -173,7 +175,7 @@ class LandAcquisitionCostRepository extends BaseRepository<LandAcquisitionCost> 
         cost_head: head,
         estimated_amount: paid,
         historic_paid_amount: paid,
-        remarks: 'Paid before this system — entered with the land',
+        remarks: remarks ?? 'Paid before this system — entered with the land',
       },
       createdBy,
     );

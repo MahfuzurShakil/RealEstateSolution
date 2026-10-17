@@ -31,9 +31,13 @@ import {
   finalAmountLabel,
   gpsProblem,
   jvSplitProblem,
+  landEntryMode,
   landIsHeld,
   landUsesPurchasePricing,
+  otherCostRowProblem,
+  type OtherCostRow,
 } from '@/lib/domain/land';
+import { OtherCostsEditor } from './OtherCostsEditor';
 import { todayLocal } from '@/lib/utils/format';
 import { USER_ROLE_META } from '@/lib/domain/access';
 import {
@@ -53,15 +57,7 @@ import {
  * (survey, VAT, holding cost) and they stay editable on the land's cost card;
  * these are the ones a developer can usually still find a receipt for.
  */
-const OWNED_COST_HEADS: AcquisitionCostHead[] = [
-  'land_price',
-  'registration_fee',
-  'stamp_duty',
-  'mutation_cost',
-  'legal_fee',
-  'broker_commission',
-  'other',
-];
+const OWNED_COST_HEADS: AcquisitionCostHead[] = ['land_price', 'registration_fee'];
 
 /** Acquisition types that only make sense for land that is already ours. */
 const OWNED_ONLY_TYPES: AcquisitionType[] = ['inherited', 'other'];
@@ -211,6 +207,10 @@ export function LandForm({
    */
   const [mode, setMode] = useState<LandEntryMode>(initialMode);
   const owned = !isEdit && mode === 'owned';
+  /* LAND-OWNED-FLOW-PLAN.md: an owned land has no broker and no officer chasing it */
+  const ownedLand = owned || (land ? landEntryMode(land) === 'owned' : false);
+  const [otherCosts, setOtherCosts] = useState<OtherCostRow[]>([]);
+  const [showCostErrors, setShowCostErrors] = useState(false);
   const [ownedOn, setOwnedOn] = useState('');
   const [ownedRef, setOwnedRef] = useState('');
   const [paid, setPaid] = useState<Partial<Record<AcquisitionCostHead, string>>>({});
@@ -374,6 +374,11 @@ export function LandForm({
     if (asksAskingPrice && (!form.asking_price.trim() || Number(form.asking_price) < 0))
       next.asking_price = 'Enter an amount';
     if (owned && !ownedOn) next.acquired_on = 'When did it become yours?';
+    else if (owned && ownedOn > todayLocal()) next.acquired_on = 'Cannot be in the future';
+    if (owned && otherCosts.some((r) => otherCostRowProblem(r))) {
+      next.other_costs = 'Finish or remove the half-filled cost rows';
+      setShowCostErrors(true);
+    }
 
     // a JV is an agreement with the landowners, so it names them (client decision 2026-10-11)
     if (isJv && owners.length === 0) next.owners = 'A joint venture needs at least one landowner';
@@ -515,7 +520,12 @@ export function LandForm({
         for (const head of OWNED_COST_HEADS) amounts[head] = Number(paid[head]) || 0;
         await landPipelineRepository.recordOwnedEntry(
           saved.id,
-          { acquired_on: ownedOn, reference_no: ownedRef.trim() || null, paid: amounts },
+          {
+            acquired_on: ownedOn,
+            reference_no: ownedRef.trim() || null,
+            paid: amounts,
+            other_costs: otherCosts,
+          },
           null,
         );
       }
@@ -715,6 +725,7 @@ export function LandForm({
               ))}
             </SelectInput>
           </Field>
+          {!ownedLand && (
           <Field label="Source" hint="Where this opportunity came from">
             <SelectInput value={form.source} onChange={(e) => set('source', e.target.value)}>
               <option value="">Not recorded</option>
@@ -725,6 +736,7 @@ export function LandForm({
               ))}
             </SelectInput>
           </Field>
+          )}
         </div>
       </Card>
 
@@ -779,6 +791,14 @@ export function LandForm({
                 />
               </Field>
             ))}
+            <div className="md:col-span-2 xl:col-span-3">
+              <p className="mb-1 text-sm font-medium text-ink">Other costs paid</p>
+              <p className="mb-2 text-xs text-ink-muted">
+                Stamp duty, namjari, legal, broker, survey, boundary wall: one row per cost.
+              </p>
+              <OtherCostsEditor rows={otherCosts} onChange={setOtherCosts} showErrors={showCostErrors} />
+              {errors.other_costs && <p className="mt-1 text-xs text-red-600">{errors.other_costs}</p>}
+            </div>
           </div>
         </Card>
       )}
@@ -1092,6 +1112,7 @@ export function LandForm({
             column has been on `lands` from the start and nothing ever set it,
             so every land read as unassigned (2026-10-04).
           */}
+          {!ownedLand && (
           <Field label="Assigned To" hint="The land officer chasing this plot">
             <SelectInput
               value={form.assigned_to}
@@ -1105,6 +1126,7 @@ export function LandForm({
               ))}
             </SelectInput>
           </Field>
+          )}
           <Field label="Remarks">
             <TextArea
               value={form.remarks}

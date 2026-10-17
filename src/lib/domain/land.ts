@@ -1,5 +1,6 @@
 import type { BadgeTone } from '@/components/ui/Badge';
 import type {
+  AcquisitionCostHead,
   AcquisitionType,
   FeasibilityRecommendation,
   FeasibilityStatus,
@@ -1119,4 +1120,73 @@ export function landHeadlineAmount(land: {
     label: land.acquisition_type === 'joint_venture' ? 'Cash to owner' : 'Price',
     amount: value == null || Number.isNaN(amount) ? null : amount,
   };
+}
+
+/* ------------------------------------------------------------------ *
+ * Owned land — "other costs" typed in by name (LAND-OWNED-FLOW-PLAN.md)
+ * ------------------------------------------------------------------ */
+
+export interface OtherCostRow {
+  /** what the money was for, in the user's words */
+  label: string;
+  amount: string;
+}
+
+/** Suggestions offered while typing; each one maps to a cost-sheet head. */
+export const OTHER_COST_SUGGESTIONS: { label: string; head: AcquisitionCostHead }[] = [
+  { label: 'Stamp duty', head: 'stamp_duty' },
+  { label: 'VAT & tax', head: 'vat_tax' },
+  { label: 'Mutation (namjari)', head: 'mutation_cost' },
+  { label: 'Legal fees', head: 'legal_fee' },
+  { label: 'Broker commission', head: 'broker_commission' },
+  { label: 'Survey fee', head: 'survey_fee' },
+  { label: 'Khajna / land tax', head: 'holding_cost' },
+  { label: 'Guard & upkeep', head: 'holding_cost' },
+];
+
+const HEAD_WORDS: [RegExp, AcquisitionCostHead][] = [
+  [/stamp/i, 'stamp_duty'],
+  [/\bvat\b|tax(?!.*khajna)|income tax|source tax/i, 'vat_tax'],
+  [/mutation|namjari|নামজারি/i, 'mutation_cost'],
+  [/legal|lawyer|advocate|ukil/i, 'legal_fee'],
+  [/broker|dalal|commission/i, 'broker_commission'],
+  [/survey|amin|measure/i, 'survey_fee'],
+  [/khajna|holding|guard|upkeep|utilit/i, 'holding_cost'],
+  [/registration|registry|deed fee/i, 'registration_fee'],
+];
+
+/** The cost-sheet head a typed description belongs to; `other` when none fits. */
+export function costHeadForLabel(label: string): AcquisitionCostHead {
+  const exact = OTHER_COST_SUGGESTIONS.find((s) => s.label.toLowerCase() === label.trim().toLowerCase());
+  if (exact) return exact.head;
+  return HEAD_WORDS.find(([re]) => re.test(label))?.[1] ?? 'other';
+}
+
+/**
+ * Typed rows folded into one amount per head, with the descriptions kept so
+ * the cost sheet can say what "Other" was made of.
+ */
+export function groupOtherCosts(
+  rows: OtherCostRow[],
+): Partial<Record<AcquisitionCostHead, { amount: number; labels: string[] }>> {
+  const out: Partial<Record<AcquisitionCostHead, { amount: number; labels: string[] }>> = {};
+  for (const row of rows) {
+    const amount = Number(row.amount) || 0;
+    if (!row.label.trim() || amount <= 0) continue;
+    const head = costHeadForLabel(row.label);
+    const slot = (out[head] ??= { amount: 0, labels: [] });
+    slot.amount += amount;
+    slot.labels.push(`${row.label.trim()} ${amount.toLocaleString('en-IN')}`);
+  }
+  return out;
+}
+
+/** A row is half-filled when it has a description or an amount but not both. */
+export function otherCostRowProblem(row: OtherCostRow): string | null {
+  const hasLabel = row.label.trim() !== '';
+  const hasAmount = row.amount.trim() !== '';
+  if (!hasLabel && !hasAmount) return null;
+  if (!hasLabel) return 'Say what this cost was for';
+  if (!(Number(row.amount) > 0)) return 'Enter an amount above 0';
+  return null;
 }

@@ -47,6 +47,7 @@ import {
   statusStepConfig,
   finalAmountLabel,
   landHeadlineAmount,
+  landEntryMode,
   landIsHeld,
   landUsesPurchasePricing,
 } from '@/lib/domain/land';
@@ -68,13 +69,14 @@ import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate, todayLocal } from '@/lib/utils/format';
 
 import type { LandStatus } from '@/lib/db/types';
+import { LandPapersPanel, OwnedLandCard } from '@/components/admin/lands/OwnedLandPanels';
 
 /**
  * L7 (LAND-L7-PLAN.md) — five tabs. The land record, its owners, the JV terms
  * and the documents are one tab each; everything that *happens* to the land
  * lives under Timeline, in the four sections BRD §8–11 names.
  */
-type Tab = 'overview' | 'owners' | 'jv' | 'documents' | 'timeline';
+type Tab = 'overview' | 'owners' | 'jv' | 'papers' | 'documents' | 'timeline';
 
 const SECTIONS: { key: TimelineSection; label: string }[] = [
   { key: 'site', label: 'Site Visit & Feasibility' },
@@ -222,6 +224,8 @@ export default function LandDetailPage() {
   }
 
   const isJv = land.acquisition_type === 'joint_venture';
+  // LAND-OWNED-FLOW-PLAN.md — land already held gets its own, shorter screen
+  const owned = landEntryMode(land) === 'owned';
   const inProject = (inProjects?.length ?? 0) > 0;
   const canEditOwnerAmounts =
     land.owners.length > 0 &&
@@ -232,14 +236,21 @@ export default function LandDetailPage() {
   // held covers under development and ready too — the sheet used to vanish
   // the moment a plot went into development
   const costSheetRelevant =
-    land.status === 'agreed' || landIsHeld(land.status) || land.status === 'disposed';
+    owned || land.status === 'agreed' || landIsHeld(land.status) || land.status === 'disposed';
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
-    { key: 'owners', label: `Owners (${land.owners.length})` },
+    {
+      key: 'owners',
+      label: `${owned && land.acquisition_type === 'inherited' ? 'Heirs' : 'Owners'} (${land.owners.length})`,
+    },
     ...(isJv ? [{ key: 'jv' as Tab, label: 'Joint Venture' }] : []),
+    ...(owned ? [{ key: 'papers' as Tab, label: 'Papers' }] : []),
     { key: 'documents', label: 'Documents' },
-    { key: 'timeline', label: 'Timeline' },
+    { key: 'timeline', label: owned ? 'Development' : 'Timeline' },
   ];
+  // an owned land skipped the acquisition: its timeline is only development
+  const sections = owned ? SECTIONS.filter((x) => x.key === 'development') : SECTIONS;
+  const activeSection: TimelineSection = owned ? 'development' : section;
   // small counts on the section pills — the same numbers the progress card shows
   const sectionCount: Record<TimelineSection, number | undefined> = {
     site: visitCount || undefined,
@@ -291,6 +302,8 @@ export default function LandDetailPage() {
                * land with nothing on the project saying why.
                */
               .filter((to) => !(inProject && ['disposed', 'on_hold', 'rejected'].includes(to)))
+              // nothing is being chased on an owned land, so it is not parked or dropped
+              .filter((to) => !(owned && ['on_hold', 'rejected'].includes(to)))
               .map((to) => (
               <Button
                 key={to}
@@ -367,7 +380,7 @@ export default function LandDetailPage() {
                   value={ACQUISITION_TYPE_LABEL[land.acquisition_type]}
                 />
                 <Row label="Classification" value={land.land_classification} />
-                <Row label="Source" value={land.source} />
+                {!owned && <Row label="Source" value={land.source} />}
                 <Row label="Division" value={land.location_division} />
                 <Row label="District" value={land.location_district} />
                 <Row label="Upazila / Thana" value={land.location_upazila} />
@@ -382,9 +395,10 @@ export default function LandDetailPage() {
                   value={land.gps_lat && land.gps_lng ? `${land.gps_lat}, ${land.gps_lng}` : '—'}
                 />
                 {/* BRD LAND-001 — the land officer on this plot (2026-10-04) */}
-                <Row label="Assigned to" value={assignee?.name} />
+                {!owned && <Row label="Assigned to" value={assignee?.name} />}
               </Card>
 
+              {!owned && (
               <Card>
                 <CardHeader title="Commercials" />
                 {/* asking → negotiated → agreed is a purchase; a JV has only
@@ -462,6 +476,7 @@ export default function LandDetailPage() {
                   )}
                 </p>
               </Card>
+              )}
 
               {/*
                 v29 — the one number per land (PLATFORM-REPLAN.md §1.4), on the
@@ -640,14 +655,14 @@ export default function LandDetailPage() {
           {tab === 'timeline' && (
             <div className="space-y-5">
               <div className="flex flex-wrap gap-1.5">
-                {SECTIONS.map((sec) => (
+                {sections.length > 1 && sections.map((sec) => (
                   <button
                     key={sec.key}
                     type="button"
                     onClick={() => setSection(sec.key)}
                     className={cn(
                       'inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors',
-                      section === sec.key
+                      activeSection === sec.key
                         ? 'border-admin-500 bg-admin-500 text-white'
                         : 'border-hairline bg-white text-ink-muted hover:border-admin-300 hover:text-admin-700',
                     )}
@@ -657,7 +672,7 @@ export default function LandDetailPage() {
                       <span
                         className={cn(
                           'rounded-full px-1.5 text-[11px] tabular-nums',
-                          section === sec.key ? 'bg-white/20' : 'bg-slate-100',
+                          activeSection === sec.key ? 'bg-white/20' : 'bg-slate-100',
                         )}
                       >
                         {sectionCount[sec.key]}
@@ -667,7 +682,7 @@ export default function LandDetailPage() {
                 ))}
               </div>
 
-              {section === 'site' && (
+              {activeSection === 'site' && (
                 <>
                   <Card>
                     <CardHeader title="Site Visits" />
@@ -680,14 +695,14 @@ export default function LandDetailPage() {
                 </>
               )}
 
-              {section === 'legal' && (
+              {activeSection === 'legal' && (
                 <Card>
                   <CardHeader title="Legal Due Diligence" />
                   <DueDiligencePanel land={land} />
                 </Card>
               )}
 
-              {section === 'acquisition' && (
+              {activeSection === 'acquisition' && (
                 <>
                   <Card>
                     <CardHeader title="Negotiation" />
@@ -728,7 +743,7 @@ export default function LandDetailPage() {
                 </>
               )}
 
-              {section === 'development' && (
+              {activeSection === 'development' && (
                 <Card>
                   <CardHeader title="Land Development" />
                   <DevelopmentPanel land={land} />
@@ -736,6 +751,8 @@ export default function LandDetailPage() {
               )}
             </div>
           )}
+
+          {tab === 'papers' && owned && <LandPapersPanel land={land} readOnly={!mayEdit} />}
 
           {tab === 'documents' && (
             <Card>
@@ -746,7 +763,17 @@ export default function LandDetailPage() {
         </div>
 
         <aside className="min-w-0 space-y-5 lg:order-2">
-          <LandProgressCard land={land} onOpen={openSection} />
+          {owned ? (
+            <OwnedLandCard
+              land={land}
+              onOpen={(t) => {
+                setTab(t === 'papers' ? 'papers' : 'timeline');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            />
+          ) : (
+            <LandProgressCard land={land} onOpen={openSection} />
+          )}
 
           <LocationCard
             lat={land.gps_lat}

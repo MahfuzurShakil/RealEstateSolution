@@ -19,11 +19,13 @@ import {
   closingBlockReason,
   correctableStatuses,
   feasibilityGateBlockReason,
+  groupOtherCosts,
   jvSplitProblem,
   landWaitingOn,
   nextAutomaticStep,
   splitAmountByShare,
   type LandWorkFacts,
+  type OtherCostRow,
   type WaitingKey,
 } from '../domain/land';
 import { localDay, todayLocal } from '../utils/format';
@@ -445,6 +447,8 @@ class LandPipelineRepository {
       reference_no: string | null;
       /** what was paid per head, before this system; zero heads are skipped */
       paid: Partial<Record<AcquisitionCostHead, number>>;
+      /** typed "other costs" (LAND-OWNED-FLOW-PLAN.md), folded onto their heads */
+      other_costs?: OtherCostRow[];
     },
     actor: string | null,
   ): Promise<void> {
@@ -476,8 +480,27 @@ class LandPipelineRepository {
         : {}),
     });
 
+    const totals = new Map<AcquisitionCostHead, { amount: number; labels: string[] }>();
     for (const [head, amount] of Object.entries(details.paid) as [AcquisitionCostHead, number][]) {
-      if (amount > 0) await landAcquisitionCostRepository.setHistoric(landId, head, amount, actor);
+      if (amount > 0) totals.set(head, { amount, labels: [] });
+    }
+    for (const [head, extra] of Object.entries(groupOtherCosts(details.other_costs ?? [])) as [
+      AcquisitionCostHead,
+      { amount: number; labels: string[] },
+    ][]) {
+      const slot = totals.get(head) ?? { amount: 0, labels: [] };
+      slot.amount += extra.amount;
+      slot.labels.push(...extra.labels);
+      totals.set(head, slot);
+    }
+    for (const [head, { amount, labels }] of totals) {
+      await landAcquisitionCostRepository.setHistoric(
+        landId,
+        head,
+        amount,
+        actor,
+        labels.length ? `Paid before this system — ${labels.join('; ')}` : undefined,
+      );
     }
     await this.syncFromWork(landId, actor);
   }

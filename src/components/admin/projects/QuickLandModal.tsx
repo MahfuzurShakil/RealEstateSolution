@@ -17,8 +17,11 @@ import {
   ACQUISITION_TYPE_LABEL,
   LAND_ENTRY_MODE_LABEL,
   LAND_SIZE_UNIT_LABEL,
+  otherCostRowProblem,
+  type OtherCostRow,
 } from '@/lib/domain/land';
 import { landJvRepository, landPipelineRepository, landRepository } from '@/lib/repositories';
+import { OtherCostsEditor } from '@/components/admin/lands/OtherCostsEditor';
 import { cn } from '@/lib/utils/cn';
 import { todayLocal } from '@/lib/utils/format';
 
@@ -37,53 +40,120 @@ import { todayLocal } from '@/lib/utils/format';
 export function QuickLandModal({
   open,
   initialMode,
+  initialDraft,
   onClose,
-  onCreated,
+  onReview,
 }: {
   open: boolean;
   initialMode: LandEntryMode;
+  /** coming back from the confirm step: the form as it was left */
+  initialDraft?: QuickLandDraft;
   onClose: () => void;
-  onCreated: (land: Land) => void;
+  /** nothing is saved here - the picker shows the draft and saves on confirm */
+  onReview: (draft: QuickLandDraft) => void;
 }) {
   if (!open) return null;
   return (
     <QuickLandDialog
       key={initialMode}
-      initialMode={initialMode}
+      initialMode={initialDraft?.mode ?? initialMode}
+      initialDraft={initialDraft}
       onClose={onClose}
-      onCreated={onCreated}
+      onReview={onReview}
     />
   );
+}
+
+const EMPTY_FORM = {
+  name: '',
+  location_division: 'Dhaka',
+  location_district: '',
+  location_area: '',
+  land_size: '',
+  land_size_unit: 'katha' as LandSizeUnit,
+  acquisition_type: 'direct_purchase' as AcquisitionType,
+  asking_price: '',
+  owned_on: '',
+  price_paid: '',
+  registration_paid: '',
+  developer_share_pct: '',
+};
+
+/** What the quick form collected, checked but not yet saved. */
+export interface QuickLandDraft {
+  mode: LandEntryMode;
+  form: typeof EMPTY_FORM;
+  other_costs: OtherCostRow[];
+}
+
+/**
+ * Saves a reviewed draft (LAND-OWNED-FLOW-PLAN.md section 1). Runs only when
+ * the user confirms, so going back to edit, or cancelling, leaves no land behind.
+ */
+export async function createQuickLand(draft: QuickLandDraft): Promise<Land> {
+  const { form } = draft;
+  const owned = draft.mode === 'owned';
+  const isJv = form.acquisition_type === 'joint_venture';
+  const land = await landRepository.create({
+    code: '',
+    name: form.name.trim(),
+    location_division: form.location_division.trim() || 'Dhaka',
+    location_district: form.location_district.trim(),
+    location_area: form.location_area.trim(),
+    land_size: Number(form.land_size),
+    land_size_unit: form.land_size_unit,
+    asking_price: owned ? 0 : Number(form.asking_price) || 0,
+    acquisition_type: form.acquisition_type,
+    status: 'sourced',
+    entry_mode: 'pipeline',
+  });
+  if (owned) {
+    if (isJv) {
+      const devShare = Number(form.developer_share_pct);
+      await landJvRepository.upsertForLand(land.id, {
+        developer_share_pct: devShare,
+        landowner_share_pct: 100 - devShare,
+        agreement_date: form.owned_on,
+        power_of_attorney: false,
+        poa_reference: null,
+        jv_share_basis: 'flat_count',
+      });
+    }
+    await landPipelineRepository.recordOwnedEntry(
+      land.id,
+      {
+        acquired_on: form.owned_on,
+        reference_no: null,
+        paid: {
+          land_price: Number(form.price_paid) || 0,
+          registration_fee: Number(form.registration_paid) || 0,
+        },
+        other_costs: draft.other_costs,
+      },
+      null,
+    );
+  }
+  return (await landRepository.getById(land.id)) ?? land;
 }
 
 const PIPELINE_TYPES: AcquisitionType[] = ['direct_purchase', 'joint_venture'];
 
 function QuickLandDialog({
   initialMode,
+  initialDraft,
   onClose,
-  onCreated,
+  onReview,
 }: {
   initialMode: LandEntryMode;
+  initialDraft?: QuickLandDraft;
   onClose: () => void;
-  onCreated: (land: Land) => void;
+  onReview: (draft: QuickLandDraft) => void;
 }) {
   const [mode, setMode] = useState<LandEntryMode>(initialMode);
-  const [form, setForm] = useState({
-    name: '',
-    location_division: 'Dhaka',
-    location_district: '',
-    location_area: '',
-    land_size: '',
-    land_size_unit: 'katha' as LandSizeUnit,
-    acquisition_type: 'direct_purchase' as AcquisitionType,
-    asking_price: '',
-    owned_on: '',
-    price_paid: '',
-    registration_paid: '',
-    developer_share_pct: '',
-  });
+  const [form, setForm] = useState(initialDraft?.form ?? EMPTY_FORM);
+  const [otherCosts, setOtherCosts] = useState<OtherCostRow[]>(initialDraft?.other_costs ?? []);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState(false);
+  const [showCostErrors, setShowCostErrors] = useState(false);
 
   const owned = mode === 'owned';
   const isJv = form.acquisition_type === 'joint_venture';
@@ -124,52 +194,16 @@ function QuickLandDialog({
     if (isJv) next.acquisition_type = 'A joint venture needs its landowners: add it from Lands → Add Land, then pick it here.';
     const devShare = Number(form.developer_share_pct);
     if (owned && isJv && !(devShare > 0 && devShare < 100)) next.developer_share_pct = 'Between 1 and 99';
+    const costProblem = owned && otherCosts.some((r) => otherCostRowProblem(r));
+    setShowCostErrors(Boolean(costProblem));
     setErrors(next);
-    if (Object.keys(next).length > 0) return;
+    if (Object.keys(next).length > 0 || costProblem) return;
 
-    setSaving(true);
-    try {
-      const land = await landRepository.create({
-        code: '',
-        name: form.name.trim(),
-        location_division: form.location_division.trim() || 'Dhaka',
-        location_district: form.location_district.trim(),
-        location_area: form.location_area.trim(),
-        land_size: Number(form.land_size),
-        land_size_unit: form.land_size_unit,
-        asking_price: owned ? 0 : Number(form.asking_price) || 0,
-        acquisition_type: form.acquisition_type,
-        status: 'sourced',
-        entry_mode: 'pipeline',
-      });
-      if (owned) {
-        if (isJv) {
-          await landJvRepository.upsertForLand(land.id, {
-            developer_share_pct: devShare,
-            landowner_share_pct: 100 - devShare,
-            agreement_date: form.owned_on,
-            power_of_attorney: false,
-            poa_reference: null,
-            jv_share_basis: 'flat_count',
-          });
-        }
-        await landPipelineRepository.recordOwnedEntry(
-          land.id,
-          {
-            acquired_on: form.owned_on,
-            reference_no: null,
-            paid: {
-              land_price: Number(form.price_paid) || 0,
-              registration_fee: Number(form.registration_paid) || 0,
-            },
-          },
-          null,
-        );
-      }
-      onCreated((await landRepository.getById(land.id)) ?? land);
-    } finally {
-      setSaving(false);
-    }
+    onReview({
+      mode,
+      form,
+      other_costs: owned ? otherCosts.filter((r) => r.label.trim() && Number(r.amount) > 0) : [],
+    });
   }
 
   return (
@@ -185,9 +219,7 @@ function QuickLandDialog({
           <Button variant="outline" onClick={onClose} viewSafe>
             Cancel
           </Button>
-          <Button onClick={save} disabled={saving}>
-            {saving ? 'Saving…' : 'Add land'}
-          </Button>
+          <Button onClick={save}>Review land</Button>
         </>
       }
     >
@@ -288,7 +320,7 @@ function QuickLandDialog({
                 invalid={Boolean(errors.owned_on)}
               />
             </Field>
-            {isJv ? (
+            {isJv && (
               <Field
                 label="Developer share %"
                 required
@@ -303,23 +335,39 @@ function QuickLandDialog({
                   invalid={Boolean(errors.developer_share_pct)}
                 />
               </Field>
-            ) : (
-              <div />
             )}
-            <Field label={isJv ? 'Signing money paid' : 'Land price paid'}>
-              <MoneyInput
-                value={form.price_paid}
-                onChange={(e) => set('price_paid', e.target.value)}
-                placeholder="0"
-              />
-            </Field>
-            <Field label="Registration & fees paid" hint="Other heads can be added on the land's cost sheet">
-              <MoneyInput
-                value={form.registration_paid}
-                onChange={(e) => set('registration_paid', e.target.value)}
-                placeholder="0"
-              />
-            </Field>
+            {/* the two money fields always sit side by side (client, 2026-10-17) */}
+            <div className="grid gap-4 sm:col-span-2 sm:grid-cols-2">
+              <Field
+                label={
+                  isJv
+                    ? 'Signing money paid'
+                    : form.acquisition_type === 'inherited'
+                      ? 'Price paid (0 if inherited)'
+                      : 'Land price paid'
+                }
+              >
+                <MoneyInput
+                  value={form.price_paid}
+                  onChange={(e) => set('price_paid', e.target.value)}
+                  placeholder="0"
+                />
+              </Field>
+              <Field label="Registration & fees paid">
+                <MoneyInput
+                  value={form.registration_paid}
+                  onChange={(e) => set('registration_paid', e.target.value)}
+                  placeholder="0"
+                />
+              </Field>
+            </div>
+            <div className="sm:col-span-2">
+              <p className="mb-1 text-sm font-medium text-ink">Other costs paid</p>
+              <p className="mb-2 text-xs text-ink-muted">
+                Namjari, stamp duty, survey, boundary wall: anything else this land has cost so far.
+              </p>
+              <OtherCostsEditor rows={otherCosts} onChange={setOtherCosts} showErrors={showCostErrors} />
+            </div>
           </>
         ) : (
           form.acquisition_type === 'direct_purchase' && (
