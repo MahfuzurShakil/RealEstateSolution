@@ -49,11 +49,14 @@ export function MaterialItemPicker({
   onChange,
   label = 'Item',
   allowCreate = true,
+  compact = false,
 }: {
   value: PickedItem;
   onChange: (picked: PickedItem) => void;
   label?: string;
   allowCreate?: boolean;
+  /** inside a table that already has an "Item" column header: no label or hint */
+  compact?: boolean;
 }) {
   const [adding, setAdding] = useState(false);
   const items = useLiveQuery(() => materialItemRepository.options(), []);
@@ -80,12 +83,7 @@ export function MaterialItemPicker({
     })),
   ];
 
-  return (
-    <>
-      <Field
-        label={label}
-        hint={value.unit ? `Stocked in ${value.unit}` : 'Type to search the catalogue'}
-      >
+  const control = (
         <div className="flex gap-2">
           <Combobox
             className="min-w-0 flex-1"
@@ -113,7 +111,23 @@ export function MaterialItemPicker({
             </Button>
           )}
         </div>
-      </Field>
+  );
+
+  return (
+    <>
+      {compact ? (
+        <label className="block">
+          <span className="mb-1 block text-xs text-ink-muted xl:hidden">{label}</span>
+          {control}
+        </label>
+      ) : (
+        <Field
+          label={label}
+          hint={value.unit ? `Stocked in ${value.unit}` : 'Type to search the catalogue'}
+        >
+          {control}
+        </Field>
+      )}
 
       {adding && (
         <NewItemModal

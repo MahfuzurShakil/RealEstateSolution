@@ -4,6 +4,7 @@ import type { UserRole } from '@/lib/db/types';
 import {
   Building2,
   Coins,
+  HardHat,
   LayoutDashboard,
   Map,
   Package,
@@ -56,8 +57,6 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: Building2,
     items: [
       { label: 'All Projects', href: '/admin/projects', module: 'project' },
-      // projects under construction, each with its site workspace (Phase 2, 2026-10-11)
-      { label: 'Construction', href: '/admin/site-progress', module: 'site_progress' },
     ],
   },
   {
@@ -67,6 +66,16 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Lands', href: '/admin/lands', module: 'land' },
       { label: 'Landowners', href: '/admin/landowners', module: 'land' },
     ],
+  },
+  /*
+   * Its own menu after Lands (client, 2026-10-17), in the order the work
+   * happens: project → land → construction. Each site's workspace — progress,
+   * materials, requests — opens from here.
+   */
+  {
+    label: 'Construction',
+    icon: HardHat,
+    items: [{ label: 'Construction Sites', href: '/admin/site-progress', module: 'site_progress' }],
   },
   {
     label: 'Sales & CRM',

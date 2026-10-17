@@ -360,7 +360,7 @@ export function ConstructionMaterialsTab({
         onChange={setSub}
         actions={
           canEdit(role, 'material_request') ? (
-            <Link href={`/admin/material-requests/new?project=${projectId}`}>
+            <Link href={`/admin/site-progress/${projectId}/material-requests/new`}>
               <Button size="sm">
                 <ClipboardList className="size-4" /> Request material
               </Button>

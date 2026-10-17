@@ -128,7 +128,7 @@ function ProjectProgressPage() {
         action={
           <div className="flex flex-wrap gap-2">
             {canEdit(role, 'material_request') && (
-              <Link href={`/admin/material-requests/new?project=${project.id}`}>
+              <Link href={`/admin/site-progress/${project.id}/material-requests/new`}>
                 <Button variant="outline">
                   <Package className="size-4" /> Request material
                 </Button>

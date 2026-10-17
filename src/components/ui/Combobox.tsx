@@ -201,7 +201,8 @@ export function Combobox({
             className="rounded-lg p-1 text-ink-muted transition-colors hover:bg-slate-100 hover:text-ink"
             // mousedown would blur the input and close the panel first
             onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
+            onClick={(e) => {
+              e.preventDefault();
               onChange(null);
               setQuery('');
               inputRef.current?.focus();
@@ -243,7 +244,12 @@ export function Combobox({
               // a click inside a <label> would otherwise focus-toggle the input
               onMouseDown={(e) => e.preventDefault()}
               onMouseEnter={() => setActive(index)}
-              onClick={() => pick(option)}
+              // inside a <label> (Field), the click would also be forwarded to
+              // the input and its onClick would reopen the panel just closed
+              onClick={(e) => {
+                e.preventDefault();
+                pick(option);
+              }}
             >
               <span className="min-w-0 flex-1">
                 <span className="block truncate">{option.label}</span>

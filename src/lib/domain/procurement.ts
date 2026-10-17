@@ -110,7 +110,12 @@ export const SUPPLIER_PAYMENT_METHOD_META: Record<SupplierPaymentMethod, string>
   online: 'Online',
 };
 
-export function lineTotal(item: Pick<PurchaseOrderItem, 'quantity_ordered' | 'unit_price'>): number {
+export function lineTotal(
+  item: Pick<PurchaseOrderItem, 'quantity_ordered' | 'unit_price'> &
+    Partial<Pick<PurchaseOrderItem, 'price_basis' | 'line_amount'>>,
+): number {
+  // a lump-sum line is worth what was agreed, not a rounded rate times quantity
+  if (item.price_basis === 'lump_sum' && item.line_amount != null) return money(Number(item.line_amount));
   return money((Number(item.quantity_ordered) || 0) * (Number(item.unit_price) || 0));
 }
 
@@ -147,9 +152,9 @@ export function poTotals(items: PurchaseOrderItem[]): PoTotals {
   for (const item of items) {
     const q = Number(item.quantity_ordered) || 0;
     const r = Number(item.quantity_received) || 0;
-    const price = Number(item.unit_price) || 0;
-    value += q * price;
-    receivedValue += Math.min(r, q) * price;
+    const worth = lineTotal(item);
+    value += worth;
+    receivedValue += q > 0 ? (Math.min(r, q) / q) * worth : 0;
     ordered += q;
     received += r;
     if (r < q) allDone = false;

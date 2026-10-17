@@ -359,6 +359,11 @@ const ROUTE_MODULES: Array<[string, ModuleKey]> = [
 ];
 
 export function moduleForPath(pathname: string): ModuleKey | null {
+  // raising a request lives under the site (Construction) but keeps the
+  // material request rights, not the site log's
+  if (/^\/admin\/site-progress\/[^/]+\/material-requests(\/|$)/.test(pathname)) {
+    return 'material_request';
+  }
   const match = ROUTE_MODULES.filter(([prefix]) => pathname.startsWith(prefix)).sort(
     (a, b) => b[0].length - a[0].length,
   )[0];

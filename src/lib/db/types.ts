@@ -1954,6 +1954,9 @@ export interface PurchaseOrder extends BaseEntity {
   notes?: string | null;
 }
 
+export const PO_PRICE_BASIS = ['per_unit', 'lump_sum'] as const;
+export type PoPriceBasis = (typeof PO_PRICE_BASIS)[number];
+
 export const PO_DELIVER_TO = ['site', 'main_store'] as const;
 export type PoDeliverTo = (typeof PO_DELIVER_TO)[number];
 
@@ -1967,6 +1970,16 @@ export interface PurchaseOrderItem extends BaseEntity {
   quantity_ordered: number;
   /** BDT per unit — a plain decimal number, never a float-formatted string */
   unit_price: number;
+  /**
+   * Client feedback 2026-10-17: some materials are bought for a lump sum
+   * (a truck of sand, a lot of fittings), not at a rate per unit. Then the
+   * buyer enters the line's total; `unit_price` is derived from it so stock
+   * and receipts still price per unit, and `line_amount` keeps the agreed
+   * total exact instead of re-multiplying a rounded rate. Absent = per unit.
+   * Not indexed, so no Dexie version is needed.
+   */
+  price_basis?: PoPriceBasis | null;
+  line_amount?: number | null;
   quantity_received: number;
   /**
    * Addendum to Section 7.5, same reason as `material_request_items.sort_order`

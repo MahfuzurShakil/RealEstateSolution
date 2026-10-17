@@ -313,7 +313,7 @@ export function MaterialRequestForm({
               key={line.id ?? index}
               // stacks on a phone, one row on a desktop — a 4-column grid at
               // 375px squeezes the item name down to nothing
-              className="grid gap-3 rounded-xl border border-hairline p-3 sm:grid-cols-[1fr_120px_140px_auto] sm:items-end"
+              className="grid gap-3 rounded-xl border border-hairline p-3 sm:grid-cols-[1fr_120px_140px_auto] sm:items-start"
             >
               <MaterialItemPicker
                 value={{ item_id: line.item_id, item_name: line.item_name, unit: line.unit }}
@@ -335,8 +335,11 @@ export function MaterialRequestForm({
               <Field label="Unit">
                 <TextInput value={line.unit || '—'} readOnly disabled />
               </Field>
+              {/* rows align on their tops (only the item has a hint line), so the
+                  button drops by one label height to sit level with the inputs */}
               <Button
                 variant="ghost"
+                className="sm:mt-[26px]"
                 onClick={() => setLines((rows) => rows.filter((_, i) => i !== index))}
                 disabled={lines.length === 1}
                 aria-label="Remove item"

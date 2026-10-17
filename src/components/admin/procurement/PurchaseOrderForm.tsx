@@ -11,7 +11,7 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
 import { MaterialItemPicker } from './MaterialItemPicker';
 import { useMockSession } from '@/lib/auth/mock-session';
-import type { PoDeliverTo, PurchaseOrderStatus } from '@/lib/db/types';
+import type { PoDeliverTo, PoPriceBasis, PurchaseOrderStatus } from '@/lib/db/types';
 import { lineTotal, money } from '@/lib/domain/procurement';
 import type { MaterialRequestWithRelations, PurchaseOrderWithRelations } from '@/lib/repositories';
 import {
@@ -22,6 +22,10 @@ import {
   supplierRepository,
 } from '@/lib/repositories';
 import { formatBdt, todayLocal } from '@/lib/utils/format';
+import { cn } from '@/lib/utils/cn';
+
+/** # · item · quantity+unit · priced · rate/total · amount · remove */
+const PO_GRID = 'xl:grid-cols-[20px_minmax(0,1fr)_120px_110px_140px_110px_36px]';
 
 interface LineRow {
   /** existing row id, so the quantity already received survives an edit */
@@ -31,6 +35,9 @@ interface LineRow {
   unit: string;
   quantity_ordered: string;
   unit_price: string;
+  /** lump sum: `line_amount` is what is typed and the rate is derived */
+  price_basis: PoPriceBasis;
+  line_amount: string;
   /**
    * Which material request copied this line in, or `null` when the buyer typed
    * it themselves.
@@ -54,8 +61,17 @@ const EMPTY_LINE = (): LineRow => ({
   unit: '',
   quantity_ordered: '',
   unit_price: '',
+  price_basis: 'per_unit',
+  line_amount: '',
   from_request: null,
 });
+
+/** What a line is worth as typed — the rate times quantity, or the lump sum. */
+function rowValue(l: LineRow): number {
+  return l.price_basis === 'lump_sum'
+    ? Number(l.line_amount) || 0
+    : lineTotal({ quantity_ordered: Number(l.quantity_ordered) || 0, unit_price: Number(l.unit_price) || 0 });
+}
 
 /**
  * Bring the lines of `request` onto the order.
@@ -95,21 +111,30 @@ function applyRequestLines(
   );
   if (kept.some((r) => r.from_request === request.id)) return kept;
 
-  const copied: LineRow[] = request.items.map((item) => ({
-    item_id: item.item_id ?? null,
-    item_name: item.item_name,
-    unit: item.unit,
-    // what Procurement approved, not what the site asked for
-    quantity_ordered: String(
-      Math.max(
-        0,
-        (item.quantity_approved ?? item.quantity_requested) -
-          (ordered[item.item_id ?? item.item_name.trim().toLowerCase()] ?? 0),
+  /*
+   * Client feedback 2026-10-17: only what is still to buy. A line another
+   * supplier's order already covers, or one the approver dropped, is not
+   * copied — so the second order against a request starts with the rest.
+   */
+  const copied: LineRow[] = request.items
+    .map((item) => ({
+      item_id: item.item_id ?? null,
+      item_name: item.item_name,
+      unit: item.unit,
+      // what was approved, less what other orders already cover
+      quantity_ordered: String(
+        Math.max(
+          0,
+          (item.quantity_approved ?? item.quantity_requested) -
+            (ordered[item.item_id ?? item.item_name.trim().toLowerCase()] ?? 0),
+        ),
       ),
-    ),
-    unit_price: '',
-    from_request: request.id,
-  }));
+      unit_price: '',
+      price_basis: 'per_unit' as const,
+      line_amount: '',
+      from_request: request.id,
+    }))
+    .filter((l) => Number(l.quantity_ordered) > 0);
   if (copied.length === 0) return rows;
   return [...copied, ...kept];
 }
@@ -172,6 +197,8 @@ export function PurchaseOrderForm({
           unit: i.unit,
           quantity_ordered: String(i.quantity_ordered),
           unit_price: String(i.unit_price),
+          price_basis: i.price_basis === 'lump_sum' ? 'lump_sum' : 'per_unit',
+          line_amount: i.price_basis === 'lump_sum' ? String(i.line_amount ?? lineTotal(i)) : '',
           // a saved line belongs to the order now, whatever put it there
           from_request: null,
         }))
@@ -193,18 +220,24 @@ export function PurchaseOrderForm({
     () => materialRequestRepository.list({ status: 'all' }),
     [],
   );
+  /*
+   * Client feedback 2026-10-17: a request bought from several suppliers stays
+   * here after its first order, until every line is on some order.
+   */
+  const withLeft = useLiveQuery(async () => {
+    const open = (requests ?? []).filter((r) =>
+      ['approved', 'ordered', 'partially_received'].includes(r.status),
+    );
+    const left = await Promise.all(open.map((r) => purchaseOrderRepository.leftToOrder(r.id)));
+    return new Set(open.filter((_, i) => [...left[i].values()].some((q) => q > 0)).map((r) => r.id));
+  }, [requests]);
   const selectableRequests = (requests ?? []).filter(
-    (r) => r.status === 'approved' || r.id === order?.request_id,
+    (r) => withLeft?.has(r.id) || r.id === order?.request_id || r.id === defaults?.request?.id,
   );
   const selectedRequest = selectableRequests.find((r) => r.id === requestId);
 
 
-  const total = money(
-    lines.reduce(
-      (sum, l) => sum + (Number(l.quantity_ordered) || 0) * (Number(l.unit_price) || 0),
-      0,
-    ),
-  );
+  const total = money(lines.reduce((sum, l) => sum + rowValue(l), 0));
 
   function setLine(index: number, patch: Partial<LineRow>) {
     setLines((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
@@ -239,8 +272,11 @@ export function PurchaseOrderForm({
       setError('Add at least one item with a quantity');
       return;
     }
-    if (filled.some((l) => !(Number(l.unit_price) > 0))) {
-      setError('Every line needs a unit price above 0');
+    const unpriced = filled.find((l) => !(rowValue(l) > 0));
+    if (unpriced) {
+      setError(
+        `${unpriced.item_name}: enter ${unpriced.price_basis === 'lump_sum' ? 'the total' : 'a unit price'} above 0`,
+      );
       return;
     }
     setError('');
@@ -263,6 +299,8 @@ export function PurchaseOrderForm({
         unit: l.unit || defaultUnit,
         quantity_ordered: Number(l.quantity_ordered),
         unit_price: Number(l.unit_price) || 0,
+        price_basis: l.price_basis,
+        line_amount: l.price_basis === 'lump_sum' ? Number(l.line_amount) || 0 : null,
       }));
 
       if (order) {
@@ -408,63 +446,119 @@ export function PurchaseOrderForm({
       <Card>
         <CardHeader
           title="Items"
-          action={
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setLines((rows) => [...rows, EMPTY_LINE()])}
-            >
-              <Plus className="size-4" /> Add item
-            </Button>
+          subtitle={
+            selectedRequest
+              ? `Lines still to order on ${selectedRequest.code}. Remove any this supplier is not giving — they stay on the request for another order.`
+              : undefined
           }
         />
 
-        <div className="space-y-3">
+        {/* One header for the whole list on a wide screen; narrower, the
+            columns stack two by two and each carries its own label. */}
+        <div className={cn(PO_GRID, 'hidden px-3 pb-2 text-xs font-medium text-ink-muted xl:grid')}>
+          <span>#</span>
+          <span>Item</span>
+          <span>Quantity</span>
+          <span>Priced</span>
+          <span>Rate / Total (BDT)</span>
+          <span className="text-right">Amount</span>
+          <span />
+        </div>
+
+        <div className="space-y-2">
           {lines.map((line, index) => {
-            const rowTotal = lineTotal({
-              quantity_ordered: Number(line.quantity_ordered) || 0,
-              unit_price: Number(line.unit_price) || 0,
-            });
             const received = order?.items.find((i) => i.id === line.id)?.quantity_received ?? 0;
+            const lump = line.price_basis === 'lump_sum';
+            const q = Number(line.quantity_ordered) || 0;
+            const derivedRate = lump && q > 0 ? (Number(line.line_amount) || 0) / q : null;
 
             return (
               <div
                 key={line.id ?? index}
-                // stacks on a phone; a five-column grid at 375px leaves the
-                // item name a few characters wide
-                className="grid gap-3 rounded-xl border border-hairline p-3 sm:grid-cols-[1fr_110px_120px_130px_auto] sm:items-end"
+                className={cn(PO_GRID, 'grid grid-cols-2 gap-3 rounded-xl border border-hairline p-3 xl:items-start')}
               >
-                <MaterialItemPicker
-                  value={{ item_id: line.item_id, item_name: line.item_name, unit: line.unit }}
-                  onChange={(picked) => setLine(index, picked)}
-                />
-                <Field label="Quantity">
+                <span className="hidden pt-2.5 text-xs text-ink-muted xl:block">{index + 1}</span>
+
+                <div className="col-span-2 min-w-0 xl:col-span-1">
+                  <MaterialItemPicker
+                    compact
+                    value={{ item_id: line.item_id, item_name: line.item_name, unit: line.unit }}
+                    onChange={(picked) => setLine(index, picked)}
+                  />
+                  {line.from_request && (
+                    <span className="mt-1 block text-[11px] text-ink-muted">From the request</span>
+                  )}
+                </div>
+
+                <label className="block">
+                  <span className="mb-1 block text-xs text-ink-muted xl:hidden">Quantity</span>
+                  <div className="flex items-center rounded-xl border border-hairline bg-white focus-within:border-admin-400 focus-within:ring-2 focus-within:ring-admin-100">
+                    <input
+                      type="number"
+                      min={0}
+                      step="any"
+                      aria-label="Quantity"
+                      className="w-full min-w-0 bg-transparent px-3 py-2.5 text-sm text-ink outline-none"
+                      value={line.quantity_ordered}
+                      onChange={(e) => setLine(index, { quantity_ordered: e.target.value })}
+                      placeholder="0"
+                    />
+                    {/* the unit belongs to the catalogue item — see the picker */}
+                    <span className="shrink-0 pr-3 text-xs text-ink-muted">{line.unit || '—'}</span>
+                  </div>
+                </label>
+
+                <label className="block">
+                  <span className="mb-1 block text-xs text-ink-muted xl:hidden">Priced</span>
+                  <SelectInput
+                    aria-label="How this line is priced"
+                    value={line.price_basis}
+                    onChange={(e) => {
+                      const basis = e.target.value as PoPriceBasis;
+                      // carry the figure across so switching does not lose it
+                      setLine(
+                        index,
+                        basis === 'lump_sum'
+                          ? { price_basis: basis, line_amount: rowValue(line) ? String(rowValue(line)) : '' }
+                          : {
+                              price_basis: basis,
+                              unit_price: derivedRate ? String(Math.round(derivedRate * 100) / 100) : line.unit_price,
+                            },
+                      );
+                    }}
+                  >
+                    <option value="per_unit">Per {line.unit || 'unit'}</option>
+                    <option value="lump_sum">Lump sum</option>
+                  </SelectInput>
+                </label>
+
+                <label className="block">
+                  <span className="mb-1 block text-xs text-ink-muted xl:hidden">
+                    {lump ? 'Total (BDT)' : 'Rate (BDT)'}
+                  </span>
                   <TextInput
                     type="number"
                     min={0}
                     step="any"
-                    value={line.quantity_ordered}
-                    onChange={(e) => setLine(index, { quantity_ordered: e.target.value })}
-                    placeholder="0"
+                    aria-label={lump ? 'Line total' : 'Unit price'}
+                    value={lump ? line.line_amount : line.unit_price}
+                    onChange={(e) =>
+                      setLine(index, lump ? { line_amount: e.target.value } : { unit_price: e.target.value })
+                    }
+                    placeholder={lump ? 'Total for the line' : 'Per unit'}
                   />
-                </Field>
-                {/* The unit belongs to the catalogue item — see the picker. */}
-                <Field label="Unit">
-                  <TextInput value={line.unit || '—'} readOnly disabled />
-                </Field>
-                <Field label="Unit price (BDT)">
-                  <TextInput
-                    type="number"
-                    min={0}
-                    step="any"
-                    value={line.unit_price}
-                    onChange={(e) => setLine(index, { unit_price: e.target.value })}
-                    placeholder="0"
-                  />
-                </Field>
-                <div className="flex items-center gap-2 sm:flex-col sm:items-end sm:gap-1">
-                  <span className="text-sm font-medium text-ink sm:mb-1">
-                    {formatBdt(rowTotal)}
+                  {derivedRate !== null && derivedRate > 0 && (
+                    <span className="mt-1 block text-[11px] text-ink-muted">
+                      ≈ {formatBdt(Math.round(derivedRate * 100) / 100)} / {line.unit || 'unit'}
+                    </span>
+                  )}
+                </label>
+
+                {/* amount and remove share a cell when stacked, two columns wide */}
+                <div className="flex items-center justify-between gap-2 self-center xl:col-span-2 xl:grid xl:grid-cols-[110px_36px] xl:items-start xl:self-auto">
+                  <span className="text-sm font-medium text-ink xl:pt-2.5 xl:text-right">
+                    <span className="mr-2 text-xs font-normal text-ink-muted xl:hidden">Amount</span>
+                    {formatBdt(money(rowValue(line)))}
                   </span>
                   <Button
                     variant="ghost"
@@ -476,8 +570,9 @@ export function PurchaseOrderForm({
                     <Trash2 className="size-4" />
                   </Button>
                 </div>
+
                 {received > 0 && (
-                  <p className="text-xs text-emerald-700 sm:col-span-5">
+                  <p className="col-span-2 text-xs text-emerald-700 xl:col-span-7">
                     {received} {line.unit} already received against this line — it stays on the
                     order (Section 7.6, the cancellation rule).
                   </p>
@@ -487,8 +582,20 @@ export function PurchaseOrderForm({
           })}
         </div>
 
+        <Button
+          size="sm"
+          variant="outline"
+          className="mt-3"
+          onClick={() => setLines((rows) => [...rows, EMPTY_LINE()])}
+        >
+          <Plus className="size-4" /> Add item
+        </Button>
+
         <div className="mt-4 flex items-center justify-between border-t border-hairline pt-4">
-          <span className="text-sm text-ink-muted">Order value</span>
+          <span className="text-sm text-ink-muted">
+            Order value · {lines.filter((l) => l.item_name.trim()).length} line
+            {lines.filter((l) => l.item_name.trim()).length === 1 ? '' : 's'}
+          </span>
           <span className="text-lg font-semibold text-ink">{formatBdt(total)}</span>
         </div>
       </Card>

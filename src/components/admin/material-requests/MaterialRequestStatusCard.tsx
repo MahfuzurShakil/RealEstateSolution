@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import Link from 'next/link';
 import {
   ArrowLeftRight,
@@ -28,7 +29,7 @@ import {
   manualNextRequestStatuses,
 } from '@/lib/domain/site-progress';
 import type { MaterialRequestWithRelations } from '@/lib/repositories';
-import { materialRequestRepository } from '@/lib/repositories';
+import { materialRequestRepository, purchaseOrderRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { StockTransferModal } from '@/components/admin/procurement/StockTransferModal';
 
@@ -81,6 +82,19 @@ export function MaterialRequestStatusCard({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
+
+  /*
+   * Client feedback 2026-10-17: one request is bought from several suppliers.
+   * The first order moves it to Ordered, but whatever no order covers yet is
+   * still to buy — so ordering stays open while any line has something left.
+   */
+  const leftToOrder = useLiveQuery(
+    () => purchaseOrderRepository.leftToOrder(request.id),
+    [request.id, request.status],
+  );
+  const linesLeft = request.items.filter((i) => (leftToOrder?.get(i.id) ?? 0) > 0);
+  const stillBuying = ['approved', 'ordered', 'partially_received'].includes(request.status);
+  const mayOrderMore = stillBuying && mayProcure && linesLeft.length > 0;
 
   /*
    * Construction review 2026-10-11 — who may take each step: the PM approves
@@ -256,6 +270,21 @@ export function MaterialRequestStatusCard({
           </p>
         )}
 
+        {mayOrderMore && request.status !== 'approved' && (
+          <div className="mt-3 space-y-2">
+            <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              {linesLeft.length} of {request.items.length} line{request.items.length === 1 ? '' : 's'}{' '}
+              not on any order yet:{' '}
+              {linesLeft.map((i) => `${i.item_name} (${leftToOrder?.get(i.id)} ${i.unit})`).join(', ')}.
+            </p>
+            <Link href={`/admin/purchase-orders/new?request=${request.id}`}>
+              <Button size="sm" className="w-full">
+                <ShoppingCart className="size-4" /> Order the rest
+              </Button>
+            </Link>
+          </div>
+        )}
+
         {request.status === 'approved' && mayProcure && (
           <div className="mt-3 space-y-2">
             <Link href={`/admin/purchase-orders/new?request=${request.id}`}>
@@ -263,6 +292,10 @@ export function MaterialRequestStatusCard({
                 <ShoppingCart className="size-4" /> Raise Purchase Order
               </Button>
             </Link>
+            <p className="text-[11px] text-ink-muted">
+              Different suppliers for different items? Raise one order per supplier and remove the
+              lines that supplier is not giving — the rest stays here to order.
+            </p>
             {/*
               Section 7.8a gives Procurement a second way out of an approved
               request: if the material is already in the central store, move it
@@ -319,34 +352,22 @@ export function MaterialRequestStatusCard({
         icon={action ? ICONS[action] : undefined}
         confirmLabel={config?.confirmLabel ?? 'Confirm'}
         message={config?.message}
+        size={action === 'approved' ? 'lg' : 'sm'}
         busy={busy}
         onCancel={() => setAction(null)}
         onConfirm={confirm}
       >
         {action === 'approved' && (
-          <div className="space-y-3">
-            {request.items.map((item) => (
-              <div key={item.id} className="flex items-end gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-ink">{item.item_name}</p>
-                  <p className="text-xs text-ink-muted">
-                    asked for {item.quantity_requested} {item.unit}
-                  </p>
-                </div>
-                <Field label="Approve" className="w-28 shrink-0">
-                  <TextInput
-                    type="number"
-                    min={0}
-                    step="any"
-                    value={quantities[item.id] ?? ''}
-                    onChange={(e) =>
-                      setQuantities((q) => ({ ...q, [item.id]: e.target.value }))
-                    }
-                  />
-                </Field>
-              </div>
-            ))}
-          </div>
+          <ApproveLines
+            items={request.items}
+            quantities={quantities}
+            onChange={(id, value) => setQuantities((q) => ({ ...q, [id]: value }))}
+            onAsked={() =>
+              setQuantities(
+                Object.fromEntries(request.items.map((i) => [i.id, String(i.quantity_requested)])),
+              )
+            }
+          />
         )}
 
         {config?.needsNote && (
@@ -374,5 +395,113 @@ export function MaterialRequestStatusCard({
         )}
       </ConfirmDialog>
     </>
+  );
+}
+
+/**
+ * The approval sheet (client feedback 2026-10-17). A request can carry a dozen
+ * lines, so it is a table: what was asked, what is approved, and a flag on
+ * every line that is cut or dropped. Only quantities move here — the items
+ * themselves are the site's request and are not swapped by the approver; a
+ * wrong item is rejected back with a reason. 0 drops a line.
+ */
+function ApproveLines({
+  items,
+  quantities,
+  onChange,
+  onAsked,
+}: {
+  items: MaterialRequestWithRelations['items'];
+  quantities: Record<string, string>;
+  onChange: (id: string, value: string) => void;
+  onAsked: () => void;
+}) {
+  const state = (item: MaterialRequestWithRelations['items'][number]) => {
+    const raw = quantities[item.id] ?? '';
+    const value = Number(raw);
+    if (raw.trim() === '') return 'as_asked' as const;
+    if (value === 0) return 'dropped' as const;
+    if (value < item.quantity_requested) return 'cut' as const;
+    if (value > item.quantity_requested) return 'over' as const;
+    return 'as_asked' as const;
+  };
+  const cut = items.filter((i) => state(i) === 'cut').length;
+  const dropped = items.filter((i) => state(i) === 'dropped').length;
+
+  return (
+    <div className="mb-3 space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-ink-muted">
+          {items.length} line{items.length === 1 ? '' : 's'}
+          {cut > 0 && <span className="text-amber-700"> · {cut} cut</span>}
+          {dropped > 0 && <span className="text-red-600"> · {dropped} dropped</span>}
+        </p>
+        <Button size="sm" variant="outline" onClick={onAsked}>
+          Approve all as asked
+        </Button>
+      </div>
+
+      <div className="max-h-[50vh] overflow-y-auto rounded-xl border border-hairline">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs text-ink-muted">
+            <tr>
+              <th className="w-8 px-3 py-2 font-medium">#</th>
+              <th className="px-3 py-2 font-medium">Item</th>
+              <th className="px-3 py-2 text-right font-medium">Asked</th>
+              <th className="w-44 px-3 py-2 font-medium">Approve</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item, index) => {
+              const s = state(item);
+              const value = Number(quantities[item.id] ?? '');
+              return (
+                <tr
+                  key={item.id}
+                  className={cn(
+                    'border-t border-hairline',
+                    s === 'dropped' && 'bg-red-50/60',
+                    s === 'cut' && 'bg-amber-50/60',
+                  )}
+                >
+                  <td className="px-3 py-2 align-middle text-xs text-ink-muted">{index + 1}</td>
+                  <td className="px-3 py-2 align-middle">
+                    <span className="block font-medium text-ink">{item.item_name}</span>
+                    {s === 'dropped' && <span className="text-xs text-red-600">Dropped</span>}
+                    {s === 'cut' && (
+                      <span className="text-xs text-amber-700">
+                        Cut by {Math.round((item.quantity_requested - value) * 1000) / 1000} {item.unit}
+                      </span>
+                    )}
+                    {s === 'over' && <span className="text-xs text-blue-700">More than asked</span>}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right align-middle text-ink-muted">
+                    {item.quantity_requested} {item.unit}
+                  </td>
+                  <td className="px-3 py-2 align-middle">
+                    <div className="flex items-center gap-1.5">
+                      <TextInput
+                        type="number"
+                        min={0}
+                        step="any"
+                        aria-label={`Approve quantity for ${item.item_name}`}
+                        className="py-1.5"
+                        value={quantities[item.id] ?? ''}
+                        onChange={(e) => onChange(item.id, e.target.value)}
+                      />
+                      <span className="w-10 shrink-0 text-xs text-ink-muted">{item.unit}</span>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[11px] text-ink-muted">
+        Only quantities change here — swapping an item is the site&apos;s call. Enter 0 to drop a
+        line; a wrong item is better rejected with a reason so the site raises it again.
+      </p>
+    </div>
   );
 }

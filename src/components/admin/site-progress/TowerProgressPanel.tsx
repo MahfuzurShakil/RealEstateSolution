@@ -365,7 +365,7 @@ export function TowerProgressPanel({
                           </Button>
                           {canEdit(role, 'material_request') && (
                             <Link
-                              href={`/admin/material-requests/new?project=${projectId}&tower=${item.tower_id}&item=${item.id}`}
+                              href={`/admin/site-progress/${projectId}/material-requests/new?tower=${item.tower_id}&item=${item.id}`}
                             >
                               <Button size="sm" variant="outline">
                                 <Package className="size-4" /> Request material

@@ -8,6 +8,7 @@ import type {
   MaterialRequest,
   Project,
   PoDeliverTo,
+  PoPriceBasis,
   PurchaseOrder,
   PurchaseOrderItem,
   PurchaseOrderStatus,
@@ -309,6 +310,9 @@ export interface PurchaseOrderItemInput {
   unit: string;
   quantity_ordered: number;
   unit_price: number;
+  /** lump sum: `line_amount` is the agreed total and `unit_price` is ignored */
+  price_basis?: PoPriceBasis | null;
+  line_amount?: number | null;
 }
 
 /**
@@ -321,7 +325,9 @@ async function assertOrderLines(
   requestId: string | null,
   orderId: string | null,
 ): Promise<void> {
-  const unpriced = items.find((l) => !(Number(l.unit_price) > 0));
+  const unpriced = items.find((l) =>
+    l.price_basis === 'lump_sum' ? !(Number(l.line_amount) > 0) : !(Number(l.unit_price) > 0),
+  );
   if (unpriced) throw new Error(`${unpriced.item_name}: enter a unit price above 0`);
   if (!requestId) return;
 
@@ -404,6 +410,26 @@ class PurchaseOrderRepository extends BaseRepository<PurchaseOrder> {
     for (const l of lines) {
       const key = l.item_id ?? l.item_name.trim().toLowerCase();
       out[key] = (out[key] ?? 0) + Number(l.quantity_ordered);
+    }
+    return out;
+  }
+
+  /**
+   * Client feedback 2026-10-17: one request is often bought from several
+   * suppliers. What is still to order, per request line id — approved less
+   * what live orders already cover. A request stays orderable while any line
+   * has something left, whatever status the first order moved it to.
+   */
+  async leftToOrder(requestId: string): Promise<Map<string, number>> {
+    const [lines, ordered] = await Promise.all([
+      db.material_request_items.where('request_id').equals(requestId).toArray(),
+      this.orderedAgainstRequest(requestId, null),
+    ]);
+    const out = new Map<string, number>();
+    for (const line of lines) {
+      const approved = Number(line.quantity_approved ?? line.quantity_requested) || 0;
+      const done = ordered[line.item_id ?? line.item_name.trim().toLowerCase()] ?? 0;
+      out.set(line.id, qty(Math.max(0, approved - done)));
     }
     return out;
   }
@@ -780,7 +806,22 @@ class PurchaseOrderItemRepository extends BaseRepository<PurchaseOrderItem> {
         item_name: item.item_name.trim(),
         unit: item.unit,
         quantity_ordered: qty(Number(item.quantity_ordered) || 0),
-        unit_price: money(Number(item.unit_price) || 0),
+        ...(item.price_basis === 'lump_sum'
+          ? {
+              price_basis: 'lump_sum' as const,
+              line_amount: money(Number(item.line_amount) || 0),
+              // the rate stock and receipts are valued at; 4 places so the
+              // derived rate does not drift a lump sum by paisa
+              unit_price:
+                Number(item.quantity_ordered) > 0
+                  ? Math.round(((Number(item.line_amount) || 0) / Number(item.quantity_ordered)) * 1e4) / 1e4
+                  : 0,
+            }
+          : {
+              price_basis: 'per_unit' as const,
+              line_amount: null,
+              unit_price: money(Number(item.unit_price) || 0),
+            }),
         quantity_received: prior?.quantity_received ?? 0,
         sort_order: index + 1,
       };
