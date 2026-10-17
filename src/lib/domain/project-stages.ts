@@ -166,17 +166,20 @@ const PLOT: Partial<Record<ProjectStatus, StageRequirements>> = {
     remarksPlaceholder: 'Conditions attached to the approval…',
   }),
   under_construction: phase('Development Complete', {
-    meaning: 'Filling, roads, drains and utilities are finished.',
+    meaning:
+      'Filling, roads, drains and utilities are finished (or were not needed) and the plots are pegged out. Possession to buyers begins.',
     dateLabel: 'Development finished on',
     fields: [
-      { key: 'roads_done', label: 'Roads, drains and utilities finished?', type: 'select', options: YES_NO, required: true },
+      { key: 'roads_done', label: 'Roads, drains and utilities finished?', type: 'select', options: ['Yes', 'Not needed'], required: true },
       { key: 'contractor', label: 'Contractor', type: 'text', column: 'performed_by' },
+      { key: 'demarcated_on', label: 'Plots demarcated on', type: 'date' },
     ],
-    documents: [],
-    remarksPlaceholder: 'Anything left on site…',
+    documents: [{ type: 'other', label: 'Plot demarcation sheet' }],
+    remarksPlaceholder: 'Pillars set, anything left on site…',
   }),
-  nearly_complete: phase('Final Works Complete', {
-    meaning: 'Plots are marked on the ground. Possession to buyers begins.',
+  // a plot project created before 2026-10-17 may still sit here
+  nearly_complete: phase('Development Complete', {
+    meaning: 'The plots are pegged out. Possession to buyers begins.',
     dateLabel: 'Plots demarcated on',
     fields: [],
     documents: [{ type: 'other', label: 'Plot demarcation sheet' }],

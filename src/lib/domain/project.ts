@@ -66,6 +66,12 @@ export const PROJECT_PIPELINE_STEPS: ProjectStatus[] = [
  */
 export function pipelineSteps(shape: ProjectShape): ProjectStatus[] {
   if (shape.item === 'share') return ['planning', 'nearly_complete', 'handover_ongoing', 'closed'];
+  /*
+   * 2026-10-17 — a plot scheme is done once development is: the plots are
+   * pegged out as part of it, so there is no separate finishing phase.
+   */
+  if (shape.item === 'plot')
+    return ['planning', 'design', 'approval', 'under_construction', 'handover_ongoing', 'closed'];
   return PROJECT_PIPELINE_STEPS;
 }
 
@@ -241,10 +247,19 @@ export function projectStatusBlockers(
    * This one holds for every shape: closing a project nobody has taken
    * delivery of is wrong whether delivery is keys, possession or a deed.
    */
-  if (shape.item !== 'share' && target === 'closed' && facts.unit_count > 0 && facts.units_handed_over === 0) {
+  /*
+   * 2026-10-17 (plot walkthrough): a project closes only when every unit is
+   * delivered and every buyer has paid — it used to close with one plot of two
+   * still undelivered and lakhs outstanding, behind a warning.
+   */
+  if (shape.item !== 'share' && target === 'closed' && facts.unit_count > 0 && facts.units_handed_over < facts.unit_count) {
+    const left = facts.unit_count - facts.units_handed_over;
     blockers.push(
-      `No ${shape.labels.item.toLowerCase()} has been handed over, so the project cannot be closed`,
+      `${left} of ${facts.unit_count} ${shape.labels.itemPlural.toLowerCase()} not handed over yet, so the project cannot be closed`,
     );
+  }
+  if (target === 'closed' && facts.outstanding_amount > 0.009) {
+    blockers.push('Buyers still owe money on this project. Collect it before closing.');
   }
 
   return blockers;
@@ -311,18 +326,6 @@ export function projectStatusWarnings(
 
   if (built && target === 'closed' && facts.progress_pct < 100) {
     warnings.push(`Construction is reported at ${facts.progress_pct.toFixed(1)}%, not 100%`);
-  }
-
-  if (target === 'closed' && facts.unit_count > 0 && facts.units_handed_over < facts.unit_count) {
-    warnings.push(
-      `${facts.unit_count - facts.units_handed_over} of ${facts.unit_count} ${shape.labels.itemPlural.toLowerCase()} have not been handed over`,
-    );
-  }
-
-  if (target === 'closed' && facts.outstanding_amount > 0.009) {
-    warnings.push(
-      `Buyers still owe money on this project — closing it does not write that off`,
-    );
   }
 
   if (built && target === 'under_construction' && facts.unit_count === 0) {
@@ -497,7 +500,7 @@ export const PREMIUM_HINT: Record<PremiumKind, string> = {
   facing: 'South-facing carries a premium in this market',
   parking: 'Charged separately from the flat price',
   road: 'A wider road in front is worth real money',
-  corner: 'Two frontages — the usual premium on a plot scheme',
+  corner: 'Extra only. A corner plot’s price already includes the premium set when the plots were generated',
 };
 
 export interface ProjectShape {

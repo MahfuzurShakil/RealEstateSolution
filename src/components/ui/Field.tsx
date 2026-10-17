@@ -93,7 +93,16 @@ export function MoneyInput({
          */
         onFocus={(e) => {
           e.currentTarget.select();
+          e.currentTarget.dataset.justFocused = '1';
           props.onFocus?.(e);
+        }}
+        // a click focuses on mousedown and would clear that selection on mouseup
+        onMouseUp={(e) => {
+          if (e.currentTarget.dataset.justFocused) {
+            e.preventDefault();
+            delete e.currentTarget.dataset.justFocused;
+          }
+          props.onMouseUp?.(e);
         }}
       />
       {valid && amount !== 0 && (

@@ -543,7 +543,10 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
         <CardHeader title={kind === 'share' ? 'Surroundings' : 'Amenities & surroundings'} />
         {kind !== 'share' && (
           <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {amenityOptions.map((option) => (
+            {amenityOptions
+              // a plot scheme has no building: no lift, rooftop or gym (walkthrough 2026-10-17)
+              .filter((o) => kind !== 'plot' || !/lift|rooftop|gym|fire fighting/i.test(o))
+              .map((option) => (
               <Checkbox
                 key={option}
                 label={option}

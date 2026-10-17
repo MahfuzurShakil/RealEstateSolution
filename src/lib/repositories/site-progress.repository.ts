@@ -386,6 +386,10 @@ class SiteProgressUpdateRepository extends BaseRepository<SiteProgressUpdate> {
     }
     const pct = clampPct(Number(input.progress_pct));
     const saved = await this.create({ ...input, progress_pct: pct }, createdBy);
+    // the first reading on site is when construction actually started
+    if (!project.actual_start_date) {
+      await db.projects.update(project.id, { actual_start_date: input.update_date });
+    }
     await applyLatestReading(input.work_item_id);
     return saved;
   }

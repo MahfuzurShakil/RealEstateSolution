@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { CircleDollarSign } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
+import { Field, MoneyInput, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
 import { AccountPicker } from '@/components/admin/finance/AccountPicker';
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
@@ -144,9 +144,7 @@ function PaymentDialog({
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Amount (BDT)" required error={error || undefined}>
-          <TextInput
-            type="number"
-            min="0"
+          <MoneyInput
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             invalid={Boolean(error)}

@@ -305,7 +305,8 @@ class ProjectRepository extends BaseRepository<Project> {
     const saved = await this.update(id, {
       ...(salesAfter ? { sales_status: salesAfter } : {}),
       status,
-      ...(status === 'under_construction' && arrivesFromBefore ? { actual_start_date: event.event_date } : {}),
+      // the real start is the first site reading (or set on Edit); the
+      // approval date is not when work began (walkthrough 2026-10-17)
     });
     if (status === 'under_construction' && arrivesFromBefore && event.event_date) {
       await rebaseUntouchedSchedule(id, event.event_date);
