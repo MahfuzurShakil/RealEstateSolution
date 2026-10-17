@@ -22,6 +22,7 @@ import {
   projectStatusLabel,
   projectShape,
   projectStatusBlockers,
+  projectBackMoveBlockers,
   projectStatusWarnings,
   type ProjectStepField,
 } from '@/lib/domain/project';
@@ -99,7 +100,11 @@ export function ProjectStatusCard({ project }: { project: Project }) {
     ...(datesMissing && order(status) > currentOrder && order(status) >= order('approval')
       ? ['Set the expected start and completion dates on the project (Edit) first']
       : []),
-    ...(readiness ? projectStatusBlockers(status, readiness, shape) : []),
+    ...(readiness
+      ? order(status) > currentOrder
+        ? projectStatusBlockers(status, readiness, shape)
+        : projectBackMoveBlockers(project.status, status, readiness, shape)
+      : []),
   ];
   const warningsFor = (status: ProjectStatus) =>
     readiness ? projectStatusWarnings(status, readiness, shape) : [];
@@ -108,7 +113,9 @@ export function ProjectStatusCard({ project }: { project: Project }) {
   const forwardMove = target !== null && order(target) > currentOrder;
   // asked only when moving forward: stepping back records why, not new papers
   const stage =
-    target && order(target) > currentOrder ? stageRequirements(target, project.project_type) : null;
+    // the phase being completed is the current one (PROJECT-STATUS-FLOW-PLAN.md)
+    target && order(target) > currentOrder ? stageRequirements(project.status, project.project_type) : null;
+  const completing = stageRequirements(project.status, project.project_type);
   const targetWarnings = target
     ? forwardMove
       ? warningsFor(target)
@@ -288,7 +295,7 @@ export function ProjectStatusCard({ project }: { project: Project }) {
                     ) : (
                       <GitBranch className="size-4" />
                     )}
-                    {forward ? 'Mark' : 'Back to'} {label(status)}
+                    {forward ? (completing?.button ?? `Move to ${label(status)}`) : `Back to ${label(status)}`}
                   </Button>
                   {blocked.length > 0 && (
                     <ul className="mt-1.5 space-y-1 text-xs text-amber-700">
@@ -307,13 +314,11 @@ export function ProjectStatusCard({ project }: { project: Project }) {
       <ConfirmDialog
         open={target !== null && config !== null}
         // on a tower shape the step's own title; elsewhere the shape's name for it
-        title={
-          forwardMove && target ? `Mark ${label(target)}` : target ? `Move back to ${label(target)}` : ''
-        }
+        title={forwardMove && stage ? stage.title : target ? `Move back to ${label(target)}` : ''}
         subtitle={`${project.code} · ${project.name}`}
         tone={config?.tone ?? 'default'}
         icon={GitBranch}
-        confirmLabel={forwardMove && target ? `Mark ${label(target)}` : 'Move back'}
+        confirmLabel={forwardMove && stage ? stage.button : 'Move back'}
         message={forwardMove ? stage?.meaning : config?.question}
         size={forwardMove ? 'lg' : 'sm'}
         busy={busy}

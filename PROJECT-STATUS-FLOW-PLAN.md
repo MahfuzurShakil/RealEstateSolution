@@ -1,43 +1,38 @@
-# Project status = the last thing completed (plan, 2026-10-17)
+# Project status flow (2026-10-17, revised after client review)
 
-## The change
+## Rule
 
-Until now a status move asked two things at once: "complete stage A" (left) and
-"start stage B" (right). In real life an office records a milestone **when it
-has happened**, with the proof of that milestone — and the project then stays on
-that milestone until the next one is reached.
+- A status is the **phase the project is in**. A new project starts in its
+  first phase (Planning / Register Open).
+- The button under the status **completes the current phase**: "Mark Planning
+  Complete". The pop-up asks only what that phase produced — date, facts,
+  papers, remarks. The project then moves into the next phase.
+- Nothing is asked about the next phase; it has not happened yet.
+- A step back is a correction with a reason, and is refused where the records
+  rule it out.
 
-So from now on:
+## Phases and buttons
 
-- A new project starts on its **initial status** (Planning / Register Open).
-- Each move records **one milestone that is already done**: the date it was
-  done, the facts and papers that prove it. The status becomes that milestone.
-- Nothing is asked about the next step. While the next work is going on (deeds
-  being registered, RAJUK file under review), the status stays where it is.
+| Type | Phases (status) | Buttons |
+|---|---|---|
+| Apartment / Commercial / Mixed | Planning → Design → Approval → Under Construction → Finishing → Handover → Closed | Mark Planning / Design / Approval / Construction / Finishing Complete → Close Project |
+| Plot Development | Planning → Layout Design → Subdivision Approval → Under Development → Final Works → Possession → Closed | Mark Planning / Layout Design / Subdivision Approval / Development / Final Works Complete → Close Project |
+| Land Share | Register Open → Sold Out → Deeds Registered → Closed | Mark Sold Out → Mark Deeds Registered → Close Project |
 
-## Milestones per project type
+While deeds are being registered a land share stays **Sold Out**.
 
-| Key (unchanged) | Apartment / Commercial / Mixed | Plot Development | Land Share |
-|---|---|---|---|
-| planning | **Planning** (initial) | **Planning** (initial) | **Register Open** (initial) |
-| design | **Design Complete** — drawings, built-up area, units | **Layout Planned** — layout plan, road %, plots | — |
-| approval | **Plan Approved** — RAJUK/CDA permit no. + copy | **Layout Approved** — subdivision approval + copy | — |
-| under_construction | **Under Construction** — construction started on, contractor, work order | **Under Development** — development started on, contractor | — |
-| nearly_complete | **Structure Complete** — roof casting done | **Development Complete** — roads, drains, utilities done | **Sold Out** — every share booked |
-| handover_ongoing | **Ready for Handover** — occupancy certificate, utilities connected | **Ready for Possession** — plots demarcated | **Deeds Registered** — every share deed registered (fully paid) |
-| closed | **Closed** — everything handed over | **Closed** | **Closed** |
-
-Status keys stay the same, so reports, filters and existing data keep working;
-only the meaning is now "reached", and the labels say so. "Plan Approved"
-means approved (it used to mean "submitted"), so the sales warning about an
-unapproved plan lifts at that status.
-
-## Gates (unchanged in spirit)
+## Gates
 
 - Land share: Sold Out needs every share sold; Deeds Registered and Closed need
-  every share deed registered.
-- Deed: registered only when the buyer has paid in full. The payment plan's
-  last part is collected on the deed day, before the deed is signed.
+  every share deed registered. A deed is registered only when the buyer has
+  paid in full — the balance is collected on deed day.
 - Built: Under Construction needs land secured and a tower; Closed needs
-  handovers.
-- A step back stays a correction with a reason.
+  handovers. Approval complete lifts the "plan not approved" sales warning.
+- Sales: no Open sales before inventory exists or when nothing is unsold.
+
+## Steps back refused
+
+- From Closed (any type).
+- Land share back to Register Open when every share is sold (cancel a booking
+  first).
+- Land share back from Deeds Registered when every deed is registered.

@@ -89,7 +89,7 @@ export function ProjectTimeline({ projectId }: { projectId: string }) {
                       key={key}
                       label={
                         (project &&
-                          stageRequirements(event.to_status, project.project_type).fields.find(
+                          stageRequirements(event.from_status, project.project_type)?.fields.find(
                             (f) => f.key === key,
                           )?.label) ||
                         humanize(key)

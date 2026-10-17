@@ -31,12 +31,12 @@ import type {
  */
 export const PROJECT_STATUS_META: Record<ProjectStatus, { label: string; tone: BadgeTone }> = {
   planning: { label: 'Planning', tone: 'neutral' },
-  // PROJECT-STATUS-FLOW-PLAN.md — each status is a milestone reached
-  design: { label: 'Design Complete', tone: 'blue' },
-  approval: { label: 'Plan Approved', tone: 'amber' },
+  // PROJECT-STATUS-FLOW-PLAN.md — each status is the phase the project is in
+  design: { label: 'Design', tone: 'blue' },
+  approval: { label: 'Approval', tone: 'amber' },
   under_construction: { label: 'Under Construction', tone: 'teal' },
-  nearly_complete: { label: 'Structure Complete', tone: 'teal' },
-  handover_ongoing: { label: 'Ready for Handover', tone: 'green' },
+  nearly_complete: { label: 'Finishing', tone: 'teal' },
+  handover_ongoing: { label: 'Handover', tone: 'green' },
   closed: { label: 'Closed', tone: 'green' },
 };
 
@@ -81,11 +81,11 @@ export function projectStatusLabel(status: ProjectStatus, shape: ProjectShape): 
   }
   if (shape.item === 'plot') {
     const plot: Partial<Record<ProjectStatus, string>> = {
-      design: 'Layout Planned',
-      approval: 'Layout Approved',
+      design: 'Layout Design',
+      approval: 'Subdivision Approval',
       under_construction: 'Under Development',
-      nearly_complete: 'Development Complete',
-      handover_ongoing: 'Ready for Possession',
+      nearly_complete: 'Final Works',
+      handover_ongoing: 'Possession',
     };
     if (plot[status]) return plot[status];
   }
@@ -248,6 +248,40 @@ export function projectStatusBlockers(
   }
 
   return blockers;
+}
+
+/**
+ * Steps back the records rule out (client 2026-10-17). A step back is for a
+ * correction or a setback, not for undoing work that is plainly done:
+ *
+ * - a closed project is not reopened from here;
+ * - a land share goes back to selling only when a share is unsold again
+ *   (a buyer cancelled), and back from Deeds Registered only when a deed is
+ *   still missing.
+ */
+export function projectBackMoveBlockers(
+  current: ProjectStatus,
+  target: ProjectStatus,
+  facts: Pick<ProjectReadiness, 'unit_count' | 'units_spoken_for' | 'units_handed_over'>,
+  shape: ProjectShape = PROJECT_SHAPE.apartment,
+): string[] {
+  if (current === 'closed') {
+    return ['The project is closed. Every unit is delivered, so it is not reopened from here.'];
+  }
+  if (shape.item === 'share') {
+    if (target === 'planning' && facts.unit_count > 0 && facts.units_spoken_for >= facts.unit_count) {
+      return ['Every share is sold. Cancel a booking first if a share has to go back on sale.'];
+    }
+    if (
+      current === 'handover_ongoing' &&
+      target === 'nearly_complete' &&
+      facts.unit_count > 0 &&
+      facts.units_handed_over >= facts.unit_count
+    ) {
+      return ['Every share deed is registered, so there is nothing left to register.'];
+    }
+  }
+  return [];
 }
 
 /**
@@ -1295,6 +1329,9 @@ export function salesMoveBlockers(
   if (to === 'open' && facts.unit_count === 0) {
     return [`Generate the ${items} first. There is nothing to book yet.`];
   }
+  if (to === 'open' && (facts.units_unsold_for_sale ?? 1) === 0) {
+    return [`Every ${shape.labels.item.toLowerCase()} is sold. There is nothing left to put on sale.`];
+  }
   if (to === 'sold_out') {
     if (facts.unit_count === 0) return [`No ${items} have been generated yet.`];
     const left = facts.units_unsold_for_sale ?? 0;
@@ -1316,8 +1353,6 @@ export const SALES_MOVE_LABEL: Record<ProjectSalesStatus, string> = {
 
 /** Where the project status says the plan approval has been passed. */
 const PAST_APPROVAL: ReadonlySet<ProjectStatus> = new Set([
-  // "Plan Approved" is reached on approval (PROJECT-STATUS-FLOW-PLAN.md)
-  'approval',
   'under_construction',
   'nearly_complete',
   'handover_ongoing',
@@ -1364,12 +1399,15 @@ export function salesOpenChecks(f: SalesGateFacts): { warnings: string[]; blocke
   }
   const needsApproval = f.shape.item !== 'share';
   /*
-   * 2026-10-17 — "Plan Approved" is the milestone of the approval itself
-   * (PROJECT-STATUS-FLOW-PLAN.md), so the warning lifts on reaching it.
+   * QA audit P-07: "Approval" is the phase the plan is with RAJUK/CDA, so being
+   * in it is not having it approved. The warning lifts once Approval is
+   * marked complete (PROJECT-STATUS-FLOW-PLAN.md).
    */
   if (needsApproval && !PAST_APPROVAL.has(f.status)) {
     const text =
-      'The building plan is not approved yet. The Real Estate Development and Management Act 2010 expects an approved plan before a project is advertised or sold.';
+      f.status === 'approval'
+        ? 'The plan is with the authority but not yet approved. The Real Estate Development and Management Act 2010 expects an approved plan before a project is advertised or sold.'
+        : 'The building plan is not approved yet. The Real Estate Development and Management Act 2010 expects an approved plan before a project is advertised or sold.';
     (f.block_before_approval ? blockers : warnings).push(text);
   }
   return { warnings, blockers };
