@@ -52,12 +52,15 @@ export function OtherCostsEditor({
                 onChange={(e) => update(i, { label: e.target.value })}
                 invalid={Boolean(problem && !row.label.trim())}
               />
-              <MoneyInput
-                value={row.amount}
-                placeholder="Amount"
-                onChange={(e) => update(i, { amount: e.target.value })}
-                invalid={Boolean(problem && row.label.trim())}
-              />
+              {/* wrapped: the amount-in-words line sits under the field, not in the next cell */}
+              <div>
+                <MoneyInput
+                  value={row.amount}
+                  placeholder="Amount"
+                  onChange={(e) => update(i, { amount: e.target.value })}
+                  invalid={Boolean(problem && row.label.trim())}
+                />
+              </div>
               <Button
                 variant="ghost"
                 size="sm"

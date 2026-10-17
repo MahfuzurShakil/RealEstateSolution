@@ -31,11 +31,12 @@ import type {
  */
 export const PROJECT_STATUS_META: Record<ProjectStatus, { label: string; tone: BadgeTone }> = {
   planning: { label: 'Planning', tone: 'neutral' },
-  design: { label: 'Design', tone: 'blue' },
-  approval: { label: 'Approval', tone: 'amber' },
+  // PROJECT-STATUS-FLOW-PLAN.md — each status is a milestone reached
+  design: { label: 'Design Complete', tone: 'blue' },
+  approval: { label: 'Plan Approved', tone: 'amber' },
   under_construction: { label: 'Under Construction', tone: 'teal' },
-  nearly_complete: { label: 'Nearly Complete', tone: 'teal' },
-  handover_ongoing: { label: 'Handover Ongoing', tone: 'green' },
+  nearly_complete: { label: 'Structure Complete', tone: 'teal' },
+  handover_ongoing: { label: 'Ready for Handover', tone: 'green' },
   closed: { label: 'Closed', tone: 'green' },
 };
 
@@ -74,15 +75,17 @@ export function projectStatusLabel(status: ProjectStatus, shape: ProjectShape): 
     const share: Partial<Record<ProjectStatus, string>> = {
       planning: 'Register Open',
       nearly_complete: 'Sold Out',
-      handover_ongoing: 'Deeds Registering',
+      handover_ongoing: 'Deeds Registered',
     };
     if (share[status]) return share[status];
   }
   if (shape.item === 'plot') {
     const plot: Partial<Record<ProjectStatus, string>> = {
-      approval: 'Subdivision Approval',
+      design: 'Layout Planned',
+      approval: 'Layout Approved',
       under_construction: 'Under Development',
-      handover_ongoing: 'Possession Ongoing',
+      nearly_complete: 'Development Complete',
+      handover_ongoing: 'Ready for Possession',
     };
     if (plot[status]) return plot[status];
   }
@@ -224,7 +227,7 @@ export function projectStatusBlockers(
   }
   if (
     shape.item === 'share' &&
-    target === 'closed' &&
+    (target === 'closed' || target === 'handover_ongoing') &&
     facts.unit_count > 0 &&
     facts.units_handed_over < facts.unit_count
   ) {
@@ -238,7 +241,7 @@ export function projectStatusBlockers(
    * This one holds for every shape: closing a project nobody has taken
    * delivery of is wrong whether delivery is keys, possession or a deed.
    */
-  if (target === 'closed' && facts.unit_count > 0 && facts.units_handed_over === 0) {
+  if (shape.item !== 'share' && target === 'closed' && facts.unit_count > 0 && facts.units_handed_over === 0) {
     blockers.push(
       `No ${shape.labels.item.toLowerCase()} has been handed over, so the project cannot be closed`,
     );
@@ -1313,6 +1316,8 @@ export const SALES_MOVE_LABEL: Record<ProjectSalesStatus, string> = {
 
 /** Where the project status says the plan approval has been passed. */
 const PAST_APPROVAL: ReadonlySet<ProjectStatus> = new Set([
+  // "Plan Approved" is reached on approval (PROJECT-STATUS-FLOW-PLAN.md)
+  'approval',
   'under_construction',
   'nearly_complete',
   'handover_ongoing',
@@ -1359,15 +1364,12 @@ export function salesOpenChecks(f: SalesGateFacts): { warnings: string[]; blocke
   }
   const needsApproval = f.shape.item !== 'share';
   /*
-   * QA audit P-07: "Approval" here is the stage the plan is *submitted* to
-   * RAJUK/CDA, so being in it is not having it approved. The warning lifts
-   * once the project has moved past it.
+   * 2026-10-17 — "Plan Approved" is the milestone of the approval itself
+   * (PROJECT-STATUS-FLOW-PLAN.md), so the warning lifts on reaching it.
    */
   if (needsApproval && !PAST_APPROVAL.has(f.status)) {
     const text =
-      f.status === 'approval'
-        ? 'The plan is submitted but not yet approved. The Real Estate Development and Management Act 2010 expects an approved plan before a project is advertised or sold.'
-        : 'The plan approval stage has not been reached. The Real Estate Development and Management Act 2010 expects an approved plan before a project is advertised or sold.';
+      'The building plan is not approved yet. The Real Estate Development and Management Act 2010 expects an approved plan before a project is advertised or sold.';
     (f.block_before_approval ? blockers : warnings).push(text);
   }
   return { warnings, blockers };

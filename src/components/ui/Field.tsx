@@ -86,6 +86,15 @@ export function MoneyInput({
         value={value}
         className={cn(CONTROL, invalid && 'border-red-300', className)}
         {...props}
+        /*
+         * A prefilled amount is selected on focus, so typing replaces it
+         * instead of being appended (walkthrough 2026-10-17: 500000 + 2000000
+         * became 5000002000000).
+         */
+        onFocus={(e) => {
+          e.currentTarget.select();
+          props.onFocus?.(e);
+        }}
       />
       {valid && amount !== 0 && (
         <span className="mt-1 block text-xs font-medium text-admin-700" aria-live="polite">

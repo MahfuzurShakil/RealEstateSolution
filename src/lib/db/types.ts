@@ -1697,7 +1697,7 @@ export const PLOT_INSTALLMENT_PLAN: typeof DEFAULT_INSTALLMENT_PLAN = [
 export const SHARE_INSTALLMENT_PLAN: typeof DEFAULT_INSTALLMENT_PLAN = [
   { sequence_no: 1, label: 'Booking Amount', percentage: 20, schedule_type: 'on_booking', month_count: null },
   { sequence_no: 2, label: 'Monthly Installment', percentage: 40, schedule_type: 'monthly', month_count: 6 },
-  { sequence_no: 3, label: 'On Deed Registration', percentage: 40, schedule_type: 'on_handover', month_count: null },
+  { sequence_no: 3, label: 'Balance on deed day (paid before the deed is signed)', percentage: 40, schedule_type: 'on_handover', month_count: null },
 ];
 
 /** Document types for entity_type = 'payment' (Section 8.2) */

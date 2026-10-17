@@ -119,16 +119,10 @@ export function ProjectStatusCard({ project }: { project: Project }) {
 
   function open(status: ProjectStatus) {
     setTarget(status);
-    // a forward move closes the current stage first (client, 2026-10-11)
-    setDetails(order(status) > currentOrder ? { completed_on: todayLocal() } : {});
+    setDetails({});
     setFiles({});
-    setValues({
-      // the original start is kept on a step back, so the dialog asks for today
-      event_date:
-        status === 'under_construction' && order(status) > currentOrder
-          ? (project.actual_start_date ?? todayLocal())
-          : todayLocal(),
-    });
+    // the milestone's own date; a step back is dated today
+    setValues({ event_date: todayLocal() });
     setError('');
   }
 
@@ -141,44 +135,45 @@ export function ProjectStatusCard({ project }: { project: Project }) {
       return;
     }
     /*
-     * E2E 2026-10-12 #5/#6/#8: every problem is listed at once, the stage
-     * dates must run in order, and numbers cannot be negative.
+     * PROJECT-STATUS-FLOW-PLAN.md — a forward move records one milestone that
+     * has already happened; a step back records why. Every problem is listed
+     * at once (E2E 2026-10-12 #8).
      */
     const problems: string[] = [];
-    for (const f of config.fields) {
-      if (f.required && !values[f.key]?.trim()) problems.push(`${f.label.replace(' (required)', '')} is required`);
-    }
     const today = todayLocal();
-    if (values.event_date && values.event_date > today) problems.push('The date cannot be in the future');
-    if (values.event_date && lastEventDate && values.event_date < lastEventDate) {
-      problems.push(`The date cannot be before the previous stage move (${lastEventDate})`);
-    }
-    if (forwardMove) {
-      const done = details.completed_on;
-      if (!done) problems.push(`Say when ${label(project.status).toLowerCase()} was completed`);
-      else {
-        if (done > today) problems.push(`${label(project.status)} cannot be completed in the future`);
-        if (lastEventDate && done < lastEventDate)
-          problems.push(`${label(project.status)} cannot be completed before it started (${lastEventDate})`);
-        if (values.event_date && values.event_date < done)
-          problems.push(`${label(target)} cannot start before ${label(project.status).toLowerCase()} was completed (${done})`);
+    if (forwardMove && stage) {
+      if (!values.event_date) problems.push(`${stage.dateLabel} is required`);
+      for (const f of stage.fields) {
+        const v = details[f.key]?.trim();
+        if (f.required && !v) problems.push(`${f.label} is required`);
+        else if (v && f.type === 'number' && !(Number(v) >= 0)) problems.push(`${f.label} cannot be negative`);
+        else if (v && f.type === 'number' && f.required && !(Number(v) > 0)) problems.push(`${f.label} must be above 0`);
+        else if (v && f.type === 'date' && v > today) problems.push(`${f.label} cannot be in the future`);
+        else if (v && f.type === 'date' && values.event_date && v > values.event_date)
+          problems.push(`${f.label} cannot be after ${stage.dateLabel.toLowerCase()}`);
+      }
+      for (const d of stage.documents) {
+        if (d.required && !files[d.label]) problems.push(`Upload the ${d.label.toLowerCase()}`);
+      }
+      if (stage.remarksRequired && !values.remarks?.trim()) problems.push('Remarks are required');
+    } else {
+      for (const f of config.fields) {
+        if (f.required && !values[f.key]?.trim()) problems.push(`${f.label.replace(' (required)', '')} is required`);
       }
     }
-    for (const f of stage?.fields ?? []) {
-      const v = details[f.key]?.trim();
-      if (f.required && !v) problems.push(`${f.label} is required for this stage`);
-      else if (v && f.type === 'number' && !(Number(v) >= 0)) problems.push(`${f.label} cannot be negative`);
-      else if (v && f.type === 'number' && f.required && !(Number(v) > 0)) problems.push(`${f.label} must be above 0`);
-      else if (v && f.type === 'date' && v > today) problems.push(`${f.label} cannot be in the future`);
-    }
-    for (const d of stage?.documents ?? []) {
-      if (d.required && !files[d.label]) problems.push(`Upload the ${d.label.toLowerCase()} to move on`);
+    if (values.event_date && values.event_date > today) problems.push('The date cannot be in the future');
+    if (values.event_date && lastEventDate && values.event_date < lastEventDate) {
+      problems.push(`The date cannot be before the last status change (${lastEventDate})`);
     }
     if (problems.length > 0) {
       setError(problems.join('\n'));
       return;
     }
 
+    const column = (c: 'performed_by' | 'reference_no') => {
+      const f = stage?.fields.find((x) => x.column === c);
+      return (f ? details[f.key]?.trim() : values[c]?.trim()) || null;
+    };
     setBusy(true);
     try {
       await projectRepository.setStatus(
@@ -186,13 +181,13 @@ export function ProjectStatusCard({ project }: { project: Project }) {
         target,
         {
           event_date: values.event_date,
-          performed_by: values.performed_by?.trim() || null,
-          reference_no: values.reference_no?.trim() || null,
+          performed_by: forwardMove ? column('performed_by') : values.performed_by?.trim() || null,
+          reference_no: forwardMove ? column('reference_no') : values.reference_no?.trim() || null,
           remarks: values.remarks?.trim() || null,
-          details: Object.keys(details).length ? details : null,
+          details: forwardMove && Object.keys(details).length ? details : null,
         },
         userId,
-        (stage?.documents ?? [])
+        (forwardMove ? (stage?.documents ?? []) : [])
           .filter((d) => files[d.label])
           .map((d) => ({ document_type: d.type, label: d.label, file: files[d.label] })),
       );
@@ -293,7 +288,7 @@ export function ProjectStatusCard({ project }: { project: Project }) {
                     ) : (
                       <GitBranch className="size-4" />
                     )}
-                    {forward ? 'Move to' : 'Back to'} {label(status)}
+                    {forward ? 'Mark' : 'Back to'} {label(status)}
                   </Button>
                   {blocked.length > 0 && (
                     <ul className="mt-1.5 space-y-1 text-xs text-amber-700">
@@ -313,33 +308,14 @@ export function ProjectStatusCard({ project }: { project: Project }) {
         open={target !== null && config !== null}
         // on a tower shape the step's own title; elsewhere the shape's name for it
         title={
-          forwardMove && target
-            ? `Complete ${label(project.status)} → start ${label(target)}`
-            : !forwardMove && target
-              ? `Move back to ${label(target)}`
-              : target && shape.container === 'tower'
-                ? (config?.title ?? '')
-                : target
-                  ? `Move to ${label(target)}`
-                  : ''
+          forwardMove && target ? `Mark ${label(target)}` : target ? `Move back to ${label(target)}` : ''
         }
         subtitle={`${project.code} · ${project.name}`}
         tone={config?.tone ?? 'default'}
         icon={GitBranch}
-        confirmLabel={
-          forwardMove && target
-            ? `Complete & start ${label(target)}`
-            : !forwardMove
-              ? 'Move back'
-              : shape.container === 'tower'
-              ? (config?.confirmLabel ?? 'Confirm')
-              : target
-                ? label(target)
-                : 'Confirm'
-        }
-        message={forwardMove ? undefined : config?.question}
-        // landscape, two columns: what was completed beside what starts (2026-10-11)
-        size={forwardMove ? 'xl' : 'sm'}
+        confirmLabel={forwardMove && target ? `Mark ${label(target)}` : 'Move back'}
+        message={forwardMove ? stage?.meaning : config?.question}
+        size={forwardMove ? 'lg' : 'sm'}
         busy={busy}
         onCancel={() => setTarget(null)}
         onConfirm={confirm}
@@ -360,20 +336,16 @@ export function ProjectStatusCard({ project }: { project: Project }) {
             </p>
           </div>
         )}
-        <div className={forwardMove ? 'grid items-start gap-5 lg:grid-cols-2' : ''}>
-        {forwardMove && (
-          <div className="grid gap-3 rounded-xl border border-admin-100 bg-admin-50/40 p-3 sm:grid-cols-2 [&>p]:sm:col-span-2">
-            <p className="text-sm font-semibold text-ink">
-              1 · {label(project.status)} completed
-            </p>
-            <Field label={`${label(project.status)} completed on`} required>
+        {forwardMove && stage ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={stage.dateLabel} required>
               <TextInput
                 type="date"
-                value={details.completed_on ?? ''}
-                onChange={(e) => setDetails((d) => ({ ...d, completed_on: e.target.value }))}
+                value={values.event_date ?? ''}
+                onChange={(e) => setValues((v) => ({ ...v, event_date: e.target.value }))}
               />
             </Field>
-            {stage?.fields.map((f) => (
+            {stage.fields.map((f) => (
               <Field key={f.key} label={f.label} required={f.required}>
                 {f.type === 'select' ? (
                   <SelectInput
@@ -397,7 +369,7 @@ export function ProjectStatusCard({ project }: { project: Project }) {
                 )}
               </Field>
             ))}
-            {stage?.documents.map((doc) => (
+            {stage.documents.map((doc) => (
               <Field key={doc.label} label={doc.label} required={doc.required}>
                 <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-hairline bg-white px-3 py-2 text-sm text-ink-muted hover:border-admin-300">
                   <Upload className="size-4 shrink-0 text-admin-600" />
@@ -418,17 +390,17 @@ export function ProjectStatusCard({ project }: { project: Project }) {
                 </label>
               </Field>
             ))}
+            <Field label="Remarks" required={stage.remarksRequired} className="sm:col-span-2">
+              <TextArea
+                value={values.remarks ?? ''}
+                placeholder={stage.remarksPlaceholder}
+                onChange={(e) => setValues((v) => ({ ...v, remarks: e.target.value }))}
+              />
+            </Field>
           </div>
+        ) : (
+          config?.fields.map(renderField)
         )}
-        <div className={forwardMove ? 'rounded-xl border border-hairline bg-white p-3' : ''}>
-          {forwardMove && (
-            <p className="mb-1 text-sm font-semibold text-ink">
-              2 · {target ? label(target) : ''} starts
-            </p>
-          )}
-          {config?.fields.map(renderField)}
-        </div>
-        </div>
         {error && <p className="mt-2 whitespace-pre-line text-xs text-red-600">{error}</p>}
       </ConfirmDialog>
     </>
