@@ -1542,6 +1542,11 @@ export type DiscountApprovalStatus = (typeof DISCOUNT_APPROVAL_STATUSES)[number]
 
 export interface Booking extends BaseEntity {
   code: string;                       // BOOK-2026-001
+  /**
+   * v32 — shared reference (BKG-2026-001) when this booking was made together
+   * with others for the same buyer in one go. Null on a single-unit booking.
+   */
+  booking_group?: string | null;
   customer_id: UUID;
   unit_id: UUID;
   lead_id?: UUID | null;

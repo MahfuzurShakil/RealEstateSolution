@@ -12,6 +12,7 @@ import {
   Plus,
   Trash2,
   UserRound,
+  Layers,
 } from 'lucide-react';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { Badge } from '@/components/ui/Badge';
@@ -88,6 +89,11 @@ export default function CustomerDetailPage() {
                 <Plus className="size-4" /> Book a unit
               </Button>
             </Link>
+            <Link href={`/admin/bookings/new-multi?customer=${customer.id}`}>
+              <Button variant="outline">
+                <Layers className="size-4" /> Book several units
+              </Button>
+            </Link>
             <Link href={`/admin/customers/${customer.id}/edit`}>
               <Button variant="outline">
                 <Pencil className="size-4" /> Edit
@@ -160,11 +166,18 @@ export default function CustomerDetailPage() {
               <CardHeader
                 title="Bookings"
                 action={
-                  <Link href={`/admin/bookings/new?customer=${customer.id}`}>
-                    <Button size="sm">
-                      <Plus className="size-4" /> Book a unit
-                    </Button>
-                  </Link>
+                  <div className="flex gap-2">
+                    <Link href={`/admin/bookings/new-multi?customer=${customer.id}`}>
+                      <Button size="sm" variant="outline">
+                        <Layers className="size-4" /> Book several
+                      </Button>
+                    </Link>
+                    <Link href={`/admin/bookings/new?customer=${customer.id}`}>
+                      <Button size="sm">
+                        <Plus className="size-4" /> Book a unit
+                      </Button>
+                    </Link>
+                  </div>
                 }
               />
               {customer.bookings.length === 0 ? (
@@ -192,7 +205,17 @@ export default function CustomerDetailPage() {
                           <Building2 className="size-5" />
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-ink">{booking.code}</p>
+                          <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
+                            {booking.code}
+                            {customer.unit_codes[booking.id] && (
+                              <span className="text-ink-muted">· {customer.unit_codes[booking.id]}</span>
+                            )}
+                            {booking.booking_group && (
+                              <Badge tone="blue">
+                                <Layers className="size-3.5" /> {booking.booking_group}
+                              </Badge>
+                            )}
+                          </p>
                           <p className="text-xs text-ink-muted">
                             {formatDate(booking.booking_date)} ·{' '}
                             {formatBdt(booking.final_price )}

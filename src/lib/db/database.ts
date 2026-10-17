@@ -762,6 +762,18 @@ export class AppDatabase extends Dexie {
       units:
         'id, code, tower_id, floor, status, unit_type, allocation_type, allocated_to_owner_id, for_sale_by, [tower_id+floor]',
     });
+
+    /*
+     * v32 — multi-unit booking. A buyer taking two or three flats in one go
+     * still gets one booking per unit (schedule, receipts, refund and
+     * delivery all hang off one booking = one unit); `booking_group` is the
+     * shared reference that ties them together. Indexed so a group's siblings
+     * load in one query. Older bookings simply carry no group.
+     */
+    this.version(32).stores({
+      bookings:
+        'id, &code, customer_id, unit_id, lead_id, status, discount_approval_status, booking_date, booked_by, booking_group, created_at',
+    });
   }
 }
 

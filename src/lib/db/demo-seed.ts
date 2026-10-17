@@ -1427,6 +1427,8 @@ async function seedDemoBookings(
     await db.customers.update(saved.id, { created_at: createdAt, updated_at: createdAt });
   }
 
+  // v32 — one group code per demo group_key, issued on first use
+  const groupCodes = new Map<string, string>();
   for (const demo of DEMO_BOOKINGS) {
     const customerId = customerIds.get(demo.customer_key);
     const unitId = unitIds.get(`${demo.project_name}::${demo.unit_code}`);
@@ -1452,6 +1454,12 @@ async function seedDemoBookings(
         booking_amount: demo.booking_amount,
         installment_tenure_months: demo.installment_tenure_months ?? null,
         booked_by: userIds.get(demo.booked_by_key) ?? null,
+        booking_group: demo.group_key
+          ? (groupCodes.get(demo.group_key) ??
+            groupCodes
+              .set(demo.group_key, await bookingRepository.generateGroupCode())
+              .get(demo.group_key))
+          : null,
       },
       createdBy,
     );

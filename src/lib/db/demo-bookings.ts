@@ -199,6 +199,11 @@ export interface DemoBooking {
     note: string;
   };
   cancel?: { reason: string };
+  /**
+   * v32 — bookings sharing a key were made together in one go and get one
+   * `booking_group` code between them.
+   */
+  group_key?: string;
 }
 
 export const DEMO_BOOKINGS: DemoBooking[] = [
@@ -302,6 +307,8 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     unit_code: 'AG-5A',
     booked_by_key: 'rakib',
     days_ago: 12,
+    // v32 — the multi-unit buyer: AG-5A and AG-6B taken together
+    group_key: 'zubair-agrabad',
     floor_premium: 0,
     facing_premium: 400000,
     parking_charge: 1000000,
@@ -324,13 +331,14 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     },
   },
 
-  // second booking for the same buyer — approved discount, confirmed
+  // second unit of the same go — approved discount, confirmed
   {
     customer_key: 'zubair',
     project_name: 'Nokshi Agrabad Trade Centre',
     unit_code: 'AG-6B',
     booked_by_key: 'rakib',
-    days_ago: 8,
+    days_ago: 12,
+    group_key: 'zubair-agrabad',
     floor_premium: 0,
     facing_premium: 200000,
     parking_charge: 500000,
@@ -341,7 +349,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     payments: [
       {
         amount: 1800000,
-        days_ago: 8,
+        days_ago: 12,
         method: 'bank',
         reference_no: 'BRAC/TRF/778430',
         notes: 'Second unit, same account',

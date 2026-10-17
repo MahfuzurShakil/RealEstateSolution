@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, Building2, Pencil, Printer, Trash2, Undo2, UserRound } from 'lucide-react';
+import { ArrowLeft, Building2, Layers, Pencil, Printer, Trash2, Undo2, UserRound } from 'lucide-react';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { BookingStatusCard } from '@/components/admin/bookings/BookingStatusCard';
 import { DeliveryCard } from '@/components/admin/bookings/DeliveryCard';
@@ -129,6 +129,28 @@ export default function BookingDetailPage() {
           </div>
         }
       />
+
+      {/* v32 — booked together with other units for the same buyer */}
+      {booking.booking_group && (
+        <div className="mb-5 flex flex-wrap items-center gap-2 rounded-2xl border border-hairline bg-white p-4 text-sm shadow-sm">
+          <Badge tone="blue">
+            <Layers className="size-3.5" /> {booking.booking_group}
+          </Badge>
+          <span className="text-ink-muted">
+            Booked together with {booking.group_siblings.length} other unit
+            {booking.group_siblings.length === 1 ? '' : 's'}:
+          </span>
+          {booking.group_siblings.map((s) => (
+            <Link
+              key={s.id}
+              href={`/admin/bookings/${s.id}`}
+              className="font-medium text-admin-700 hover:underline"
+            >
+              {s.unit_code} ({s.code} · {BOOKING_STATUS_META[s.status].label})
+            </Link>
+          ))}
+        </div>
+      )}
 
       <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
         <div className="min-w-0 lg:order-1">

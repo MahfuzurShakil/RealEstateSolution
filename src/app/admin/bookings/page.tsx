@@ -6,6 +6,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Building2,
   FileSignature,
+  Layers,
   Plus,
   Search,
   ShieldAlert,
@@ -73,6 +74,14 @@ export default function BookingsListPage() {
     [customers],
   );
   const unitById = useMemo(() => new Map((units ?? []).map((u) => [u.id, u])), [units]);
+  /** v32 — how many bookings share each group, for the "3 units" badge */
+  const groupSize = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const b of allBookings ?? []) {
+      if (b.booking_group) m.set(b.booking_group, (m.get(b.booking_group) ?? 0) + 1);
+    }
+    return m;
+  }, [allBookings]);
 
   /*
    * v27 — the shape each unit is sold under, so the list shows a plot's katha
@@ -136,11 +145,18 @@ export default function BookingsListPage() {
         title="Bookings"
         subtitle="Units taken by customers — on hold, awaiting discount approval, confirmed or cancelled."
         action={
-          <Link href="/admin/bookings/new">
-            <Button>
-              <Plus className="size-4" /> Add Booking
-            </Button>
-          </Link>
+          <div className="flex gap-2">
+            <Link href="/admin/bookings/new-multi">
+              <Button variant="outline">
+                <Layers className="size-4" /> Book several units
+              </Button>
+            </Link>
+            <Link href="/admin/bookings/new">
+              <Button>
+                <Plus className="size-4" /> Add Booking
+              </Button>
+            </Link>
+          </div>
         }
       />
 
@@ -311,6 +327,13 @@ export default function BookingsListPage() {
                       footer={`Booked ${formatDate(booking.booking_date)}`}
                       facts={
                         <>
+                          {booking.booking_group && (
+                            <Badge tone="blue">
+                              <Layers className="size-3.5" />
+                              {booking.booking_group} · {groupSize.get(booking.booking_group) ?? 1}{' '}
+                              units
+                            </Badge>
+                          )}
                           {unit && (
                             <Badge tone="teal">
                               <Building2 className="size-3.5" />

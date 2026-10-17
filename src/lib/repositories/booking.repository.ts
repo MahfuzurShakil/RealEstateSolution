@@ -46,6 +46,8 @@ export interface BookingWithRelations extends Booking {
   approver: User | undefined;
   /** money actually received against this booking so far */
   amount_received: number;
+  /** v32 — the other bookings made in the same go, with their unit codes */
+  group_siblings: Array<{ id: string; code: string; unit_code: string; status: BookingStatus }>;
 }
 
 export interface CustomerFilters {
@@ -61,6 +63,8 @@ export interface CustomerFilters {
 
 export interface CustomerWithRelations extends Customer {
   bookings: Booking[];
+  /** v32 — unit code per booking id, so a buyer with several flats sees which is which */
+  unit_codes: Record<string, string>;
   lead: Lead | undefined;
   /**
    * Money roll-up across this buyer's active bookings. Instalments hang off a
@@ -188,9 +192,16 @@ class CustomerRepository extends BaseRepository<Customer> {
     }
     const total_value = active.reduce((sum, b) => sum + (Number(b.final_price) || 0), 0);
 
+    const unit_codes: Record<string, string> = {};
+    for (const booking of bookings) {
+      const unit = await db.units.get(booking.unit_id);
+      if (unit) unit_codes[booking.id] = unit.code;
+    }
+
     return {
       ...customer,
       bookings,
+      unit_codes,
       lead: customer.lead_id ? await db.leads.get(customer.lead_id) : undefined,
       finance: {
         total_value,
@@ -256,6 +267,8 @@ export interface BookingInput {
   booking_amount: number;
   installment_tenure_months?: number | null;
   booked_by: string | null;
+  /** v32 — set by `createGroupBooking`; a single booking leaves it null */
+  booking_group?: string | null;
   /**
    * Optional receipt taken at the same moment as the booking. Recording it
    * creates a real `payments` row — `booking_amount_received` is then derived
@@ -343,6 +356,7 @@ class BookingRepository extends BaseRepository<Booking> {
         status,
         cancellation_reason: null,
         booked_by: input.booked_by,
+        booking_group: input.booking_group ?? null,
       },
       createdBy,
     );
@@ -364,6 +378,61 @@ class BookingRepository extends BaseRepository<Booking> {
 
     await this.applySideEffects(booking, createdBy);
     return booking;
+  }
+
+  async generateGroupCode(): Promise<string> {
+    const codes = (await db.bookings.toArray())
+      .map((b) => b.booking_group)
+      .filter((c): c is string => Boolean(c));
+    return nextCode('BKG', codes);
+  }
+
+  /**
+   * v32 — one buyer, several units, one go. Each unit still becomes its own
+   * booking (its own price, discount check, schedule and receipts), all
+   * carrying the same `booking_group`. Every unit is checked before anything
+   * is written, so a clash on the third unit does not leave the first two
+   * booked on their own.
+   */
+  async createGroupBooking(
+    shared: Pick<
+      BookingInput,
+      'customer_id' | 'lead_id' | 'booking_date' | 'booked_by' | 'installment_tenure_months'
+    >,
+    lines: Array<
+      Omit<
+        BookingInput,
+        'customer_id' | 'lead_id' | 'booking_date' | 'booked_by' | 'installment_tenure_months' | 'booking_group'
+      >
+    >,
+    createdBy: string | null = null,
+  ): Promise<{ booking_group: string | null; bookings: Booking[] }> {
+    if (lines.length === 0) throw new Error('Pick at least one unit.');
+    const seen = new Set<string>();
+    for (const line of lines) {
+      if (seen.has(line.unit_id)) throw new Error('The same unit is picked twice.');
+      seen.add(line.unit_id);
+      const unit = await db.units.get(line.unit_id);
+      if (!unit) throw new Error('Unit not found');
+      const clash = await this.activeForUnit(line.unit_id);
+      if (clash) throw new Error(`${clash.code} is already active on ${unit.code}.`);
+    }
+
+    // a single unit is just a booking — no group to tie together
+    const booking_group = lines.length > 1 ? await this.generateGroupCode() : null;
+    const bookings: Booking[] = [];
+    for (const line of lines) {
+      bookings.push(
+        await this.createBooking({ ...shared, ...line, booking_group }, createdBy),
+      );
+    }
+    return { booking_group, bookings };
+  }
+
+  /** The other bookings made in the same go, oldest code first. */
+  async listGroup(bookingGroup: string): Promise<Booking[]> {
+    const rows = await db.bookings.where('booking_group').equals(bookingGroup).toArray();
+    return rows.sort((a, b) => a.code.localeCompare(b.code));
   }
 
   /**
@@ -672,7 +741,12 @@ class BookingRepository extends BaseRepository<Booking> {
       const customerById = new Map(customers.map((c) => [c.id, c]));
       const unitById = new Map(units.map((u) => [u.id, u]));
       rows = rows.filter((b) =>
-        [b.code, customerById.get(b.customer_id)?.name, unitById.get(b.unit_id)?.code]
+        [
+          b.code,
+          b.booking_group,
+          customerById.get(b.customer_id)?.name,
+          unitById.get(b.unit_id)?.code,
+        ]
           .filter(Boolean)
           .some((f) => String(f).toLowerCase().includes(q)),
       );
@@ -696,8 +770,18 @@ class BookingRepository extends BaseRepository<Booking> {
     const tower = unit ? await db.towers.get(unit.tower_id) : undefined;
     const project = tower ? await db.projects.get(tower.project_id) : undefined;
 
+    const group_siblings: BookingWithRelations['group_siblings'] = [];
+    if (booking.booking_group) {
+      for (const b of await this.listGroup(booking.booking_group)) {
+        if (b.id === booking.id) continue;
+        const u = await db.units.get(b.unit_id);
+        group_siblings.push({ id: b.id, code: b.code, unit_code: u?.code ?? '—', status: b.status });
+      }
+    }
+
     return {
       ...booking,
+      group_siblings,
       unit,
       tower,
       project,
