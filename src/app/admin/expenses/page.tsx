@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Building2, Plus, ReceiptText, Truck, Wallet, X } from 'lucide-react';
 import { ExpenseFormModal } from '@/components/admin/finance/ExpenseFormModal';
+import { usePurchaseMode } from '@/lib/settings/use-purchase-mode';
 import { PaySupplierModal } from '@/components/admin/finance/PaySupplierModal';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -75,6 +76,7 @@ function ExpensesPage() {
   const [toDate, setToDate] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
+  const { procurement } = usePurchaseMode();
 
   const expenses = useLiveQuery(
     () =>
@@ -256,9 +258,11 @@ function ExpensesPage() {
               columns={csvColumns}
               filenamePrefix="expenses"
             />
-            <Button variant="outline" onClick={() => setPayOpen(true)}>
-              <Truck className="size-4" /> Pay a Supplier
-            </Button>
+            {procurement && (
+              <Button variant="outline" onClick={() => setPayOpen(true)}>
+                <Truck className="size-4" /> Pay a Supplier
+              </Button>
+            )}
             <Button onClick={() => setModalOpen(true)}>
               <Plus className="size-4" /> Record Cost
             </Button>

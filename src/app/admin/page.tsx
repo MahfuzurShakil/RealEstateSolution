@@ -1,5 +1,6 @@
 'use client';
 
+import { usePurchaseMode } from '@/lib/settings/use-purchase-mode';
 import { useLiveQuery } from 'dexie-react-hooks';
 import Link from 'next/link';
 import {
@@ -61,6 +62,7 @@ import { financeDashboardRepository, collectionRepository } from '@/lib/reposito
  */
 export default function AdminDashboardPage() {
   const { role, userName } = useMockSession();
+  const { procurement } = usePurchaseMode();
   const see = (module: Parameters<typeof canView>[1]) => canView(role, module);
   const seesMoney = see('dashboard') || see('finance_collection');
 
@@ -302,7 +304,7 @@ export default function AdminDashboardPage() {
       </Card>
       )}
 
-      {pendingRequests && pendingRequests.length > 0 && (
+      {procurement && pendingRequests && pendingRequests.length > 0 && (
         <Card className="mt-6">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="text-base font-semibold text-ink">Material requests waiting</h2>

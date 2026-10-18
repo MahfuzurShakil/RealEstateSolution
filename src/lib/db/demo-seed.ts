@@ -33,6 +33,8 @@ import {
   supplierBillRepository,
   siteProgressUpdateRepository,
   towerWorkItemRepository,
+  workItemBudgetRepository,
+  directPurchaseRepository,
   goodsReceiptRepository,
   purchaseOrderItemRepository,
   purchaseOrderRepository,
@@ -70,6 +72,7 @@ import { DEMO_DEVELOPMENT, DEMO_NO_DEVELOPMENT_LANDS } from './demo-development'
 import { DEMO_BOOKINGS, DEMO_CUSTOMERS, DEMO_DISCOUNT_RULES } from './demo-bookings';
 import { DEMO_LEADS, DEMO_USER_JOINED_DAYS_AGO, DEMO_USERS } from './demo-leads';
 import { DEMO_PROJECTS } from './demo-projects';
+import { templateFor } from '../domain/construction-cost';
 import { DEMO_MATERIAL_REQUESTS, DEMO_TOWER_PROGRESS } from './demo-site-progress';
 import { DEMO_EXPENSES, DEMO_REFUNDS } from './demo-finance';
 import {
@@ -930,6 +933,8 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
     createdBy,
   );
   const requestIds = await seedDemoSiteProgress(projectIds, userIds, createdBy);
+  // after the site log: spend is told against how far each work item has got
+  await seedDemoDirectPurchases(projectIds, createdBy);
   await seedDemoProcurement(projectIds, userIds, requestIds, createdBy);
   /*
    * The catalogue is derived from the procurement rows rather than listed
@@ -1520,6 +1525,95 @@ async function seedDemoBookings(
  * cached percentage by hand: they fall out of the logged readings, which is
  * the only way to be sure the Section 6.3 behaviour actually works.
  */
+/**
+ * DIRECT-PURCHASE-PLAN.md B2/B3 — every demo tower under construction gets a
+ * budget per work item from the templates, and the work already done gets
+ * its costs, each with a generated bill image. The spend factors are chosen
+ * so the demo shows all three states: on budget, spending ahead of the work,
+ * and over budget (Foundation of Green Residence Tower A).
+ */
+async function seedDemoDirectPurchases(
+  projectIds: Map<string, string>,
+  createdBy: string | null,
+): Promise<void> {
+  const db = getDb();
+  const VENDOR: Record<string, string> = {
+    material: 'Bismillah Traders, Mirpur',
+    labour: 'Site labour (muster roll)',
+    machinery_rent: 'Rahman Earthmovers',
+    transport: 'Haque Transport',
+    subcontract: 'Karim Piling & Construction',
+    utility: 'DESCO / WASA',
+    other: 'Geo-Tech Soil Lab',
+  };
+  // spend as a multiple of (budget × progress): >1 runs ahead, <1 behind
+  const FACTOR = [1.08, 0.94, 1.3, 0.9, 1.0, 0.85, 1.05, 0.95];
+  let k = 0;
+
+  for (const demo of DEMO_TOWER_PROGRESS) {
+    const projectId = projectIds.get(demo.project_name);
+    if (!projectId) continue;
+    const tower = (await db.towers.where('project_id').equals(projectId).toArray()).find(
+      (t) => t.name === demo.tower_name,
+    );
+    if (!tower) continue;
+    const area = (await workItemBudgetRepository.towerSaleableArea(tower.id)) || 18000;
+    const items = (await towerWorkItemRepository.listForTower(tower.id)).sort(
+      (a, b) => a.sequence_no - b.sequence_no,
+    );
+
+    for (const [index, item] of items.entries()) {
+      await workItemBudgetRepository.saveForWorkItem(
+        item.id,
+        templateFor(item.name)
+          .filter((t) => t.rate_per_sqft > 0)
+          .map((t) => ({
+            cost_type: t.cost_type,
+            description: t.description,
+            quantity: area,
+            unit: 'sqft',
+            rate: t.rate_per_sqft,
+            budgeted_amount: Math.round(area * t.rate_per_sqft),
+          })),
+        createdBy,
+      );
+      if (!(item.actual_progress_pct > 0)) continue;
+
+      const lines = await workItemBudgetRepository.listForWorkItem(item.id);
+      const factor = FACTOR[index % FACTOR.length];
+      for (const line of lines) {
+        const amount =
+          Math.round((line.budgeted_amount * (item.actual_progress_pct / 100) * factor) / 100) * 100;
+        if (amount <= 0) continue;
+        const code = `Bill — ${line.description}`;
+        const png = await makeSamplePng(code);
+        const file = png ? new File([png], `${slugify(code)}.png`, { type: 'image/png' }) : null;
+        if (!file) continue;
+        k += 1;
+        await directPurchaseRepository.record(
+          {
+            work_item_id: item.id,
+            budget_line_id: line.id,
+            cost_type: line.cost_type,
+            description: line.description,
+            vendor_name: VENDOR[line.cost_type] ?? 'Local vendor',
+            supplier_id: null,
+            quantity: null,
+            unit: null,
+            rate: null,
+            amount,
+            purchase_date: daysFromToday(-(5 + ((k * 9) % 150))).slice(0, 10),
+            is_asset: false,
+            notes: null,
+          },
+          [{ file, document_type: line.cost_type === 'labour' ? 'muster_roll' : 'bill' }],
+          createdBy,
+        );
+      }
+    }
+  }
+}
+
 async function seedDemoSiteProgress(
   projectIds: Map<string, string>,
   userIds: Map<string, string>,
@@ -2325,6 +2419,8 @@ export async function clearDemoData(): Promise<void> {
     db.payment_installments.clear(),
     db.refunds.clear(),
     db.expenses.clear(),
+    db.work_item_budget_lines.clear(),
+    db.direct_purchases.clear(),
     db.user_project_assignments.clear(),
   ]);
   setClearedFlag(true);

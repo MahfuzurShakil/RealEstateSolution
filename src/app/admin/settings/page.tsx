@@ -1,5 +1,7 @@
 'use client';
 
+import type { PurchaseMode } from '@/lib/db/types';
+import { purchaseModeOf } from '@/lib/domain/construction-cost';
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Building2, Check, Globe, Phone, Save } from 'lucide-react';
@@ -67,6 +69,9 @@ function SettingsForm({
     block_sales_without_land: settings?.block_sales_without_land ?? false,
     block_sales_before_approval: settings?.block_sales_before_approval ?? false,
   });
+  const [purchaseMode, setPurchaseMode] = useState<PurchaseMode>(
+    purchaseModeOf(settings?.purchase_mode),
+  );
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -97,6 +102,7 @@ function SettingsForm({
         logo_url: form.logo_url.trim() || null,
         notes: form.notes.trim() || null,
         ...gates,
+        purchase_mode: purchaseMode,
       });
       setSaved(true);
     } finally {
@@ -287,6 +293,37 @@ function SettingsForm({
           </div>
         </Card>
 
+        <Card>
+          <CardHeader title="How you buy" />
+          <p className="mb-3 text-xs text-ink-muted">
+            Decides which buying screens are shown. Nothing recorded is hidden from reports or
+            deleted when you switch.
+          </p>
+          <div className="space-y-2">
+            {PURCHASE_MODE_OPTIONS.map((o) => (
+              <label
+                key={o.value}
+                className="flex cursor-pointer items-start gap-3 rounded-xl border border-hairline p-3 transition-colors hover:bg-admin-50/40"
+              >
+                <input
+                  type="radio"
+                  name="purchase_mode"
+                  className="mt-0.5 size-4 shrink-0 accent-admin-600"
+                  checked={purchaseMode === o.value}
+                  onChange={() => {
+                    setPurchaseMode(o.value);
+                    setSaved(false);
+                  }}
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-ink">{o.label}</span>
+                  <span className="mt-0.5 block text-xs text-ink-muted">{o.detail}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </Card>
+
         <div className="flex flex-wrap items-center gap-3">
           <Button onClick={save} disabled={saving}>
             <Save className="size-4" /> {saving ? 'Saving…' : 'Save settings'}
@@ -354,6 +391,22 @@ function AlwaysOnGate({ label, detail }: { label: string; detail: string }) {
     </div>
   );
 }
+
+const PURCHASE_MODE_OPTIONS: { value: PurchaseMode; label: string; detail: string }[] = [
+  {
+    value: 'direct',
+    label: 'Direct purchase',
+    detail:
+      'The site buys and records each cost against a work item, with the bill attached, and it is paid from Payments. For a small developer.',
+  },
+  {
+    value: 'procurement',
+    label: 'Procurement',
+    detail:
+      'Material request → approval → purchase order → receive → supplier bill → voucher. For a developer with a store and a purchase team.',
+  },
+  { value: 'both', label: 'Both', detail: 'Every buying screen is shown; each cost uses whichever path fits.' },
+];
 
 /** One pipeline gate. Extracted because there are three of them now. */
 function GateToggle({

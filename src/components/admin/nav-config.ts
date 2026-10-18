@@ -29,6 +29,11 @@ export interface NavItem {
    * Progress group went (2026-10-11); kept for the next item that needs it.
    */
   visibleFor?: (role: UserRole) => boolean;
+  /**
+   * DIRECT-PURCHASE-PLAN.md §7: shown only when the company's purchase mode
+   * includes procurement (request → PO → receive → bill).
+   */
+  procurementOnly?: boolean;
 }
 
 /**
@@ -99,12 +104,18 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Material Requests',
         href: '/admin/material-requests',
         module: 'material_request',
+        procurementOnly: true,
       },
-      { label: 'Purchase Orders', href: '/admin/purchase-orders', module: 'procurement' },
-      { label: 'Suppliers', href: '/admin/suppliers', module: 'procurement' },
-      { label: 'Stock', href: '/admin/stock', module: 'procurement' },
-      { label: 'Material Items', href: '/admin/material-items', module: 'procurement' },
-      { label: 'Supplier Vouchers', href: '/admin/supplier-vouchers', module: 'supplier_voucher' },
+      { label: 'Purchase Orders', href: '/admin/purchase-orders', module: 'procurement', procurementOnly: true },
+      { label: 'Suppliers', href: '/admin/suppliers', module: 'procurement', procurementOnly: true },
+      { label: 'Stock', href: '/admin/stock', module: 'procurement', procurementOnly: true },
+      { label: 'Material Items', href: '/admin/material-items', module: 'procurement', procurementOnly: true },
+      {
+        label: 'Supplier Vouchers',
+        href: '/admin/supplier-vouchers',
+        module: 'supplier_voucher',
+        procurementOnly: true,
+      },
     ],
   },
   {

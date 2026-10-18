@@ -39,6 +39,7 @@ export type EntityType =
   | 'purchase_order'
   | 'supplier_voucher'
   | 'supplier_bill'
+  | 'direct_purchase'
   | 'blog_post';
 
 export interface DocumentRecord extends BaseEntity {
@@ -170,6 +171,14 @@ export interface CompanySettings extends BaseEntity {
    */
   block_sales_without_land?: boolean | null;
   block_sales_before_approval?: boolean | null;
+  /**
+   * DIRECT-PURCHASE-PLAN.md §7 (client, 2026-10-18). How this company buys:
+   * `direct` — the site buys and records the cost against a work item (small
+   * developers, the default); `procurement` — request → PO → receive → bill;
+   * `both`. Only decides which menus and actions are shown; no data is hidden
+   * from the database or deleted. Absent = `direct`.
+   */
+  purchase_mode?: PurchaseMode | null;
   /**
    * BRD DEV-004 — a plot that needs no development at all.
    *
@@ -1914,6 +1923,87 @@ export const MATERIAL_UNIT_OPTIONS = [
  * Default WBS applied to a new tower (Section 6.2 note). Equal weight, in the
  * order the work actually happens; the Project Manager edits it afterwards.
  */
+/* ------------------------------------------------------------------ *
+ * Direct purchase & work-item budget (DIRECT-PURCHASE-PLAN.md, v34)
+ * ------------------------------------------------------------------ */
+
+export const PURCHASE_MODES = ['direct', 'procurement', 'both'] as const;
+export type PurchaseMode = (typeof PURCHASE_MODES)[number];
+
+/** What a taka was spent on — shared by budget lines and direct purchases. */
+export const CONSTRUCTION_COST_TYPES = [
+  'material',
+  'labour',
+  'machinery_rent',
+  'transport',
+  'subcontract',
+  'utility',
+  'other',
+] as const;
+export type ConstructionCostType = (typeof CONSTRUCTION_COST_TYPES)[number];
+
+/**
+ * One line of a work item's budget ("Piling", "Rod 16mm", "Excavator rent").
+ * `budgeted_amount` is the figure that counts; quantity × rate is optional
+ * working shown beside it.
+ */
+export interface WorkItemBudgetLine extends BaseEntity {
+  work_item_id: UUID;
+  /** denormalised for the project roll-up, which reads every line at once */
+  project_id: UUID;
+  tower_id: UUID;
+  cost_type: ConstructionCostType;
+  description: string;
+  quantity?: number | null;
+  unit?: string | null;
+  rate?: number | null;
+  budgeted_amount: number;
+  sort_order: number;
+}
+
+export const DIRECT_PURCHASE_PAYMENT_STATUSES = ['pending', 'part_paid', 'paid'] as const;
+export type DirectPurchasePaymentStatus = (typeof DIRECT_PURCHASE_PAYMENT_STATUSES)[number];
+
+/**
+ * A cost bought and recorded straight against a work item — no request, no
+ * order (DIRECT-PURCHASE-PLAN.md §3). This is the **actual cost**: it counts
+ * when recorded; paying it later only clears what is owed. Cannot be saved
+ * without at least one attachment (bill, challan, muster roll, photo).
+ */
+export interface DirectPurchase extends BaseEntity {
+  code: string;                       // DP-2026-001
+  project_id: UUID;
+  tower_id: UUID;
+  work_item_id: UUID;
+  budget_line_id?: UUID | null;
+  cost_type: ConstructionCostType;
+  description: string;
+  /** free text for the small vendor with no record; supplier when one exists */
+  vendor_name: string;
+  supplier_id?: UUID | null;
+  quantity?: number | null;
+  unit?: string | null;
+  /** per unit; null for a lump sum */
+  rate?: number | null;
+  amount: number;
+  purchase_date: ISODate;
+  /** machinery bought, not rented — a company asset (plan decision 5) */
+  is_asset: boolean;
+  /** cached from its payments (B4); `pending` until then */
+  paid_amount: number;
+  payment_status: DirectPurchasePaymentStatus;
+  notes?: string | null;
+}
+
+/** Document types for entity_type = 'direct_purchase' */
+export const DIRECT_PURCHASE_DOCUMENT_TYPES = [
+  'bill',
+  'challan',
+  'muster_roll',
+  'photo',
+  'other',
+] as const;
+
 export const DEFAULT_TOWER_WORK_ITEMS = [
   'Foundation',
   'Ground Floor',

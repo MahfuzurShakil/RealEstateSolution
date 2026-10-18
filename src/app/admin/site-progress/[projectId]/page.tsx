@@ -4,10 +4,13 @@ import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, Building2, Package, Plus } from 'lucide-react';
+import { ArrowLeft, Building2, Package, Plus, Receipt } from 'lucide-react';
 import { ActivityTimeline } from '@/components/admin/site-progress/ActivityTimeline';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { ConstructionMaterialsTab } from '@/components/admin/construction/ConstructionMaterialsTab';
+import { ConstructionCostTab } from '@/components/admin/construction/ConstructionCostTab';
+import { DirectPurchaseModal } from '@/components/admin/construction/DirectPurchaseModal';
+import { usePurchaseMode } from '@/lib/settings/use-purchase-mode';
 import { ProjectProgressSummary } from '@/components/admin/site-progress/ProjectProgressSummary';
 import { ProgressPhotoGallery } from '@/components/admin/site-progress/ProgressPhotoGallery';
 import { ProgressUpdateModal } from '@/components/admin/site-progress/ProgressUpdateModal';
@@ -28,7 +31,7 @@ import { PROJECT_STATUS_META } from '@/lib/domain/project';
 import { cn } from '@/lib/utils/cn';
 import { todayLocal } from '@/lib/utils/format';
 
-type Tab = 'overview' | 'breakdown' | 'log' | 'materials' | 'photos' | 'timeline';
+type Tab = 'overview' | 'breakdown' | 'cost' | 'log' | 'materials' | 'photos' | 'timeline';
 
 
 /**
@@ -49,13 +52,15 @@ function ProjectProgressPage() {
   const params = useSearchParams();
   const [tab, setTab] = useState<Tab>(() => {
     const t = params.get('tab');
-    return t === 'materials' || t === 'log' || t === 'breakdown' ? t : 'overview';
+    return t === 'materials' || t === 'log' || t === 'breakdown' || t === 'cost' ? t : 'overview';
   });
   const [materialsSub] = useState<'requests' | 'incoming' | 'materials' | undefined>(() => {
     const sub = params.get('sub');
     return sub === 'requests' || sub === 'incoming' || sub === 'materials' ? sub : undefined;
   });
   const [logOpen, setLogOpen] = useState(false);
+  const [costOpen, setCostOpen] = useState(false);
+  const { procurement, direct } = usePurchaseMode();
   // QA audit X-01 — the site team and the PM log and edit; others read
   const mayEdit = canEdit(role, 'site_progress');
 
@@ -104,11 +109,18 @@ function ProjectProgressPage() {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { key: 'breakdown', label: `Work Breakdown (${row.work_item_count})` },
+    // DIRECT-PURCHASE-PLAN.md B2/B3 — budget per work item and what it cost
+    ...(direct ? [{ key: 'cost' as const, label: 'Budget & Cost' }] : []),
     { key: 'log', label: 'Site Log' },
-    {
-      key: 'materials',
-      label: pendingRequests > 0 ? `Materials (${pendingRequests} pending)` : 'Materials',
-    },
+    // request → order → receive: only when the company buys through procurement
+    ...(procurement
+      ? [
+          {
+            key: 'materials' as const,
+            label: pendingRequests > 0 ? `Materials (${pendingRequests} pending)` : 'Materials',
+          },
+        ]
+      : []),
     { key: 'photos', label: 'Photos & Documents' },
     { key: 'timeline', label: 'Activity' },
   ];
@@ -127,7 +139,12 @@ function ProjectProgressPage() {
         subtitle={`${project.code}${project.location_summary ? ` · ${project.location_summary}` : ''}`}
         action={
           <div className="flex flex-wrap gap-2">
-            {canEdit(role, 'material_request') && (
+            {direct && mayEdit && (
+              <Button variant="outline" onClick={() => setCostOpen(true)}>
+                <Receipt className="size-4" /> Add cost
+              </Button>
+            )}
+            {procurement && canEdit(role, 'material_request') && (
               <Link href={`/admin/site-progress/${project.id}/material-requests/new`}>
                 <Button variant="outline">
                   <Package className="size-4" /> Request material
@@ -173,10 +190,12 @@ function ProjectProgressPage() {
 
       {tab === 'breakdown' && <TowerProgressPanel projectId={project.id} showRollup={false} />}
 
+      {tab === 'cost' && direct && <ConstructionCostTab projectId={project.id} mayEdit={mayEdit} />}
+
       {tab === 'log' && <ProjectProgressSummary projectId={project.id} view="log" />}
 
       {/* requests, deliveries to receive, and the site's materials — quantities only */}
-      {tab === 'materials' && <ConstructionMaterialsTab projectId={project.id} initialSub={materialsSub} />}
+      {tab === 'materials' && procurement && <ConstructionMaterialsTab projectId={project.id} initialSub={materialsSub} />}
 
       {tab === 'photos' && (
         <div className="space-y-5">
@@ -201,6 +220,8 @@ function ProjectProgressPage() {
       )}
 
       </ViewOnlyArea>
+
+      {costOpen && <DirectPurchaseModal projectId={project.id} onClose={() => setCostOpen(false)} />}
 
       {logOpen && (
         <ProgressUpdateModal open projectId={project.id} onClose={() => setLogOpen(false)} />

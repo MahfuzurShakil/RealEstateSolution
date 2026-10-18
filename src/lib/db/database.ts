@@ -58,6 +58,8 @@ import type {
   ProjectStatusEvent,
   UnitDelivery,
   Tower,
+  WorkItemBudgetLine,
+  DirectPurchase,
   Unit,
   User,
 } from './types';
@@ -151,6 +153,8 @@ export class AppDatabase extends Dexie {
   payment_installments!: EntityTable<PaymentInstallment, 'id'>;
   refunds!: EntityTable<Refund, 'id'>;
   expenses!: EntityTable<Expense, 'id'>;
+  work_item_budget_lines!: EntityTable<WorkItemBudgetLine, 'id'>;
+  direct_purchases!: EntityTable<DirectPurchase, 'id'>;
 
   // Module 8 — User & Role Management
   user_project_assignments!: EntityTable<UserProjectAssignment, 'id'>;
@@ -796,6 +800,18 @@ export class AppDatabase extends Dexie {
             await tx.table('projects').update(p.id, { front_road_width_ft: Math.max(...widths) });
         }
       });
+
+    /*
+     * v34 — DIRECT-PURCHASE-PLAN.md B2/B3 (client meeting 2026-10-18): a
+     * budget per work item, and costs bought straight against it. New tables
+     * only; `company_settings.purchase_mode` is unindexed and reads absent as
+     * `direct`.
+     */
+    this.version(34).stores({
+      work_item_budget_lines: 'id, work_item_id, project_id, tower_id',
+      direct_purchases:
+        'id, code, project_id, tower_id, work_item_id, budget_line_id, purchase_date, payment_status',
+    });
   }
 }
 

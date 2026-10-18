@@ -1,5 +1,7 @@
 'use client';
 
+import { DirectPurchaseModal } from '@/components/admin/construction/DirectPurchaseModal';
+import { usePurchaseMode } from '@/lib/settings/use-purchase-mode';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -9,6 +11,7 @@ import {
   HardHat,
   ListChecks,
   Package,
+  Receipt,
   Pencil,
   Plus,
   RotateCcw,
@@ -65,6 +68,8 @@ export function TowerProgressPanel({
   showRollup?: boolean;
 }) {
   const { role } = useMockSession();
+  const { procurement, direct } = usePurchaseMode();
+  const [costFor, setCostFor] = useState<TowerWorkItem | null>(null);
   const today = todayLocal();
   const [selectedTowerId, setSelectedTowerId] = useState<string | null>(null);
   const [logFor, setLogFor] = useState<TowerWorkItem | null>(null);
@@ -363,7 +368,12 @@ export function TowerProgressPanel({
                           <Button size="sm" onClick={() => setLogFor(item)}>
                             <HardHat className="size-4" /> Log progress
                           </Button>
-                          {canEdit(role, 'material_request') && (
+                          {direct && canEdit(role, 'site_progress') && (
+                            <Button size="sm" variant="outline" onClick={() => setCostFor(item)}>
+                              <Receipt className="size-4" /> Add cost
+                            </Button>
+                          )}
+                          {procurement && canEdit(role, 'material_request') && (
                             <Link
                               href={`/admin/site-progress/${projectId}/material-requests/new?tower=${item.tower_id}&item=${item.id}`}
                             >
@@ -402,6 +412,14 @@ export function TowerProgressPanel({
       </div>
 
       {/* mounted only while open, so each dialog starts from fresh state */}
+      {costFor && (
+        <DirectPurchaseModal
+          projectId={projectId}
+          defaults={{ tower_id: costFor.tower_id, work_item_id: costFor.id }}
+          onClose={() => setCostFor(null)}
+        />
+      )}
+
       {logFor && (
         <ProgressUpdateModal
           open
