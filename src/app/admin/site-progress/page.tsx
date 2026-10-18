@@ -25,10 +25,11 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Field, SelectInput, TextInput } from '@/components/ui/Field';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useMockSession } from '@/lib/auth/mock-session';
+import { usePurchaseMode } from '@/lib/settings/use-purchase-mode';
 import { canEdit } from '@/lib/domain/access';
 import { PROJECT_STATUS_META } from '@/lib/domain/project';
 import { STALE_AFTER_DAYS, scheduleBadge, scheduleCaption } from '@/lib/domain/site-progress';
-import { projectProgressRepository, type ProjectProgressRow } from '@/lib/repositories';
+import { costAlerts, projectProgressRepository, type ProjectProgressRow } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatDate, todayLocal } from '@/lib/utils/format';
 
@@ -55,12 +56,18 @@ export default function SiteProgressBoardPage() {
   const [logOpen, setLogOpen] = useState(false);
   // QA audit X-01 — only the site team and the PM log progress
   const { role } = useMockSession();
+  const { procurement } = usePurchaseMode();
 
   const rows = useLiveQuery(
     () => projectProgressRepository.board(today, { search, state, project_status: projectStatus }),
     [today, search, state, projectStatus],
   );
   const attention = useLiveQuery(() => projectProgressRepository.attention(today), [today]);
+  // DIRECT-PURCHASE-PLAN.md B6 — budget alerts per site, the same ones the bell lists
+  const budgetAlerts = useLiveQuery(
+    async () => (await costAlerts()).filter((a) => a.area === 'site'),
+    [],
+  );
 
   const loading = rows === undefined;
   const filtersActive = Boolean(search) || state !== 'all' || projectStatus !== 'all';
@@ -92,7 +99,7 @@ export default function SiteProgressBoardPage() {
     },
     {
       key: 'requests',
-      show: (attention?.pending_requests ?? 0) > 0,
+      show: procurement && (attention?.pending_requests ?? 0) > 0,
       icon: Package,
       tone: 'text-amber-600 bg-amber-50',
       label: `${attention?.pending_requests} material request${attention?.pending_requests === 1 ? '' : 's'} waiting`,
@@ -284,7 +291,10 @@ export default function SiteProgressBoardPage() {
                 <ul className="space-y-4">
                   {rows.map((row) => (
                     <li key={row.project.id}>
-                      <ProjectCard row={row} />
+                      <ProjectCard
+                        row={row}
+                        alerts={(budgetAlerts ?? []).filter((a) => a.project_id === row.project.id)}
+                      />
                     </li>
                   ))}
                 </ul>
@@ -305,7 +315,15 @@ export default function SiteProgressBoardPage() {
 }
 
 /** One project on the board. */
-function ProjectCard({ row }: { row: ProjectProgressRow }) {
+function ProjectCard({
+  row,
+  alerts,
+}: {
+  row: ProjectProgressRow;
+  alerts: { severity: 'red' | 'amber' }[];
+}) {
+  const { procurement } = usePurchaseMode();
+  const over = alerts.filter((a) => a.severity === 'red').length;
   const { project, rollup } = row;
   const stage = PROJECT_STATUS_META[project.status];
 
@@ -333,6 +351,12 @@ function ProjectCard({ row }: { row: ProjectProgressRow }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {alerts.length > 0 && (
+            <Badge tone={over > 0 ? 'red' : 'amber'}>
+              <AlertTriangle className="size-3.5" />
+              {over > 0 ? `${over} over budget` : `${alerts.length} budget warning${alerts.length === 1 ? '' : 's'}`}
+            </Badge>
+          )}
           {row.is_stale && (
             <Badge tone="red">
               <CalendarClock className="size-3.5" />
@@ -401,7 +425,7 @@ function ProjectCard({ row }: { row: ProjectProgressRow }) {
             {row.behind_count} of {row.work_item_count} items behind
           </Badge>
         )}
-        {row.pending_requests > 0 && (
+        {procurement && row.pending_requests > 0 && (
           <Badge tone="amber">
             <Package className="size-3.5" />
             {row.pending_requests} request{row.pending_requests === 1 ? '' : 's'} waiting

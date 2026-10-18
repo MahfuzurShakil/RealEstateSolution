@@ -11,7 +11,7 @@ import { SelectInput } from '@/components/ui/Field';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { canEdit } from '@/lib/domain/access';
-import { COST_TYPE_META } from '@/lib/domain/construction-cost';
+import { COST_TYPE_META, PAYMENT_OVERDUE_DAYS } from '@/lib/domain/construction-cost';
 import { SUPPLIER_PAYMENT_METHOD_META } from '@/lib/domain/procurement';
 import {
   bankAccountRepository,
@@ -23,8 +23,8 @@ import {
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
-/** older than this many days, a pending cost is shown as overdue */
-const OVERDUE_DAYS = 30;
+/** the alerts bell uses the same figure */
+const OVERDUE_DAYS = PAYMENT_OVERDUE_DAYS;
 
 /**
  * Payments (DIRECT-PURCHASE-PLAN.md B4): every site cost recorded against a

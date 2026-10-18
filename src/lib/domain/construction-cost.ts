@@ -132,6 +132,8 @@ export const BUDGET_HEALTH_META: Record<BudgetHealth, { label: string; tone: Bad
 
 /** at or above this share of the budget, warn */
 export const NEAR_BUDGET_PCT = 80;
+/** a pending direct purchase older than this many days is overdue */
+export const PAYMENT_OVERDUE_DAYS = 30;
 /** spent % this many points ahead of progress %, warn */
 export const AHEAD_OF_WORK_POINTS = 15;
 
