@@ -61,6 +61,10 @@ import type {
   WorkItemBudgetLine,
   DirectPurchase,
   DirectPurchasePayment,
+  Partner,
+  ProjectPartner,
+  FundReceipt,
+  FundAllocation,
   Unit,
   User,
 } from './types';
@@ -157,6 +161,10 @@ export class AppDatabase extends Dexie {
   work_item_budget_lines!: EntityTable<WorkItemBudgetLine, 'id'>;
   direct_purchases!: EntityTable<DirectPurchase, 'id'>;
   direct_purchase_payments!: EntityTable<DirectPurchasePayment, 'id'>;
+  partners!: EntityTable<Partner, 'id'>;
+  project_partners!: EntityTable<ProjectPartner, 'id'>;
+  fund_receipts!: EntityTable<FundReceipt, 'id'>;
+  fund_allocations!: EntityTable<FundAllocation, 'id'>;
 
   // Module 8 — User & Role Management
   user_project_assignments!: EntityTable<UserProjectAssignment, 'id'>;
@@ -818,6 +826,14 @@ export class AppDatabase extends Dexie {
     /* v35 — DIRECT-PURCHASE-PLAN.md B4: paying direct purchases from an account. */
     this.version(35).stores({
       direct_purchase_payments: 'id, code, purchase_id, project_id, account_id, payment_date',
+    });
+
+    /* v36 — DIRECT-PURCHASE-PLAN.md B5: partners, money in, parent → project. */
+    this.version(36).stores({
+      partners: 'id, code, name',
+      project_partners: 'id, project_id, partner_id, [project_id+partner_id]',
+      fund_receipts: 'id, code, source_type, partner_id, project_id, account_id, receipt_date',
+      fund_allocations: 'id, code, project_id, allocation_date',
     });
   }
 }

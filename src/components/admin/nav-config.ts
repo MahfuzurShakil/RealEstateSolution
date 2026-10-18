@@ -128,6 +128,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Collections', href: '/admin/collections', module: 'finance_collection' },
       { label: 'Expenses', href: '/admin/expenses', module: 'finance_expense' },
       { label: 'Cash Position', href: '/admin/cash', module: 'finance_expense' },
+      // DIRECT-PURCHASE-PLAN.md B5 — whose money, how much is left
+      { label: 'Fund & Partners', href: '/admin/fund', module: 'finance_expense' },
       { label: 'Refunds', href: '/admin/refunds', module: 'finance_collection' },
     ],
   },

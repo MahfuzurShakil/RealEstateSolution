@@ -36,6 +36,9 @@ import {
   workItemBudgetRepository,
   directPurchaseRepository,
   directPurchasePaymentRepository,
+  partnerRepository,
+  fundReceiptRepository,
+  fundAllocationRepository,
   goodsReceiptRepository,
   purchaseOrderItemRepository,
   purchaseOrderRepository,
@@ -964,7 +967,9 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
   }
 
   await seedDemoFinance(projectIds, landIds, userIds, bookingIds, createdBy);
-  // after finance: payments need the accounts and the money in them
+  // after finance: partners' capital goes into its accounts
+  await seedDemoFund(projectIds, createdBy);
+  // after the fund: payments need the accounts and the money in them
   await seedDemoSitePayments(createdBy);
   await seedDemoUserAccess(projectIds, userIds, createdBy);
 
@@ -1623,6 +1628,106 @@ async function seedDemoDirectPurchases(
  * payment goes through the same balance check as the screen; once the
  * accounts run dry the rest simply stay owed, which is the honest demo.
  */
+/**
+ * DIRECT-PURCHASE-PLAN.md B5 — three partners with different shares, their
+ * capital and a bank loan, and the pool given out to the projects. Selina has
+ * put in less than her share, and Lakeview runs on its own two-partner split,
+ * so both of those show on the Fund page.
+ */
+async function seedDemoFund(projectIds: Map<string, string>, createdBy: string | null): Promise<void> {
+  const db = getDb();
+  const accounts = (await db.bank_accounts.toArray()).filter((a) => a.type === 'bank' && a.is_active);
+  const account = accounts.sort((a, b) => b.opening_balance - a.opening_balance)[0];
+  if (!account) return;
+  // never before the account's opening date, or the cash position skips it
+  const on = (offset: number) => {
+    const d = daysFromToday(offset).slice(0, 10);
+    return d < account.opening_balance_date ? account.opening_balance_date : d;
+  };
+
+  const karim = await partnerRepository.save(
+    { name: 'Karim Uddin', phone: '01711-223344', nid: null, share_pct: 50, is_active: true, notes: null },
+    createdBy,
+  );
+  const rahim = await partnerRepository.save(
+    { name: 'Rahim Chowdhury', phone: '01819-556677', nid: null, share_pct: 30, is_active: true, notes: null },
+    createdBy,
+  );
+  const selina = await partnerRepository.save(
+    { name: 'Selina Akter', phone: '01912-889900', nid: null, share_pct: 20, is_active: true, notes: null },
+    createdBy,
+  );
+
+  const capital: [string, number, number][] = [
+    [karim.id, 60_000_000, -200],
+    [rahim.id, 36_000_000, -195],
+    [selina.id, 12_000_000, -190],
+    [karim.id, 20_000_000, -90],
+    [rahim.id, 12_000_000, -85],
+    [selina.id, 8_000_000, -80],
+  ];
+  for (const [partner_id, amount, offset] of capital) {
+    await fundReceiptRepository.record(
+      {
+        source_type: 'partner_capital',
+        partner_id,
+        source_name: null,
+        project_id: null,
+        account_id: account.id,
+        amount,
+        receipt_date: on(offset),
+        reference_no: null,
+        notes: null,
+      },
+      createdBy,
+    );
+  }
+
+  const green = projectIds.get('Nokshi Green Residence');
+  if (green) {
+    await fundReceiptRepository.record(
+      {
+        source_type: 'loan',
+        partner_id: null,
+        source_name: 'City Bank construction loan',
+        project_id: green,
+        account_id: account.id,
+        amount: 50_000_000,
+        receipt_date: on(-150),
+        reference_no: 'CBL/CL/2026/118',
+        notes: null,
+      },
+      createdBy,
+    );
+  }
+
+  const give: [string, number][] = [
+    ['Nokshi Green Residence', 70_000_000],
+    ['Nokshi Dhanmondi Court', 35_000_000],
+    ['Nokshi Lakeview Residence', 30_000_000],
+  ];
+  for (const [name, amount] of give) {
+    const projectId = projectIds.get(name);
+    if (!projectId) continue;
+    await fundAllocationRepository.allocate(
+      { project_id: projectId, amount, allocation_date: on(-180), notes: null },
+      createdBy,
+    );
+  }
+
+  const lakeview = projectIds.get('Nokshi Lakeview Residence');
+  if (lakeview) {
+    await partnerRepository.setProjectShares(
+      lakeview,
+      [
+        { partner_id: karim.id, share_pct: 60 },
+        { partner_id: rahim.id, share_pct: 40 },
+      ],
+      createdBy,
+    );
+  }
+}
+
 async function seedDemoSitePayments(createdBy: string | null): Promise<void> {
   const pending = await directPurchasePaymentRepository.pending();
   let i = 0;
@@ -2459,6 +2564,10 @@ export async function clearDemoData(): Promise<void> {
     db.work_item_budget_lines.clear(),
     db.direct_purchases.clear(),
     db.direct_purchase_payments.clear(),
+    db.partners.clear(),
+    db.project_partners.clear(),
+    db.fund_receipts.clear(),
+    db.fund_allocations.clear(),
     db.user_project_assignments.clear(),
   ]);
   setClearedFlag(true);

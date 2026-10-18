@@ -2015,6 +2015,67 @@ export interface DirectPurchasePayment extends BaseEntity {
   notes?: string | null;
 }
 
+/* ------------------------------------------------------------------ *
+ * Fund (DIRECT-PURCHASE-PLAN.md B5, v36)
+ * ------------------------------------------------------------------ */
+
+/**
+ * A person who puts capital into the business. 2–3 partners is the usual
+ * small-developer shape; `share_pct` is their share of the company, used to
+ * split cost and profit unless a project overrides it (plan decision 1).
+ */
+export interface Partner extends BaseEntity {
+  code: string;                       // PTN-001
+  name: string;
+  phone?: string | null;
+  nid?: string | null;
+  share_pct: number;
+  is_active: boolean;
+  notes?: string | null;
+}
+
+/** A project whose partners or shares differ from the company's. */
+export interface ProjectPartner extends BaseEntity {
+  project_id: UUID;
+  partner_id: UUID;
+  share_pct: number;
+}
+
+export const FUND_SOURCE_TYPES = ['partner_capital', 'loan', 'other'] as const;
+export type FundSourceType = (typeof FUND_SOURCE_TYPES)[number];
+
+/**
+ * Money coming in that is not a sale: a partner's capital, a loan, anything
+ * else. It lands in an account (so the cash position sees it) and either the
+ * company pool (`project_id` null) or straight in one project's fund.
+ */
+export interface FundReceipt extends BaseEntity {
+  code: string;                       // FND-2026-001
+  source_type: FundSourceType;
+  /** required for partner_capital */
+  partner_id?: UUID | null;
+  /** lender's name for a loan, payer for other */
+  source_name?: string | null;
+  project_id?: UUID | null;
+  account_id: UUID;
+  amount: number;
+  receipt_date: ISODate;
+  reference_no?: string | null;
+  notes?: string | null;
+}
+
+/**
+ * Parent → project: earmarks part of the company pool for one project. No
+ * money moves between accounts — it says whose money the project spends.
+ */
+export interface FundAllocation extends BaseEntity {
+  code: string;                       // ALC-2026-001
+  project_id: UUID;
+  amount: number;
+  allocation_date: ISODate;
+  notes?: string | null;
+}
+
 /** Document types for entity_type = 'direct_purchase' */
 export const DIRECT_PURCHASE_DOCUMENT_TYPES = [
   'bill',

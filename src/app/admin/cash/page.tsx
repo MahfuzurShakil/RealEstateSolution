@@ -151,7 +151,7 @@ export default function CashPositionPage() {
       hint: 'across every account',
       icon: Wallet,
     },
-    { label: 'Money in', value: position.total_in, hint: 'buyer receipts', icon: ArrowDownLeft },
+    { label: 'Money in', value: position.total_in, hint: 'buyer receipts, capital, loans', icon: ArrowDownLeft },
     {
       label: 'Money out',
       value: position.total_out,
@@ -164,7 +164,7 @@ export default function CashPositionPage() {
     <>
       <PageHeader
         title="Cash Position"
-        subtitle="What is actually in the accounts — receipts in, costs, supplier payments and refunds out."
+        subtitle="What is actually in the accounts — receipts, capital and loans in; costs, site and supplier payments and refunds out."
         action={
           mayEdit ? (
             <Button onClick={() => setAdding(true)}>

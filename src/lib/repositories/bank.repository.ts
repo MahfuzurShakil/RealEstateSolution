@@ -103,6 +103,8 @@ class BankAccountRepository extends BaseRepository<BankAccount> {
         db.direct_purchase_payments.toArray(),
         db.direct_purchases.toArray(),
       ]);
+    const [fundIn, partners] = await Promise.all([db.fund_receipts.toArray(), db.partners.toArray()]);
+    const partnerName = new Map(partners.map((p) => [p.id, p.name]));
     const purchaseById = new Map(purchases.map((p) => [p.id, p]));
 
     const customerOfBooking = new Map(
@@ -137,6 +139,19 @@ class BankAccountRepository extends BaseRepository<BankAccount> {
         kind: 'supplier_payment' as const,
         label: supplierById.get(v.supplier_id) ?? v.code,
         reference: v.reference_no ?? null,
+      })),
+      // DIRECT-PURCHASE-PLAN.md B5 — partner capital, loans and other money in
+      ...fundIn.map((f) => ({
+        id: f.id,
+        account_id: f.account_id,
+        date: f.receipt_date,
+        amount: money(Number(f.amount) || 0),
+        kind: 'fund_in' as const,
+        label:
+          (f.partner_id ? partnerName.get(f.partner_id) : null) ??
+          f.source_name ??
+          (f.source_type === 'loan' ? 'Loan' : 'Money in'),
+        reference: f.reference_no ?? null,
       })),
       // DIRECT-PURCHASE-PLAN.md B4 — a site cost paid from Payments
       ...sitePayments.map((p) => {
@@ -206,14 +221,15 @@ class BankAccountRepository extends BaseRepository<BankAccount> {
     const account = await this.getById(id);
     if (!account) return;
 
-    const [p, e, v, r, s] = await Promise.all([
+    const [p, e, v, r, s, f] = await Promise.all([
       db.payments.where('account_id').equals(id).count(),
       db.expenses.where('account_id').equals(id).count(),
       db.supplier_vouchers.where('account_id').equals(id).count(),
       db.refunds.where('account_id').equals(id).count(),
       db.direct_purchase_payments.where('account_id').equals(id).count(),
+      db.fund_receipts.where('account_id').equals(id).count(),
     ]);
-    if (p + e + v + r + s > 0) throw new BankAccountInUseError(account.name);
+    if (p + e + v + r + s + f > 0) throw new BankAccountInUseError(account.name);
     await this.remove(id);
   }
 }
