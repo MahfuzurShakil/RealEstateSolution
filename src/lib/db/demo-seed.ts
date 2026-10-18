@@ -1556,6 +1556,7 @@ async function seedDemoDirectPurchases(
   };
   // spend as a multiple of (budget × progress): >1 runs ahead, <1 behind
   const FACTOR = [1.08, 0.94, 1.3, 0.9, 1.0, 0.85, 1.05, 0.95];
+  const billImages = new Map<string, Blob>();
   let k = 0;
 
   for (const demo of DEMO_TOWER_PROGRESS) {
@@ -1594,7 +1595,10 @@ async function seedDemoDirectPurchases(
           Math.round((line.budgeted_amount * (item.actual_progress_pct / 100) * factor) / 100) * 100;
         if (amount <= 0) continue;
         const code = `Bill — ${line.description}`;
-        const png = await makeSamplePng(code);
+        // one image per description: drawing ~120 canvases made the reload
+        // take minutes, and a description repeats across towers anyway
+        const png = billImages.get(code) ?? (await makeSamplePng(code));
+        if (png) billImages.set(code, png);
         const file = png ? new File([png], `${slugify(code)}.png`, { type: 'image/png' }) : null;
         if (!file) continue;
         k += 1;
@@ -1695,6 +1699,30 @@ async function seedDemoFund(projectIds: Map<string, string>, createdBy: string |
         amount: 50_000_000,
         receipt_date: on(-150),
         reference_no: 'CBL/CL/2026/118',
+        notes: null,
+      },
+      createdBy,
+    );
+  }
+
+  /*
+   * Dhanmondi Court was largely paid for before this system (its supplier
+   * vouchers), so without its own loan it reads 7 crore in the red. With it,
+   * it is the demo's one *amber* low-fund project: money left, but less than
+   * it owes.
+   */
+  const dhanmondi = projectIds.get('Nokshi Dhanmondi Court');
+  if (dhanmondi) {
+    await fundReceiptRepository.record(
+      {
+        source_type: 'loan',
+        partner_id: null,
+        source_name: 'BRAC Bank project loan',
+        project_id: dhanmondi,
+        account_id: account.id,
+        amount: 85_000_000,
+        receipt_date: on(-170),
+        reference_no: 'BRAC/PL/2026/044',
         notes: null,
       },
       createdBy,
