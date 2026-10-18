@@ -29,9 +29,11 @@ export interface DemoProjectEvent {
  */
 
 export interface DemoUnitPattern {
-  /** unit codes come out as `${prefix}${separator}${floor}${suffix}` */
+  /**
+   * the tower code: units come out as `${prefix}-${floor}${letter}`, the
+   * letter following the row order (A, B, …)
+   */
   prefix: string;
-  separator: string;
   floor_from: number;
   floor_to: number;
   excluded_floors?: number[];
@@ -39,7 +41,6 @@ export interface DemoUnitPattern {
   floor_premium_mode?: 'none' | 'amount' | 'percent';
   floor_premium_value?: string;
   rows: Array<{
-    suffix: string;
     unit_type: string;
     bedroom_count: number;
     bathroom_count: number;
@@ -89,7 +90,9 @@ export interface DemoTower {
   building_type?: string;
   unit_per_floor?: number;
   lift_count?: number;
+  staircase_count?: number;
   electricity_backup?: boolean;
+  /** a building's entry seeds the project's road width; a plot block keeps its own */
   front_road_width_ft?: number;
   patterns: DemoUnitPattern[];
   /** v26 — a block of plots instead of floors of flats */
@@ -226,17 +229,16 @@ export const DEMO_PROJECTS: DemoProject[] = [
         building_type: 'B+G+10',
         unit_per_floor: 2,
         lift_count: 2,
+        staircase_count: 2,
         electricity_backup: true,
         front_road_width_ft: 40,
         patterns: [
           {
             prefix: 'A',
-            separator: '-',
             floor_from: 2,
             floor_to: 10,
             rows: [
               {
-                suffix: 'A',
                 unit_type: '3 Bed',
                 bedroom_count: 3,
                 bathroom_count: 3,
@@ -247,7 +249,6 @@ export const DEMO_PROJECTS: DemoProject[] = [
                 parking_allocated: 1,
               },
               {
-                suffix: 'B',
                 unit_type: '3 Bed',
                 bedroom_count: 3,
                 bathroom_count: 2,
@@ -268,17 +269,16 @@ export const DEMO_PROJECTS: DemoProject[] = [
         building_type: 'B+G+8',
         unit_per_floor: 2,
         lift_count: 2,
+        staircase_count: 2,
         electricity_backup: true,
         front_road_width_ft: 25,
         patterns: [
           {
             prefix: 'B',
-            separator: '-',
             floor_from: 2,
             floor_to: 8,
             rows: [
               {
-                suffix: 'A',
                 unit_type: '2 Bed',
                 bedroom_count: 2,
                 bathroom_count: 2,
@@ -289,7 +289,6 @@ export const DEMO_PROJECTS: DemoProject[] = [
                 parking_allocated: 1,
               },
               {
-                suffix: 'B',
                 unit_type: '3 Bed',
                 bedroom_count: 3,
                 bathroom_count: 2,
@@ -359,7 +358,8 @@ export const DEMO_PROJECTS: DemoProject[] = [
     location_summary: 'Sector 13, Uttara, Dhaka',
     expected_start_date: '2026-11-01',
     expected_completion_date: '2029-10-31',
-    status: 'design',
+    // design done and with RAJUK, so its towers and units can exist (gate 2026-10-18)
+    status: 'approval',
     architect: 'Shatotto Architecture',
     surroundings: 'Uttara metro station 1km, Rajuk Uttara Model College 600m, Sector 13 park 200m',
     amenities: ['Lift', 'Generator', 'Parking', 'Security', 'Children Play Area', 'Prayer Room'],
@@ -391,17 +391,16 @@ export const DEMO_PROJECTS: DemoProject[] = [
         building_type: 'G+8',
         unit_per_floor: 2,
         lift_count: 1,
+        staircase_count: 1,
         electricity_backup: true,
         front_road_width_ft: 30,
         patterns: [
           {
             prefix: 'U',
-            separator: '-',
             floor_from: 2,
             floor_to: 8,
             rows: [
               {
-                suffix: 'A',
                 unit_type: '2 Bed',
                 bedroom_count: 2,
                 bathroom_count: 2,
@@ -412,7 +411,6 @@ export const DEMO_PROJECTS: DemoProject[] = [
                 parking_allocated: 1,
               },
               {
-                suffix: 'B',
                 unit_type: '3 Bed',
                 bedroom_count: 3,
                 bathroom_count: 3,
@@ -435,6 +433,13 @@ export const DEMO_PROJECTS: DemoProject[] = [
         performed_by: 'Shatotto Architecture',
         reference_no: 'ARCH-2026-031',
         remarks: 'G+8, প্রতি তলায় দুইটা ইউনিট। Sector 13-এর height limit মাথায় রেখে।',
+      },
+      {
+        to_status: 'approval',
+        event_date: '2026-09-22',
+        performed_by: 'Shatotto Architecture',
+        reference_no: 'RAJUK/2026/UTT/1187',
+        remarks: 'Final drawings submitted to RAJUK.',
       },
     ],
   },
@@ -478,19 +483,18 @@ export const DEMO_PROJECTS: DemoProject[] = [
         building_type: 'B+G+12',
         unit_per_floor: 3,
         lift_count: 3,
+        staircase_count: 2,
         electricity_backup: true,
         front_road_width_ft: 60,
         patterns: [
           {
             prefix: 'AG',
-            separator: '-',
             floor_from: 2,
             floor_to: 12,
             // the 1st floor is a retail arcade, handled separately
             excluded_floors: [7],
             rows: [
               {
-                suffix: 'A',
                 unit_type: 'Office Space',
                 bedroom_count: 0,
                 bathroom_count: 2,
@@ -501,7 +505,6 @@ export const DEMO_PROJECTS: DemoProject[] = [
                 parking_allocated: 2,
               },
               {
-                suffix: 'B',
                 unit_type: 'Office Space',
                 bedroom_count: 0,
                 bathroom_count: 1,
@@ -582,17 +585,16 @@ export const DEMO_PROJECTS: DemoProject[] = [
         building_type: 'B+G+7',
         unit_per_floor: 2,
         lift_count: 2,
+        staircase_count: 2,
         electricity_backup: true,
         front_road_width_ft: 40,
         patterns: [
           {
             prefix: 'D',
-            separator: '-',
             floor_from: 3,
             floor_to: 7,
             rows: [
               {
-                suffix: 'A',
                 unit_type: '3 Bed',
                 bedroom_count: 3,
                 bathroom_count: 3,
@@ -603,7 +605,6 @@ export const DEMO_PROJECTS: DemoProject[] = [
                 parking_allocated: 1,
               },
               {
-                suffix: 'B',
                 unit_type: '4 Bed',
                 bedroom_count: 4,
                 bathroom_count: 4,
@@ -619,12 +620,10 @@ export const DEMO_PROJECTS: DemoProject[] = [
             // second run, different layout — exactly how the generator is meant
             // to be used for a penthouse floor
             prefix: 'D',
-            separator: '-',
             floor_from: 2,
             floor_to: 2,
             rows: [
               {
-                suffix: 'A',
                 unit_type: 'Shop',
                 bedroom_count: 0,
                 bathroom_count: 1,
@@ -635,7 +634,6 @@ export const DEMO_PROJECTS: DemoProject[] = [
                 parking_allocated: 0,
               },
               {
-                suffix: 'B',
                 unit_type: 'Shop',
                 bedroom_count: 0,
                 bathroom_count: 1,
@@ -939,19 +937,18 @@ export const DEMO_PROJECTS: DemoProject[] = [
         building_type: 'B+G+12',
         unit_per_floor: 2,
         lift_count: 2,
+        staircase_count: 2,
         electricity_backup: true,
         front_road_width_ft: 60,
         patterns: [
           {
             prefix: 'LA',
-            separator: '-',
             floor_from: 3,
             floor_to: 12,
             floor_premium_mode: 'percent',
             floor_premium_value: '1.8',
             rows: [
               {
-                suffix: 'A',
                 unit_type: '3 Bed',
                 bedroom_count: 3,
                 bathroom_count: 3,
@@ -962,7 +959,6 @@ export const DEMO_PROJECTS: DemoProject[] = [
                 parking_allocated: 1,
               },
               {
-                suffix: 'B',
                 unit_type: '3 Bed',
                 bedroom_count: 3,
                 bathroom_count: 2,
@@ -983,19 +979,18 @@ export const DEMO_PROJECTS: DemoProject[] = [
         building_type: 'B+G+12',
         unit_per_floor: 2,
         lift_count: 2,
+        staircase_count: 2,
         electricity_backup: true,
         front_road_width_ft: 60,
         patterns: [
           {
             prefix: 'LB',
-            separator: '-',
             floor_from: 3,
             floor_to: 8,
             floor_premium_mode: 'amount',
             floor_premium_value: '150000',
             rows: [
               {
-                suffix: 'A',
                 unit_type: '4 Bed',
                 bedroom_count: 4,
                 bathroom_count: 4,
@@ -1006,7 +1001,6 @@ export const DEMO_PROJECTS: DemoProject[] = [
                 parking_allocated: 2,
               },
               {
-                suffix: 'B',
                 unit_type: '2 Bed',
                 bedroom_count: 2,
                 bathroom_count: 2,
@@ -1097,17 +1091,16 @@ export const DEMO_PROJECTS: DemoProject[] = [
         building_type: 'G+9',
         unit_per_floor: 2,
         lift_count: 1,
+        staircase_count: 1,
         electricity_backup: true,
         front_road_width_ft: 40,
         patterns: [
           {
             prefix: 'S',
-            separator: '-',
             floor_from: 2,
             floor_to: 9,
             rows: [
               {
-                suffix: 'A',
                 unit_type: '3 Bed',
                 bedroom_count: 3,
                 bathroom_count: 3,
@@ -1118,7 +1111,6 @@ export const DEMO_PROJECTS: DemoProject[] = [
                 parking_allocated: 1,
               },
               {
-                suffix: 'B',
                 unit_type: '3 Bed',
                 bedroom_count: 3,
                 bathroom_count: 2,

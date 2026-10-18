@@ -57,6 +57,7 @@ interface FormState {
   expected_completion_date: string;
   actual_start_date: string;
   architect: string;
+  front_road_width_ft: string;
   project_manager: string;
   surroundings: string;
   construction_after_sale: ConstructionAfterSale;
@@ -70,6 +71,7 @@ const EMPTY: FormState = {
   expected_completion_date: '',
   actual_start_date: '',
   architect: '',
+  front_road_width_ft: '',
   project_manager: '',
   surroundings: '',
   construction_after_sale: 'undecided',
@@ -210,6 +212,8 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
       next.expected_completion_date = `${timeline.end} cannot be before ${timeline.start.toLowerCase()}`;
     }
     if (gateOn && blockedLands.length > 0) next.lands = blockedLands.join(' ');
+    if (form.front_road_width_ft.trim() && !(Number(form.front_road_width_ft) >= 0))
+      next.front_road_width_ft = 'Must be 0 or more';
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -248,6 +252,7 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
         expected_completion_date: form.expected_completion_date || null,
         actual_start_date: kind === 'built' ? form.actual_start_date || null : null,
         architect: kind === 'share' ? null : form.architect.trim() || null,
+        front_road_width_ft: form.front_road_width_ft.trim() === '' ? null : Number(form.front_road_width_ft),
         project_manager: form.project_manager || null,
         surroundings: form.surroundings.trim() || null,
         amenities: kind === 'share' ? [] : amenities,
@@ -404,6 +409,21 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
               />
             </Field>
           )}
+          {/* 2026-10-18 — the site's road, shared by every tower on it (was on each tower) */}
+          <Field
+            label="Front road width (ft)"
+            hint="The road the site fronts onto"
+            error={errors.front_road_width_ft}
+          >
+            <TextInput
+              type="number"
+              min="0"
+              step="0.1"
+              value={form.front_road_width_ft}
+              onChange={(e) => set('front_road_width_ft', e.target.value)}
+              placeholder="e.g. 30"
+            />
+          </Field>
           {kind === 'share' && (
             <Field
               label="After the shares are sold"
@@ -481,7 +501,7 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
         {lands.length === 0 ? (
           <div className="rounded-xl border border-dashed border-hairline p-5 text-center text-sm text-ink-muted">
             <MapIcon className="mx-auto mb-2 size-6 text-slate-300" />
-            No land selected. Pick an existing land, or add one you already own or are about to buy.
+            No land selected. Pick an available land; new land is added under Lands first.
           </div>
         ) : (
           <div className="space-y-4">
@@ -625,6 +645,7 @@ function toFormState(project: ProjectWithRelations): FormState {
     expected_completion_date: project.expected_completion_date ?? '',
     actual_start_date: str(project.actual_start_date),
     architect: str(project.architect),
+    front_road_width_ft: str(project.front_road_width_ft),
     project_manager: str(project.project_manager),
     surroundings: str(project.surroundings),
     construction_after_sale: project.construction_after_sale ?? 'undecided',

@@ -16,6 +16,7 @@ import type {
   ProjectStatus,
   ProjectType,
   TowerStatus,
+  Unit,
   UnitStatus,
 } from '@/lib/db/types';
 
@@ -821,6 +822,7 @@ export function towerStatusFromProgress(pct: number): TowerStatus {
 }
 
 export const UNIT_STATUS_META: Record<UnitStatus, { label: string; tone: BadgeTone }> = {
+  draft: { label: 'Draft', tone: 'neutral' },
   available: { label: 'Available', tone: 'green' },
   hold: { label: 'Hold', tone: 'amber' },
   reserved: { label: 'Reserved', tone: 'amber' },
@@ -870,9 +872,16 @@ export const JV_SHARE_BASIS_LABEL: Record<JvShareBasis, string> = {
  * floor is edited afterwards.
  * ------------------------------------------------------------------ */
 
+/*
+ * Client meeting 2026-10-18 — the code is the one BD developers print on
+ * their price lists and allotment letters: tower, floor, flat letter, so
+ * A-5B is Tower A, 5th floor, flat B. The letter is the row's position on the
+ * floor (first row A, second B, …), so there is no suffix to type, and one
+ * fixed format replaces the old prefix/separator/suffix pattern.
+ */
+
+/** One flat position on a floor. Every field may be left blank: see `unitRowMissing`. */
 export interface UnitPatternRow {
-  /** appended after the floor number: 'A' gives A-501, '1' gives A-501 too */
-  suffix: string;
   unit_type: string;
   bedroom_count: string;
   bathroom_count: string;
@@ -886,22 +895,15 @@ export interface UnitPatternRow {
 }
 
 export interface UnitPatternInput {
-  prefix: string;          // 'A' → A-501
-  separator: string;       // '-'
+  /** the tower's short code: 'A' gives A-5B */
+  tower_code: string;
   floor_from: number;
   floor_to: number;
   /** floors to skip — the ground floor is often parking or commercial */
   excluded_floors: number[];
   /**
-   * What a floor adds to the price of the flat below it.
-   *
-   * Height is priced everywhere in this market — a 10th-floor flat is not
-   * worth what the 2nd-floor flat costs — but the generator applied one figure
-   * to every floor, so every unit in a tower came out at the same price and
-   * had to be corrected one at a time afterwards. `floor_premium_mode` says
-   * whether the step is taka per floor or a percentage of the base, and it is
-   * counted from `floor_from`, so the first generated floor is always the
-   * price actually typed in.
+   * What a floor adds to the price of the flat below it, counted from
+   * `floor_from`, so the first generated floor is the price actually typed in.
    */
   floor_premium_mode: 'none' | 'amount' | 'percent';
   floor_premium_value: string;
@@ -922,16 +924,58 @@ export function floorsInRange(input: {
   return floors;
 }
 
-export function unitCode(prefix: string, separator: string, floor: number, suffix: string): string {
-  return `${prefix}${separator}${floor}${suffix}`;
+/** A, B, … Z, then AA, AB — a floor rarely has more than eight flats. */
+export function flatLetter(index: number): string {
+  let n = index;
+  let out = '';
+  do {
+    out = String.fromCharCode(65 + (n % 26)) + out;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return out;
+}
+
+/** A tower code is letters and digits only, so the dash stays unambiguous. */
+export function cleanTowerCode(value: string): string {
+  return value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+}
+
+/** A suggestion from the tower's name: "Tower A" → A, "Lake View" → LV. */
+export function suggestTowerCode(name: string): string {
+  const rest = name.replace(/^(tower|block|building)\s*/i, '').trim();
+  if (!rest) return '';
+  const words = rest.split(/\s+/);
+  return cleanTowerCode(words.length > 1 ? words.map((w) => w[0]).join('') : rest);
+}
+
+export function unitCode(towerCode: string, floor: number, letter: string): string {
+  return `${towerCode}-${floor}${letter}`;
 }
 
 /** Every code the pattern would produce, in generation order. */
 export function previewUnitCodes(input: UnitPatternInput): string[] {
   const floors = floorsInRange(input);
   return floors.flatMap((floor) =>
-    input.rows.map((row) => unitCode(input.prefix, input.separator, floor, row.suffix)),
+    input.rows.map((_, i) => unitCode(input.tower_code, floor, flatLetter(i))),
   );
+}
+
+/**
+ * What a row still lacks before its flats can be sold. A row may be left
+ * incomplete (client meeting 2026-10-18): its flats are saved as `draft` and
+ * finished one by one in the unit form.
+ */
+export function unitRowMissing(row: UnitPatternRow): string[] {
+  const missing: string[] = [];
+  if (!row.unit_type.trim()) missing.push('unit type');
+  if (!(Number(row.size_sqft) > 0)) missing.push('size');
+  if (!(Number(row.price_value) > 0)) missing.push('price');
+  return missing;
+}
+
+/** The same check on a saved flat: a draft becomes available once nothing is missing. */
+export function unitIsComplete(u: Pick<Unit, 'unit_type' | 'size_sqft' | 'base_price'>): boolean {
+  return Boolean(u.unit_type?.trim()) && Number(u.size_sqft) > 0 && Number(u.base_price) > 0;
 }
 
 /**
@@ -944,24 +988,26 @@ export function isResidentialUnitType(unitType: string | null | undefined): bool
 }
 
 /**
- * What is wrong with a floor pattern before anything is written (E2E
- * 2026-10-12 #3/#4): every row needs a size and a price above 0, room counts
- * cannot be negative, and the range must sit inside the tower.
+ * What stops a floor pattern from being written at all: a tower code, a
+ * floor range inside the tower, and no negative numbers. Blank fields do not
+ * stop it — those flats are saved as drafts (client meeting 2026-10-18).
  */
 export function unitPatternProblems(input: UnitPatternInput, floorCount: number | null): string[] {
   const problems: string[] = [];
-  if (floorsInRange(input).length === 0) problems.push('The floor range is empty');
+  if (!input.tower_code.trim()) problems.push('Enter the tower code');
+  if (floorsInRange(input).length === 0) problems.push('Enter a floor range');
   if (floorCount && input.floor_to > floorCount)
     problems.push(`The tower has ${floorCount} floors; "To floor" cannot be above it`);
+  if (input.rows.length === 0) problems.push('Add at least one flat per floor');
   input.rows.forEach((row, i) => {
-    const label = `Row ${row.suffix || i + 1}`;
-    if (!(Number(row.size_sqft) > 0)) problems.push(`${label}: enter a size above 0`);
-    if (!(Number(row.price_value) > 0)) problems.push(`${label}: enter a price above 0`);
+    const label = `Flat ${flatLetter(i)}`;
     for (const [key, name] of [
       ['bedroom_count', 'bedrooms'],
       ['bathroom_count', 'bathrooms'],
       ['balcony_count', 'balconies'],
       ['parking_allocated', 'parking'],
+      ['size_sqft', 'size'],
+      ['price_value', 'price'],
     ] as const) {
       if (Number(row[key]) < 0) problems.push(`${label}: ${name} cannot be negative`);
     }
@@ -1353,6 +1399,27 @@ export const SALES_MOVE_LABEL: Record<ProjectSalesStatus, string> = {
   paused: 'Pause sales',
   sold_out: 'Mark sold out',
 };
+
+/*
+ * Client meeting 2026-10-18 — towers and units are laid out from the
+ * finished design, so they wait until the Design phase is complete (the
+ * status has reached `approval`, the drawings having gone to RAJUK). A land
+ * share has no design phase and is never held back.
+ */
+const DESIGN_DONE: ReadonlySet<ProjectStatus> = new Set([
+  'approval',
+  'under_construction',
+  'nearly_complete',
+  'handover_ongoing',
+  'closed',
+]);
+
+/** Why towers, blocks, units or plots cannot be added yet, or null when they can. */
+export function inventoryGateReason(status: ProjectStatus, shape: ProjectShape): string | null {
+  if (shape.item === 'share' || DESIGN_DONE.has(status)) return null;
+  const design = projectStatusLabel('design', shape);
+  return `Complete the ${design} stage first: ${shape.labels.containerPlural.toLowerCase()} and ${shape.labels.itemPlural.toLowerCase()} are laid out from the finished design. The project is at ${projectStatusLabel(status, shape)}.`;
+}
 
 /** Where the project status says the plan approval has been passed. */
 const PAST_APPROVAL: ReadonlySet<ProjectStatus> = new Set([

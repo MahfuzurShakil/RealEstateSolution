@@ -266,7 +266,7 @@ export default function ProjectDetailPage() {
           )}
 
           {tab === 'towers' && (
-            <TowersUnitsPanel projectId={project.id} projectType={project.project_type} />
+            <TowersUnitsPanel projectId={project.id} projectType={project.project_type} projectStatus={project.status} />
           )}
 
 

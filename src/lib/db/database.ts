@@ -774,6 +774,28 @@ export class AppDatabase extends Dexie {
       bookings:
         'id, &code, customer_id, unit_id, lead_id, status, discount_approval_status, booking_date, booked_by, booking_group, created_at',
     });
+
+    /*
+     * v33 — client meeting 2026-10-18. The road in front of the site moved
+     * from each tower to the project (`projects.front_road_width_ft`, not
+     * indexed): existing projects take the widest road any of their towers
+     * recorded. Plot blocks keep theirs, it is the block's internal road.
+     * `towers.staircase_count` and the unit status `draft` need no rewrite.
+     */
+    this.version(33)
+      .stores({})
+      .upgrade(async (tx) => {
+        const projects = await tx.table('projects').toArray();
+        const towers = await tx.table('towers').toArray();
+        for (const p of projects) {
+          if (p.front_road_width_ft != null) continue;
+          const widths = towers
+            .filter((t) => t.project_id === p.id && Number(t.front_road_width_ft) > 0)
+            .map((t) => Number(t.front_road_width_ft));
+          if (widths.length > 0)
+            await tx.table('projects').update(p.id, { front_road_width_ft: Math.max(...widths) });
+        }
+      });
   }
 }
 

@@ -20,6 +20,10 @@ import type {
 } from '../db/types';
 import {
   floorsInRange,
+  flatLetter,
+  inventoryGateReason,
+  unitIsComplete,
+  unitRowMissing,
   allowedSalesMoves,
   isResidentialUnitType,
   salesMoveBlockers,
@@ -40,7 +44,7 @@ import {
 import { money } from '../domain/finance';
 import { nextCode } from '../utils/id';
 import { todayLocal } from '../utils/format';
-import { BaseRepository, type NewRecord } from './base.repository';
+import { BaseRepository, type NewRecord, type UpdateRecord } from './base.repository';
 import { projectBudgetRepository } from './budget.repository';
 import { documentRepository } from './document.repository';
 import { userProjectAssignmentRepository } from './user.repository';
@@ -833,8 +837,11 @@ class TowerRepository extends BaseRepository<Tower> {
    * project pipeline.
    */
   async create(input: NewRecord<Tower>, createdBy: string | null = null): Promise<Tower> {
-    const tower = await super.create({ current_progress_pct: 0, ...input }, createdBy);
     const project = await projectRepository.getById(input.project_id);
+    // client meeting 2026-10-18: towers wait for the finished design
+    const gate = project && inventoryGateReason(project.status, projectShape(project.project_type));
+    if (gate) throw new Error(gate);
+    const tower = await super.create({ current_progress_pct: 0, ...input }, createdBy);
     if (project && shapeIsBuilt(projectShape(project.project_type))) {
       await towerWorkItemRepository.seedDefaultsForTower(tower.id, createdBy);
     }
@@ -864,6 +871,7 @@ class TowerRepository extends BaseRepository<Tower> {
         building_type: null,
         unit_per_floor: null,
         lift_count: null,
+        staircase_count: null,
         electricity_backup: null,
         front_road_width_ft: null,
       },
@@ -969,6 +977,41 @@ class UnitRepository extends BaseRepository<Unit> {
     super(() => db.units);
   }
 
+  /**
+   * A flat with its type, size or price still blank is a `draft` and cannot
+   * be sold; once the last of them is filled in it becomes `available` by
+   * itself (client meeting 2026-10-18). Only flats (they have a floor);
+   * plots and shares are always generated complete. A flat already reserved,
+   * booked or sold is left alone.
+   */
+  private draftStatus(u: Pick<Unit, 'floor' | 'status' | 'unit_type' | 'size_sqft' | 'base_price'>): UnitStatus {
+    if (u.floor === null || u.floor === undefined) return u.status;
+    const complete = unitIsComplete(u);
+    if (!complete && (u.status === 'available' || u.status === 'hold')) return 'draft';
+    if (complete && u.status === 'draft') return 'available';
+    return u.status;
+  }
+
+  /** Units, like towers, wait for the finished design (client meeting 2026-10-18). */
+  async inventoryGate(towerId: string): Promise<string | null> {
+    const tower = await db.towers.get(towerId);
+    const project = tower && (await db.projects.get(tower.project_id));
+    return project ? inventoryGateReason(project.status, projectShape(project.project_type)) : null;
+  }
+
+  override async create(input: NewRecord<Unit>, createdBy: string | null = null): Promise<Unit> {
+    const gate = await this.inventoryGate(input.tower_id);
+    if (gate) throw new Error(gate);
+    return super.create({ ...input, status: this.draftStatus(input) }, createdBy);
+  }
+
+  override async update(id: string, changes: UpdateRecord<Unit>): Promise<Unit | undefined> {
+    const current = await this.getById(id);
+    if (!current) return undefined;
+    const status = this.draftStatus({ ...current, ...changes });
+    return super.update(id, status === (changes.status ?? current.status) ? changes : { ...changes, status });
+  }
+
   async listForTower(towerId: string): Promise<Unit[]> {
     const rows = await db.units.where('tower_id').equals(towerId).toArray();
     return sortUnits(rows);
@@ -1006,6 +1049,8 @@ class UnitRepository extends BaseRepository<Unit> {
     input: UnitPatternInput,
     createdBy: string | null = null,
   ): Promise<BulkGenerateResult> {
+    const gate = await this.inventoryGate(towerId);
+    if (gate) throw new Error(gate);
     const tower = await db.towers.get(towerId);
     const problems = unitPatternProblems(input, tower?.floor_count ?? null);
     if (problems.length > 0) throw new Error(problems.join('. '));
@@ -1024,7 +1069,7 @@ class UnitRepository extends BaseRepository<Unit> {
       const full: number[] = [];
       for (const floor of floors) {
         const fresh = input.rows.filter(
-          (row) => !existing.has(unitCode(input.prefix, input.separator, floor, row.suffix)),
+          (_, i) => !existing.has(unitCode(input.tower_code, floor, flatLetter(i))),
         ).length;
         const already = onTower.filter((u) => u.floor === floor).length;
         if (fresh > 0 && already + fresh > perFloor) full.push(floor);
@@ -1040,8 +1085,8 @@ class UnitRepository extends BaseRepository<Unit> {
     const skipped: string[] = [];
 
     for (const floor of floors) {
-      for (const row of input.rows) {
-        const code = unitCode(input.prefix, input.separator, floor, row.suffix);
+      for (const [i, row] of input.rows.entries()) {
+        const code = unitCode(input.tower_code, floor, flatLetter(i));
         if (existing.has(code)) {
           skipped.push(code);
           continue;
@@ -1062,7 +1107,8 @@ class UnitRepository extends BaseRepository<Unit> {
               facing: row.facing.trim() || null,
               base_price: priceOnFloor(row, floor, input),
               parking_allocated: Number(row.parking_allocated) || 0,
-              status: 'available',
+              // blanks left in the row make it a draft, see draftStatus
+              status: unitRowMissing(row).length > 0 ? 'draft' : 'available',
               allocation_type: 'developer_share',
               allocated_to_owner_id: null,
               for_sale_by: 'company',

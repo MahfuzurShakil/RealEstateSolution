@@ -22,6 +22,7 @@ import {
   UNIT_STATUSES,
   type AllocationType,
   type Landowner,
+  type ProjectStatus,
   type ProjectType,
   type Tower,
   type Unit,
@@ -32,6 +33,7 @@ import {
   FOR_SALE_BY_SHORT,
   TOWER_STATUS_META,
   UNIT_STATUS_META,
+  inventoryGateReason,
   projectShape,
   shapeUses,
   unitSizeLabel,
@@ -65,14 +67,18 @@ import { UnitEditModal } from './UnitEditModal';
 export function TowersUnitsPanel({
   projectId,
   projectType,
+  projectStatus,
 }: {
   projectId: string;
   projectType: ProjectType;
+  projectStatus: ProjectStatus;
 }) {
   const { userId } = useMockSession();
   const shape = projectShape(projectType);
   const isJv = useProjectIsJv(projectId);
   const L = shape.labels;
+  // client meeting 2026-10-18: nothing is laid out before the design is done
+  const gate = inventoryGateReason(projectStatus, shape);
   /*
    * A share register has exactly one hidden container (see
    * `towerRepository.ensureShareRegister`), so showing a card for it would be
@@ -160,12 +166,15 @@ export function TowersUnitsPanel({
 
   return (
     <div className="space-y-5">
+      {gate && (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{gate}</p>
+      )}
       {showContainers && (
       <Card>
         <CardHeader
           title={`${L.containerPlural} (${towers.length})`}
           action={
-            <Button size="sm" onClick={() => setTowerModal({ open: true })}>
+            <Button size="sm" onClick={() => setTowerModal({ open: true })} disabled={Boolean(gate)} title={gate ?? undefined}>
               <Plus className="size-4" /> Add {L.container}
             </Button>
           }
@@ -176,7 +185,7 @@ export function TowersUnitsPanel({
             title={`No ${L.container.toLowerCase()} yet`}
             description={`Add a ${L.container.toLowerCase()} first — ${L.itemPlural.toLowerCase()} are generated inside it.`}
             action={
-              <Button onClick={() => setTowerModal({ open: true })}>
+              <Button onClick={() => setTowerModal({ open: true })} disabled={Boolean(gate)} title={gate ?? undefined}>
                 <Plus className="size-4" /> Add {L.container}
               </Button>
             }
@@ -229,6 +238,7 @@ export function TowersUnitsPanel({
                             `${tower.floor_count} floors`,
                             tower.unit_per_floor ? `${tower.unit_per_floor}/floor` : null,
                             tower.lift_count ? `${tower.lift_count} lift` : null,
+                            tower.staircase_count ? `${tower.staircase_count} stair` : null,
                           ]
                             .filter(Boolean)
                             .join(' · ')
@@ -253,7 +263,7 @@ export function TowersUnitsPanel({
                     )}
                   </button>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" onClick={() => setGenerateFor(tower)}>
+                    <Button size="sm" variant="outline" onClick={() => setGenerateFor(tower)} disabled={Boolean(gate)} title={gate ?? undefined}>
                       <Layers className="size-4" /> Generate {L.itemPlural.toLowerCase()}
                     </Button>
                     <Button
@@ -293,7 +303,7 @@ export function TowersUnitsPanel({
               <div className="flex items-center gap-2">
                 {/* the floor × position grid only means something in a tower */}
                 {shape.container === 'tower' && <ViewToggle value={view} onChange={setView} />}
-                <Button size="sm" variant="outline" onClick={() => setGenerateFor(activeTower)}>
+                <Button size="sm" variant="outline" onClick={() => setGenerateFor(activeTower)} disabled={Boolean(gate)} title={gate ?? undefined}>
                   <Layers className="size-4" /> Generate {L.itemPlural.toLowerCase()}
                 </Button>
               </div>
@@ -367,7 +377,7 @@ export function TowersUnitsPanel({
                     : 'Generate the register — how many shares the plot is divided into, and the price of one.'
               }
               action={
-                <Button onClick={() => setGenerateFor(activeTower)}>
+                <Button onClick={() => setGenerateFor(activeTower)} disabled={Boolean(gate)} title={gate ?? undefined}>
                   <Layers className="size-4" /> Generate {L.itemPlural.toLowerCase()}
                 </Button>
               }

@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils/cn';
  * elsewhere, so the legend only has to be read once.
  */
 const CELL_STYLES: Record<UnitStatus, string> = {
+  draft: 'bg-white border-dashed border-slate-300 text-slate-500 hover:border-slate-400',
   available: 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:border-emerald-400',
   hold: 'bg-amber-50 border-amber-200 text-amber-800 hover:border-amber-400',
   reserved: 'bg-orange-50 border-orange-200 text-orange-800 hover:border-orange-400',
@@ -20,6 +21,7 @@ const CELL_STYLES: Record<UnitStatus, string> = {
 };
 
 const LEGEND_SWATCH: Record<UnitStatus, string> = {
+  draft: 'border border-dashed border-slate-400 bg-white',
   available: 'bg-emerald-200',
   hold: 'bg-amber-200',
   reserved: 'bg-orange-200',

@@ -116,8 +116,14 @@ export function UnitEditModal({
         return setError(`Floor must be between 0 and ${tower?.floor_count ?? 'the floor count'}`);
       }
     }
-    if (uses('size_sqft') && !(Number(form.size_sqft) > 0)) return setError('Enter a size above 0');
-    if (!(Number(form.base_price) > 0)) return setError('Enter a base price above 0');
+    // a draft may be saved half-done; it turns Available once type, size and price are in
+    const draft = unit.status === 'draft';
+    if (draft) {
+      if (Number(form.size_sqft) < 0 || Number(form.base_price) < 0) return setError('Size and price cannot be negative');
+    } else {
+      if (uses('size_sqft') && !(Number(form.size_sqft) > 0)) return setError('Enter a size above 0');
+      if (!(Number(form.base_price) > 0)) return setError('Enter a base price above 0');
+    }
     for (const key of ['bedroom_count', 'bathroom_count', 'balcony_count', 'parking_allocated'] as const) {
       if (Number(form[key]) < 0) return setError('Room and parking counts cannot be negative');
     }
@@ -242,7 +248,7 @@ export function UnitEditModal({
           <SelectInput value={form.unit_type} onChange={(e) => set('unit_type', e.target.value)}>
             {[...new Set([form.unit_type, ...unitTypes])].map((t) => (
               <option key={t} value={t}>
-                {t}
+                {t || 'Select…'}
               </option>
             ))}
           </SelectInput>
@@ -362,7 +368,9 @@ export function UnitEditModal({
         <Field
           label="Status"
           hint={
-            isManualUnitStatus(unit.status)
+            unit.status === 'draft'
+              ? 'Becomes Available by itself once unit type, size and price are filled in.'
+              : isManualUnitStatus(unit.status)
               ? 'Reserved, Booked and Sold are set by the booking, not here.'
               : `${UNIT_STATUS_META[unit.status].label} was set by a booking. Change it from the booking, not here.`
           }
@@ -370,6 +378,7 @@ export function UnitEditModal({
           <SelectInput
             value={form.status}
             onChange={(e) => set('status', e.target.value as UnitStatus)}
+            disabled={unit.status === 'draft'}
           >
             {unitStatusOptions(unit.status).map((s) => (
               <option key={s} value={s} disabled={!isManualUnitStatus(s)}>

@@ -8,37 +8,46 @@ import { Field, SelectInput, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import type { Tower } from '@/lib/db/types';
 import {
+  cleanTowerCode,
+  flatLetter,
   floorsInRange,
   previewUnitCodes,
   priceFor,
   priceOnFloor,
+  suggestTowerCode,
+  unitCode,
   unitPatternProblems,
+  unitRowMissing,
   type UnitPatternRow,
 } from '@/lib/domain/project';
 import { lookupRepository, unitRepository } from '@/lib/repositories';
 import { formatBdt } from '@/lib/utils/format';
 
-const emptyRow = (suffix: string): UnitPatternRow => ({
-  suffix,
-  unit_type: '3 Bed',
-  bedroom_count: '3',
-  bathroom_count: '3',
-  balcony_count: '2',
-  size_sqft: '1450',
-  facing: 'South',
+/* client meeting 2026-10-18: nothing prefilled, the user types every figure */
+const emptyRow = (): UnitPatternRow => ({
+  unit_type: '',
+  bedroom_count: '',
+  bathroom_count: '',
+  balcony_count: '',
+  size_sqft: '',
+  facing: '',
   price_mode: 'per_sqft',
-  price_value: '9500',
-  parking_allocated: '1',
+  price_value: '',
+  parking_allocated: '',
 });
 
 /**
- * Bulk unit generator (decided 2026-09-01).
+ * Bulk unit generator (decided 2026-09-01, simplified 2026-10-18).
  *
  * A Bangladeshi tower repeats one floor layout, so the input is: a floor range
  * with the floors to skip (the ground floor is usually parking or commercial),
- * the units on ONE floor as repeatable rows, and a code pattern with a live
- * preview. Running it a few times covers a whole tower; existing codes are
- * skipped, so a second run for the penthouse floors is safe.
+ * the flats on ONE floor as rows, and a live preview of the codes. Running it
+ * a few times covers a whole tower; existing codes are skipped, so a second
+ * run for the penthouse floors is safe.
+ *
+ * Codes are Tower-FloorLetter (A-5B), the letter following the row order, so
+ * there is no suffix or separator to choose. Every field starts blank and may
+ * stay blank: those flats are saved as drafts and finished later.
  */
 export function UnitBulkGenerateModal({
   open,
@@ -49,32 +58,29 @@ export function UnitBulkGenerateModal({
   tower: Tower;
   onClose: () => void;
 }) {
-  // mounted only while open, so the defaults are read off the tower once
-  const [prefix, setPrefix] = useState(
-    () => tower.name.replace(/^tower\s*/i, '').trim().slice(0, 4) || 'A',
-  );
-  const [separator, setSeparator] = useState('-');
-  const [floorFrom, setFloorFrom] = useState('2');
-  const [floorTo, setFloorTo] = useState(() => String(tower.floor_count || 10));
+  const suggestedCode = suggestTowerCode(tower.name);
+  const [towerCode, setTowerCode] = useState('');
+  const [floorFrom, setFloorFrom] = useState('');
+  const [floorTo, setFloorTo] = useState('');
   const [excluded, setExcluded] = useState('');
+  // the tower's own units-per-floor says how many flat rows to start with
   const [rows, setRows] = useState<UnitPatternRow[]>(() =>
-    Array.from({ length: Math.min(Math.max(tower.unit_per_floor ?? 2, 1), 8) }, (_, i) =>
-      emptyRow(String.fromCharCode(65 + i)),
-    ),
+    Array.from({ length: Math.min(Math.max(tower.unit_per_floor ?? 1, 1), 8) }, emptyRow),
   );
   /*
-   * Height is priced everywhere in this market, and the generator used to
-   * apply one figure to every floor — so a 22-flat tower came out at one price
-   * and had to be corrected unit by unit afterwards. The step is counted from
-   * the first floor generated, so the price typed into the row is the price of
-   * that first flat.
+   * Height is priced everywhere in this market. The step is counted from the
+   * first floor generated, so the price typed into a row is the price of that
+   * first flat.
    */
-  const [premiumMode, setPremiumMode] = useState<'none' | 'amount' | 'percent'>('percent');
-  const [premiumValue, setPremiumValue] = useState('1.5');
+  const [premiumMode, setPremiumMode] = useState<'none' | 'amount' | 'percent'>('none');
+  const [premiumValue, setPremiumValue] = useState('');
   const [unitTypes, setUnitTypes] = useState<string[]>([]);
   const [facings, setFacings] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ created: number; skipped: string[] } | null>(null);
+  const [result, setResult] = useState<{ created: number; drafts: number; skipped: string[] } | null>(
+    null,
+  );
+  const [error, setError] = useState('');
 
   useEffect(() => {
     lookupRepository.options('unit_type').then((o) => setUnitTypes(o.map((r) => r.value)));
@@ -91,10 +97,9 @@ export function UnitBulkGenerateModal({
   );
 
   const pattern = {
-    prefix,
-    separator,
-    floor_from: Number(floorFrom),
-    floor_to: Number(floorTo),
+    tower_code: towerCode,
+    floor_from: floorFrom.trim() === '' ? NaN : Number(floorFrom),
+    floor_to: floorTo.trim() === '' ? NaN : Number(floorTo),
     excluded_floors: excludedFloors,
     floor_premium_mode: premiumMode,
     floor_premium_value: premiumValue,
@@ -103,16 +108,15 @@ export function UnitBulkGenerateModal({
 
   const floors = floorsInRange(pattern);
   const codes = previewUnitCodes(pattern);
-  // the real total now that each floor can be priced differently
   const totalValue = floors.reduce(
     (sum, floor) => sum + rows.reduce((rowSum, r) => rowSum + priceOnFloor(r, floor, pattern), 0),
     0,
   );
+  const draftRows = rows.filter((r) => unitRowMissing(r).length > 0).length;
 
-  const rangeInvalid = floors.length === 0;
+  const rangeInvalid = floorFrom.trim() !== '' && floorTo.trim() !== '' && floors.length === 0;
   const overFloorCount = Number(floorTo) > tower.floor_count;
   const problems = unitPatternProblems(pattern, tower.floor_count);
-  const [error, setError] = useState('');
 
   function updateRow(index: number, patch: Partial<UnitPatternRow>) {
     setRows((list) => list.map((row, i) => (i === index ? { ...row, ...patch } : row)));
@@ -123,7 +127,11 @@ export function UnitBulkGenerateModal({
     setError('');
     try {
       const { created, skipped } = await unitRepository.bulkGenerate(tower.id, pattern);
-      setResult({ created: created.length, skipped });
+      setResult({
+        created: created.length,
+        drafts: created.filter((u) => u.status === 'draft').length,
+        skipped,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -131,17 +139,30 @@ export function UnitBulkGenerateModal({
     }
   }
 
+  const numberField = (index: number, key: keyof UnitPatternRow, label: string) => (
+    <Field label={label}>
+      <TextInput
+        type="number"
+        min="0"
+        value={rows[index][key]}
+        onChange={(e) => updateRow(index, { [key]: e.target.value })}
+      />
+    </Field>
+  );
+
   return (
     <Modal
       open={open}
       title={`Generate units — ${tower.name}`}
-      subtitle="One floor pattern, repeated over a floor range"
+      subtitle="One floor layout, repeated over a floor range"
       icon={Layers}
       size="xl"
       onClose={onClose}
       footer={
         result ? (
-          <Button onClick={onClose} viewSafe>Done</Button>
+          <Button onClick={onClose} viewSafe>
+            Done
+          </Button>
         ) : (
           <>
             <Button variant="outline" onClick={onClose} viewSafe disabled={busy}>
@@ -160,6 +181,13 @@ export function UnitBulkGenerateModal({
             <span className="font-semibold text-admin-700">{result.created}</span> unit
             {result.created === 1 ? '' : 's'} created in {tower.name}.
           </p>
+          {result.drafts > 0 && (
+            <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-ink">
+              {result.drafts} saved as <span className="font-medium">Draft</span>. Open each from the
+              unit grid to fill in what is missing. A draft cannot be booked; it becomes Available once
+              its type, size and price are in.
+            </p>
+          )}
           {result.skipped.length > 0 && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
               <p className="text-sm font-medium text-amber-800">
@@ -170,8 +198,8 @@ export function UnitBulkGenerateModal({
             </div>
           )}
           <p className="text-xs text-ink-muted">
-            Run this again for a different floor range — a penthouse or duplex floor — and edit the
-            odd unit afterwards.
+            Run this again for a different floor range (a penthouse or duplex floor) and edit the odd
+            unit afterwards.
           </p>
         </div>
       ) : (
@@ -179,10 +207,7 @@ export function UnitBulkGenerateModal({
           <section className="rounded-xl border border-hairline bg-white p-4">
             <h3 className="mb-3 text-sm font-semibold text-ink">1. Floor range</h3>
             <div className="grid gap-4 sm:grid-cols-3">
-              <Field
-                label="From floor"
-                error={rangeInvalid ? 'Range is empty' : undefined}
-              >
+              <Field label="From floor" required error={rangeInvalid ? 'Range is empty' : undefined}>
                 <TextInput
                   type="number"
                   min="0"
@@ -192,6 +217,7 @@ export function UnitBulkGenerateModal({
               </Field>
               <Field
                 label="To floor"
+                required
                 error={overFloorCount ? `Tower has ${tower.floor_count} floors` : undefined}
               >
                 <TextInput
@@ -199,18 +225,12 @@ export function UnitBulkGenerateModal({
                   min="0"
                   value={floorTo}
                   onChange={(e) => setFloorTo(e.target.value)}
+                  placeholder={tower.floor_count ? `up to ${tower.floor_count}` : undefined}
                   invalid={overFloorCount}
                 />
               </Field>
-              <Field
-                label="Skip floors"
-                hint="Comma separated — the ground floor is often parking"
-              >
-                <TextInput
-                  value={excluded}
-                  onChange={(e) => setExcluded(e.target.value)}
-                  placeholder="e.g. 1, 13"
-                />
+              <Field label="Skip floors" hint="Comma separated. The ground floor is often parking">
+                <TextInput value={excluded} onChange={(e) => setExcluded(e.target.value)} />
               </Field>
             </div>
             <p className="mt-2 text-xs text-ink-muted">
@@ -225,13 +245,11 @@ export function UnitBulkGenerateModal({
               >
                 <SelectInput
                   value={premiumMode}
-                  onChange={(e) =>
-                    setPremiumMode(e.target.value as 'none' | 'amount' | 'percent')
-                  }
+                  onChange={(e) => setPremiumMode(e.target.value as 'none' | 'amount' | 'percent')}
                 >
-                  <option value="percent">Yes — a % per floor</option>
-                  <option value="amount">Yes — a fixed amount per floor</option>
-                  <option value="none">No — every floor the same price</option>
+                  <option value="none">No, every floor the same price</option>
+                  <option value="percent">Yes, a % per floor</option>
+                  <option value="amount">Yes, a fixed amount per floor</option>
                 </SelectInput>
               </Field>
               {premiumMode !== 'none' && (
@@ -246,193 +264,163 @@ export function UnitBulkGenerateModal({
                 </Field>
               )}
             </div>
-
-            {premiumMode !== 'none' && floors.length > 1 && rows.length > 0 && (
-              <p className="mt-2 text-xs text-ink-muted">
-                Floor {floors[0]}:{' '}
-                <span className="font-medium text-ink">
-                  {formatBdt(priceOnFloor(rows[0], floors[0], pattern))}
-                </span>{' '}
-                → floor {floors[floors.length - 1]}:{' '}
-                <span className="font-medium text-ink">
-                  {formatBdt(priceOnFloor(rows[0], floors[floors.length - 1], pattern))}
-                </span>{' '}
-                for the first unit row.
-              </p>
-            )}
           </section>
 
           <section className="rounded-xl border border-hairline bg-white p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-ink">2. Units on one floor</h3>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setRows((list) => [...list, emptyRow(String.fromCharCode(65 + list.length))])}
-              >
-                <Plus className="size-4" /> Add unit
+              <div>
+                <h3 className="text-sm font-semibold text-ink">2. Flats on one floor</h3>
+                <p className="text-xs text-ink-muted">
+                  Lettered A, B, C… in this order. Leave anything blank to finish it later as a draft.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setRows((list) => [...list, emptyRow()])}>
+                <Plus className="size-4" /> Add flat
               </Button>
             </div>
 
             <div className="space-y-3">
-              {rows.map((row, index) => (
-                <div
-                  key={index}
-                  className="grid gap-3 rounded-xl border border-hairline p-3 md:grid-cols-4 xl:grid-cols-8"
-                >
-                  <Field label="Suffix">
-                    <TextInput
-                      value={row.suffix}
-                      onChange={(e) => updateRow(index, { suffix: e.target.value })}
-                      placeholder="A"
-                    />
-                  </Field>
-                  <Field label="Unit type" className="xl:col-span-2">
-                    <SelectInput
-                      value={row.unit_type}
-                      onChange={(e) => updateRow(index, { unit_type: e.target.value })}
-                    >
-                      {[...new Set([row.unit_type, ...unitTypes])].map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </SelectInput>
-                  </Field>
-                  <Field label="Bed">
-                    <TextInput
-                      type="number"
-                      min="0"
-                      value={row.bedroom_count}
-                      onChange={(e) => updateRow(index, { bedroom_count: e.target.value })}
-                    />
-                  </Field>
-                  <Field label="Bath">
-                    <TextInput
-                      type="number"
-                      min="0"
-                      value={row.bathroom_count}
-                      onChange={(e) => updateRow(index, { bathroom_count: e.target.value })}
-                    />
-                  </Field>
-                  <Field label="Balcony">
-                    <TextInput
-                      type="number"
-                      min="0"
-                      value={row.balcony_count}
-                      onChange={(e) => updateRow(index, { balcony_count: e.target.value })}
-                    />
-                  </Field>
-                  <Field label="Size (sqft)">
-                    <TextInput
-                      type="number"
-                      min="0"
-                      value={row.size_sqft}
-                      onChange={(e) => updateRow(index, { size_sqft: e.target.value })}
-                    />
-                  </Field>
-                  <Field label="Facing">
-                    <SelectInput
-                      value={row.facing}
-                      onChange={(e) => updateRow(index, { facing: e.target.value })}
-                    >
-                      <option value="">—</option>
-                      {[...new Set([row.facing, ...facings])].filter(Boolean).map((f) => (
-                        <option key={f} value={f}>
-                          {f}
-                        </option>
-                      ))}
-                    </SelectInput>
-                  </Field>
-                  <Field label="Price mode">
-                    <SelectInput
-                      value={row.price_mode}
-                      onChange={(e) =>
-                        updateRow(index, { price_mode: e.target.value as UnitPatternRow['price_mode'] })
-                      }
-                    >
-                      <option value="per_sqft">Per sqft</option>
-                      <option value="fixed">Fixed</option>
-                    </SelectInput>
-                  </Field>
-                  <Field label={row.price_mode === 'per_sqft' ? 'Rate / sqft' : 'Unit price'}>
-                    <TextInput
-                      type="number"
-                      min="0"
-                      value={row.price_value}
-                      onChange={(e) => updateRow(index, { price_value: e.target.value })}
-                    />
-                  </Field>
-                  <Field label="Parking">
-                    <TextInput
-                      type="number"
-                      min="0"
-                      value={row.parking_allocated}
-                      onChange={(e) => updateRow(index, { parking_allocated: e.target.value })}
-                    />
-                  </Field>
-                  <div className="flex items-end justify-between gap-2 xl:col-span-2">
-                    <p className="pb-2.5 text-sm font-medium text-ink">
-                      {formatBdt(priceFor(row))}
-                      {premiumMode !== 'none' && floors.length > 0 && (
-                        <span className="block text-xs font-normal text-ink-muted">
-                          on floor {floors[0]}, rising with height
+              {rows.map((row, index) => {
+                const missing = unitRowMissing(row);
+                return (
+                  <div
+                    key={index}
+                    className="grid gap-3 rounded-xl border border-hairline p-3 md:grid-cols-4 xl:grid-cols-8"
+                  >
+                    <div className="flex flex-wrap items-center gap-2 md:col-span-4 xl:col-span-8">
+                      <span className="text-sm font-semibold text-ink">Flat {flatLetter(index)}</span>
+                      {towerCode && floors.length > 0 && (
+                        <span className="font-mono text-xs text-ink-muted">
+                          {unitCode(towerCode, floors[0], flatLetter(index))}
+                          {floors.length > 1 ? ` … ${unitCode(towerCode, floors[floors.length - 1], flatLetter(index))}` : ''}
                         </span>
                       )}
-                    </p>
-                    {rows.length > 1 && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="mb-1.5"
-                        aria-label="Remove unit row"
-                        onClick={() => setRows((list) => list.filter((_, i) => i !== index))}
+                      {missing.length > 0 && <Badge tone="neutral">Draft: no {missing.join(', ')}</Badge>}
+                    </div>
+                    <Field label="Unit type" className="xl:col-span-2">
+                      <SelectInput
+                        value={row.unit_type}
+                        onChange={(e) => {
+                          const type = e.target.value;
+                          // "3 Bed" names the bedrooms; fill Bed only while it is still blank
+                          const beds = /^(\d+)\s*bed/i.exec(type)?.[1];
+                          updateRow(index, {
+                            unit_type: type,
+                            ...(beds && !row.bedroom_count ? { bedroom_count: beds } : {}),
+                          });
+                        }}
                       >
-                        <Trash2 className="size-4" />
-                      </Button>
-                    )}
+                        <option value="">Select…</option>
+                        {[...new Set([row.unit_type, ...unitTypes])].filter(Boolean).map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </SelectInput>
+                    </Field>
+                    {numberField(index, 'bedroom_count', 'Bed')}
+                    {numberField(index, 'bathroom_count', 'Bath')}
+                    {numberField(index, 'balcony_count', 'Balcony')}
+                    {numberField(index, 'size_sqft', 'Size (sqft)')}
+                    <Field label="Facing">
+                      <SelectInput value={row.facing} onChange={(e) => updateRow(index, { facing: e.target.value })}>
+                        <option value="">—</option>
+                        {[...new Set([row.facing, ...facings])].filter(Boolean).map((f) => (
+                          <option key={f} value={f}>
+                            {f}
+                          </option>
+                        ))}
+                      </SelectInput>
+                    </Field>
+                    {numberField(index, 'parking_allocated', 'Parking')}
+                    <Field label="Price mode">
+                      <SelectInput
+                        value={row.price_mode}
+                        onChange={(e) =>
+                          updateRow(index, { price_mode: e.target.value as UnitPatternRow['price_mode'] })
+                        }
+                      >
+                        <option value="per_sqft">Per sqft</option>
+                        <option value="fixed">Fixed</option>
+                      </SelectInput>
+                    </Field>
+                    {numberField(index, 'price_value', row.price_mode === 'per_sqft' ? 'Rate / sqft' : 'Unit price')}
+                    <div className="flex items-end justify-between gap-2 xl:col-span-2">
+                      <p className="pb-2.5 text-sm font-medium text-ink">
+                        {priceFor(row) > 0 ? formatBdt(priceFor(row)) : '—'}
+                        {premiumMode !== 'none' && floors.length > 0 && priceFor(row) > 0 && (
+                          <span className="block text-xs font-normal text-ink-muted">
+                            on floor {floors[0]}, rising with height
+                          </span>
+                        )}
+                      </p>
+                      {rows.length > 1 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="mb-1.5"
+                          aria-label="Remove flat"
+                          onClick={() => setRows((list) => list.filter((_, i) => i !== index))}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
 
           <section className="rounded-xl border border-hairline bg-white p-4">
-            <h3 className="mb-3 text-sm font-semibold text-ink">3. Code pattern & preview</h3>
+            <h3 className="mb-3 text-sm font-semibold text-ink">3. Unit codes</h3>
             <div className="grid gap-4 sm:grid-cols-3">
-              <Field label="Code prefix">
-                <TextInput value={prefix} onChange={(e) => setPrefix(e.target.value)} placeholder="A" />
-              </Field>
-              <Field label="Separator">
-                <SelectInput value={separator} onChange={(e) => setSeparator(e.target.value)}>
-                  <option value="-">A-501 (dash)</option>
-                  <option value="">A501 (none)</option>
-                  <option value="/">A/501 (slash)</option>
-                </SelectInput>
+              <Field
+                label="Tower code"
+                required
+                hint="Tower, floor, flat: A-5B is Tower A, 5th floor, flat B"
+                className="sm:col-span-2"
+              >
+                <TextInput
+                  value={towerCode}
+                  onChange={(e) => setTowerCode(cleanTowerCode(e.target.value))}
+                  placeholder={suggestedCode ? `e.g. ${suggestedCode}` : 'e.g. A'}
+                />
               </Field>
               <div className="flex items-end pb-1">
                 <div>
                   <p className="text-xs text-ink-muted">Total for this run</p>
-                  <p className="text-sm font-semibold text-ink">{formatBdt(totalValue )}</p>
+                  <p className="text-sm font-semibold text-ink">{formatBdt(totalValue)}</p>
                 </div>
               </div>
             </div>
 
+            {towerCode && codes.length > 0 && (
+              <div className="mt-3 max-h-40 overflow-y-auto rounded-lg border border-hairline bg-slate-50 p-2 font-mono text-xs text-ink">
+                {[...floors].reverse().map((floor) => (
+                  <div key={floor} className="flex flex-wrap gap-x-4">
+                    {rows.map((_, i) => (
+                      <span key={i}>{unitCode(towerCode, floor, flatLetter(i))}</span>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="mt-3 flex flex-wrap items-center gap-2">
               {codes.length === 0 ? (
-                <p className="text-sm text-ink-muted">Nothing to generate yet.</p>
+                <p className="text-sm text-ink-muted">Enter a floor range and a tower code to see the codes.</p>
               ) : (
                 <>
-                  <Badge tone="teal">First: {codes[0]}</Badge>
-                  <Badge tone="teal">Last: {codes[codes.length - 1]}</Badge>
                   <Badge>
                     {codes.length} unit{codes.length === 1 ? '' : 's'} ({rows.length} × {floors.length}{' '}
                     floors)
                   </Badge>
+                  {draftRows > 0 && <Badge tone="neutral">{draftRows * floors.length} as draft</Badge>}
                 </>
               )}
             </div>
-            {(problems.length > 0 || error) && (
+            {(problems.length > 0 || error) && (towerCode || floorFrom || floorTo || error) && (
               <ul className="mt-3 space-y-0.5 text-xs text-red-600">
                 {problems.map((p) => (
                   <li key={p}>{p}</li>

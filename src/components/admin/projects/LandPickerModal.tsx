@@ -2,11 +2,11 @@
 
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, Check, ClipboardList, KeyRound, MapPin, Search } from 'lucide-react';
+import { ArrowLeft, Check, MapPin, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
-import type { Land, LandEntryMode } from '@/lib/db/types';
+import type { Land } from '@/lib/db/types';
 import {
   ACQUISITION_TYPE_LABEL,
   LAND_ENTRY_MODE_LABEL,
@@ -19,17 +19,15 @@ import {
   landAcquisitionCostRepository,
   landProjectMappingRepository,
   landRepository,
-  projectRepository,
 } from '@/lib/repositories';
-import { cn } from '@/lib/utils/cn';
-import { formatBdt, formatDate } from '@/lib/utils/format';
-import { QuickLandModal, createQuickLand, type QuickLandDraft } from './QuickLandModal';
+import { formatBdt } from '@/lib/utils/format';
 
 /**
  * Choosing the land a project stands on (client walkthrough 2026-10-10).
  *
- * Two steps: pick from the list (or add a new land), then confirm against the
- * land's key facts. The project form then shows only the confirmed land, read
+ * Two steps: pick an available land from the list, then confirm against the
+ * land's key facts. New land is added under Lands, not from here (client
+ * meeting 2026-10-18). The project form then shows only the confirmed land, read
  * only. Land already belonging to another project is shown but cannot be
  * picked: one land, one project (decision D3).
  */
@@ -64,28 +62,24 @@ function Picker({
 }) {
   const [query, setQuery] = useState('');
   const [chosen, setChosen] = useState<Land | null>(null);
-  const [adding, setAdding] = useState<LandEntryMode | null>(null);
-  /* a new land under review: not saved until it is confirmed (2026-10-17) */
-  const [draft, setDraft] = useState<QuickLandDraft | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState('');
-
   const data = useLiveQuery(async () => {
-    const [lands, mappings, projects] = await Promise.all([
+    const [lands, mappings] = await Promise.all([
       landRepository.getAll(),
       landProjectMappingRepository.getAll(),
-      projectRepository.getAll(),
     ]);
-    const codeOf = new Map(projects.map((p) => [p.id, p.code]));
-    const takenBy = new Map<string, string>();
-    for (const m of mappings) {
-      if (m.project_id !== projectId) takenBy.set(m.land_id, codeOf.get(m.project_id) ?? 'another project');
-    }
+    const taken = new Set(mappings.filter((m) => m.project_id !== projectId).map((m) => m.land_id));
     return {
       lands: lands
-        .filter((l) => l.status !== 'rejected' && l.status !== 'disposed' && !exclude.includes(l.id))
+        // only available land can be picked (client meeting 2026-10-18): not
+        // rejected, not disposed, and not already in another project
+        .filter(
+          (l) =>
+            l.status !== 'rejected' &&
+            l.status !== 'disposed' &&
+            !exclude.includes(l.id) &&
+            !taken.has(l.id),
+        )
         .sort((a, b) => a.code.localeCompare(b.code)),
-      takenBy,
     };
   }, [projectId, exclude.join(',')]);
 
@@ -99,63 +93,6 @@ function Picker({
         .some((v) => String(v).toLowerCase().includes(q)),
     );
   }, [data, query]);
-
-  if (adding) {
-    return (
-      <QuickLandModal
-        open
-        initialMode={adding}
-        initialDraft={draft ?? undefined}
-        onClose={() => {
-          setAdding(null);
-          setDraft(null);
-        }}
-        onReview={(d) => {
-          setAdding(null);
-          setDraft(d);
-        }}
-      />
-    );
-  }
-
-  async function confirmDraft() {
-    if (!draft) return;
-    setSaving(true);
-    setSaveError('');
-    try {
-      onConfirm(await createQuickLand(draft));
-    } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'The land could not be saved.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (draft) {
-    return (
-      <Modal
-        open
-        size="lg"
-        title="Confirm the land"
-        subtitle="Nothing is saved yet. Go back to change anything."
-        icon={MapPin}
-        onClose={onClose}
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setAdding(draft.mode)} disabled={saving}>
-              <ArrowLeft className="size-4" /> Back to edit
-            </Button>
-            <Button onClick={confirmDraft} disabled={saving}>
-              <Check className="size-4" /> {saving ? 'Saving…' : 'Confirm this land'}
-            </Button>
-          </>
-        }
-      >
-        <DraftFacts draft={draft} />
-        {saveError && <p className="mt-2 text-sm text-red-600">{saveError}</p>}
-      </Modal>
-    );
-  }
 
   return (
     <Modal
@@ -197,52 +134,36 @@ function Picker({
                 autoFocus
               />
             </div>
-            <Button variant="outline" onClick={() => setAdding('owned')}>
-              <KeyRound className="size-4" /> New owned land
-            </Button>
-            <Button variant="outline" onClick={() => setAdding('pipeline')}>
-              <ClipboardList className="size-4" /> New land to acquire
-            </Button>
           </div>
           <ul className="max-h-[50vh] space-y-2 overflow-y-auto">
             {rows.length === 0 && (
               <li className="rounded-xl border border-dashed border-hairline p-4 text-sm text-ink-muted">
-                No land matches. Add it with the buttons above.
+                No available land matches. A land must be added under Lands first, and must not belong to another project.
               </li>
             )}
-            {rows.map((land) => {
-              const taken = data?.takenBy.get(land.id);
-              return (
-                <li key={land.id}>
-                  <button
-                    type="button"
-                    disabled={Boolean(taken)}
-                    onClick={() => setChosen(land)}
-                    className={cn(
-                      'flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors',
-                      taken
-                        ? 'cursor-not-allowed border-hairline bg-slate-50 opacity-60'
-                        : 'border-hairline bg-white hover:border-admin-300 hover:bg-admin-50/50',
-                    )}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="flex flex-wrap items-center gap-2">
-                        <span className="truncate text-sm font-medium text-ink">{land.name}</span>
-                        <Badge tone={LAND_STATUS_META[land.status].tone}>
-                          {landStatusLabel(land.status, land.acquisition_type)}
-                        </Badge>
-                      </p>
-                      <p className="text-xs text-ink-muted">
-                        {land.code} · {land.land_size} {LAND_SIZE_UNIT_LABEL[land.land_size_unit]} ·{' '}
-                        {[land.location_area, land.location_district].filter(Boolean).join(', ')} ·{' '}
-                        {ACQUISITION_TYPE_LABEL[land.acquisition_type]}
-                      </p>
-                    </div>
-                    {taken && <span className="shrink-0 text-xs font-medium text-amber-700">In {taken}</span>}
-                  </button>
-                </li>
-              );
-            })}
+            {rows.map((land) => (
+              <li key={land.id}>
+                <button
+                  type="button"
+                  onClick={() => setChosen(land)}
+                  className="flex w-full items-center gap-3 rounded-xl border border-hairline bg-white p-3 text-left transition-colors hover:border-admin-300 hover:bg-admin-50/50"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="flex flex-wrap items-center gap-2">
+                      <span className="truncate text-sm font-medium text-ink">{land.name}</span>
+                      <Badge tone={LAND_STATUS_META[land.status].tone}>
+                        {landStatusLabel(land.status, land.acquisition_type)}
+                      </Badge>
+                    </p>
+                    <p className="text-xs text-ink-muted">
+                      {land.code} · {land.land_size} {LAND_SIZE_UNIT_LABEL[land.land_size_unit]} ·{' '}
+                      {[land.location_area, land.location_district].filter(Boolean).join(', ')} ·{' '}
+                      {ACQUISITION_TYPE_LABEL[land.acquisition_type]}
+                    </p>
+                  </div>
+                </button>
+              </li>
+            ))}
           </ul>
         </>
       )}
@@ -269,47 +190,6 @@ export function LandFacts({ land }: { land: Land }) {
     <dl className="divide-y divide-hairline rounded-xl border border-hairline bg-white">
       {facts.map(([k, v]) => (
         <div key={k} className="flex items-start justify-between gap-4 px-4 py-2.5">
-          <dt className="text-sm text-ink-muted">{k}</dt>
-          <dd className="text-right text-sm font-medium text-ink">{v}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
-/** The same facts for a land that is not saved yet. */
-function DraftFacts({ draft }: { draft: QuickLandDraft }) {
-  const { form } = draft;
-  const owned = draft.mode === 'owned';
-  const isJv = form.acquisition_type === 'joint_venture';
-  const price = Number(form.price_paid) || 0;
-  const fees = Number(form.registration_paid) || 0;
-  const other = draft.other_costs.reduce((s, r) => s + (Number(r.amount) || 0), 0);
-  const facts: [string, string][] = [
-    ['Land', `${form.name.trim()} (code on save)`],
-    ['Location', [form.location_area, form.location_district, form.location_division].filter(Boolean).join(', ')],
-    ['Size', `${form.land_size} ${LAND_SIZE_UNIT_LABEL[form.land_size_unit]}`],
-    ['Acquired how', `${ACQUISITION_TYPE_LABEL[form.acquisition_type]} · ${LAND_ENTRY_MODE_LABEL[draft.mode]}`],
-    ...((owned
-      ? [
-          [isJv ? 'JV signed on' : 'Owned since', formatDate(form.owned_on)],
-          ...(isJv ? [['Developer share', `${form.developer_share_pct}%`]] : []),
-          [
-            isJv ? 'Signing money paid' : 'Land price paid',
-            form.acquisition_type === 'inherited' && price === 0 ? 'Inherited, no price paid' : formatBdt(price),
-          ],
-          ['Registration & fees', formatBdt(fees)],
-          ...draft.other_costs.map((r) => [r.label.trim(), formatBdt(Number(r.amount))]),
-          ['Total paid so far', formatBdt(price + fees + other)],
-        ]
-      : form.acquisition_type === 'direct_purchase'
-        ? [['Asking price', formatBdt(Number(form.asking_price) || 0)]]
-        : []) as [string, string][]),
-  ];
-  return (
-    <dl className="divide-y divide-hairline rounded-xl border border-hairline bg-white">
-      {facts.map(([k, v], i) => (
-        <div key={`${k}-${i}`} className="flex items-start justify-between gap-4 px-4 py-2.5">
           <dt className="text-sm text-ink-muted">{k}</dt>
           <dd className="text-right text-sm font-medium text-ink">{v}</dd>
         </div>

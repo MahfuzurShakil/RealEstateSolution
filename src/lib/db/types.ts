@@ -1127,6 +1127,14 @@ export interface Project extends BaseEntity {
   status: ProjectStatus;
   project_manager?: UUID | null;
   architect?: string | null;
+  /**
+   * v33 — width of the road the site fronts onto (client meeting 2026-10-18).
+   * A fact about the plot, not one building: two towers on one site share
+   * it, and RAJUK's FAR and height limits are read off it. Used to sit on
+   * each tower. A plot scheme's blocks still carry their own internal road
+   * width on `towers.front_road_width_ft`.
+   */
+  front_road_width_ft?: number | null;
   surroundings?: string | null;
   /** multi-select from lookup_values (category='amenity') */
   amenities: string[];
@@ -1194,7 +1202,10 @@ export interface Tower extends BaseEntity {
   building_type?: string | null;
   unit_per_floor?: number | null;
   lift_count?: number | null;
+  /** v33 — staircases (siri) in this building; each tower has its own */
+  staircase_count?: number | null;
   electricity_backup?: boolean | null;
+  /** plot blocks only since v33 — a building's site road is on the project */
   front_road_width_ft?: number | null;
   /**
    * Cached construction progress (Section 6.3): Σ work_item.actual_progress_pct
@@ -1206,6 +1217,8 @@ export interface Tower extends BaseEntity {
 }
 
 export const UNIT_STATUSES = [
+  /** v33 — generated with details still missing; not for sale until completed */
+  'draft',
   'available',
   'hold',
   'reserved',

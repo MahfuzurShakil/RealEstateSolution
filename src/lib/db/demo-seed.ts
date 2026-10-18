@@ -1052,6 +1052,12 @@ async function seedDemoProjects(
         status: demo.status,
         project_manager: null,
         architect: demo.architect ?? null,
+        // v33 — the site's road, from the buildings that used to carry it
+        front_road_width_ft:
+          Math.max(
+            0,
+            ...demo.towers.filter((t) => !t.plot_patterns?.length).map((t) => t.front_road_width_ft ?? 0),
+          ) || null,
         surroundings: demo.surroundings ?? null,
         amenities: demo.amenities,
         cover_image_url: demo.cover_image_url ?? null,
@@ -1097,8 +1103,10 @@ async function seedDemoProjects(
           building_type: demoTower.building_type ?? null,
           unit_per_floor: demoTower.unit_per_floor ?? null,
           lift_count: demoTower.lift_count ?? null,
+          staircase_count: demoTower.staircase_count ?? null,
           electricity_backup: demoTower.electricity_backup ?? null,
-          front_road_width_ft: demoTower.front_road_width_ft ?? null,
+          // a building's site road is on the project since v33; a plot block keeps its own
+          front_road_width_ft: demoTower.plot_patterns?.length ? (demoTower.front_road_width_ft ?? null) : null,
         },
         createdBy,
       );
@@ -1107,8 +1115,7 @@ async function seedDemoProjects(
         const { created } = await unitRepository.bulkGenerate(
           tower.id,
           {
-            prefix: pattern.prefix,
-            separator: pattern.separator,
+            tower_code: pattern.prefix,
             floor_from: pattern.floor_from,
             floor_to: pattern.floor_to,
             excluded_floors: pattern.excluded_floors ?? [],
@@ -1121,7 +1128,6 @@ async function seedDemoProjects(
             floor_premium_mode: pattern.floor_premium_mode ?? 'percent',
             floor_premium_value: pattern.floor_premium_value ?? '1.5',
             rows: pattern.rows.map((row) => ({
-              suffix: row.suffix,
               unit_type: row.unit_type,
               bedroom_count: String(row.bedroom_count),
               bathroom_count: String(row.bathroom_count),

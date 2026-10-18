@@ -16,6 +16,7 @@ interface FormState {
   building_type: string;
   unit_per_floor: string;
   lift_count: string;
+  staircase_count: string;
   electricity_backup: boolean;
   front_road_width_ft: string;
 }
@@ -27,6 +28,7 @@ const EMPTY: FormState = {
   building_type: '',
   unit_per_floor: '',
   lift_count: '',
+  staircase_count: '',
   electricity_backup: false,
   front_road_width_ft: '',
 };
@@ -37,6 +39,10 @@ const num = (v: string) => (v.trim() === '' ? null : Number(v));
 /**
  * Add / edit a tower (Section 3.5). A tower is small enough to live in a
  * dialog on the project page rather than a page of its own.
+ *
+ * 2026-10-18 — only what differs from one building to the next on the same
+ * site lives here: floors, units per floor, lifts, staircases, generator. The
+ * road in front of the site is the project's.
  */
 /**
  * v26 — the same modal for a tower and for a plot block.
@@ -70,6 +76,7 @@ export function TowerFormModal({
           building_type: str(tower.building_type),
           unit_per_floor: str(tower.unit_per_floor),
           lift_count: str(tower.lift_count),
+          staircase_count: str(tower.staircase_count),
           electricity_backup: tower.electricity_backup ?? false,
           front_road_width_ft: str(tower.front_road_width_ft),
         }
@@ -90,7 +97,7 @@ export function TowerFormModal({
     if (isTower && (!form.floor_count.trim() || Number(form.floor_count) <= 0))
       next.floor_count = 'Enter a floor count above 0';
     // E2E 2026-10-12 #1 — a negative lift or road width is a typo, not a tower
-    for (const key of ['unit_per_floor', 'lift_count', 'front_road_width_ft'] as const) {
+    for (const key of ['unit_per_floor', 'lift_count', 'staircase_count', 'front_road_width_ft'] as const) {
       if (form[key].trim() && !(Number(form[key]) >= 0)) next[key] = 'Must be 0 or more';
     }
     setErrors(next);
@@ -105,9 +112,11 @@ export function TowerFormModal({
         status: form.status,
         building_type: form.building_type.trim() || null,
         unit_per_floor: num(form.unit_per_floor),
-        lift_count: num(form.lift_count),
-        electricity_backup: form.electricity_backup,
-        front_road_width_ft: num(form.front_road_width_ft),
+        lift_count: isTower ? num(form.lift_count) : null,
+        staircase_count: isTower ? num(form.staircase_count) : null,
+        electricity_backup: isTower ? form.electricity_backup : null,
+        // a building's site road is on the project (2026-10-18); a block keeps its own
+        front_road_width_ft: isTower ? null : num(form.front_road_width_ft),
       };
       if (tower) await towerRepository.update(tower.id, payload);
       else await towerRepository.create(payload);
@@ -186,22 +195,33 @@ export function TowerFormModal({
                 placeholder="e.g. 2"
               />
             </Field>
+            <Field label="Staircases" error={errors.staircase_count} hint="Siri in this building">
+              <TextInput
+                type="number"
+                min="0"
+                value={form.staircase_count}
+                onChange={(e) => set('staircase_count', e.target.value)}
+                placeholder="e.g. 1"
+              />
+            </Field>
           </>
         )}
-        <Field
-          label="Front Road Width (ft)"
-          error={errors.front_road_width_ft}
-          hint={isTower ? undefined : 'What the plots in this block front onto'}
-        >
-          <TextInput
-            type="number"
-            step="0.1"
-            min="0"
-            value={form.front_road_width_ft}
-            onChange={(e) => set('front_road_width_ft', e.target.value)}
-            placeholder="e.g. 40"
-          />
-        </Field>
+        {!isTower && (
+          <Field
+            label="Front Road Width (ft)"
+            error={errors.front_road_width_ft}
+            hint="What the plots in this block front onto"
+          >
+            <TextInput
+              type="number"
+              step="0.1"
+              min="0"
+              value={form.front_road_width_ft}
+              onChange={(e) => set('front_road_width_ft', e.target.value)}
+              placeholder="e.g. 40"
+            />
+          </Field>
+        )}
         {isTower && (
           <div className="flex items-center pt-6">
             <Checkbox
