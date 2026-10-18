@@ -1,6 +1,6 @@
 # Direct Purchase, Work-Item Budget and Fund — Plan
 
-Client meeting, 2026-10-18. Status: **B1–B3 built (2026-10-18); B4–B7 next.** Decisions in §9 taken as proposed.
+Client meeting, 2026-10-18. Status: **B1–B4 built (2026-10-18); B5–B7 next.** Decisions in §9 taken as proposed.
 
 ## 1. Why
 

@@ -122,6 +122,8 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Finance',
     icon: Coins,
     items: [
+      // DIRECT-PURCHASE-PLAN.md B4 — site costs waiting to be paid, and paying them
+      { label: 'Payments', href: '/admin/payments', module: 'finance_expense' },
       { label: 'Overview', href: '/admin/finance', module: 'dashboard' },
       { label: 'Collections', href: '/admin/collections', module: 'finance_collection' },
       { label: 'Expenses', href: '/admin/expenses', module: 'finance_expense' },

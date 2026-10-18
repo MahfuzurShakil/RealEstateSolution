@@ -1995,6 +1995,26 @@ export interface DirectPurchase extends BaseEntity {
   notes?: string | null;
 }
 
+/**
+ * Money paid against a direct purchase (DIRECT-PURCHASE-PLAN.md B4). Part
+ * payments are allowed; the purchase caches `paid_amount` and its status from
+ * these rows. The account is required — the point of paying from Payments is
+ * that the cash position knows which box the money left.
+ */
+export interface DirectPurchasePayment extends BaseEntity {
+  code: string;                       // PAY-2026-001
+  purchase_id: UUID;
+  /** denormalised from the purchase, for per-project lists */
+  project_id: UUID;
+  account_id: UUID;
+  amount: number;
+  payment_date: ISODate;
+  payment_method: SupplierPaymentMethod;
+  reference_no?: string | null;
+  paid_by: UUID | null;
+  notes?: string | null;
+}
+
 /** Document types for entity_type = 'direct_purchase' */
 export const DIRECT_PURCHASE_DOCUMENT_TYPES = [
   'bill',

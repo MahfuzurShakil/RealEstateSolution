@@ -60,6 +60,7 @@ import type {
   Tower,
   WorkItemBudgetLine,
   DirectPurchase,
+  DirectPurchasePayment,
   Unit,
   User,
 } from './types';
@@ -155,6 +156,7 @@ export class AppDatabase extends Dexie {
   expenses!: EntityTable<Expense, 'id'>;
   work_item_budget_lines!: EntityTable<WorkItemBudgetLine, 'id'>;
   direct_purchases!: EntityTable<DirectPurchase, 'id'>;
+  direct_purchase_payments!: EntityTable<DirectPurchasePayment, 'id'>;
 
   // Module 8 — User & Role Management
   user_project_assignments!: EntityTable<UserProjectAssignment, 'id'>;
@@ -811,6 +813,11 @@ export class AppDatabase extends Dexie {
       work_item_budget_lines: 'id, work_item_id, project_id, tower_id',
       direct_purchases:
         'id, code, project_id, tower_id, work_item_id, budget_line_id, purchase_date, payment_status',
+    });
+
+    /* v35 — DIRECT-PURCHASE-PLAN.md B4: paying direct purchases from an account. */
+    this.version(35).stores({
+      direct_purchase_payments: 'id, code, purchase_id, project_id, account_id, payment_date',
     });
   }
 }

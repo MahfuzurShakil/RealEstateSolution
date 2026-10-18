@@ -91,7 +91,7 @@ class BankAccountRepository extends BaseRepository<BankAccount> {
    * second, differently-shaped query that could disagree with the first.
    */
   async flows(): Promise<CashFlowRow[]> {
-    const [payments, expenses, vouchers, refunds, bookings, customers, suppliers] =
+    const [payments, expenses, vouchers, refunds, bookings, customers, suppliers, sitePayments, purchases] =
       await Promise.all([
         db.payments.toArray(),
         db.expenses.toArray(),
@@ -100,7 +100,10 @@ class BankAccountRepository extends BaseRepository<BankAccount> {
         db.bookings.toArray(),
         db.customers.toArray(),
         db.suppliers.toArray(),
+        db.direct_purchase_payments.toArray(),
+        db.direct_purchases.toArray(),
       ]);
+    const purchaseById = new Map(purchases.map((p) => [p.id, p]));
 
     const customerOfBooking = new Map(
       bookings.map((b) => [b.id, customers.find((c) => c.id === b.customer_id)?.name ?? null]),
@@ -135,6 +138,19 @@ class BankAccountRepository extends BaseRepository<BankAccount> {
         label: supplierById.get(v.supplier_id) ?? v.code,
         reference: v.reference_no ?? null,
       })),
+      // DIRECT-PURCHASE-PLAN.md B4 — a site cost paid from Payments
+      ...sitePayments.map((p) => {
+        const purchase = purchaseById.get(p.purchase_id);
+        return {
+          id: p.id,
+          account_id: p.account_id,
+          date: p.payment_date,
+          amount: -money(Number(p.amount) || 0),
+          kind: 'site_payment' as const,
+          label: purchase ? `${purchase.vendor_name} · ${purchase.description}` : p.code,
+          reference: p.reference_no ?? null,
+        };
+      }),
       // net_refund, not amount: the deduction was never handed back
       ...refunds.map((r) => ({
         id: r.id,
@@ -190,13 +206,14 @@ class BankAccountRepository extends BaseRepository<BankAccount> {
     const account = await this.getById(id);
     if (!account) return;
 
-    const [p, e, v, r] = await Promise.all([
+    const [p, e, v, r, s] = await Promise.all([
       db.payments.where('account_id').equals(id).count(),
       db.expenses.where('account_id').equals(id).count(),
       db.supplier_vouchers.where('account_id').equals(id).count(),
       db.refunds.where('account_id').equals(id).count(),
+      db.direct_purchase_payments.where('account_id').equals(id).count(),
     ]);
-    if (p + e + v + r > 0) throw new BankAccountInUseError(account.name);
+    if (p + e + v + r + s > 0) throw new BankAccountInUseError(account.name);
     await this.remove(id);
   }
 }

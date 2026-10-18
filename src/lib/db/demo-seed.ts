@@ -35,6 +35,7 @@ import {
   towerWorkItemRepository,
   workItemBudgetRepository,
   directPurchaseRepository,
+  directPurchasePaymentRepository,
   goodsReceiptRepository,
   purchaseOrderItemRepository,
   purchaseOrderRepository,
@@ -963,6 +964,8 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
   }
 
   await seedDemoFinance(projectIds, landIds, userIds, bookingIds, createdBy);
+  // after finance: payments need the accounts and the money in them
+  await seedDemoSitePayments(createdBy);
   await seedDemoUserAccess(projectIds, userIds, createdBy);
 
   setClearedFlag(false);
@@ -1611,6 +1614,40 @@ async function seedDemoDirectPurchases(
         );
       }
     }
+  }
+}
+
+/**
+ * DIRECT-PURCHASE-PLAN.md B4 — the older site costs are paid, a few in part,
+ * the recent ones left pending, so Payments opens with both lists filled. Each
+ * payment goes through the same balance check as the screen; once the
+ * accounts run dry the rest simply stay owed, which is the honest demo.
+ */
+async function seedDemoSitePayments(createdBy: string | null): Promise<void> {
+  const pending = await directPurchasePaymentRepository.pending();
+  let i = 0;
+  for (const row of pending) {
+    if (row.age_days < 40) continue;
+    i += 1;
+    const position = await bankAccountRepository.position();
+    const account = position.accounts
+      .filter((a) => a.is_active)
+      .sort((a, b) => b.closing_balance - a.closing_balance)[0];
+    if (!account) return;
+    // every third one is paid in part, the way a vendor is often kept waiting
+    const amount = i % 3 === 0 ? Math.round(row.due / 2 / 100) * 100 : row.due;
+    if (account.closing_balance < amount) continue;
+    await directPurchasePaymentRepository.pay(
+      {
+        purchase_id: row.id,
+        account_id: account.id,
+        amount,
+        payment_date: daysFromToday(-(row.age_days - 7)).slice(0, 10),
+        payment_method: row.cost_type === 'labour' ? 'cash' : 'bank',
+        reference_no: row.cost_type === 'labour' ? null : `TRX-${1000 + i}`,
+      },
+      createdBy,
+    );
   }
 }
 
@@ -2421,6 +2458,7 @@ export async function clearDemoData(): Promise<void> {
     db.expenses.clear(),
     db.work_item_budget_lines.clear(),
     db.direct_purchases.clear(),
+    db.direct_purchase_payments.clear(),
     db.user_project_assignments.clear(),
   ]);
   setClearedFlag(true);

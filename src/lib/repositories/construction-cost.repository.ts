@@ -4,6 +4,8 @@ import { db } from '../db/database';
 import type {
   ConstructionCostType,
   DirectPurchase,
+  DirectPurchasePayment,
+  SupplierPaymentMethod,
   Tower,
   TowerWorkItem,
   WorkItemBudgetLine,
@@ -11,6 +13,8 @@ import type {
 import { budgetHealth, usedPct, type BudgetHealth } from '../domain/construction-cost';
 import { money, qty } from '../domain/procurement';
 import { nextCode } from '../utils/id';
+import { formatBdt, todayLocal } from '../utils/format';
+import { bankAccountRepository } from './bank.repository';
 import { BaseRepository, type NewRecord } from './base.repository';
 import { documentRepository } from './document.repository';
 
@@ -339,3 +343,177 @@ export async function actualByBudgetLine(workItemId: string): Promise<Map<string
   }
   return out;
 }
+
+/* ------------------------------------------------------------------ *
+ * Paying direct purchases (DIRECT-PURCHASE-PLAN.md B4)
+ * ------------------------------------------------------------------ */
+
+export interface PayInput {
+  purchase_id: string;
+  account_id: string;
+  amount: number;
+  payment_date: string;
+  payment_method: SupplierPaymentMethod;
+  reference_no?: string | null;
+  notes?: string | null;
+}
+
+export class InsufficientFundsError extends Error {
+  constructor(
+    public account: string,
+    public available: number,
+    public needed: number,
+  ) {
+    super(
+      `${account} holds ${formatBdt(available)}; this payment needs ${formatBdt(needed)}. Pay part now, or pay from another account.`,
+    );
+    this.name = 'InsufficientFundsError';
+  }
+}
+
+export interface PendingPurchaseRow extends DirectPurchaseWithRelations {
+  project_name: string;
+  due: number;
+  age_days: number;
+}
+
+export interface SitePaymentRow extends DirectPurchasePayment {
+  purchase_code: string;
+  purchase_description: string;
+  vendor_name: string;
+  project_name: string;
+  work_item_name: string;
+  account_name: string;
+  paid_by_name: string | null;
+}
+
+/** What one purchase has been paid, from its payment rows (the cache's source). */
+async function syncPurchasePaid(purchaseId: string): Promise<void> {
+  const purchase = await db.direct_purchases.get(purchaseId);
+  if (!purchase) return;
+  const paid = money(
+    (await db.direct_purchase_payments.where('purchase_id').equals(purchaseId).toArray()).reduce(
+      (s, p) => s + p.amount,
+      0,
+    ),
+  );
+  const status = paid <= 0 ? 'pending' : paid + 0.005 >= purchase.amount ? 'paid' : 'part_paid';
+  await directPurchaseRepository.update(purchaseId, { paid_amount: paid, payment_status: status });
+}
+
+class DirectPurchasePaymentRepository extends BaseRepository<DirectPurchasePayment> {
+  constructor() {
+    super(() => db.direct_purchase_payments);
+  }
+
+  async generateCode(): Promise<string> {
+    const codes = (await db.direct_purchase_payments.toArray()).map((p) => p.code);
+    return nextCode('PAY', codes);
+  }
+
+  /**
+   * Pays all or part of what a direct purchase owes. Refused when the account
+   * does not hold the money (plan decision 3: a cash box cannot go below zero)
+   * and when it would pay more than is owed, which is the same bill paid twice.
+   */
+  async pay(input: PayInput, userId: string | null): Promise<DirectPurchasePayment> {
+    const purchase = await db.direct_purchases.get(input.purchase_id);
+    if (!purchase) throw new Error('This cost no longer exists.');
+    const amount = money(Number(input.amount) || 0);
+    if (!(amount > 0)) throw new Error('Enter an amount above 0.');
+    const due = money(purchase.amount - (purchase.paid_amount || 0));
+    if (amount > due + 0.005) {
+      throw new Error(`Only ${formatBdt(due)} is owed on ${purchase.code}.`);
+    }
+    if (!input.account_id) throw new Error('Pick the account the money is paid from.');
+
+    const position = await bankAccountRepository.position();
+    const account = position.accounts.find((a) => a.id === input.account_id);
+    if (!account) throw new Error('That account no longer exists.');
+    if (!account.is_active) throw new Error(`${account.name} is closed.`);
+    if (account.closing_balance + 0.005 < amount) {
+      throw new InsufficientFundsError(account.name, account.closing_balance, amount);
+    }
+
+    const saved = await this.create(
+      {
+        code: await this.generateCode(),
+        purchase_id: purchase.id,
+        project_id: purchase.project_id,
+        account_id: input.account_id,
+        amount,
+        payment_date: input.payment_date,
+        payment_method: input.payment_method,
+        reference_no: input.reference_no?.trim() || null,
+        paid_by: userId,
+        notes: input.notes?.trim() || null,
+      },
+      userId,
+    );
+    await syncPurchasePaid(purchase.id);
+    return saved;
+  }
+
+  /** Taking a payment back puts the amount owed back on the cost. */
+  async undo(id: string): Promise<void> {
+    const row = await this.getById(id);
+    if (!row) return;
+    await this.remove(id);
+    await syncPurchasePaid(row.purchase_id);
+  }
+
+  /** Everything still owed, oldest first: the order bills should be paid in. */
+  async pending(filters: { project_id?: string } = {}): Promise<PendingPurchaseRow[]> {
+    const rows = (await directPurchaseRepository.list({ project_id: filters.project_id })).filter(
+      (p) => p.payment_status !== 'paid',
+    );
+    const projects = await db.projects.bulkGet([...new Set(rows.map((r) => r.project_id))]);
+    const today = new Date(`${todayLocal()}T00:00:00`).getTime();
+    return rows
+      .map((r) => ({
+        ...r,
+        project_name: projects.find((p) => p?.id === r.project_id)?.name ?? '—',
+        due: money(r.amount - (r.paid_amount || 0)),
+        age_days: Math.max(
+          0,
+          Math.round((today - new Date(`${r.purchase_date}T00:00:00`).getTime()) / 86400000),
+        ),
+      }))
+      .sort((a, b) => a.purchase_date.localeCompare(b.purchase_date));
+  }
+
+  async history(filters: { project_id?: string } = {}): Promise<SitePaymentRow[]> {
+    const rows = filters.project_id
+      ? await db.direct_purchase_payments.where('project_id').equals(filters.project_id).toArray()
+      : await db.direct_purchase_payments.toArray();
+    rows.sort((a, b) => b.payment_date.localeCompare(a.payment_date) || b.code.localeCompare(a.code));
+    const [purchases, projects, accounts, users] = await Promise.all([
+      db.direct_purchases.bulkGet([...new Set(rows.map((r) => r.purchase_id))]),
+      db.projects.bulkGet([...new Set(rows.map((r) => r.project_id))]),
+      db.bank_accounts.toArray(),
+      db.users.toArray(),
+    ]);
+    const items = await db.tower_work_items.bulkGet(
+      [...new Set(purchases.map((p) => p?.work_item_id).filter(Boolean) as string[])],
+    );
+    return rows.map((r) => {
+      const p = purchases.find((x) => x?.id === r.purchase_id);
+      return {
+        ...r,
+        purchase_code: p?.code ?? '—',
+        purchase_description: p?.description ?? '—',
+        vendor_name: p?.vendor_name ?? '—',
+        project_name: projects.find((x) => x?.id === r.project_id)?.name ?? '—',
+        work_item_name: items.find((x) => x?.id === p?.work_item_id)?.name ?? '—',
+        account_name: accounts.find((a) => a.id === r.account_id)?.name ?? '—',
+        paid_by_name: users.find((u) => u.id === r.paid_by)?.name ?? null,
+      };
+    });
+  }
+
+  async listForPurchase(purchaseId: string): Promise<DirectPurchasePayment[]> {
+    return db.direct_purchase_payments.where('purchase_id').equals(purchaseId).sortBy('payment_date');
+  }
+}
+
+export const directPurchasePaymentRepository = new DirectPurchasePaymentRepository();
