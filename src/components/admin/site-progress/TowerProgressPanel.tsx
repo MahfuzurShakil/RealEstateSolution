@@ -435,10 +435,9 @@ export function TowerProgressPanel({
         />
       )}
 
-      {adding && activeTowerId && (
+      {adding && activeTower && (
         <AddWorkItemModal
-          towerId={activeTowerId}
-          towerName={activeTower?.name ?? 'Tower'}
+          tower={activeTower}
           remainingWeight={Math.max(0, 100 - weightSum)}
           onClose={() => setAdding(false)}
         />

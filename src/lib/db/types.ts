@@ -1747,6 +1747,13 @@ export interface TowerWorkItem extends BaseEntity {
    * lines are offered. Unindexed and optional: older items read their name.
    */
   work_type?: string | null;
+  /**
+   * Floor-wise kinds of work (client, 2026-10-21) — one item per floor:
+   * basements negative, ground 0, roof after the top floor. Null for work
+   * done once per building.
+   */
+  floor_no?: number | null;
+  floor_label?: string | null;
   sequence_no: number;
   /** contribution to the tower's overall % — all items together make 100 */
   weight_pct: number;
@@ -1944,6 +1951,10 @@ export const CONSTRUCTION_COST_TYPES = [
   'transport',
   'subcontract',
   'utility',
+  /** architect, structural engineer, consultant, soil test (client, 2026-10-21) */
+  'professional_fee',
+  /** RAJUK, DAP/land use clearance, utility connection fees */
+  'govt_fee',
   'other',
 ] as const;
 export type ConstructionCostType = (typeof CONSTRUCTION_COST_TYPES)[number];
@@ -1979,8 +1990,14 @@ export type DirectPurchasePaymentStatus = (typeof DIRECT_PURCHASE_PAYMENT_STATUS
 export interface DirectPurchase extends BaseEntity {
   code: string;                       // DP-2026-001
   project_id: UUID;
-  tower_id: UUID;
-  work_item_id: UUID;
+  /**
+   * Null for a stage cost (client, 2026-10-21): planning, design and approval
+   * cost money before there is a tower or a work item to put it against.
+   */
+  tower_id?: UUID | null;
+  work_item_id?: UUID | null;
+  /** the project stage a cost without a work item belongs to */
+  stage?: ProjectStatus | null;
   budget_line_id?: UUID | null;
   cost_type: ConstructionCostType;
   description: string;
@@ -2098,17 +2115,23 @@ export const DIRECT_PURCHASE_DOCUMENT_TYPES = [
   'other',
 ] as const;
 
-/** Seed of lookup_values `work_item_type` (client, 2026-10-20). */
+/** Seed of lookup_values `work_item_type`, in the order a BD building goes up (client, 2026-10-21). */
 export const WORK_ITEM_TYPE_OPTIONS = [
+  'Site Preparation',
+  'Piling',
   'Foundation',
-  'Ground Floor',
-  'Superstructure',
-  'Roof',
+  'Basement',
+  'Floor Structure',
   'Brick Work',
+  'Plaster',
   'Electrical',
-  'Plumbing',
-  'Finishing',
-  'Lift & Generator',
+  'Plumbing & Sanitary',
+  'Doors & Windows',
+  'Tiles & Flooring',
+  'Paint',
+  'Roof Top',
+  'Lift',
+  'Generator & Substation',
   'External Works',
   'Other',
 ] as const;

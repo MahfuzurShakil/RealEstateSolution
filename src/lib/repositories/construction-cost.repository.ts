@@ -11,6 +11,7 @@ import type {
   WorkItemBudgetLine,
 } from '../db/types';
 import { budgetHealth, usedPct, type BudgetHealth } from '../domain/construction-cost';
+import { PROJECT_STATUS_META } from '../domain/project';
 import { money, qty } from '../domain/procurement';
 import { nextCode } from '../utils/id';
 import { formatBdt, todayLocal } from '../utils/format';
@@ -103,9 +104,14 @@ class WorkItemBudgetRepository extends BaseRepository<WorkItemBudgetLine> {
 export const workItemBudgetRepository = new WorkItemBudgetRepository();
 
 /**
- * Client, 2026-10-20: a work item is created with its type, plan and budget in
- * one step, so nothing half-made appears on the breakdown. Weights past 100%
- * of the tower are refused, as the edit form does (QA audit C-04).
+ * Client, 2026-10-20/21: work items are created with their type, plan and
+ * budget in one step, so nothing half-made appears on the breakdown.
+ *
+ * A floor-wise kind of work (Floor Structure, Brick Work, Plaster…) creates
+ * one item per chosen floor, bottom up: the weight is shared out evenly, the
+ * planned window is cut into consecutive slices in floor order, and each
+ * floor gets the same budget lines to adjust later. Weights past 100% of the
+ * tower are refused, as the edit form does (QA audit C-04).
  */
 export async function createWorkItemWithBudget(
   input: {
@@ -115,37 +121,78 @@ export async function createWorkItemWithBudget(
     weight_pct: number;
     planned_start_date: string | null;
     planned_end_date: string | null;
+    /** floor-wise work: one item per floor */
+    floors?: { no: number; label: string }[];
   },
   lines: BudgetLineInput[],
   userId: string | null,
-): Promise<TowerWorkItem> {
+): Promise<TowerWorkItem[]> {
   if (!input.name.trim()) throw new Error('Give the work item a name.');
-  if (input.planned_start_date && input.planned_end_date && input.planned_end_date < input.planned_start_date) {
-    throw new Error('The planned end cannot be before the start.');
-  }
+  const start = input.planned_start_date;
+  const end = input.planned_end_date;
+  if (start && end && end < start) throw new Error('The planned end cannot be before the start.');
+  const floors = [...(input.floors ?? [])].sort((a, b) => a.no - b.no);
+  if (input.floors && floors.length === 0) throw new Error('Pick at least one floor.');
+
   const existing = await db.tower_work_items.where('tower_id').equals(input.tower_id).toArray();
   const used = existing.reduce((s, i) => s + (Number(i.weight_pct) || 0), 0);
   const weight = Number(input.weight_pct) || 0;
   if (weight < 0 || used + weight > 100.005) {
     throw new Error(`Only ${Math.round((100 - used) * 100) / 100}% of this tower is unallocated.`);
   }
-  const item = await towerWorkItemRepository.create(
-    {
-      tower_id: input.tower_id,
-      name: input.name.trim(),
-      work_type: input.work_type,
-      sequence_no: Math.max(0, ...existing.map((i) => i.sequence_no)) + 1,
-      weight_pct: weight,
-      planned_start_date: input.planned_start_date,
-      planned_end_date: input.planned_end_date,
-      actual_progress_pct: 0,
-      status: 'not_started',
-    },
-    userId,
-  );
+
+  const parts = floors.length > 0 ? floors : [null];
+  const each = Math.floor((weight / parts.length) * 100) / 100;
+  const day = 86_400_000;
+  const t0 = start ? new Date(`${start}T00:00:00`).getTime() : null;
+  const span = start && end ? Math.round((new Date(`${end}T00:00:00`).getTime() - t0!) / day) + 1 : null;
+  // local date, not toISOString(): in Dhaka (UTC+6) midnight is the previous day in UTC
+  const iso = (t: number) => {
+    const d = new Date(t);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  let sequence = Math.max(0, ...existing.map((i) => i.sequence_no));
+
+  const created: TowerWorkItem[] = [];
+  for (const [index, floor] of parts.entries()) {
+    const isLast = index === parts.length - 1;
+    // consecutive slices of the window, one per floor
+    let ps = start;
+    let pe = end;
+    if (floor && t0 !== null && span !== null) {
+      const from = Math.floor((span * index) / parts.length);
+      const to = Math.max(from, Math.floor((span * (index + 1)) / parts.length) - 1);
+      ps = iso(t0 + from * day);
+      pe = iso(t0 + to * day);
+    }
+    sequence += 1;
+    const item = await towerWorkItemRepository.create(
+      {
+        tower_id: input.tower_id,
+        name: floor ? `${input.name.trim()} — ${floor.label}` : input.name.trim(),
+        work_type: input.work_type,
+        floor_no: floor?.no ?? null,
+        floor_label: floor?.label ?? null,
+        sequence_no: sequence,
+        weight_pct: isLast ? Math.round((weight - each * (parts.length - 1)) * 100) / 100 : each,
+        planned_start_date: ps,
+        planned_end_date: pe,
+        actual_progress_pct: 0,
+        status: 'not_started',
+      },
+      userId,
+    );
+    if (lines.length > 0) {
+      await workItemBudgetRepository.saveForWorkItem(
+        item.id,
+        lines.map((l) => ({ ...l, id: undefined })),
+        userId,
+      );
+    }
+    created.push(item);
+  }
   await towerWorkItemRepository.recalculateTower(input.tower_id);
-  if (lines.length > 0) await workItemBudgetRepository.saveForWorkItem(item.id, lines, userId);
-  return item;
+  return created;
 }
 
 /* ------------------------------------------------------------------ *
@@ -156,6 +203,8 @@ export type DirectPurchaseInput = Omit<
   NewRecord<DirectPurchase>,
   'code' | 'project_id' | 'tower_id' | 'paid_amount' | 'payment_status' | 'amount'
 > & {
+  /** required for a stage cost (no work item); taken from the work item otherwise */
+  project_id?: string;
   /** quantity × rate when both are given, otherwise this lump sum */
   amount?: number | null;
 };
@@ -195,15 +244,32 @@ class DirectPurchaseRepository extends BaseRepository<DirectPurchase> {
     if (attachments.length === 0) {
       throw new Error('Attach the bill, challan, muster roll or a photo — a cost needs its paper.');
     }
-    const item = await db.tower_work_items.get(input.work_item_id);
-    if (!item) throw new Error('Pick the work item this cost is for.');
-    const tower = await db.towers.get(item.tower_id);
-    if (!tower) throw new Error('This tower no longer exists.');
-    if (input.budget_line_id) {
-      const line = await db.work_item_budget_lines.get(input.budget_line_id);
-      if (!line || line.work_item_id !== item.id) {
-        throw new Error('That budget line belongs to another work item.');
+    /*
+     * Two places a cost can belong (client, 2026-10-21): a work item under
+     * construction, or a stage of the project before there is one —
+     * planning, design, approval.
+     */
+    let projectId: string;
+    let towerId: string | null = null;
+    if (input.work_item_id) {
+      const item = await db.tower_work_items.get(input.work_item_id);
+      if (!item) throw new Error('Pick the work item this cost is for.');
+      const tower = await db.towers.get(item.tower_id);
+      if (!tower) throw new Error('This tower no longer exists.');
+      projectId = tower.project_id;
+      towerId = tower.id;
+      if (input.budget_line_id) {
+        const line = await db.work_item_budget_lines.get(input.budget_line_id);
+        if (!line || line.work_item_id !== item.id) {
+          throw new Error('That budget line belongs to another work item.');
+        }
       }
+    } else {
+      if (!input.project_id || !(await db.projects.get(input.project_id))) {
+        throw new Error('Pick the project this cost is for.');
+      }
+      if (!input.stage) throw new Error('Say which stage of the project this cost is for.');
+      projectId = input.project_id;
     }
     if (!input.description.trim()) throw new Error('Say what was bought or paid for.');
     if (!input.vendor_name.trim()) throw new Error('Say who it was bought from.');
@@ -217,8 +283,11 @@ class DirectPurchaseRepository extends BaseRepository<DirectPurchase> {
       {
         ...input,
         code: await this.generateCode(),
-        project_id: tower.project_id,
-        tower_id: tower.id,
+        project_id: projectId,
+        tower_id: towerId,
+        work_item_id: input.work_item_id ?? null,
+        budget_line_id: input.work_item_id ? (input.budget_line_id ?? null) : null,
+        stage: input.work_item_id ? null : input.stage,
         description: input.description.trim(),
         vendor_name: input.vendor_name.trim(),
         quantity: q != null ? qty(q) : null,
@@ -265,8 +334,8 @@ class DirectPurchaseRepository extends BaseRepository<DirectPurchase> {
     rows.sort((a, b) => b.purchase_date.localeCompare(a.purchase_date) || b.code.localeCompare(a.code));
 
     const [towers, items, lines, docs] = await Promise.all([
-      db.towers.bulkGet([...new Set(rows.map((r) => r.tower_id))]),
-      db.tower_work_items.bulkGet([...new Set(rows.map((r) => r.work_item_id))]),
+      db.towers.bulkGet([...new Set(rows.map((r) => r.tower_id).filter(Boolean) as string[])]),
+      db.tower_work_items.bulkGet([...new Set(rows.map((r) => r.work_item_id).filter(Boolean) as string[])]),
       db.work_item_budget_lines.bulkGet(
         [...new Set(rows.map((r) => r.budget_line_id).filter(Boolean) as string[])],
       ),
@@ -277,8 +346,11 @@ class DirectPurchaseRepository extends BaseRepository<DirectPurchase> {
 
     return rows.map((r) => ({
       ...r,
-      tower_name: (name(towers, r.tower_id) as Tower | undefined)?.name ?? '—',
-      work_item_name: (name(items, r.work_item_id) as TowerWorkItem | undefined)?.name ?? '—',
+      // a stage cost reads as "Project · Design stage" wherever a work item would show
+      tower_name: r.work_item_id ? ((name(towers, r.tower_id) as Tower | undefined)?.name ?? '—') : 'Project',
+      work_item_name: r.work_item_id
+        ? ((name(items, r.work_item_id) as TowerWorkItem | undefined)?.name ?? '—')
+        : `${r.stage ? PROJECT_STATUS_META[r.stage].label : 'Pre-construction'} stage`,
       budget_line_description:
         (name(lines, r.budget_line_id) as WorkItemBudgetLine | undefined)?.description ?? null,
       attachment_count: docs.filter((d) => d.entity_id === r.id).length,

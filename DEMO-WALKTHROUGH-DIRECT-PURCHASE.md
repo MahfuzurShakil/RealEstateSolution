@@ -53,41 +53,48 @@ Open the **Budget & Cost** tab.
     with only 55% of the work done. *Say:* "Money is going faster than the
     work. That is the leak we want to catch early."
   - **Roof: On budget**, nothing spent yet.
-- Click **Budget** on **Roof**. The sheet lists lines with quantity × rate, and
-  each line shows what has been spent against it.
-  - *Say:* "When a work item has no budget yet, the system offers the usual
-    lines for that kind of work, priced per square foot of the building. You
-    tick what applies, change any figure, and add your own lines."
-  - Optional: remove all lines, save, and open it again to show the template
-    offer, then click **Use 3 lines**.
+- Click any work item name to open its own page: budget line by line
+  against what each line has cost, every cost with its paper, and its
+  progress readings. **Budget** there edits the lines; nothing is ever
+  filled in for you.
 
-## 3. Add a work item, with its budget (2 min)
+## 3. Add work the way a building goes up (3 min)
 
 Open the **Work Breakdown** tab and click **Add work item** on Tower A.
 
-1. Pick the kind of work, for example **Brick Work**. The name fills in.
-   Set the planned start and end, and the weight (the share of the tower's
-   work; the demo tower is already at 100%, so enter `0`). Click
-   **Next: budget**.
-2. The lines that brick work normally needs are already there, priced per
-   sqft of the tower: brick, cement, sand, mason and helper labour, plaster.
-   - Untick **Plaster** to show that lines that don't apply can be left out.
-   - Click **Other item** and add `Scaffolding bamboo` for `120000`.
-   *Say:* "The system knows what each kind of work usually needs. You only
-   change what is different on your site."
-3. Click **Add work item**. It appears on the breakdown. A new tower starts
-   empty, and nothing is added for you.
+1. The kinds of work are listed in the order a BD building goes up: Site
+   Preparation, Piling, Foundation, Basement, **Floor Structure** (column, beam
+   and slab casting), Brick Work, Plaster, Electrical, Plumbing & Sanitary,
+   Doors & Windows, Tiles & Flooring, Paint, Roof Top, Lift, Generator &
+   Substation, External Works. The ones marked with the layers icon are
+   **floor by floor**.
+2. Pick **Brick Work**, then tick **1st, 2nd and 3rd floor**. Set the planned
+   start and end, and the weight (the demo tower is already at 100%, so enter
+   `0`). Click **Next: budget**.
+   *Say:* "One work item per floor, so cost and progress are followed floor
+   by floor. The dates are shared out across the floors in order."
+3. The budget is **yours to fill**. Nothing is pre-filled; the usual items
+   for brick work are offered as chips with their units (Brick · piece,
+   Cement · bag, Sand · cft, Mason and helper · person-day).
+   - Click **Mason and helper**: `60` person-days × `900`.
+   - Click **Brick**: `14000` pieces × `13.5`.
+   - **Other item** → `Curing water`, counted as **Lump sum**, `5000`.
+   *Say:* "Each item is counted its own way — pieces, bags, days, or just an
+   amount."
+4. Click **Add 3 work items**. Three items appear: Brick Work — 1st, 2nd and
+   3rd floor, each with that budget.
 
 ## 4. Record costs, each in its own way (3 min)
 
-Click the new **Brick Work** name. Its own page opens with its plan, its
+Click **Brick Work — 1st floor**. Its own page opens with its plan, its
 budget line by line, its costs and its progress readings.
 
 Click **Add cost**. You first choose what **kind** of cost it is, and each
 kind asks its own questions:
 
 1. **Labour:** Mason, paid to `Abdul Sardar`, `8` workers × `6` days ×
-   `850` daily wage gives BDT 40,800. Only the labour budget line is offered.
+   `850` daily wage gives BDT 40,800. Only the labour budget line is offered
+   (Mason and helper).
    Click **Save cost** *without* attaching anything. It is refused:
    "Attach the muster roll". *Say:* "No paper, no cost." Attach a file and
    save.
@@ -102,12 +109,25 @@ kind asks its own questions:
 What changes on the page:
 
 - **Budget, line by line** now shows the 40,800 spent against *Mason and
-  helper labour*.
+  helper*.
 - **Costs** lists both, as **Pending**, with their attachments.
 - The tiles update: spent, left in budget, still to pay.
 
 *Say:* "This is the actual cost. It counts the day it is recorded, whether it
 is paid today or next month."
+
+## 4b. Costs before construction (1 min)
+
+Open **Projects → Nokshi Green Residence → Costs**.
+
+- Planning, design and approval cost money before there is a building:
+  soil test and survey (Planning), architect and structural design (Design),
+  land use clearance and RAJUK plan approval fees (Approval). Each stage shows
+  its total, and Construction links to the work items.
+- Pick **Approval stage → Add cost → Government fee**: authority `RAJUK`,
+  fee for `Occupancy certificate fee`, `150000`, attach the pay order, save.
+- *Say:* "Every taka from the first soil test to the last tile is on the
+  project — and it goes to Payments like any other bill."
 
 ## 5. Pay it — Payments (3 min)
 

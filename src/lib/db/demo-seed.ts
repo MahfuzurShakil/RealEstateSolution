@@ -76,7 +76,7 @@ import { DEMO_DEVELOPMENT, DEMO_NO_DEVELOPMENT_LANDS } from './demo-development'
 import { DEMO_BOOKINGS, DEMO_CUSTOMERS, DEMO_DISCOUNT_RULES } from './demo-bookings';
 import { DEMO_LEADS, DEMO_USER_JOINED_DAYS_AGO, DEMO_USERS } from './demo-leads';
 import { DEMO_PROJECTS } from './demo-projects';
-import { templateForItem } from '../domain/construction-cost';
+import { templateForItem, workTypeDef } from '../domain/construction-cost';
 import { DEMO_MATERIAL_REQUESTS, DEMO_TOWER_PROGRESS } from './demo-site-progress';
 import { DEMO_EXPENSES, DEMO_REFUNDS } from './demo-finance';
 import {
@@ -939,6 +939,8 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
   const requestIds = await seedDemoSiteProgress(projectIds, userIds, createdBy);
   // after the site log: spend is told against how far each work item has got
   await seedDemoDirectPurchases(projectIds, createdBy);
+  // client, 2026-10-21: planning, design and approval cost money too
+  await seedDemoStageCosts(projectIds, createdBy);
   await seedDemoProcurement(projectIds, userIds, requestIds, createdBy);
   /*
    * The catalogue is derived from the procurement rows rather than listed
@@ -1540,6 +1542,48 @@ async function seedDemoBookings(
  * so the demo shows all three states: on budget, spending ahead of the work,
  * and over budget (Foundation of Green Residence Tower A).
  */
+/** Fees and studies paid before construction, on the stage they belong to. */
+async function seedDemoStageCosts(projectIds: Map<string, string>, createdBy: string | null): Promise<void> {
+  const rows: [string, 'planning' | 'design' | 'approval', 'professional_fee' | 'govt_fee', string, string, number, number, Record<string, string>][] = [
+    ['Nokshi Green Residence', 'planning', 'professional_fee', 'Soil test — 6 boreholes', 'Geo-Tech Soil Lab', 180_000, -420, { service: 'Soil test' }],
+    ['Nokshi Green Residence', 'planning', 'professional_fee', 'Survey and layout', 'Dhaka Survey Associates', 60_000, -415, { service: 'Survey' }],
+    ['Nokshi Green Residence', 'design', 'professional_fee', 'Architectural design — full set', 'Archeground Architects', 1_200_000, -390, { service: 'Architectural design' }],
+    ['Nokshi Green Residence', 'design', 'professional_fee', 'Structural design', 'Structura Engineers', 650_000, -380, { service: 'Structural design' }],
+    ['Nokshi Green Residence', 'approval', 'govt_fee', 'Land use clearance fee — Land use clearance (DAP)', 'Land use clearance (DAP)', 85_000, -360, { authority: 'Land use clearance (DAP)', fee_for: 'Land use clearance fee' }],
+    ['Nokshi Green Residence', 'approval', 'govt_fee', 'Building plan approval fee — RAJUK', 'RAJUK', 950_000, -340, { authority: 'RAJUK', fee_for: 'Building plan approval fee' }],
+    ['Nokshi Uttara Heights', 'design', 'professional_fee', 'Architectural design — first instalment', 'Archeground Architects', 500_000, -60, { service: 'Architectural design' }],
+    ['Nokshi Uttara Heights', 'approval', 'govt_fee', 'Building plan approval fee — RAJUK', 'RAJUK', 780_000, -12, { authority: 'RAJUK', fee_for: 'Building plan approval fee' }],
+  ];
+  const png = await makeSamplePng('Fee receipt');
+  if (!png) return;
+  for (const [name, stage, cost_type, description, vendor, amount, offset, details] of rows) {
+    const projectId = projectIds.get(name);
+    if (!projectId) continue;
+    await directPurchaseRepository.record(
+      {
+        project_id: projectId,
+        stage,
+        work_item_id: null,
+        budget_line_id: null,
+        cost_type,
+        description,
+        vendor_name: vendor,
+        supplier_id: null,
+        quantity: null,
+        unit: null,
+        rate: null,
+        amount,
+        details,
+        purchase_date: daysFromToday(offset).slice(0, 10),
+        is_asset: false,
+        notes: null,
+      },
+      [{ file: new File([png], 'fee-receipt.png', { type: 'image/png' }), document_type: 'bill' }],
+      createdBy,
+    );
+  }
+}
+
 async function seedDemoDirectPurchases(
   projectIds: Map<string, string>,
   createdBy: string | null,
@@ -1574,15 +1618,22 @@ async function seedDemoDirectPurchases(
     for (const [index, item] of items.entries()) {
       await workItemBudgetRepository.saveForWorkItem(
         item.id,
+        /*
+         * Demo budgets are lump sums from typical per-sqft rates — the app
+         * itself never fills a figure in (client, 2026-10-21). "Superstructure"
+         * in the sample covers every floor above ground, so its floor rates
+         * are multiplied by those floors.
+         */
         templateForItem(item)
           .filter((t) => t.rate_per_sqft > 0)
           .map((t) => ({
             cost_type: t.cost_type,
             description: t.description,
-            quantity: area,
-            unit: 'sqft',
-            rate: t.rate_per_sqft,
-            budgeted_amount: Math.round(area * t.rate_per_sqft),
+            quantity: null,
+            unit: null,
+            rate: null,
+            budgeted_amount:
+              Math.round((area * t.rate_per_sqft * (item.name === 'Superstructure' ? Math.max(1, tower.floor_count - 1) : 1)) / 1000) * 1000,
           })),
         createdBy,
       );
@@ -1859,7 +1910,7 @@ async function seedDemoSiteProgress(
             tower_id: tower.id,
             name: demoItem.name,
             // the demo names are the standard types
-            work_type: demoItem.name,
+            work_type: workTypeDef(demoItem.name).label,
             actual_progress_pct: 0,
             status: 'not_started',
           },

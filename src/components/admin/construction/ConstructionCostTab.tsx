@@ -31,7 +31,8 @@ export function ConstructionCostTab({ projectId, mayEdit }: { projectId: string;
 
   if (!sheet) return <p className="text-sm text-ink-muted">Loading…</p>;
 
-  const shown = (purchases ?? []).filter((p) => !filter || p.work_item_id === filter);
+  // stage costs (planning, design, approval) live on the project's Costs tab
+  const shown = (purchases ?? []).filter((p) => p.work_item_id && (!filter || p.work_item_id === filter));
   const allItems = sheet.towers.flatMap((t) => t.items.map((i) => ({ tower: t.tower, ...i })));
 
   return (

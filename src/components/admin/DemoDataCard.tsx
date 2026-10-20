@@ -8,6 +8,7 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { clearDemoData, resetDemoData } from '@/lib/db/demo-seed';
+import { seedIfEmpty } from '@/lib/db/seed';
 import { landRepository } from '@/lib/repositories';
 
 /**
@@ -21,12 +22,24 @@ export function DemoDataCard() {
 
   const landCount = useLiveQuery(() => landRepository.count(), []);
 
+  const [error, setError] = useState('');
+
   async function run() {
     setBusy(true);
+    setError('');
     try {
+      /*
+       * The app seeds itself on start. If a reload begins while that is still
+       * running, the reload empties the tables, start-up sees an empty
+       * database and seeds too, and the two collide on unique phone numbers
+       * (found 2026-10-21). Wait for start-up first; it is single-flight.
+       */
+      await seedIfEmpty();
       if (action === 'reset') await resetDemoData(userId);
       if (action === 'clear') await clearDemoData();
       setAction(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'The sample data could not be loaded.');
     } finally {
       setBusy(false);
     }
@@ -68,7 +81,9 @@ export function DemoDataCard() {
         busy={busy}
         onCancel={() => setAction(null)}
         onConfirm={run}
-      />
+      >
+        {error && <p className="text-sm text-red-600">{error}</p>}
+      </ConfirmDialog>
     </>
   );
 }

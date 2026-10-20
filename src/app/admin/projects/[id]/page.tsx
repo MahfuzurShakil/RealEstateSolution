@@ -1,5 +1,6 @@
 'use client';
 
+import { ProjectStageCosts } from '@/components/admin/projects/ProjectStageCosts';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
@@ -41,6 +42,7 @@ type Tab =
   | 'overview'
   | 'towers'
   | 'allocation'
+  | 'costs'
   | 'timeline'
   | 'documents';
 
@@ -111,6 +113,8 @@ export default function ProjectDetailPage() {
     { key: 'towers', label: inventoryLabel },
     // landowner allocation exists only on joint-venture land
     ...(isJv ? [{ key: 'allocation' as Tab, label: 'JV Allocation' }] : []),
+    // client, 2026-10-21: planning, design and approval cost money too
+    { key: 'costs', label: 'Costs' },
     { key: 'timeline', label: 'Timeline' },
     { key: 'documents', label: 'Documents' },
   ];
@@ -275,6 +279,8 @@ export default function ProjectDetailPage() {
           {/* Section 8.3 — what the project was planned to cost, against what it has */}
 
           {tab === 'allocation' && <JvAllocationCard projectId={project.id} />}
+
+          {tab === 'costs' && <ProjectStageCosts project={project} />}
 
           {tab === 'timeline' && (
             <Card>

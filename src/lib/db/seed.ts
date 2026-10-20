@@ -80,6 +80,7 @@ async function runSeed(): Promise<void> {
   await ensureOptions('land_development_activity', null, [...LAND_DEVELOPMENT_ACTIVITIES]);
   await ensureOptions('unit_type', null, [...UNIT_TYPE_OPTIONS]);
   await ensureOptions('work_item_type', null, [...WORK_ITEM_TYPE_OPTIONS]);
+  await retireWorkTypes();
   await ensureOptions('facing', null, [...FACING_OPTIONS]);
   await ensureOptions('amenity', null, [...AMENITY_OPTIONS]);
   await ensureOptions('material_unit', null, [...MATERIAL_UNIT_OPTIONS]);
@@ -168,6 +169,24 @@ async function ensureDdChecklist(): Promise<void> {
 }
 
 /** Adds the options of one category that are not in the table yet. */
+/**
+ * The first work-type list (2026-10-20) followed the old fixed WBS; the
+ * 2026-10-21 list follows how a BD building actually goes up. The old names
+ * are switched off, not deleted — items already typed with them keep them,
+ * and their suggestions are found through aliases.
+ */
+async function retireWorkTypes(): Promise<void> {
+  const stale = new Set(['Ground Floor', 'Superstructure', 'Roof', 'Finishing', 'Lift & Generator']);
+  const rows = await lookupRepository.options('work_item_type', null);
+  for (const r of rows) if (stale.has(r.value)) await lookupRepository.update(r.id, { is_active: false });
+  // order the list the way the work happens
+  const order = [...WORK_ITEM_TYPE_OPTIONS] as string[];
+  for (const r of await lookupRepository.options('work_item_type', null)) {
+    const at = order.indexOf(r.value);
+    if (at >= 0 && r.sort_order !== at + 1) await lookupRepository.update(r.id, { sort_order: at + 1 });
+  }
+}
+
 async function ensureOptions(
   category: string,
   scope: string | null,

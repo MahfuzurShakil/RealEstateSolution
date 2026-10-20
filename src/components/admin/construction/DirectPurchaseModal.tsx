@@ -4,7 +4,9 @@ import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Boxes,
+  Briefcase,
   Cable,
+  Landmark,
   Construction,
   HardHat,
   Paperclip,
@@ -22,6 +24,7 @@ import {
   CONSTRUCTION_COST_TYPES,
   DIRECT_PURCHASE_DOCUMENT_TYPES,
   type ConstructionCostType,
+  type ProjectStatus,
 } from '@/lib/db/types';
 import { COST_TYPE_META } from '@/lib/domain/construction-cost';
 import { money } from '@/lib/domain/procurement';
@@ -54,8 +57,15 @@ const TYPE_UI: Record<
   transport: { icon: Truck, hint: 'Trips × rate per trip', paper: 'trip slip or bill', doc: 'bill' },
   subcontract: { icon: HardHat, hint: 'Piling, waterproofing… measured or lump sum', paper: "contractor's bill", doc: 'bill' },
   utility: { icon: Cable, hint: 'Site electricity, water, gas bill', paper: 'utility bill', doc: 'bill' },
+  professional_fee: { icon: Briefcase, hint: 'Architect, engineer, soil test, survey, consultant', paper: 'bill or money receipt', doc: 'bill' },
+  govt_fee: { icon: Landmark, hint: 'RAJUK, clearance, utility connection fees', paper: 'fee receipt or pay order', doc: 'bill' },
   other: { icon: Wrench, hint: 'Anything else', paper: 'receipt', doc: 'bill' },
 };
+
+/** before construction only fees, outside services and sundries apply */
+const STAGE_TYPES: ConstructionCostType[] = ['professional_fee', 'govt_fee', 'subcontract', 'other'];
+const SERVICES = ['Architectural design', 'Structural design', 'MEP design', 'Soil test', 'Survey', 'Supervision', 'Legal', 'Other'];
+const AUTHORITIES = ['RAJUK', 'Land use clearance (DAP)', 'Fire service', 'Department of Environment', 'DESCO / DPDC', 'WASA', 'Titas Gas', 'City Corporation', 'Other'];
 
 const LABOUR_KINDS = ['Mason', 'Helper', 'Rod binder', 'Shuttering carpenter', 'Electrician', 'Plumber', 'Painter', 'Tiles mistri', 'Other'];
 const MACHINES = ['Excavator', 'Piling rig', 'Concrete mixer', 'Vibrator', 'Hoist / lift', 'Crane', 'Generator', 'Water pump', 'Other'];
@@ -72,10 +82,16 @@ const UTILITIES = ['Electricity', 'Water', 'Gas', 'Other'];
 export function DirectPurchaseModal({
   projectId,
   defaults,
+  stage,
   onClose,
 }: {
   projectId: string;
   defaults?: { tower_id?: string; work_item_id?: string; cost_type?: ConstructionCostType };
+  /**
+   * A stage cost (client, 2026-10-21): planning, design or approval cost
+   * money before there is a tower or work item to put it against.
+   */
+  stage?: { value: ProjectStatus; label: string };
   onClose: () => void;
 }) {
   const { userId } = useMockSession();
@@ -83,7 +99,14 @@ export function DirectPurchaseModal({
   const [towerId, setTowerId] = useState(defaults?.tower_id ?? '');
   const [workItemId, setWorkItemId] = useState(defaults?.work_item_id ?? '');
   const [lineId, setLineId] = useState('');
-  const [f, setF] = useState<Record<string, string>>({ basis: 'day', utility: 'Electricity', labour_kind: 'Mason', machine: 'Excavator' });
+  const [f, setF] = useState<Record<string, string>>({
+    basis: 'day',
+    utility: 'Electricity',
+    labour_kind: 'Mason',
+    machine: 'Excavator',
+    service: 'Architectural design',
+    authority: 'RAJUK',
+  });
   const [lump, setLump] = useState(false);
   const [date, setDate] = useState(todayLocal());
   const [isAsset, setIsAsset] = useState(false);
@@ -147,6 +170,10 @@ export function DirectPurchaseModal({
         return `Transport — ${f.load || 'load'}${f.route ? ` (${f.route})` : ''}`;
       case 'utility':
         return `${f.utility} bill${f.bill_month ? ` — ${f.bill_month}` : ''}`;
+      case 'professional_fee':
+        return `${f.service === 'Other' ? f.description || 'Professional service' : f.service}${f.description && f.service !== 'Other' ? ` — ${f.description}` : ''}`;
+      case 'govt_fee':
+        return `${f.fee_for || 'Fee'} — ${f.authority === 'Other' ? f.vendor || 'authority' : f.authority}`;
       default:
         return f.description || line?.description || '';
     }
@@ -167,6 +194,10 @@ export function DirectPurchaseModal({
         return pick(['bill_no']);
       case 'utility':
         return pick(['utility', 'bill_month', 'meter_no']);
+      case 'professional_fee':
+        return pick(['service', 'bill_no']);
+      case 'govt_fee':
+        return pick(['authority', 'fee_for', 'receipt_no']);
       default:
         return {};
     }
@@ -175,18 +206,22 @@ export function DirectPurchaseModal({
   async function save() {
     setError('');
     if (!type) return setError('Pick the kind of cost.');
-    if (!workItemId) return setError('Pick the work item this cost is for.');
+    if (!stage && !workItemId) return setError('Pick the work item this cost is for.');
     if (!(w.amount > 0)) return setError('The amount works out to 0 — fill in the figures.');
     if (files.length === 0) return setError(`Attach the ${TYPE_UI[type].paper} — a cost needs its paper.`);
     setBusy(true);
     try {
       await directPurchaseRepository.record(
         {
-          work_item_id: workItemId,
-          budget_line_id: lineId || null,
+          project_id: projectId,
+          stage: stage?.value ?? null,
+          work_item_id: stage ? null : workItemId,
+          budget_line_id: stage ? null : lineId || null,
           cost_type: type,
           description: describe(),
-          vendor_name: f.vendor || (type === 'labour' ? 'Site labour' : ''),
+          vendor_name:
+            f.vendor ||
+            (type === 'labour' ? 'Site labour' : type === 'govt_fee' && f.authority !== 'Other' ? f.authority : ''),
           supplier_id: null,
           quantity: w.quantity,
           unit: w.unit,
@@ -243,8 +278,14 @@ export function DirectPurchaseModal({
       open
       size="lg"
       icon={Receipt}
-      title={type ? `Add cost · ${COST_TYPE_META[type].label}` : 'Add cost'}
-      subtitle={item ? `${item.name} — counts as actual cost now; pay it later from Payments` : 'Counts as actual cost now; pay it later from Payments'}
+      title={type ? `Add cost · ${COST_TYPE_META[type].label}` : stage ? `Add cost · ${stage.label} stage` : 'Add cost'}
+      subtitle={
+        stage
+          ? `${stage.label} stage of the project — pay it later from Payments`
+          : item
+            ? `${item.name} — counts as actual cost now; pay it later from Payments`
+            : 'Counts as actual cost now; pay it later from Payments'
+      }
       onClose={onClose}
       footer={
         type ? (
@@ -272,7 +313,7 @@ export function DirectPurchaseModal({
         <div>
           <p className="mb-3 text-sm text-ink-muted">What kind of cost is it?</p>
           <div className="grid gap-2 sm:grid-cols-2">
-            {CONSTRUCTION_COST_TYPES.map((t) => {
+            {(stage ? STAGE_TYPES : CONSTRUCTION_COST_TYPES).map((t) => {
               const Icon = TYPE_UI[t].icon;
               return (
                 <button
@@ -295,7 +336,7 @@ export function DirectPurchaseModal({
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
-          {!fixedItem && (
+          {!fixedItem && !stage && (
             <>
               <Field label="Tower" required>
                 <SelectInput
@@ -334,6 +375,7 @@ export function DirectPurchaseModal({
             </>
           )}
 
+          {!stage && (
           <Field
             label="Budget line"
             className="sm:col-span-2"
@@ -348,8 +390,36 @@ export function DirectPurchaseModal({
               ))}
             </SelectInput>
           </Field>
+          )}
 
           {/* ------- the questions of this kind of cost ------- */}
+          {type === 'professional_fee' && (
+            <>
+              <Field label="Service">{choice('service', SERVICES)}</Field>
+              <Field label="Paid to" required>{input('vendor', { placeholder: 'e.g. Archeground Architects' })}</Field>
+              <Field label={f.service === 'Other' ? 'What service' : 'Details'} required={f.service === 'Other'} className="sm:col-span-2">
+                {input('description', { placeholder: 'e.g. Working drawings, 2nd instalment' })}
+              </Field>
+              <Field label="Bill no.">{input('bill_no')}</Field>
+              <Field label="Amount (BDT)" required>{input('amount', { type: 'number', min: 0 })}</Field>
+            </>
+          )}
+
+          {type === 'govt_fee' && (
+            <>
+              <Field label="Authority">{choice('authority', AUTHORITIES)}</Field>
+              {f.authority === 'Other' ? (
+                <Field label="Which authority" required>{input('vendor')}</Field>
+              ) : (
+                <Field label="Fee for" required>{input('fee_for', { placeholder: 'e.g. Building plan approval fee' })}</Field>
+              )}
+              {f.authority === 'Other' && (
+                <Field label="Fee for" required>{input('fee_for')}</Field>
+              )}
+              <Field label="Receipt / pay order no.">{input('receipt_no')}</Field>
+              <Field label="Amount (BDT)" required>{input('amount', { type: 'number', min: 0 })}</Field>
+            </>
+          )}
           {type === 'labour' && (
             <>
               <Field label="Labour">{choice('labour_kind', LABOUR_KINDS)}</Field>
