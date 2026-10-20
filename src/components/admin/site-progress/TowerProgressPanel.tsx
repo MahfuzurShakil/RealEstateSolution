@@ -4,6 +4,7 @@ import { DirectPurchaseModal } from '@/components/admin/construction/DirectPurch
 import { AddWorkItemModal } from '@/components/admin/construction/AddWorkItemModal';
 import { usePurchaseMode } from '@/lib/settings/use-purchase-mode';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
@@ -69,6 +70,7 @@ export function TowerProgressPanel({
 }) {
   const { role } = useMockSession();
   const { procurement, direct } = usePurchaseMode();
+  const router = useRouter();
   const [costFor, setCostFor] = useState<TowerWorkItem | null>(null);
   const today = todayLocal();
   const [selectedTowerId, setSelectedTowerId] = useState<string | null>(null);
@@ -260,7 +262,13 @@ export function TowerProgressPanel({
                     return (
                       <li
                         key={item.id}
-                        className="rounded-xl border border-hairline p-4 transition-colors hover:bg-admin-50/30"
+                        // client, 2026-10-21: the whole card opens the work item;
+                        // its own buttons and links keep doing their own thing
+                        onClick={(e) => {
+                          if ((e.target as HTMLElement).closest('button, a, input, select, textarea, label')) return;
+                          router.push(`/admin/site-progress/${projectId}/work-items/${item.id}`);
+                        }}
+                        className="cursor-pointer rounded-xl border border-hairline p-4 transition-colors hover:border-admin-300 hover:bg-admin-50/40"
                       >
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div className="min-w-0">

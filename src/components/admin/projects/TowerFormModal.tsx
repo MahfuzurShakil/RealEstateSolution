@@ -17,6 +17,8 @@ interface FormState {
   unit_per_floor: string;
   lift_count: string;
   staircase_count: string;
+  basement_count: string;
+  floor_area_sqft: string;
   electricity_backup: boolean;
   front_road_width_ft: string;
 }
@@ -29,6 +31,8 @@ const EMPTY: FormState = {
   unit_per_floor: '',
   lift_count: '',
   staircase_count: '',
+  basement_count: '',
+  floor_area_sqft: '',
   electricity_backup: false,
   front_road_width_ft: '',
 };
@@ -77,6 +81,8 @@ export function TowerFormModal({
           unit_per_floor: str(tower.unit_per_floor),
           lift_count: str(tower.lift_count),
           staircase_count: str(tower.staircase_count),
+          basement_count: str(tower.basement_count),
+          floor_area_sqft: str(tower.floor_area_sqft),
           electricity_backup: tower.electricity_backup ?? false,
           front_road_width_ft: str(tower.front_road_width_ft),
         }
@@ -97,7 +103,7 @@ export function TowerFormModal({
     if (isTower && (!form.floor_count.trim() || Number(form.floor_count) <= 0))
       next.floor_count = 'Enter a floor count above 0';
     // E2E 2026-10-12 #1 — a negative lift or road width is a typo, not a tower
-    for (const key of ['unit_per_floor', 'lift_count', 'staircase_count', 'front_road_width_ft'] as const) {
+    for (const key of ['unit_per_floor', 'lift_count', 'staircase_count', 'basement_count', 'floor_area_sqft', 'front_road_width_ft'] as const) {
       if (form[key].trim() && !(Number(form[key]) >= 0)) next[key] = 'Must be 0 or more';
     }
     setErrors(next);
@@ -114,6 +120,8 @@ export function TowerFormModal({
         unit_per_floor: num(form.unit_per_floor),
         lift_count: isTower ? num(form.lift_count) : null,
         staircase_count: isTower ? num(form.staircase_count) : null,
+        basement_count: isTower ? num(form.basement_count) : null,
+        floor_area_sqft: isTower ? num(form.floor_area_sqft) : null,
         electricity_backup: isTower ? form.electricity_backup : null,
         // a building's site road is on the project (2026-10-18); a block keeps its own
         front_road_width_ft: isTower ? null : num(form.front_road_width_ft),
@@ -170,11 +178,39 @@ export function TowerFormModal({
                 invalid={Boolean(errors.floor_count)}
               />
             </Field>
-            <Field label="Building Type" hint="Basement + Ground + floors">
+            <Field label="Basements" error={errors.basement_count} hint="Floors below ground">
+              <TextInput
+                type="number"
+                min="0"
+                value={form.basement_count}
+                onChange={(e) => set('basement_count', e.target.value)}
+                placeholder="e.g. 1"
+              />
+            </Field>
+            <Field
+              label="Floor area (sqft)"
+              error={errors.floor_area_sqft}
+              hint={
+                Number(form.floor_area_sqft) > 0 && Number(form.floor_count) > 0
+                  ? `Built-up ≈ ${Math.round(
+                      Number(form.floor_area_sqft) * (Number(form.floor_count) + (Number(form.basement_count) || 0)),
+                    ).toLocaleString('en-IN')} sqft over every floor`
+                  : 'A typical floor, as designed — work and budgets are planned against it'
+              }
+            >
+              <TextInput
+                type="number"
+                min="0"
+                value={form.floor_area_sqft}
+                onChange={(e) => set('floor_area_sqft', e.target.value)}
+                placeholder="e.g. 2700"
+              />
+            </Field>
+            <Field label="Building Type" hint="As on the drawings — Basement + Ground + floors">
               <TextInput
                 value={form.building_type}
                 onChange={(e) => set('building_type', e.target.value)}
-                placeholder="e.g. B+G+10"
+                placeholder={`e.g. ${Number(form.basement_count) > 0 ? `B${Number(form.basement_count) > 1 ? form.basement_count : ''}+` : ''}G+${Math.max(0, (Number(form.floor_count) || 11) - 1)}`}
               />
             </Field>
             <Field label="Units per Floor" error={errors.unit_per_floor}>

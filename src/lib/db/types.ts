@@ -1213,6 +1213,14 @@ export interface Tower extends BaseEntity {
   lift_count?: number | null;
   /** v33 — staircases (siri) in this building; each tower has its own */
   staircase_count?: number | null;
+  /**
+   * Client, 2026-10-21: the building's size as fixed at design / approval —
+   * basements below ground and the area of a typical floor (sqft). With
+   * `floor_count` they give the built-up area, which is what work items and
+   * their budgets are planned against. Unindexed; absent on older towers.
+   */
+  basement_count?: number | null;
+  floor_area_sqft?: number | null;
   electricity_backup?: boolean | null;
   /** plot blocks only since v33 — a building's site road is on the project */
   front_road_width_ft?: number | null;
@@ -2120,18 +2128,13 @@ export const WORK_ITEM_TYPE_OPTIONS = [
   'Site Preparation',
   'Piling',
   'Foundation',
-  'Basement',
   'Floor Structure',
-  'Brick Work',
-  'Plaster',
+  'Brick Work & Plaster',
   'Electrical',
   'Plumbing & Sanitary',
-  'Doors & Windows',
-  'Tiles & Flooring',
-  'Paint',
+  'Finishing',
   'Roof Top',
-  'Lift',
-  'Generator & Substation',
+  'Lift & Generator',
   'External Works',
   'Other',
 ] as const;

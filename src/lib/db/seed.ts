@@ -79,6 +79,7 @@ async function runSeed(): Promise<void> {
   // BRD DEV-001 — the list differs by plot, so it is Master Data
   await ensureOptions('land_development_activity', null, [...LAND_DEVELOPMENT_ACTIVITIES]);
   await ensureOptions('unit_type', null, [...UNIT_TYPE_OPTIONS]);
+  await reviveWorkTypes();
   await ensureOptions('work_item_type', null, [...WORK_ITEM_TYPE_OPTIONS]);
   await retireWorkTypes();
   await ensureOptions('facing', null, [...FACING_OPTIONS]);
@@ -175,8 +176,35 @@ async function ensureDdChecklist(): Promise<void> {
  * are switched off, not deleted — items already typed with them keep them,
  * and their suggestions are found through aliases.
  */
+/**
+ * A name retired by one list and brought back by the next (Finishing, Lift &
+ * Generator) is switched on again — before `ensureOptions`, which only sees
+ * active values and would otherwise add it a second time.
+ */
+async function reviveWorkTypes(): Promise<void> {
+  const all = (await lookupRepository.getAll()).filter((r) => r.category === 'work_item_type');
+  for (const r of all) {
+    if (!r.is_active && (WORK_ITEM_TYPE_OPTIONS as readonly string[]).includes(r.value)) {
+      await lookupRepository.update(r.id, { is_active: true });
+    }
+  }
+}
+
 async function retireWorkTypes(): Promise<void> {
-  const stale = new Set(['Ground Floor', 'Superstructure', 'Roof', 'Finishing', 'Lift & Generator']);
+  // 2026-10-20 names, then the 2026-10-21 names merged into fewer kinds
+  const stale = new Set([
+    'Ground Floor',
+    'Superstructure',
+    'Roof',
+    'Basement',
+    'Brick Work',
+    'Plaster',
+    'Doors & Windows',
+    'Tiles & Flooring',
+    'Paint',
+    'Lift',
+    'Generator & Substation',
+  ]);
   const rows = await lookupRepository.options('work_item_type', null);
   for (const r of rows) if (stale.has(r.value)) await lookupRepository.update(r.id, { is_active: false });
   // order the list the way the work happens

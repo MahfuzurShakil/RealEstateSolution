@@ -239,6 +239,8 @@ export function TowersUnitsPanel({
                             tower.unit_per_floor ? `${tower.unit_per_floor}/floor` : null,
                             tower.lift_count ? `${tower.lift_count} lift` : null,
                             tower.staircase_count ? `${tower.staircase_count} stair` : null,
+                            tower.basement_count ? `${tower.basement_count} basement` : null,
+                            tower.floor_area_sqft ? `${Number(tower.floor_area_sqft).toLocaleString('en-IN')} sqft/floor` : null,
                           ]
                             .filter(Boolean)
                             .join(' · ')

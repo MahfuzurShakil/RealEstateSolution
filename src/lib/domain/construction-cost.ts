@@ -76,7 +76,6 @@ export const WORK_TYPES: WorkTypeDef[] = [
     covers: 'Soil test, survey, clearing, hoarding, labour shed, site water and power',
     suggestions: [
       T('other', 'Soil test', null, 3),
-      T('other', 'Survey and layout', null, 1),
       T('labour', 'Site clearing labour', 'person-day', 2),
       T('material', 'Hoarding / boundary sheet', 'rft', 4),
       T('material', 'Labour shed and site office', null, 3),
@@ -97,7 +96,7 @@ export const WORK_TYPES: WorkTypeDef[] = [
   {
     label: 'Foundation',
     scope: 'tower',
-    covers: 'Excavation, pile cap, grade beam, mat or footing',
+    covers: 'Excavation, pile cap, grade beam, mat or footing, retaining wall',
     suggestions: [
       T('machinery_rent', 'Excavator rent', 'day', 15),
       T('material', 'Rod', 'ton', 80),
@@ -110,22 +109,9 @@ export const WORK_TYPES: WorkTypeDef[] = [
     ],
   },
   {
-    label: 'Basement',
-    scope: 'floor',
-    covers: 'Retaining wall, basement slab and columns',
-    suggestions: [
-      T('material', 'Rod', 'ton', 40),
-      T('material', 'Cement', 'bag', 20),
-      T('material', 'Sand', 'cft', 8),
-      T('material', 'Stone chips', 'cft', 10),
-      T('material', 'Waterproofing', 'sqft', 6),
-      T('labour', 'Mason, rod binder and helper', 'person-day', 15),
-    ],
-  },
-  {
     label: 'Floor Structure',
     scope: 'floor',
-    covers: 'Column, beam and slab casting of one floor (chhad dhalai)',
+    covers: 'Column, beam and slab casting of a floor (chhad dhalai) — basements included',
     suggestions: [
       T('material', 'Rod', 'ton', 40),
       T('material', 'Cement', 'bag', 20),
@@ -138,24 +124,14 @@ export const WORK_TYPES: WorkTypeDef[] = [
     ],
   },
   {
-    label: 'Brick Work',
+    label: 'Brick Work & Plaster',
     scope: 'floor',
-    covers: 'Outer and partition walls',
+    covers: 'Outer and partition walls, then inside and outside plaster',
     suggestions: [
       T('material', 'Brick', 'piece', 14),
-      T('material', 'Cement', 'bag', 4),
-      T('material', 'Sand', 'cft', 3),
-      T('labour', 'Mason and helper', 'person-day', 9),
-    ],
-  },
-  {
-    label: 'Plaster',
-    scope: 'floor',
-    covers: 'Inside and outside plaster',
-    suggestions: [
-      T('material', 'Cement', 'bag', 3),
-      T('material', 'Sand', 'cft', 2),
-      T('labour', 'Mason and helper', 'person-day', 4),
+      T('material', 'Cement', 'bag', 7),
+      T('material', 'Sand', 'cft', 5),
+      T('labour', 'Mason and helper', 'person-day', 13),
     ],
   },
   {
@@ -180,35 +156,16 @@ export const WORK_TYPES: WorkTypeDef[] = [
     ],
   },
   {
-    label: 'Doors & Windows',
+    label: 'Finishing',
     scope: 'floor',
-    covers: 'Door frames and shutters, thai aluminium windows, grills',
+    covers: 'Tiles and flooring, doors and windows, grills, paint',
     suggestions: [
+      T('material', 'Floor and wall tiles', 'sqft', 22),
       T('material', 'Door frames and shutters', 'piece', 10),
       T('subcontract', 'Thai aluminium windows', 'sqft', 8),
       T('material', 'Grills and railings', 'kg', 5),
-      T('labour', 'Carpenter and fitter', 'person-day', 2),
-    ],
-  },
-  {
-    label: 'Tiles & Flooring',
-    scope: 'floor',
-    covers: 'Floor and wall tiles, skirting',
-    suggestions: [
-      T('material', 'Floor tiles', 'sqft', 14),
-      T('material', 'Wall tiles', 'sqft', 8),
-      T('material', 'Tile adhesive and cement', 'bag', 2),
-      T('labour', 'Tiles mistri', 'person-day', 5),
-    ],
-  },
-  {
-    label: 'Paint',
-    scope: 'floor',
-    covers: 'Putty, primer and paint, inside and out',
-    suggestions: [
-      T('material', 'Putty and primer', 'kg', 2),
-      T('material', 'Paint', 'litre', 5),
-      T('labour', 'Painter', 'person-day', 3),
+      T('material', 'Paint, putty and primer', 'litre', 7),
+      T('labour', 'Tiles mistri, carpenter and painter', 'person-day', 10),
     ],
   },
   {
@@ -222,16 +179,11 @@ export const WORK_TYPES: WorkTypeDef[] = [
     ],
   },
   {
-    label: 'Lift',
+    label: 'Lift & Generator',
     scope: 'tower',
-    covers: 'Lift supply and installation',
-    suggestions: [T('subcontract', 'Lift supply and installation', 'set', 110)],
-  },
-  {
-    label: 'Generator & Substation',
-    scope: 'tower',
-    covers: 'Generator, substation, main cabling',
+    covers: 'Lift, generator, substation and main cabling',
     suggestions: [
+      T('subcontract', 'Lift supply and installation', 'set', 110),
       T('subcontract', 'Generator supply and installation', 'set', 45),
       T('subcontract', 'Substation and main cabling', null, 35),
     ],
@@ -256,16 +208,23 @@ export const WORK_TYPES: WorkTypeDef[] = [
 ];
 
 /*
- * Work items from before the 2026-10-21 list carry the old names; they keep
- * their suggestions through these aliases.
+ * Work items typed with earlier lists keep their suggestions through these
+ * aliases: the fixed WBS of 2026-10-20 and the 17 kinds of 2026-10-21, which
+ * the client found too many and were merged into the twelve above.
  */
 const ALIASES: Record<string, string> = {
   'ground floor': 'Floor Structure',
   superstructure: 'Floor Structure',
+  basement: 'Floor Structure',
   roof: 'Roof Top',
   plumbing: 'Plumbing & Sanitary',
-  finishing: 'Tiles & Flooring',
-  'lift & generator': 'Lift',
+  'brick work': 'Brick Work & Plaster',
+  plaster: 'Brick Work & Plaster',
+  'doors & windows': 'Finishing',
+  'tiles & flooring': 'Finishing',
+  paint: 'Finishing',
+  lift: 'Lift & Generator',
+  'generator & substation': 'Lift & Generator',
 };
 
 export function workTypeDef(label: string | null | undefined): WorkTypeDef {
@@ -307,13 +266,40 @@ function ordinal(n: number): string {
 }
 
 /**
- * Basements from `building_type` ("B2+G+8" → 2), then Ground, the upper
+ * Basements (recorded, or read from `building_type` "B2+G+8" → 2), then Ground, the upper
  * floors and the roof. `floor_count` counts the floors above ground including
  * the ground floor, as the tower form records it.
  */
-export function towerFloors(tower: { floor_count: number; building_type?: string | null }): FloorOption[] {
+export function towerBasements(tower: { basement_count?: number | null; building_type?: string | null }): number {
+  if (tower.basement_count != null) return Math.max(0, Number(tower.basement_count) || 0);
   const m = /^\s*B(\d*)\s*\+/i.exec(tower.building_type ?? '');
-  const basements = m ? Number(m[1] || 1) : 0;
+  return m ? Number(m[1] || 1) : 0;
+}
+
+/**
+ * The size a tower was designed to (client, 2026-10-21): a typical floor's
+ * area, and the built-up area over every floor including basements. Null
+ * when the floor area was not recorded.
+ */
+export function towerSize(tower: {
+  floor_count: number;
+  basement_count?: number | null;
+  building_type?: string | null;
+  floor_area_sqft?: number | null;
+}): { floor_area: number; floors: number; basements: number; built_up: number } | null {
+  const area = Number(tower.floor_area_sqft) || 0;
+  if (!(area > 0)) return null;
+  const basements = towerBasements(tower);
+  const floors = Math.max(1, Number(tower.floor_count) || 1);
+  return { floor_area: area, floors, basements, built_up: Math.round(area * (floors + basements)) };
+}
+
+export function towerFloors(tower: {
+  floor_count: number;
+  building_type?: string | null;
+  basement_count?: number | null;
+}): FloorOption[] {
+  const basements = towerBasements(tower);
   const out: FloorOption[] = [];
   for (let b = basements; b >= 1; b--) out.push({ no: -b, label: basements > 1 ? `Basement ${b}` : 'Basement' });
   out.push({ no: 0, label: 'Ground floor' });

@@ -62,31 +62,30 @@ Open the **Budget & Cost** tab.
 
 Open the **Work Breakdown** tab and click **Add work item** on Tower A.
 
-1. The kinds of work are listed in the order a BD building goes up: Site
-   Preparation, Piling, Foundation, Basement, **Floor Structure** (column, beam
-   and slab casting), Brick Work, Plaster, Electrical, Plumbing & Sanitary,
-   Doors & Windows, Tiles & Flooring, Paint, Roof Top, Lift, Generator &
-   Substation, External Works. The ones marked with the layers icon are
-   **floor by floor**.
-2. Pick **Brick Work**, then tick **1st, 2nd and 3rd floor**. Set the planned
-   start and end, and the weight (the demo tower is already at 100%, so enter
-   `0`). Click **Next: budget**.
-   *Say:* "One work item per floor, so cost and progress are followed floor
-   by floor. The dates are shared out across the floors in order."
-3. The budget is **yours to fill**. Nothing is pre-filled; the usual items
-   for brick work are offered as chips with their units (Brick · piece,
-   Cement · bag, Sand · cft, Mason and helper · person-day).
-   - Click **Mason and helper**: `60` person-days × `900`.
-   - Click **Brick**: `14000` pieces × `13.5`.
-   - **Other item** → `Curing water`, counted as **Lump sum**, `5000`.
-   *Say:* "Each item is counted its own way — pieces, bags, days, or just an
-   amount."
-4. Click **Add 3 work items**. Three items appear: Brick Work — 1st, 2nd and
-   3rd floor, each with that budget.
+1. The top line shows the building as designed: *1 basement + ground + 10
+   floors · 3,050 sqft a floor · built-up 36,600 sqft* (recorded on the
+   tower at design/approval).
+2. Twelve kinds of work, in the order a BD building goes up: Site
+   Preparation, Piling, Foundation, **Floor Structure** (column, beam and slab
+   casting — basements included), **Brick Work & Plaster**, Electrical,
+   Plumbing & Sanitary, **Finishing** (tiles, doors and windows, paint), Roof
+   Top, Lift & Generator, External Works, Other. The ones with the layers
+   icon go floor by floor.
+3. Pick **Brick Work & Plaster**, tick **1st, 2nd and 3rd floor**, set the
+   planned start and end, weight `0` (the demo tower is already at 100%).
+   *Say:* "One work item per floor; the dates are shared out floor by floor."
+4. **Next: budget.** Nothing is filled in. The usual items come as chips
+   with their units — or **Add all**. Each line reads like a sentence:
+   - Mason and helper: `60` person-day × `900` per person-day
+   - Brick: `14000` piece × `13.5` per piece
+   - **Add your own item** → `Curing water`, switch to **Lump sum**, `5000`
+   - For anything counted in sqft, *Fill quantity: one floor · 3,050* fills
+     it from the building size.
+5. **Add 3 work items.** Click anywhere on a card to open it.
 
 ## 4. Record costs, each in its own way (3 min)
 
-Click **Brick Work — 1st floor**. Its own page opens with its plan, its
+Click the **Brick Work & Plaster — 1st floor** card. Its own page opens with its plan, its
 budget line by line, its costs and its progress readings.
 
 Click **Add cost**. You first choose what **kind** of cost it is, and each

@@ -8,7 +8,7 @@ import { Field, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { Tower } from '@/lib/db/types';
-import { towerFloors, workTypeDef } from '@/lib/domain/construction-cost';
+import { towerFloors, towerSize, workTypeDef } from '@/lib/domain/construction-cost';
 import { money } from '@/lib/domain/procurement';
 import { createWorkItemWithBudget, lookupRepository, towerWorkItemRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
@@ -50,6 +50,7 @@ export function AddWorkItemModal({
   const def = workTypeDef(workType);
   const floorWise = Boolean(workType) && def.scope === 'floor';
   const allFloors = towerFloors(tower);
+  const size = towerSize(tower);
   // a floor already carrying this kind of work is shown, but not offered twice
   const taken = new Set(
     (existing ?? []).filter((i) => i.work_type === workType && i.floor_no != null).map((i) => i.floor_no as number),
@@ -147,6 +148,18 @@ export function AddWorkItemModal({
     >
       {step === 1 ? (
         <div className="space-y-4">
+          <p className="rounded-xl border border-hairline bg-slate-50 px-3 py-2 text-xs text-ink-muted">
+            {tower.name}: {size ? (
+              <>
+                {size.basements > 0 && `${size.basements} basement + `}ground + {size.floors - 1} floors ·{' '}
+                {size.floor_area.toLocaleString('en-IN')} sqft a floor · built-up {size.built_up.toLocaleString('en-IN')} sqft
+              </>
+            ) : (
+              <>
+                {tower.floor_count} floors. Add the floor area and basements on the project&apos;s Towers tab to plan quantities faster.
+              </>
+            )}
+          </p>
           <div>
             <p className="mb-1.5 text-sm font-medium text-ink">
               Kind of work <span className="text-red-500">*</span>
@@ -252,7 +265,12 @@ export function AddWorkItemModal({
           </p>
         </div>
       ) : (
-        <BudgetLinesEditor lines={lines} onChange={setLines} suggestions={def.suggestions} />
+        <BudgetLinesEditor
+          lines={lines}
+          onChange={setLines}
+          suggestions={def.suggestions}
+          size={size ? { floor_area: size.floor_area, built_up: size.built_up, per_floor: floorWise } : null}
+        />
       )}
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
     </Modal>

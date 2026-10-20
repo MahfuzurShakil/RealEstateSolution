@@ -76,7 +76,7 @@ import { DEMO_DEVELOPMENT, DEMO_NO_DEVELOPMENT_LANDS } from './demo-development'
 import { DEMO_BOOKINGS, DEMO_CUSTOMERS, DEMO_DISCOUNT_RULES } from './demo-bookings';
 import { DEMO_LEADS, DEMO_USER_JOINED_DAYS_AGO, DEMO_USERS } from './demo-leads';
 import { DEMO_PROJECTS } from './demo-projects';
-import { templateForItem, workTypeDef } from '../domain/construction-cost';
+import { templateForItem, towerBasements, workTypeDef } from '../domain/construction-cost';
 import { DEMO_MATERIAL_REQUESTS, DEMO_TOWER_PROGRESS } from './demo-site-progress';
 import { DEMO_EXPENSES, DEMO_REFUNDS } from './demo-finance';
 import {
@@ -1599,6 +1599,21 @@ async function seedDemoDirectPurchases(
     other: 'Geo-Tech Soil Lab',
   };
   // spend as a multiple of (budget × progress): >1 runs ahead, <1 behind
+  /*
+   * Client, 2026-10-21: a building's size is fixed at design — give every
+   * demo tower a typical floor area (saleable area of its units plus about a
+   * quarter for stairs, lift lobby and walls) and its basements.
+   */
+  for (const t of await db.towers.toArray()) {
+    if (!(t.floor_count > 1)) continue;
+    const saleable = await workItemBudgetRepository.towerSaleableArea(t.id);
+    if (!(saleable > 0)) continue;
+    await towerRepository.update(t.id, {
+      floor_area_sqft: Math.round((saleable * 1.25) / t.floor_count / 50) * 50,
+      basement_count: towerBasements(t),
+    });
+  }
+
   const FACTOR = [1.08, 0.94, 1.3, 0.9, 1.0, 0.85, 1.05, 0.95];
   const billImages = new Map<string, Blob>();
   let k = 0;

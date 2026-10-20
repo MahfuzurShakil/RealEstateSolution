@@ -7,8 +7,8 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { TowerWorkItem } from '@/lib/db/types';
-import { templateForItem } from '@/lib/domain/construction-cost';
-import { actualByBudgetLine, workItemBudgetRepository } from '@/lib/repositories';
+import { templateForItem, towerSize } from '@/lib/domain/construction-cost';
+import { actualByBudgetLine, towerRepository, workItemBudgetRepository } from '@/lib/repositories';
 import { formatBdt } from '@/lib/utils/format';
 import { BudgetLinesEditor, fromSaved, toBudgetInput, type EditorLine } from './BudgetLinesEditor';
 
@@ -28,6 +28,8 @@ export function WorkItemBudgetModal({
   const { userId } = useMockSession();
   const existing = useLiveQuery(() => workItemBudgetRepository.listForWorkItem(workItem.id), [workItem.id]);
   const actuals = useLiveQuery(() => actualByBudgetLine(workItem.id), [workItem.id]);
+  const tower = useLiveQuery(() => towerRepository.getById(workItem.tower_id), [workItem.tower_id]);
+  const size = tower ? towerSize(tower) : null;
   // null = untouched: show what is saved
   const [rows, setRows] = useState<EditorLine[] | null>(null);
   const [error, setError] = useState('');
@@ -79,6 +81,7 @@ export function WorkItemBudgetModal({
             onChange={setRows}
             suggestions={templateForItem(workItem)}
             spent={actuals ?? new Map()}
+            size={size ? { floor_area: size.floor_area, built_up: size.built_up, per_floor: workItem.floor_no != null } : null}
           />
           {unlined > 0 && (
             <p className="mt-2 text-xs text-ink-muted">{formatBdt(unlined)} has been spent without naming a line.</p>
