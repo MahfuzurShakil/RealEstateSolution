@@ -73,6 +73,18 @@ export const WORK_ITEM_BUDGET_TEMPLATES: Record<string, BudgetTemplateLine[]> = 
     T('machinery_rent', 'Mixer, vibrator and hoist', 30),
     T('utility', 'Site water and electricity', 20),
   ],
+  'brick work': [
+    T('material', 'Brick', 110),
+    T('material', 'Cement', 35),
+    T('material', 'Sand', 25),
+    T('labour', 'Mason and helper labour', 70),
+    T('material', 'Plaster (cement and sand)', 45),
+  ],
+  'lift & generator': [
+    T('subcontract', 'Lift supply and installation', 160),
+    T('subcontract', 'Generator supply and installation', 55),
+    T('material', 'Substation and cabling', 40),
+  ],
   roof: [
     T('material', 'Roof slab and parapet material', 35),
     T('subcontract', 'Waterproofing', 30),
@@ -111,6 +123,11 @@ const GENERIC: BudgetTemplateLine[] = [
   T('labour', 'Labour', 0),
   T('machinery_rent', 'Machinery rent', 0),
 ];
+
+/** A work item's lines come from its type; items from before types read their name. */
+export function templateForItem(item: { name: string; work_type?: string | null }): BudgetTemplateLine[] {
+  return templateFor(item.work_type || item.name);
+}
 
 export function templateFor(workItemName: string): BudgetTemplateLine[] {
   return WORK_ITEM_BUDGET_TEMPLATES[workItemName.trim().toLowerCase()] ?? GENERIC;

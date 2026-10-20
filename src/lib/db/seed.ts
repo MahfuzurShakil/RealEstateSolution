@@ -23,6 +23,7 @@ import {
   PROJECT_DOCUMENT_TYPES,
   EXPENSE_DOCUMENT_TYPES,
   DIRECT_PURCHASE_DOCUMENT_TYPES,
+  WORK_ITEM_TYPE_OPTIONS,
   PURCHASE_ORDER_DOCUMENT_TYPES,
   REFUND_DOCUMENT_TYPES,
   SUPPLIER_VOUCHER_DOCUMENT_TYPES,
@@ -78,6 +79,7 @@ async function runSeed(): Promise<void> {
   // BRD DEV-001 — the list differs by plot, so it is Master Data
   await ensureOptions('land_development_activity', null, [...LAND_DEVELOPMENT_ACTIVITIES]);
   await ensureOptions('unit_type', null, [...UNIT_TYPE_OPTIONS]);
+  await ensureOptions('work_item_type', null, [...WORK_ITEM_TYPE_OPTIONS]);
   await ensureOptions('facing', null, [...FACING_OPTIONS]);
   await ensureOptions('amenity', null, [...AMENITY_OPTIONS]);
   await ensureOptions('material_unit', null, [...MATERIAL_UNIT_OPTIONS]);

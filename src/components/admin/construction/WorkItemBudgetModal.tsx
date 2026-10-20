@@ -8,7 +8,7 @@ import { Modal } from '@/components/ui/Modal';
 import { SelectInput, TextInput } from '@/components/ui/Field';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { CONSTRUCTION_COST_TYPES, type ConstructionCostType, type TowerWorkItem } from '@/lib/db/types';
-import { COST_TYPE_META, templateFor } from '@/lib/domain/construction-cost';
+import { COST_TYPE_META, templateForItem } from '@/lib/domain/construction-cost';
 import { money } from '@/lib/domain/procurement';
 import { actualByBudgetLine, workItemBudgetRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
@@ -63,7 +63,7 @@ export function WorkItemBudgetModal({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const template = templateFor(workItem.name);
+  const template = templateForItem(workItem);
   const areaValue = area ?? (saleable ? String(saleable) : '');
   const areaNum = Number(areaValue) || 0;
   const pickedSet = picked ?? new Set(template.map((_, i) => i));

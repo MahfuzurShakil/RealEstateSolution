@@ -1,6 +1,7 @@
 'use client';
 
 import { DirectPurchaseModal } from '@/components/admin/construction/DirectPurchaseModal';
+import { AddWorkItemModal } from '@/components/admin/construction/AddWorkItemModal';
 import { usePurchaseMode } from '@/lib/settings/use-purchase-mode';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
@@ -14,7 +15,6 @@ import {
   Receipt,
   Pencil,
   Plus,
-  RotateCcw,
   Trash2,
   TriangleAlert,
 } from 'lucide-react';
@@ -82,7 +82,7 @@ export function TowerProgressPanel({
     () => (deleteItem ? towerWorkItemRepository.deleteBlockReason(deleteItem.id) : Promise.resolve(null)),
     [deleteItem?.id],
   );
-  const [resetTowerId, setResetTowerId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
 
   const towers = useLiveQuery(() => towerRepository.listForProject(projectId), [projectId]);
   /* keyed by work item, so each line can say what it has actually consumed */
@@ -126,7 +126,7 @@ export function TowerProgressPanel({
       <EmptyState
         icon={Building2}
         title="No tower to report on yet"
-        description="Site progress is tracked per tower. Add a tower on the Towers tab and its default work breakdown — Foundation through External Works — is created with it."
+        description="Site progress is tracked per tower. Add a tower on the project's Towers tab, then add its work items here."
       />
     );
   }
@@ -215,13 +215,8 @@ export function TowerProgressPanel({
               title={activeTower ? `${activeTower.name} — Work Breakdown` : 'Work Breakdown'}
               action={
                 <div className="flex flex-wrap gap-2">
-                  {items.length === 0 && activeTowerId && (
-                    <Button size="sm" variant="outline" onClick={() => setResetTowerId(activeTowerId)}>
-                      <RotateCcw className="size-4" /> Load default WBS
-                    </Button>
-                  )}
-                  <Button size="sm" variant="outline" onClick={() => setItemModal({ open: true })}>
-                    <Plus className="size-4" /> Work item
+                  <Button size="sm" onClick={() => setAdding(true)} disabled={!activeTowerId}>
+                    <Plus className="size-4" /> Add work item
                   </Button>
                 </div>
               }
@@ -241,12 +236,12 @@ export function TowerProgressPanel({
             {items.length === 0 ? (
               <EmptyState
                 icon={ListChecks}
-                title="No work breakdown for this tower"
-                description="Load the default template — Foundation, Ground Floor, Superstructure, Roof, Electrical, Plumbing, Finishing, External Works — and adjust the weights and dates to suit the build."
+                title="No work items yet"
+                description="Add the work as it is planned: pick the kind of work (Foundation, Superstructure…), set its dates and weight, then its budget — the usual cost lines for that work come pre-filled."
                 action={
                   activeTowerId ? (
-                    <Button onClick={() => setResetTowerId(activeTowerId)}>
-                      <RotateCcw className="size-4" /> Load default WBS
+                    <Button onClick={() => setAdding(true)}>
+                      <Plus className="size-4" /> Add the first work item
                     </Button>
                   ) : undefined
                 }
@@ -273,7 +268,18 @@ export function TowerProgressPanel({
                               <span className="grid size-6 shrink-0 place-items-center rounded-full bg-admin-50 text-[11px] font-semibold text-admin-700">
                                 {item.sequence_no}
                               </span>
-                              <span className="truncate">{item.name}</span>
+                              {/* client, 2026-10-20: a work item opens its own page */}
+                              <Link
+                                href={`/admin/site-progress/${projectId}/work-items/${item.id}`}
+                                className="truncate hover:text-admin-700 hover:underline"
+                              >
+                                {item.name}
+                              </Link>
+                              {item.work_type && item.work_type !== item.name && (
+                                <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-normal text-ink-muted">
+                                  {item.work_type}
+                                </span>
+                              )}
                             </p>
                             <p className="mt-1 text-xs text-ink-muted">
                               Weight {item.weight_pct}% ·{' '}
@@ -429,6 +435,15 @@ export function TowerProgressPanel({
         />
       )}
 
+      {adding && activeTowerId && (
+        <AddWorkItemModal
+          towerId={activeTowerId}
+          towerName={activeTower?.name ?? 'Tower'}
+          remainingWeight={Math.max(0, 100 - weightSum)}
+          onClose={() => setAdding(false)}
+        />
+      )}
+
       {itemModal.open && activeTowerId && (
         <WorkItemFormModal
           open
@@ -457,19 +472,6 @@ export function TowerProgressPanel({
         }}
       />
 
-      <ConfirmDialog
-        open={resetTowerId !== null}
-        title="Load the default work breakdown"
-        tone="default"
-        icon={RotateCcw}
-        confirmLabel="Load default WBS"
-        message="Creates the eight standard items at equal weight, spread across the project's planned build window. Nothing is overwritten — this only runs when the tower has no work items."
-        onCancel={() => setResetTowerId(null)}
-        onConfirm={async () => {
-          if (resetTowerId) await towerWorkItemRepository.seedDefaultsForTower(resetTowerId);
-          setResetTowerId(null);
-        }}
-      />
     </div>
   );
 }

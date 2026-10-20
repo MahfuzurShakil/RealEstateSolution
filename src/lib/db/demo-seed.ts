@@ -76,7 +76,7 @@ import { DEMO_DEVELOPMENT, DEMO_NO_DEVELOPMENT_LANDS } from './demo-development'
 import { DEMO_BOOKINGS, DEMO_CUSTOMERS, DEMO_DISCOUNT_RULES } from './demo-bookings';
 import { DEMO_LEADS, DEMO_USER_JOINED_DAYS_AGO, DEMO_USERS } from './demo-leads';
 import { DEMO_PROJECTS } from './demo-projects';
-import { templateFor } from '../domain/construction-cost';
+import { templateForItem } from '../domain/construction-cost';
 import { DEMO_MATERIAL_REQUESTS, DEMO_TOWER_PROGRESS } from './demo-site-progress';
 import { DEMO_EXPENSES, DEMO_REFUNDS } from './demo-finance';
 import {
@@ -1574,7 +1574,7 @@ async function seedDemoDirectPurchases(
     for (const [index, item] of items.entries()) {
       await workItemBudgetRepository.saveForWorkItem(
         item.id,
-        templateFor(item.name)
+        templateForItem(item)
           .filter((t) => t.rate_per_sqft > 0)
           .map((t) => ({
             cost_type: t.cost_type,
@@ -1602,18 +1602,50 @@ async function seedDemoDirectPurchases(
         const file = png ? new File([png], `${slugify(code)}.png`, { type: 'image/png' }) : null;
         if (!file) continue;
         k += 1;
+        /*
+         * Labour and machinery are counted the way the cost form asks for them
+         * (client, 2026-10-20): workers × days × wage, machine × days × rate.
+         */
+        const asked =
+          line.cost_type === 'labour'
+            ? (() => {
+                const days = 26;
+                const wage = 850;
+                const workers = Math.max(1, Math.round(amount / (days * wage)));
+                return {
+                  description: `Mason labour — ${workers} workers × ${days} days`,
+                  quantity: workers * days,
+                  unit: 'person-day',
+                  rate: wage,
+                  details: { labour_kind: 'Mason', workers, days, daily_wage: wage },
+                };
+              })()
+            : line.cost_type === 'machinery_rent'
+              ? (() => {
+                  const rate = 18_000;
+                  const days = Math.max(1, Math.round(amount / rate));
+                  return {
+                    description: `Excavator rent — ${days} days`,
+                    quantity: days,
+                    unit: 'day',
+                    rate,
+                    details: { machine: 'Excavator', basis: 'day', operator_fuel_included: true },
+                  };
+                })()
+              : { description: line.description, quantity: null, unit: null, rate: null, details: null };
         await directPurchaseRepository.record(
           {
             work_item_id: item.id,
             budget_line_id: line.id,
             cost_type: line.cost_type,
-            description: line.description,
+            description: asked.description,
             vendor_name: VENDOR[line.cost_type] ?? 'Local vendor',
             supplier_id: null,
-            quantity: null,
-            unit: null,
-            rate: null,
+            quantity: asked.quantity,
+            unit: asked.unit,
+            rate: asked.rate,
             amount,
+            details: asked.details,
             purchase_date: daysFromToday(-(5 + ((k * 9) % 150))).slice(0, 10),
             is_asset: false,
             notes: null,
@@ -1826,6 +1858,8 @@ async function seedDemoSiteProgress(
             ...plan,
             tower_id: tower.id,
             name: demoItem.name,
+            // the demo names are the standard types
+            work_type: demoItem.name,
             actual_progress_pct: 0,
             status: 'not_started',
           },

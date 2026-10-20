@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { AlertTriangle, Calculator, Paperclip, Plus, Trash2 } from 'lucide-react';
@@ -76,9 +77,12 @@ export function ConstructionCostTab({ projectId, mayEdit }: { projectId: string;
                   return (
                     <tr key={row.work_item.id} className="border-t border-hairline">
                       <td className="py-2.5 pr-3">
-                        <span className="font-medium text-ink">
+                        <Link
+                          href={`/admin/site-progress/${projectId}/work-items/${row.work_item.id}`}
+                          className="font-medium text-ink hover:text-admin-700 hover:underline"
+                        >
                           {row.work_item.sequence_no}. {row.work_item.name}
-                        </span>
+                        </Link>
                         <span className="block text-xs text-ink-muted">
                           {row.line_count} budget line{row.line_count === 1 ? '' : 's'} · {row.purchase_count} cost
                           {row.purchase_count === 1 ? '' : 's'}

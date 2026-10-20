@@ -17,6 +17,7 @@ import { formatBdt, todayLocal } from '../utils/format';
 import { bankAccountRepository } from './bank.repository';
 import { BaseRepository, type NewRecord } from './base.repository';
 import { documentRepository } from './document.repository';
+import { towerWorkItemRepository } from './site-progress.repository';
 
 /* ------------------------------------------------------------------ *
  * Work-item budget (DIRECT-PURCHASE-PLAN.md B2)
@@ -100,6 +101,52 @@ class WorkItemBudgetRepository extends BaseRepository<WorkItemBudgetLine> {
 }
 
 export const workItemBudgetRepository = new WorkItemBudgetRepository();
+
+/**
+ * Client, 2026-10-20: a work item is created with its type, plan and budget in
+ * one step, so nothing half-made appears on the breakdown. Weights past 100%
+ * of the tower are refused, as the edit form does (QA audit C-04).
+ */
+export async function createWorkItemWithBudget(
+  input: {
+    tower_id: string;
+    name: string;
+    work_type: string | null;
+    weight_pct: number;
+    planned_start_date: string | null;
+    planned_end_date: string | null;
+  },
+  lines: BudgetLineInput[],
+  userId: string | null,
+): Promise<TowerWorkItem> {
+  if (!input.name.trim()) throw new Error('Give the work item a name.');
+  if (input.planned_start_date && input.planned_end_date && input.planned_end_date < input.planned_start_date) {
+    throw new Error('The planned end cannot be before the start.');
+  }
+  const existing = await db.tower_work_items.where('tower_id').equals(input.tower_id).toArray();
+  const used = existing.reduce((s, i) => s + (Number(i.weight_pct) || 0), 0);
+  const weight = Number(input.weight_pct) || 0;
+  if (weight < 0 || used + weight > 100.005) {
+    throw new Error(`Only ${Math.round((100 - used) * 100) / 100}% of this tower is unallocated.`);
+  }
+  const item = await towerWorkItemRepository.create(
+    {
+      tower_id: input.tower_id,
+      name: input.name.trim(),
+      work_type: input.work_type,
+      sequence_no: Math.max(0, ...existing.map((i) => i.sequence_no)) + 1,
+      weight_pct: weight,
+      planned_start_date: input.planned_start_date,
+      planned_end_date: input.planned_end_date,
+      actual_progress_pct: 0,
+      status: 'not_started',
+    },
+    userId,
+  );
+  await towerWorkItemRepository.recalculateTower(input.tower_id);
+  if (lines.length > 0) await workItemBudgetRepository.saveForWorkItem(item.id, lines, userId);
+  return item;
+}
 
 /* ------------------------------------------------------------------ *
  * Direct purchase (DIRECT-PURCHASE-PLAN.md B3)
@@ -517,3 +564,66 @@ class DirectPurchasePaymentRepository extends BaseRepository<DirectPurchasePayme
 }
 
 export const directPurchasePaymentRepository = new DirectPurchasePaymentRepository();
+
+/* ------------------------------------------------------------------ *
+ * One work item's page (client, 2026-10-20)
+ * ------------------------------------------------------------------ */
+
+export interface WorkItemBudgetRow extends WorkItemBudgetLine {
+  spent: number;
+  remaining: number;
+}
+
+export interface WorkItemDetail {
+  item: TowerWorkItem;
+  tower: Tower;
+  project: { id: string; name: string; code: string };
+  lines: WorkItemBudgetRow[];
+  purchases: DirectPurchaseWithRelations[];
+  budget: number;
+  actual: number;
+  unpaid: number;
+  /** spent without naming a budget line */
+  unlined: number;
+  used_pct: number | null;
+  health: BudgetHealth;
+  /** what is left of the tower's 100% if this item kept its weight */
+  remaining_weight: number;
+}
+
+export async function workItemDetail(itemId: string): Promise<WorkItemDetail | null> {
+  const item = await db.tower_work_items.get(itemId);
+  if (!item) return null;
+  const tower = await db.towers.get(item.tower_id);
+  if (!tower) return null;
+  const project = await db.projects.get(tower.project_id);
+  if (!project) return null;
+  const [lines, purchases, siblings] = await Promise.all([
+    workItemBudgetRepository.listForWorkItem(itemId),
+    directPurchaseRepository.list({ work_item_id: itemId }),
+    db.tower_work_items.where('tower_id').equals(tower.id).toArray(),
+  ]);
+  const spentBy = (lineId: string | null) =>
+    money(purchases.filter((p) => (p.budget_line_id ?? null) === lineId).reduce((s, p) => s + p.amount, 0));
+  const budget = money(lines.reduce((s, l) => s + l.budgeted_amount, 0));
+  const actual = money(purchases.reduce((s, p) => s + p.amount, 0));
+  return {
+    item,
+    tower,
+    project: { id: project.id, name: project.name, code: project.code },
+    lines: lines.map((l) => {
+      const spent = spentBy(l.id);
+      return { ...l, spent, remaining: money(l.budgeted_amount - spent) };
+    }),
+    purchases,
+    budget,
+    actual,
+    unpaid: money(purchases.reduce((s, p) => s + (p.amount - (p.paid_amount || 0)), 0)),
+    unlined: spentBy(null),
+    used_pct: usedPct(budget, actual),
+    health: budgetHealth(budget, actual, item.actual_progress_pct),
+    remaining_weight: money(
+      100 - siblings.filter((s) => s.id !== item.id).reduce((s, i) => s + (Number(i.weight_pct) || 0), 0),
+    ),
+  };
+}

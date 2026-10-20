@@ -9,6 +9,7 @@ import {
   Map,
   Package,
   UserRound,
+  Wallet,
   Users,
 } from 'lucide-react';
 
@@ -34,6 +35,10 @@ export interface NavItem {
    * includes procurement (request → PO → receive → bill).
    */
   procurementOnly?: boolean;
+  /** client, 2026-10-20: the Finance group is hidden while the company buys directly */
+  hiddenInDirect?: boolean;
+  /** shown only when the company buys directly (the Payments queue of site costs) */
+  directOnly?: boolean;
 }
 
 /**
@@ -118,19 +123,28 @@ export const NAV_GROUPS: NavGroup[] = [
       },
     ],
   },
+  /*
+   * Client, 2026-10-20: the money screens of the direct-purchase flow in one
+   * place — pay the site's costs, see whose money it is, see what the
+   * accounts hold. The old Finance group stays for procurement companies.
+   */
+  {
+    label: 'Accounts',
+    icon: Wallet,
+    items: [
+      { label: 'Payments', href: '/admin/payments', module: 'finance_expense', directOnly: true },
+      { label: 'Fund & Partners', href: '/admin/fund', module: 'finance_expense' },
+      { label: 'Cash Position', href: '/admin/cash', module: 'finance_expense' },
+    ],
+  },
   {
     label: 'Finance',
     icon: Coins,
     items: [
-      // DIRECT-PURCHASE-PLAN.md B4 — site costs waiting to be paid, and paying them
-      { label: 'Payments', href: '/admin/payments', module: 'finance_expense' },
-      { label: 'Overview', href: '/admin/finance', module: 'dashboard' },
-      { label: 'Collections', href: '/admin/collections', module: 'finance_collection' },
-      { label: 'Expenses', href: '/admin/expenses', module: 'finance_expense' },
-      { label: 'Cash Position', href: '/admin/cash', module: 'finance_expense' },
-      // DIRECT-PURCHASE-PLAN.md B5 — whose money, how much is left
-      { label: 'Fund & Partners', href: '/admin/fund', module: 'finance_expense' },
-      { label: 'Refunds', href: '/admin/refunds', module: 'finance_collection' },
+      { label: 'Overview', href: '/admin/finance', module: 'dashboard', hiddenInDirect: true },
+      { label: 'Collections', href: '/admin/collections', module: 'finance_collection', hiddenInDirect: true },
+      { label: 'Expenses', href: '/admin/expenses', module: 'finance_expense', hiddenInDirect: true },
+      { label: 'Refunds', href: '/admin/refunds', module: 'finance_collection', hiddenInDirect: true },
     ],
   },
   {

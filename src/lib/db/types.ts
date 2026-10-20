@@ -1741,6 +1741,12 @@ export type WorkItemStatus = (typeof WORK_ITEM_STATUSES)[number];
 export interface TowerWorkItem extends BaseEntity {
   tower_id: UUID;
   name: string;
+  /**
+   * Client, 2026-10-20: what kind of work this is (Foundation, Superstructure…),
+   * from lookup_values category `work_item_type`. It decides which budget
+   * lines are offered. Unindexed and optional: older items read their name.
+   */
+  work_type?: string | null;
   sequence_no: number;
   /** contribution to the tower's overall % — all items together make 100 */
   weight_pct: number;
@@ -1989,6 +1995,13 @@ export interface DirectPurchase extends BaseEntity {
   purchase_date: ISODate;
   /** machinery bought, not rented — a company asset (plan decision 5) */
   is_asset: boolean;
+  /**
+   * Client, 2026-10-20: the type-specific answers the cost form asked —
+   * workers and days for labour, machine and basis for machinery, trips for
+   * transport, challan or bill no., period… Kept as a small unindexed map so
+   * each cost type can ask its own questions without a column per question.
+   */
+  details?: Record<string, string | number | boolean | null> | null;
   /** cached from its payments (B4); `pending` until then */
   paid_amount: number;
   payment_status: DirectPurchasePaymentStatus;
@@ -2083,6 +2096,21 @@ export const DIRECT_PURCHASE_DOCUMENT_TYPES = [
   'muster_roll',
   'photo',
   'other',
+] as const;
+
+/** Seed of lookup_values `work_item_type` (client, 2026-10-20). */
+export const WORK_ITEM_TYPE_OPTIONS = [
+  'Foundation',
+  'Ground Floor',
+  'Superstructure',
+  'Roof',
+  'Brick Work',
+  'Electrical',
+  'Plumbing',
+  'Finishing',
+  'Lift & Generator',
+  'External Works',
+  'Other',
 ] as const;
 
 export const DEFAULT_TOWER_WORK_ITEMS = [

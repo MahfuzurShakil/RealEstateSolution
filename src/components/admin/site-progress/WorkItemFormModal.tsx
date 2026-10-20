@@ -3,11 +3,12 @@
 import { useState } from 'react';
 import { ListChecks } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { Field, TextInput } from '@/components/ui/Field';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { Field, SelectInput, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { TowerWorkItem } from '@/lib/db/types';
-import { towerWorkItemRepository } from '@/lib/repositories';
+import { lookupRepository, towerWorkItemRepository } from '@/lib/repositories';
 
 /**
  * Add or edit one WBS line (Section 6.2).
@@ -40,6 +41,8 @@ export function WorkItemFormModal({
    * being edited — no effect has to copy props into state afterwards.
    */
   const [name, setName] = useState(item?.name ?? '');
+  const [workType, setWorkType] = useState(item?.work_type ?? '');
+  const types = useLiveQuery(() => lookupRepository.options('work_item_type', null), []);
   const [sequence, setSequence] = useState(String(item?.sequence_no ?? nextSequence));
   const [weight, setWeight] = useState(
     String(item?.weight_pct ?? Math.max(0, Math.round(remainingWeight * 100) / 100)),
@@ -80,6 +83,7 @@ export function WorkItemFormModal({
     try {
       const payload = {
         name: name.trim(),
+        work_type: workType || null,
         sequence_no: Number(sequence) || nextSequence,
         weight_pct: weightValue,
         planned_start_date: start || null,
@@ -125,6 +129,17 @@ export function WorkItemFormModal({
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. 5th Floor Slab Casting"
           />
+        </Field>
+
+        <Field label="Kind of work" hint="Decides which budget lines are offered">
+          <SelectInput value={workType} onChange={(e) => setWorkType(e.target.value)}>
+            <option value="">Not set</option>
+            {(types ?? []).map((t) => (
+              <option key={t.id} value={t.value}>
+                {t.value}
+              </option>
+            ))}
+          </SelectInput>
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">

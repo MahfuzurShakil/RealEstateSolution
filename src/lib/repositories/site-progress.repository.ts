@@ -52,6 +52,7 @@ import { documentRepository } from './document.repository';
 /** The fields a Project Manager may edit on a WBS line. */
 export interface WorkItemInput {
   name?: string;
+  work_type?: string | null;
   sequence_no?: number;
   weight_pct?: number;
   planned_start_date?: string | null;

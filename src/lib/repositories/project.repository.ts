@@ -33,7 +33,6 @@ import {
   defaultInstallmentPlan,
   PROJECT_PIPELINE_STEPS,
   projectShape,
-  shapeIsBuilt,
   unitCode,
   type AllocationTotals,
   type JvAllocationSummary,
@@ -841,11 +840,12 @@ class TowerRepository extends BaseRepository<Tower> {
     // client meeting 2026-10-18: towers wait for the finished design
     const gate = project && inventoryGateReason(project.status, projectShape(project.project_type));
     if (gate) throw new Error(gate);
-    const tower = await super.create({ current_progress_pct: 0, ...input }, createdBy);
-    if (project && shapeIsBuilt(projectShape(project.project_type))) {
-      await towerWorkItemRepository.seedDefaultsForTower(tower.id, createdBy);
-    }
-    return tower;
+    /*
+     * Client, 2026-10-20: a new tower starts with an empty work breakdown. The
+     * site adds each work item itself — choosing its type, dates and budget —
+     * rather than inheriting eight placeholders nobody planned.
+     */
+    return super.create({ current_progress_pct: 0, ...input }, createdBy);
   }
 
   /**

@@ -20,7 +20,7 @@ Plan and design notes: `DIRECT-PURCHASE-PLAN.md` (batches B1–B7).
 4. Stay signed in as **Super Admin**. You only switch role in step 7.
 
 What the audience will see is the procurement-free menu: Projects, Land,
-**Construction**, Sales, **Finance (Payments, Fund & Partners)**, Administration.
+**Construction**, Sales, **Accounts (Payments, Fund & Partners, Cash Position)**, Administration. The old Finance menu is hidden while the company buys directly.
 
 The figures below are from the sample data. They move a little with today's date.
 
@@ -61,42 +61,62 @@ Open the **Budget & Cost** tab.
   - Optional: remove all lines, save, and open it again to show the template
     offer, then click **Use 3 lines**.
 
-## 3. Record a cost — direct purchase (3 min)
+## 3. Add a work item, with its budget (2 min)
 
-On the **Roof** row click **+ Cost**, or use **Add cost** at the top.
+Open the **Work Breakdown** tab and click **Add work item** on Tower A.
 
-1. Budget line: **Waterproofing**. The cost type fills in by itself.
-2. From: `DryTech Waterproofing`.
-3. Switch to **Lump sum** and enter `700000`.
-4. Click **Save cost** *without* attaching anything. It is refused:
-   "Attach the bill, challan, muster roll or a photo."
-   *Say:* "No paper, no cost. Every taka recorded has its bill behind it."
-5. Attach the file from the desktop. Its type is set to Bill or Photo, which
-   you can change. Save.
+1. Pick the kind of work, for example **Brick Work**. The name fills in.
+   Set the planned start and end, and the weight (the share of the tower's
+   work; the demo tower is already at 100%, so enter `0`). Click
+   **Next: budget**.
+2. The lines that brick work normally needs are already there, priced per
+   sqft of the tower: brick, cement, sand, mason and helper labour, plaster.
+   - Untick **Plaster** to show that lines that don't apply can be left out.
+   - Click **Other item** and add `Scaffolding bamboo` for `120000`.
+   *Say:* "The system knows what each kind of work usually needs. You only
+   change what is different on your site."
+3. Click **Add work item**. It appears on the breakdown. A new tower starts
+   empty, and nothing is added for you.
 
-What changes:
+## 4. Record costs, each in its own way (3 min)
 
-- The Roof row now shows the cost and turns **Spending ahead of work**, because
-  money was spent while the work is still at 0%.
-- The cost appears under **Costs recorded** as **Pending**, with the paperclip
-  showing its attachment.
-- The bell in the top bar picks it up straight away.
+Click the new **Brick Work** name. Its own page opens with its plan, its
+budget line by line, its costs and its progress readings.
+
+Click **Add cost**. You first choose what **kind** of cost it is, and each
+kind asks its own questions:
+
+1. **Labour:** Mason, paid to `Abdul Sardar`, `8` workers × `6` days ×
+   `850` daily wage gives BDT 40,800. Only the labour budget line is offered.
+   Click **Save cost** *without* attaching anything. It is refused:
+   "Attach the muster roll". *Say:* "No paper, no cost." Attach a file and
+   save.
+2. **Machinery rent:** Concrete mixer, per **hour**, `10` hours × `2500`.
+   Tick "operator and fuel included" if it applies.
+3. Also mention:
+   - **Transport** is counted as trips × rate per trip.
+   - **Material** is quantity × rate, with the challan number.
+   - **Subcontract** is measured work or a lump sum, with the bill number.
+   - **Utility** is a monthly bill.
+
+What changes on the page:
+
+- **Budget, line by line** now shows the 40,800 spent against *Mason and
+  helper labour*.
+- **Costs** lists both, as **Pending**, with their attachments.
+- The tiles update: spent, left in budget, still to pay.
 
 *Say:* "This is the actual cost. It counts the day it is recorded, whether it
 is paid today or next month."
 
-Also mention that machinery rent, labour (attach the muster roll) and
-transport are recorded the same way. Machinery bought to keep can be ticked as
-a company asset.
+## 5. Pay it — Payments (3 min)
 
-## 4. Pay it — Payments (3 min)
-
-**Finance → Payments.**
+**Accounts → Payments.**
 
 - The tiles show what is owed to vendors (about 5.1 crore), what has been owed
   for over 30 days, the money in the accounts, and what has been paid.
 - **Pending** lists the oldest bills first, with their age. Find your
-  **Waterproofing / DryTech** cost.
+  **Mason labour / Abdul Sardar** cost.
 - Click **Pay**. The dialog lists every account **with its balance**.
   1. Pick **Site petty cash** (about BDT 10 lakh) and try to pay a larger bill.
      For example, Tower A Superstructure Rod `DP-2026-015` still owes about
@@ -108,9 +128,9 @@ a company asset.
   from which account, by which method and with what reference. **Undo** puts
   the amount back as owed.
 
-## 5. Whose money — Fund & Partners (3 min)
+## 6. Whose money — Fund & Partners (3 min)
 
-**Finance → Fund & Partners.**
+**Accounts → Fund & Partners.**
 
 - The tiles show partners' capital (14.8 crore), loans, buyers' payments, cost
   recorded against paid out, and the company pool not yet given to a project.
@@ -137,7 +157,7 @@ a company asset.
   project** to move pool money to a project. A grant larger than the pool is
   refused.
 
-## 6. The system warns you — Alerts (1 min)
+## 7. The system warns you — Alerts (1 min)
 
 Click the **bell** in the top bar.
 
@@ -147,16 +167,16 @@ Click the **bell** in the top bar.
 - *Say:* "Nothing is blocked. You can always record a real cost. But nobody
   can say they didn't know."
 
-## 7. Different people, different views (1 min)
+## 8. Different people, different views (1 min)
 
 Switch the role in the top bar (under the name) to **Site Manager**.
 
 - The bell now shows only budget alerts. Money alerts belong to finance.
-- The site manager records costs; Finance pays them.
+- The site manager records costs; Accounts pays them.
 
 Switch back to **Super Admin**.
 
-## 8. Close: both ways of buying (30 sec)
+## 9. Close: both ways of buying (30 sec)
 
 **Administration → Company Settings → How you buy**: Direct purchase,
 Procurement, or Both.
@@ -173,6 +193,6 @@ Procurement, or Both.
 | Symptom | Fix |
 |---|---|
 | Pages show "Loading…" for a long time right after a reload | The reload is still running. Wait for the dialog to close |
-| Procurement menu is showing | Settings → How you buy → Direct purchase → Save |
+| Procurement or Finance menu is showing | Settings → How you buy → Direct purchase → Save |
 | Bell has no number | Settings are still loading, or the mode is Procurement |
 | Numbers differ a little from this script | They move with today's date; the story is the same |
