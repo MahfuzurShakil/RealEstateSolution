@@ -132,7 +132,9 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Accounts',
     icon: Wallet,
     items: [
-      { label: 'Payments', href: '/admin/payments', module: 'finance_expense', directOnly: true },
+      // client, 2026-10-21: two plain menu items rather than tabs on one page
+      { label: 'Bills to Pay', href: '/admin/payments', module: 'finance_expense', directOnly: true },
+      { label: 'Payment History', href: '/admin/payments/history', module: 'finance_expense', directOnly: true },
       { label: 'Fund & Partners', href: '/admin/fund', module: 'finance_expense' },
       { label: 'Cash Position', href: '/admin/cash', module: 'finance_expense' },
     ],

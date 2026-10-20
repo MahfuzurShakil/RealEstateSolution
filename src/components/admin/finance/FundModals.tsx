@@ -40,16 +40,32 @@ export function PartnerModal({ partner, shareTotal, onClose }: { partner?: Partn
   const [nid, setNid] = useState(partner?.nid ?? '');
   const [share, setShare] = useState(partner ? String(partner.share_pct) : '');
   const [active, setActive] = useState(partner?.is_active ?? true);
+  // client, 2026-10-21: a partner of the whole company, or of one project only
+  const [projectId, setProjectId] = useState(partner?.project_id ?? '');
+  const projects = useLiveQuery(() => projectRepository.list(), []);
+  const allPartners = useLiveQuery(() => partnerRepository.list(), []);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const free = Math.round((100 - shareTotal + (partner?.is_active ? partner.share_pct : 0)) * 100) / 100;
+  const free = Math.round((100 - shareTotal + (partner?.is_active && !partner.project_id ? partner.share_pct : 0)) * 100) / 100;
+  const outsideTaken = (allPartners ?? [])
+    .filter((p) => p.id !== partner?.id && p.is_active && p.project_id && p.project_id === projectId)
+    .reduce((s, p) => s + p.share_pct, 0);
 
   async function save() {
     setError('');
     setBusy(true);
     try {
       await partnerRepository.save(
-        { id: partner?.id, name, phone: phone || null, nid: nid || null, share_pct: Number(share) || 0, is_active: active, notes: null },
+        {
+          id: partner?.id,
+          name,
+          phone: phone || null,
+          nid: nid || null,
+          share_pct: Number(share) || 0,
+          is_active: active,
+          project_id: projectId || null,
+          notes: null,
+        },
         userId,
       );
       onClose();
@@ -74,7 +90,25 @@ export function PartnerModal({ partner, shareTotal, onClose }: { partner?: Partn
             <TextInput value={nid} onChange={(e) => setNid(e.target.value)} />
           </Field>
         </div>
-        <Field label="Share of the company (%)" required hint={`${free}% is not given to anyone yet`}>
+        <Field label="Partner in" hint={projectId ? 'Invests in this project only — the company keeps the rest of it' : 'Shares the whole company: every project and the company pool'}>
+          <SelectInput value={projectId} onChange={(e) => setProjectId(e.target.value)} disabled={Boolean(partner)}>
+            <option value="">The whole company</option>
+            {(projects ?? []).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} only
+              </option>
+            ))}
+          </SelectInput>
+        </Field>
+        <Field
+          label={projectId ? 'Share of this project (%)' : 'Share of the company (%)'}
+          required
+          hint={
+            projectId
+              ? `${Math.round((100 - outsideTaken) * 100) / 100}% of the project is not held by its own partners yet; the company keeps whatever is left`
+              : `${free}% is not given to anyone yet`
+          }
+        >
           <TextInput type="number" min={0} max={100} step="any" value={share} onChange={(e) => setShare(e.target.value)} />
         </Field>
         {partner && (
@@ -112,6 +146,10 @@ export function MoneyInModal({ onClose }: { onClose: () => void }) {
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  const pickedPartner = source === 'partner_capital' ? (partners ?? []).find((p) => p.id === partnerId) : undefined;
+  const partnerProject = pickedPartner?.project_id ?? null;
+  const partnerName = pickedPartner?.name ?? '';
 
   async function save() {
     setError('');
@@ -157,7 +195,7 @@ export function MoneyInModal({ onClose }: { onClose: () => void }) {
               <option value="">Select…</option>
               {(partners ?? []).filter((p) => p.is_active).map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name} ({p.share_pct}%)
+                  {p.name} ({p.share_pct}%{p.project_id ? ' of one project' : ''})
                 </option>
               ))}
             </SelectInput>
@@ -177,8 +215,11 @@ export function MoneyInModal({ onClose }: { onClose: () => void }) {
             ))}
           </SelectInput>
         </Field>
-        <Field label="For" hint="Company pool, or straight to one project">
-          <SelectInput value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+        <Field
+          label="For"
+          hint={partnerProject ? `${partnerName} invests in this project only` : 'Company pool, or straight to one project'}
+        >
+          <SelectInput value={partnerProject ?? projectId} onChange={(e) => setProjectId(e.target.value)} disabled={Boolean(partnerProject)}>
             <option value="">Company pool</option>
             {(projects ?? []).map((p) => (
               <option key={p.id} value={p.id}>

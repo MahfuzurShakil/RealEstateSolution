@@ -209,7 +209,12 @@ export function AdminSidebar({
                 {showLabels && isOpen && (
                   <ul className="mt-1 space-y-0.5 pl-11">
                     {group.items.map((item) => {
-                      const active = isActiveHref(pathname, item.href);
+                      // the most specific link wins: /admin/payments/history is not also /admin/payments
+                      const active =
+                        isActiveHref(pathname, item.href) &&
+                        !group.items.some(
+                          (o) => o.href.length > item.href.length && isActiveHref(pathname, o.href),
+                        );
                       if (item.disabled) {
                         return (
                           <li key={item.href}>

@@ -39,12 +39,23 @@ class PartnerRepository extends BaseRepository<Partner> {
     if (!input.name.trim()) throw new Error('The partner needs a name.');
     const share = Number(input.share_pct);
     if (!(share >= 0 && share <= 100)) throw new Error('Share must be between 0 and 100%.');
-    const others = (await db.partners.toArray()).filter((p) => p.id !== input.id && p.is_active);
+    // company partners share the company; a project's own partners share that project
+    const scope = input.project_id ?? null;
+    if (scope && !(await db.projects.get(scope))) throw new Error('Pick the project this partner invests in.');
+    if (scope && !(share > 0 && share < 100)) {
+      throw new Error("A project partner's share must be above 0 and below 100% — the company keeps the rest.");
+    }
+    const others = (await db.partners.toArray()).filter(
+      (p) => p.id !== input.id && p.is_active && (p.project_id ?? null) === scope,
+    );
     const total = others.reduce((s, p) => s + p.share_pct, 0) + (input.is_active ? share : 0);
     if (total > 100 + 1e-9) {
-      throw new Error(`Shares would add up to ${Math.round(total * 100) / 100}% — they cannot pass 100%.`);
+      throw new Error(
+        `${scope ? "This project's own partners" : "The company's partners"} would hold ${Math.round(total * 100) / 100}% — more than 100%.`,
+      );
     }
-    const payload = { ...input, name: input.name.trim(), share_pct: share };
+    if (scope && total >= 100 - 1e-9) throw new Error('The company has to keep part of the project.');
+    const payload = { ...input, project_id: scope, name: input.name.trim(), share_pct: share };
     if (input.id) {
       const saved = await this.update(input.id, payload);
       if (!saved) throw new Error('This partner no longer exists.');
@@ -96,6 +107,11 @@ class FundReceiptRepository extends BaseRepository<FundReceipt> {
     if (!input.account_id) throw new Error('Pick the account the money went into.');
     if (input.source_type === 'partner_capital' && !input.partner_id) {
       throw new Error('Pick the partner who put this money in.');
+    }
+    // a project partner's money is that project's money
+    const partner = input.partner_id ? await db.partners.get(input.partner_id) : undefined;
+    if (input.source_type === 'partner_capital' && partner?.project_id) {
+      input = { ...input, project_id: partner.project_id };
     }
     if (input.source_type !== 'partner_capital' && !input.source_name?.trim()) {
       throw new Error(input.source_type === 'loan' ? 'Name the lender.' : 'Say where the money came from.');
@@ -243,7 +259,24 @@ export async function fundOverview(): Promise<FundOverview> {
   const bookingProject = new Map(bookings.map((b) => [b.id, unitProject.get(b.unit_id)]));
   const sum = <T>(rows: T[], f: (r: T) => number) => money(rows.reduce((s, r) => s + (f(r) || 0), 0));
   const active = partners.filter((p) => p.is_active).sort((a, b) => b.share_pct - a.share_pct);
-  const companyShares = active.map((p) => ({ partner_id: p.id, share_pct: p.share_pct }));
+  const companyPartners = active.filter((p) => !p.project_id);
+  /*
+   * Who carries a project (client, 2026-10-21): its own outside partners take
+   * their share first; the company's partners share what is left in their
+   * company proportions.
+   */
+  const defaultShares = (projectId: string) => {
+    const outside = active.filter((p) => p.project_id === projectId);
+    const left = Math.max(0, 100 - outside.reduce((s, p) => s + p.share_pct, 0));
+    const companyTotal = companyPartners.reduce((s, p) => s + p.share_pct, 0) || 100;
+    return [
+      ...outside.map((p) => ({ partner_id: p.id, share_pct: p.share_pct })),
+      ...companyPartners.map((p) => ({
+        partner_id: p.id,
+        share_pct: Math.round(((p.share_pct * left) / companyTotal) * 100) / 100,
+      })),
+    ].sort((a, b) => b.share_pct - a.share_pct);
+  };
 
   const rows: ProjectFundRow[] = [];
   for (const p of projects) {
@@ -288,7 +321,7 @@ export async function fundOverview(): Promise<FundOverview> {
       shares:
         own.length > 0
           ? own.map((o) => ({ partner_id: o.partner_id, share_pct: o.share_pct })).sort((a, b) => b.share_pct - a.share_pct)
-          : companyShares,
+          : defaultShares(p.id),
       own_split: own.length > 0,
     });
   }
@@ -297,13 +330,19 @@ export async function fundOverview(): Promise<FundOverview> {
   // company-level cost (no project) is shared by the company split
   const companyCost = sum(expenses.filter((x) => !x.project_id), (x) => x.amount);
   const capital = sum(receipts.filter((r) => r.source_type === 'partner_capital'), (r) => r.amount);
+  // the company's partners' capital, which their company shares are measured against
+  const companyCapital = sum(
+    receipts.filter((r) => r.source_type === 'partner_capital' && !partners.find((p) => p.id === r.partner_id)?.project_id),
+    (r) => r.amount,
+  );
 
   const partnerRows: PartnerRow[] = partners.map((partner) => {
     const capitalIn = sum(
       receipts.filter((r) => r.source_type === 'partner_capital' && r.partner_id === partner.id),
       (r) => r.amount,
     );
-    const opening_share = partner.is_active ? money((openingEquity * partner.share_pct) / 100) : 0;
+    // the money the company already had is its own partners' — not a project investor's
+    const opening_share = partner.is_active && !partner.project_id ? money((openingEquity * partner.share_pct) / 100) : 0;
     const contributed = money(capitalIn + opening_share);
     const by_project = rows
       .map((row) => {
@@ -317,14 +356,16 @@ export async function fundOverview(): Promise<FundOverview> {
       })
       .filter((x) => x.share_pct > 0);
     const share_of_cost = money(
-      by_project.reduce((s, x) => s + x.cost, 0) + (partner.is_active ? (companyCost * partner.share_pct) / 100 : 0),
+      by_project.reduce((s, x) => s + x.cost, 0) +
+        (partner.is_active && !partner.project_id ? (companyCost * partner.share_pct) / 100 : 0),
     );
     return {
       ...partner,
       contributed,
       capital: capitalIn,
       opening_share,
-      expected: money((capital * partner.share_pct) / 100),
+      // a project partner's capital is not measured against the company's
+      expected: partner.project_id ? capitalIn : money((companyCapital * partner.share_pct) / 100),
       share_of_cost,
       balance: money(contributed - share_of_cost),
       by_project,
@@ -350,7 +391,7 @@ export async function fundOverview(): Promise<FundOverview> {
       spent: money(rows.reduce((s, r) => s + r.spent, 0)),
       cost: money(rows.reduce((s, r) => s + r.cost, 0) + companyCost),
     },
-    share_total: money(active.reduce((s, p) => s + p.share_pct, 0)),
+    share_total: money(companyPartners.reduce((s, p) => s + p.share_pct, 0)),
   };
 }
 

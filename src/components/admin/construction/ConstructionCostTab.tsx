@@ -14,6 +14,7 @@ import { directPurchaseRepository, projectCostSheet } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 import { DirectPurchaseModal } from './DirectPurchaseModal';
+import { DeleteCostDialog, type DeletableCost } from './DeleteCostDialog';
 import { WorkItemBudgetModal } from './WorkItemBudgetModal';
 
 /**
@@ -27,7 +28,7 @@ export function ConstructionCostTab({ projectId, mayEdit }: { projectId: string;
   const [budgetFor, setBudgetFor] = useState<TowerWorkItem | null>(null);
   const [costFor, setCostFor] = useState<{ tower_id?: string; work_item_id?: string } | null>(null);
   const [filter, setFilter] = useState('');
-  const [error, setError] = useState('');
+  const [deleting, setDeleting] = useState<DeletableCost | null>(null);
 
   if (!sheet) return <p className="text-sm text-ink-muted">Loading…</p>;
 
@@ -223,14 +224,7 @@ export function ConstructionCostTab({ projectId, mayEdit }: { projectId: string;
                           size="sm"
                           variant="ghost"
                           aria-label={`Delete ${p.code}`}
-                          onClick={async () => {
-                            if (!window.confirm(`Delete ${p.code} (${formatBdt(p.amount)})?`)) return;
-                            try {
-                              await directPurchaseRepository.removeCascade(p.id);
-                            } catch (e) {
-                              setError(e instanceof Error ? e.message : 'Could not delete.');
-                            }
-                          }}
+                          onClick={() => setDeleting(p)}
                         >
                           <Trash2 className="size-4" />
                         </Button>
@@ -242,9 +236,9 @@ export function ConstructionCostTab({ projectId, mayEdit }: { projectId: string;
             </table>
           </div>
         )}
-        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       </Card>
 
+      <DeleteCostDialog cost={deleting} onClose={() => setDeleting(null)} />
       {budgetFor && <WorkItemBudgetModal workItem={budgetFor} onClose={() => setBudgetFor(null)} />}
       {costFor && <DirectPurchaseModal projectId={projectId} defaults={costFor} onClose={() => setCostFor(null)} />}
     </div>

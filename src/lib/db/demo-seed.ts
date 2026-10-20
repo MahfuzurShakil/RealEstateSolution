@@ -1691,7 +1691,7 @@ async function seedDemoDirectPurchases(
                   const rate = 18_000;
                   const days = Math.max(1, Math.round(amount / rate));
                   return {
-                    description: `Excavator rent — ${days} days`,
+                    description: `Excavator rent — ${days} day${days === 1 ? '' : 's'}`,
                     quantity: days,
                     unit: 'day',
                     rate,
@@ -1818,7 +1818,7 @@ async function seedDemoFund(projectIds: Map<string, string>, createdBy: string |
         source_name: 'BRAC Bank project loan',
         project_id: dhanmondi,
         account_id: account.id,
-        amount: 85_000_000,
+        amount: 65_000_000,
         receipt_date: on(-170),
         reference_no: 'BRAC/PL/2026/044',
         notes: null,
@@ -1831,6 +1831,8 @@ async function seedDemoFund(projectIds: Map<string, string>, createdBy: string |
     ['Nokshi Green Residence', 70_000_000],
     ['Nokshi Dhanmondi Court', 35_000_000],
     ['Nokshi Lakeview Residence', 30_000_000],
+    // its design and approval fees are paid from this
+    ['Nokshi Uttara Heights', 5_000_000],
   ];
   for (const [name, amount] of give) {
     const projectId = projectIds.get(name);
@@ -1841,14 +1843,37 @@ async function seedDemoFund(projectIds: Map<string, string>, createdBy: string |
     );
   }
 
+  /*
+   * Client, 2026-10-21: an outside investor in one project only. Shafiqul
+   * Islam holds 30% of Lakeview and put his own money into it; the company's
+   * three partners share the other 70% in their 50/30/20 proportions.
+   */
   const lakeview = projectIds.get('Nokshi Lakeview Residence');
   if (lakeview) {
-    await partnerRepository.setProjectShares(
-      lakeview,
-      [
-        { partner_id: karim.id, share_pct: 60 },
-        { partner_id: rahim.id, share_pct: 40 },
-      ],
+    const shafiq = await partnerRepository.save(
+      {
+        name: 'Shafiqul Islam',
+        phone: '01715-443322',
+        nid: null,
+        share_pct: 30,
+        is_active: true,
+        project_id: lakeview,
+        notes: 'Invests in Lakeview only',
+      },
+      createdBy,
+    );
+    await fundReceiptRepository.record(
+      {
+        source_type: 'partner_capital',
+        partner_id: shafiq.id,
+        source_name: null,
+        project_id: lakeview,
+        account_id: account.id,
+        amount: 15_000_000,
+        receipt_date: on(-175),
+        reference_no: null,
+        notes: null,
+      },
       createdBy,
     );
   }

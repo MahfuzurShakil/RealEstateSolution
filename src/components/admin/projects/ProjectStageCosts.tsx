@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { HardHat, Paperclip, Receipt, Trash2 } from 'lucide-react';
 import { DirectPurchaseModal } from '@/components/admin/construction/DirectPurchaseModal';
+import { DeleteCostDialog, type DeletableCost } from '@/components/admin/construction/DeleteCostDialog';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -34,7 +35,7 @@ export function ProjectStageCosts({ project }: { project: Project }) {
   const defaultStage: ProjectStatus = STAGES.includes(project.status) ? project.status : 'approval';
   const [stage, setStage] = useState<ProjectStatus>(defaultStage);
   const [adding, setAdding] = useState(false);
-  const [error, setError] = useState('');
+  const [deleting, setDeleting] = useState<DeletableCost | null>(null);
 
   if (!all) return <p className="text-sm text-ink-muted">Loading…</p>;
   const stageCosts = all.filter((p) => !p.work_item_id);
@@ -118,14 +119,7 @@ export function ProjectStageCosts({ project }: { project: Project }) {
                           size="sm"
                           variant="ghost"
                           aria-label={`Delete ${p.code}`}
-                          onClick={async () => {
-                            if (!window.confirm(`Delete ${p.code} (${formatBdt(p.amount)})?`)) return;
-                            try {
-                              await directPurchaseRepository.removeCascade(p.id);
-                            } catch (e) {
-                              setError(e instanceof Error ? e.message : 'Could not delete.');
-                            }
-                          }}
+                          onClick={() => setDeleting(p)}
                         >
                           <Trash2 className="size-4" />
                         </Button>
@@ -136,7 +130,6 @@ export function ProjectStageCosts({ project }: { project: Project }) {
             </div>
           ))
         )}
-        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
         {project.status === 'under_construction' && (
           <p className="mt-3 flex items-center gap-1.5 text-xs text-ink-muted">
             <HardHat className="size-3.5" /> Construction costs are recorded on each work item, from the Construction menu.
@@ -144,6 +137,7 @@ export function ProjectStageCosts({ project }: { project: Project }) {
         )}
       </Card>
 
+      <DeleteCostDialog cost={deleting} onClose={() => setDeleting(null)} />
       {adding && (
         <DirectPurchaseModal
           projectId={project.id}

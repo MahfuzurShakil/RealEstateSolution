@@ -128,14 +128,15 @@ Open **Projects → Nokshi Green Residence → Costs**.
 - *Say:* "Every taka from the first soil test to the last tile is on the
   project — and it goes to Payments like any other bill."
 
-## 5. Pay it — Payments (3 min)
+## 5. Pay it — Bills to Pay (3 min)
 
-**Accounts → Payments.**
+**Accounts → Bills to Pay.**
 
-- The tiles show what is owed to vendors (about 5.1 crore), what has been owed
-  for over 30 days, the money in the accounts, and what has been paid.
-- **Pending** lists the oldest bills first, with their age. Find your
-  **Mason labour / Abdul Sardar** cost.
+- The tiles show what is owed to vendors, what has been owed for over 30
+  days, and the money in the accounts.
+- The list shows the oldest bills first, with their age, 5 a page. Filter by
+  project, vendor, kind of cost or dates, or **search** — type `Abdul` to find
+  your **Mason labour / Abdul Sardar** cost.
 - Click **Pay**. The dialog lists every account **with its balance**.
   1. Pick **Site petty cash** (about BDT 10 lakh) and try to pay a larger bill.
      For example, Tower A Superstructure Rod `DP-2026-015` still owes about
@@ -143,27 +144,32 @@ Open **Projects → Nokshi Green Residence → Costs**.
      holds … — not enough". *Say:* "You cannot pay from a box that does not
      have the money."
   2. Change the amount to a part payment, or pick **DBBL Current**, and pay.
-- The bill moves to **Part paid** or **Paid**. The **Paid** tab shows who paid,
-  from which account, by which method and with what reference. **Undo** puts
-  the amount back as owed.
+- The bill moves to **Part paid**, or leaves the list once fully paid.
+  **Accounts → Payment History** shows who paid, from which account, by which
+  method and with what reference. **Undo** puts the amount back as owed.
 
 ## 6. Whose money — Fund & Partners (3 min)
 
 **Accounts → Fund & Partners.**
 
-- The tiles show partners' capital (14.8 crore), loans, buyers' payments, cost
+- The tiles show partners' capital (about 16.3 crore), loans, buyers' payments, cost
   recorded against paid out, and the company pool not yet given to a project.
 - **Project fund** tab: for each project, money put in directly + given from
   the pool + paid by buyers, minus what was paid out, gives **Remaining**,
   shown next to what is **still owed**.
-  - **Nokshi Dhanmondi Court** shows **Low fund**: about 77 lakh left against
-    2.37 crore owed. *Say:* "Before you promise a vendor, you know the project
+  - **Nokshi Dhanmondi Court** shows **Low fund**: less money left in the
+    project than it still owes its vendors. *Say:* "Before you promise a vendor, you know the project
     cannot cover it."
-  - **Nokshi Lakeview Residence** shows **own split**, Karim 60% and Rahim 40%,
-    while the company split is 50/30/20. Click the pie icon to show the split
-    can be set per project.
+  - **Nokshi Lakeview Residence** has an **outside investor**: Shafiqul Islam
+    holds 30% of Lakeview only and put in his own 1.5 crore. The company's
+    partners share the other 70% in their 50/30/20 proportions — Karim 35%,
+    Rahim 21%, Selina 14%. *Say:* "A partner can be in the whole company, or
+    in one project only." (The pie icon still lets any project set its own
+    split.)
 - **Partners** tab:
-  - **Karim Uddin (50%)**, **Rahim Chowdhury (30%)**, **Selina Akter (20%)**.
+  - **Karim Uddin (50%)**, **Rahim Chowdhury (30%)**, **Selina Akter (20%)** —
+    partners of the company — and **Shafiqul Islam**, *30% of Lakeview only*.
+    **Add partner → Partner in → <a project> only** adds one like him.
   - Each card shows **Put in** (capital plus their share of the money the
     company already had), **Used from their money**, **Unspent of theirs**, and
     a bar.

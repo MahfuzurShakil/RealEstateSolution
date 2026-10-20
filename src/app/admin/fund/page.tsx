@@ -17,7 +17,7 @@ import { useMockSession } from '@/lib/auth/mock-session';
 import type { Partner } from '@/lib/db/types';
 import { canEdit } from '@/lib/domain/access';
 import { CASH_FLOW_LABEL } from '@/lib/domain/cash';
-import { fundLedger, fundOverview, type ProjectFundRow } from '@/lib/repositories';
+import { fundLedger, fundOverview, projectRepository, type ProjectFundRow } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
@@ -41,6 +41,8 @@ export default function FundPage() {
   >(null);
 
   const overview = useLiveQuery(() => fundOverview(), []);
+  const projectList = useLiveQuery(() => projectRepository.list(), []);
+  const projectNames = new Map((projectList ?? []).map((x) => [x.id, x.name]));
   const ledger = useLiveQuery(() => (tab === 'ledger' ? fundLedger() : Promise.resolve(null)), [tab]);
 
   if (!overview) return <p className="text-sm text-ink-muted">Loading…</p>;
@@ -179,7 +181,11 @@ export default function FundPage() {
                       {p.name} {!p.is_active && <Badge tone="neutral">Former</Badge>}
                     </p>
                     <p className="text-xs text-ink-muted">
-                      {p.code} · {p.share_pct}% of the company{p.phone && ` · ${p.phone}`}
+                      {p.code} ·{' '}
+                      {p.project_id
+                        ? `${p.share_pct}% of ${overview.projects.find((x) => x.project_id === p.project_id)?.project_name ?? projectNames.get(p.project_id) ?? 'one project'} only`
+                        : `${p.share_pct}% of the company`}
+                      {p.phone && ` · ${p.phone}`}
                     </p>
                   </div>
                   {mayEdit && (
@@ -192,7 +198,11 @@ export default function FundPage() {
                   <Mini
                     label="Put in"
                     value={formatBdt(p.contributed)}
-                    note={`${formatBdt(p.capital)} capital${p.opening_share > 0 ? ` + ${formatBdt(p.opening_share)} share of opening balances` : ''} · ${Math.abs(gap) > 1 ? `capital ${gap > 0 ? 'above' : 'below'} share by ${formatBdt(Math.abs(gap))}` : 'capital in line with share'}`}
+                    note={
+                      p.project_id
+                        ? `${formatBdt(p.capital)} capital, into that project`
+                        : `${formatBdt(p.capital)} capital${p.opening_share > 0 ? ` + ${formatBdt(p.opening_share)} share of opening balances` : ''} · ${Math.abs(gap) > 1 ? `capital ${gap > 0 ? 'above' : 'below'} share by ${formatBdt(Math.abs(gap))}` : 'capital in line with share'}`
+                    }
                     warn={gap < -1}
                   />
                   <Mini label="Used from their money" value={formatBdt(p.share_of_cost)} note="their share of what projects paid out of partners' money" />
@@ -263,7 +273,14 @@ export default function FundPage() {
       {modal?.kind === 'partner' && <PartnerModal partner={modal.partner} shareTotal={overview.share_total} onClose={() => setModal(null)} />}
       {modal?.kind === 'money_in' && <MoneyInModal onClose={() => setModal(null)} />}
       {modal?.kind === 'allocate' && <AllocateModal overview={overview} onClose={() => setModal(null)} />}
-      {modal?.kind === 'shares' && <ProjectSharesModal row={modal.row} partners={activePartners} onClose={() => setModal(null)} />}
+      {modal?.kind === 'shares' && (
+        <ProjectSharesModal
+          row={modal.row}
+          // the company's partners and this project's own — not another project's investors
+          partners={activePartners.filter((x) => !x.project_id || x.project_id === modal.row.project_id)}
+          onClose={() => setModal(null)}
+        />
+      )}
     </>
   );
 }

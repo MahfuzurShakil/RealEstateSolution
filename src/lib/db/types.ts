@@ -2079,6 +2079,13 @@ export interface Partner extends BaseEntity {
   nid?: string | null;
   share_pct: number;
   is_active: boolean;
+  /**
+   * Client, 2026-10-21: someone who invests in one project only — a
+   * landowner's relative, an outside investor. Null = a partner of the whole
+   * company. For a project partner `share_pct` is their share of *that*
+   * project; the company's partners share what is left.
+   */
+  project_id?: UUID | null;
   notes?: string | null;
 }
 

@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ArrowLeft, Calculator, HardHat, Paperclip, Pencil, Receipt, Trash2 } from 'lucide-react';
 import { DirectPurchaseModal } from '@/components/admin/construction/DirectPurchaseModal';
+import { DeleteCostDialog, type DeletableCost } from '@/components/admin/construction/DeleteCostDialog';
 import { WorkItemBudgetModal } from '@/components/admin/construction/WorkItemBudgetModal';
 import { ProgressUpdateModal } from '@/components/admin/site-progress/ProgressUpdateModal';
 import { WorkItemFormModal } from '@/components/admin/site-progress/WorkItemFormModal';
@@ -18,7 +19,6 @@ import { canEdit } from '@/lib/domain/access';
 import { BUDGET_HEALTH_META, COST_TYPE_META } from '@/lib/domain/construction-cost';
 import { WORK_ITEM_STATUS_META } from '@/lib/domain/site-progress';
 import {
-  directPurchaseRepository,
   siteProgressUpdateRepository,
   workItemDetail,
   type DirectPurchaseWithRelations,
@@ -53,7 +53,7 @@ export default function WorkItemPage() {
   const detail = useLiveQuery(() => workItemDetail(itemId), [itemId]);
   const readings = useLiveQuery(() => siteProgressUpdateRepository.listForWorkItem(itemId), [itemId]);
   const [modal, setModal] = useState<'cost' | 'budget' | 'log' | 'edit' | null>(null);
-  const [error, setError] = useState('');
+  const [deleting, setDeleting] = useState<DeletableCost | null>(null);
 
   const back = `/admin/site-progress/${projectId}?tab=breakdown`;
   if (detail === undefined) return <p className="text-sm text-ink-muted">Loading…</p>;
@@ -222,14 +222,7 @@ export default function WorkItemPage() {
                         size="sm"
                         variant="ghost"
                         aria-label={`Delete ${p.code}`}
-                        onClick={async () => {
-                          if (!window.confirm(`Delete ${p.code} (${formatBdt(p.amount)})?`)) return;
-                          try {
-                            await directPurchaseRepository.removeCascade(p.id);
-                          } catch (e) {
-                            setError(e instanceof Error ? e.message : 'Could not delete.');
-                          }
-                        }}
+                        onClick={() => setDeleting(p)}
                       >
                         <Trash2 className="size-4" />
                       </Button>
@@ -238,7 +231,6 @@ export default function WorkItemPage() {
                 ))}
               </ul>
             )}
-            {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
           </Card>
         </div>
 
@@ -275,6 +267,7 @@ export default function WorkItemPage() {
         </div>
       </div>
 
+      <DeleteCostDialog cost={deleting} onClose={() => setDeleting(null)} />
       {modal === 'cost' && (
         <DirectPurchaseModal projectId={project.id} defaults={{ tower_id: tower.id, work_item_id: item.id }} onClose={() => setModal(null)} />
       )}
