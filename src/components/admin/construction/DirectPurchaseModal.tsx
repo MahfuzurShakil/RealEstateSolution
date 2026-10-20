@@ -55,7 +55,7 @@ const TYPE_UI: Record<
   labour: { icon: Users, hint: 'Workers × days × daily wage', paper: 'muster roll', doc: 'muster_roll' },
   machinery_rent: { icon: Construction, hint: 'Excavator, mixer, hoist… per day or hour', paper: 'rent bill', doc: 'bill' },
   transport: { icon: Truck, hint: 'Trips × rate per trip', paper: 'trip slip or bill', doc: 'bill' },
-  subcontract: { icon: HardHat, hint: 'Piling, waterproofing… measured or lump sum', paper: "contractor's bill", doc: 'bill' },
+  subcontract: { icon: HardHat, hint: 'Piling, waterproofing… measured or a fixed amount', paper: "contractor's bill", doc: 'bill' },
   utility: { icon: Cable, hint: 'Site electricity, water, gas bill', paper: 'utility bill', doc: 'bill' },
   professional_fee: { icon: Briefcase, hint: 'Architect, engineer, soil test, survey, consultant', paper: 'bill or money receipt', doc: 'bill' },
   govt_fee: { icon: Landmark, hint: 'RAJUK, clearance, utility connection fees', paper: 'fee receipt or pay order', doc: 'bill' },
@@ -259,7 +259,7 @@ export function DirectPurchaseModal({
     <div className="inline-flex rounded-lg border border-hairline p-0.5 text-sm">
       {[
         { v: false, l: 'Quantity × rate' },
-        { v: true, l: 'Lump sum' },
+        { v: true, l: 'Fixed amount' },
       ].map((o) => (
         <button
           key={o.l}

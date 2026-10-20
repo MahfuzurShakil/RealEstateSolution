@@ -80,7 +80,12 @@ const BUILT: Partial<Record<ProjectStatus, StageRequirements>> = {
     fields: [
       { key: 'architect', label: 'Architect / firm', type: 'text', placeholder: 'e.g. Volumezero Ltd.', column: 'performed_by' },
       { key: 'drawing_ref', label: 'Drawing set reference', type: 'text', placeholder: 'e.g. ARCH-2026-014', column: 'reference_no' },
-      { key: 'built_up_area', label: 'Total built-up area (sqft)', type: 'number', required: true },
+      // client, 2026-10-21: the building the drawings describe — towers are
+      // then added up to this count, each starting from these figures
+      { key: 'tower_count', label: 'Number of towers', type: 'number', required: true },
+      { key: 'floor_count', label: 'Floors per tower (ground + upper)', type: 'number', required: true, placeholder: 'e.g. 10 for G+9' },
+      { key: 'basement_count', label: 'Basements', type: 'number', placeholder: 'e.g. 1' },
+      { key: 'floor_area_sqft', label: 'Typical floor area (sqft)', type: 'number', required: true },
       { key: 'unit_count', label: 'Number of units', type: 'number' },
     ],
     documents: [

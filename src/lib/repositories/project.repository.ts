@@ -305,7 +305,25 @@ class ProjectRepository extends BaseRepository<Project> {
       (shareSoldOut || status === 'closed') && (salesNow === 'open' || salesNow === 'paused')
         ? ('sold_out' as const)
         : undefined;
+    /*
+     * Client, 2026-10-21: completing Design records the building it fixes —
+     * how many towers, floors, basements and the floor area.
+     */
+    const d = current.status === 'design' ? (event.details ?? null) : null;
+    const n = (k: string) => {
+      const v = d?.[k];
+      return v === undefined || v === null || String(v).trim() === '' ? undefined : Number(v);
+    };
+    const design = d
+      ? {
+          design_tower_count: n('tower_count'),
+          design_floor_count: n('floor_count'),
+          design_basement_count: n('basement_count'),
+          design_floor_area_sqft: n('floor_area_sqft'),
+        }
+      : {};
     const saved = await this.update(id, {
+      ...design,
       ...(salesAfter ? { sales_status: salesAfter } : {}),
       status,
       // the real start is the first site reading (or set on Edit); the
@@ -840,6 +858,14 @@ class TowerRepository extends BaseRepository<Tower> {
     // client meeting 2026-10-18: towers wait for the finished design
     const gate = project && inventoryGateReason(project.status, projectShape(project.project_type));
     if (gate) throw new Error(gate);
+    // client, 2026-10-21: no more towers than the design has
+    const cap = project?.design_tower_count;
+    if (cap && projectShape(project.project_type).container === 'tower') {
+      const have = await db.towers.where('project_id').equals(input.project_id).count();
+      if (have >= cap) {
+        throw new Error(`The design has ${cap} tower${cap === 1 ? '' : 's'}, and ${have === 1 ? 'it is' : 'all are'} added. Change the design first.`);
+      }
+    }
     /*
      * Client, 2026-10-20: a new tower starts with an empty work breakdown. The
      * site adds each work item itself — choosing its type, dates and budget —

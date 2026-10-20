@@ -1902,6 +1902,11 @@ async function seedDemoSiteProgress(
     const byName = new Map(existing.map((i) => [i.name, i]));
 
     for (const [index, demoItem] of demo.items.entries()) {
+      /*
+       * Client, 2026-10-21: the demo shows only the work already started —
+       * the rest of the breakdown is the user's to add, as on a real site.
+       */
+      if (!demoItem.readings?.length) continue;
       const plan = {
         weight_pct: demoItem.weight_pct,
         sequence_no: index + 1,

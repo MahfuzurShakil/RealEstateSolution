@@ -42,6 +42,7 @@ import {
   landownerRepository,
   towerRepository,
   unitRepository,
+  projectRepository,
 } from '@/lib/repositories';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { cn } from '@/lib/utils/cn';
@@ -79,6 +80,9 @@ export function TowersUnitsPanel({
   const L = shape.labels;
   // client meeting 2026-10-18: nothing is laid out before the design is done
   const gate = inventoryGateReason(projectStatus, shape);
+  // client, 2026-10-21: the design fixes how many towers there are
+  const projectRow = useLiveQuery(() => projectRepository.getById(projectId), [projectId]);
+  const designCap = shape.container === 'tower' ? (projectRow?.design_tower_count ?? null) : null;
   /*
    * A share register has exactly one hidden container (see
    * `towerRepository.ensureShareRegister`), so showing a card for it would be
@@ -101,6 +105,7 @@ export function TowersUnitsPanel({
   const [view, setView] = useState<ViewMode>('grid');
 
   const towers = useLiveQuery(() => towerRepository.listForProject(projectId), [projectId]);
+  const capReached = designCap !== null && (towers?.length ?? 0) >= designCap;
   // QA audit P-01 — say why a delete is refused before anyone confirms it
   const towerDeleteBlocked = useLiveQuery(
     () => (deleteTower ? towerRepository.deleteBlockReason(deleteTower.id) : Promise.resolve(null)),
@@ -174,9 +179,21 @@ export function TowersUnitsPanel({
         <CardHeader
           title={`${L.containerPlural} (${towers.length})`}
           action={
-            <Button size="sm" onClick={() => setTowerModal({ open: true })} disabled={Boolean(gate)} title={gate ?? undefined}>
-              <Plus className="size-4" /> Add {L.container}
-            </Button>
+            <div className="flex items-center gap-3">
+              {designCap ? (
+                <span className="text-xs text-ink-muted">
+                  {towers.length} of {designCap} from the design
+                </span>
+              ) : null}
+              <Button
+                size="sm"
+                onClick={() => setTowerModal({ open: true })}
+                disabled={Boolean(gate) || capReached}
+                title={gate ?? (capReached ? `The design has ${designCap} — all are added` : undefined)}
+              >
+                <Plus className="size-4" /> Add {L.container}
+              </Button>
+            </div>
           }
         />
         {towers.length === 0 ? (
@@ -497,6 +514,16 @@ export function TowersUnitsPanel({
           open
           projectId={projectId}
           tower={towerModal.tower}
+          design={
+            projectRow?.design_floor_count
+              ? {
+                  floor_count: projectRow.design_floor_count,
+                  basement_count: projectRow.design_basement_count ?? null,
+                  floor_area_sqft: projectRow.design_floor_area_sqft ?? null,
+                  next_name: `Tower ${String.fromCharCode(65 + towers.length)}`,
+                }
+              : undefined
+          }
           onClose={() => setTowerModal({ open: false })}
         />
       )}

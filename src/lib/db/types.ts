@@ -1143,6 +1143,16 @@ export interface Project extends BaseEntity {
    * each tower. A plot scheme's blocks still carry their own internal road
    * width on `towers.front_road_width_ft`.
    */
+  /**
+   * Client, 2026-10-21: what the finished design fixes, asked when Design is
+   * marked complete. Towers can only be added up to `design_tower_count`, and
+   * each new tower starts from these floors, basements and floor area.
+   * Unindexed; null on projects designed before this was asked.
+   */
+  design_tower_count?: number | null;
+  design_floor_count?: number | null;
+  design_basement_count?: number | null;
+  design_floor_area_sqft?: number | null;
   front_road_width_ft?: number | null;
   surroundings?: string | null;
   /** multi-select from lookup_values (category='amenity') */

@@ -199,7 +199,7 @@ export function BudgetLinesEditor({
                 {(
                   [
                     ['qty_rate', 'Quantity × rate'],
-                    ['lump', 'Lump sum'],
+                    ['lump', 'Fixed amount'],
                   ] as const
                 ).map(([v, label]) => (
                   <button
@@ -254,7 +254,7 @@ export function BudgetLinesEditor({
               ) : (
                 <div className="flex flex-1 items-center gap-1.5">
                   <TextInput
-                    aria-label="Lump sum"
+                    aria-label="Fixed amount"
                     type="number"
                     min={0}
                     step="any"

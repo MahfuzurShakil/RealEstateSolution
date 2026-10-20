@@ -528,7 +528,7 @@ export function PurchaseOrderForm({
                     }}
                   >
                     <option value="per_unit">Per {line.unit || 'unit'}</option>
-                    <option value="lump_sum">Lump sum</option>
+                    <option value="lump_sum">Fixed amount</option>
                   </SelectInput>
                 </label>
 

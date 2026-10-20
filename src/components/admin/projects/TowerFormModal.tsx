@@ -62,12 +62,15 @@ export function TowerFormModal({
   projectId,
   tower,
   shape,
+  design,
   onClose,
 }: {
   open: boolean;
   projectId: string;
   tower?: Tower;
   shape: ProjectShape;
+  /** client, 2026-10-21: a new tower starts from what the design fixed */
+  design?: { floor_count: number; basement_count: number | null; floor_area_sqft: number | null; next_name: string };
   onClose: () => void;
 }) {
   // mounted only while open, so the state starts from the tower being edited
@@ -86,7 +89,15 @@ export function TowerFormModal({
           electricity_backup: tower.electricity_backup ?? false,
           front_road_width_ft: str(tower.front_road_width_ft),
         }
-      : EMPTY,
+      : design
+        ? {
+            ...EMPTY,
+            name: design.next_name,
+            floor_count: String(design.floor_count),
+            basement_count: str(design.basement_count),
+            floor_area_sqft: str(design.floor_area_sqft),
+          }
+        : EMPTY,
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);

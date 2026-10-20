@@ -498,6 +498,7 @@ export interface PendingPurchaseRow extends DirectPurchaseWithRelations {
 
 export interface SitePaymentRow extends DirectPurchasePayment {
   purchase_code: string;
+  cost_type: ConstructionCostType | null;
   purchase_description: string;
   vendor_name: string;
   project_name: string;
@@ -620,10 +621,13 @@ class DirectPurchasePaymentRepository extends BaseRepository<DirectPurchasePayme
       return {
         ...r,
         purchase_code: p?.code ?? '—',
+        cost_type: p?.cost_type ?? null,
         purchase_description: p?.description ?? '—',
         vendor_name: p?.vendor_name ?? '—',
         project_name: projects.find((x) => x?.id === r.project_id)?.name ?? '—',
-        work_item_name: items.find((x) => x?.id === p?.work_item_id)?.name ?? '—',
+        work_item_name: p?.work_item_id
+          ? (items.find((x) => x?.id === p.work_item_id)?.name ?? '—')
+          : `${p?.stage ? PROJECT_STATUS_META[p.stage].label : 'Pre-construction'} stage`,
         account_name: accounts.find((a) => a.id === r.account_id)?.name ?? '—',
         paid_by_name: users.find((u) => u.id === r.paid_by)?.name ?? null,
       };

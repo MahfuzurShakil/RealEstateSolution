@@ -78,7 +78,7 @@ Open the **Work Breakdown** tab and click **Add work item** on Tower A.
    with their units — or **Add all**. Each line reads like a sentence:
    - Mason and helper: `60` person-day × `900` per person-day
    - Brick: `14000` piece × `13.5` per piece
-   - **Add your own item** → `Curing water`, switch to **Lump sum**, `5000`
+   - **Add your own item** → `Curing water`, switch to **Fixed amount**, `5000`
    - For anything counted in sqft, *Fill quantity: one floor · 3,050* fills
      it from the building size.
 5. **Add 3 work items.** Click anywhere on a card to open it.
