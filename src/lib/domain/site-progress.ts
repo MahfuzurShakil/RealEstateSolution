@@ -455,7 +455,8 @@ export interface RequestStepConfig {
   title: string;
   message: string;
   confirmLabel: string;
-  tone: 'default' | 'danger' | 'success' | 'warning';
+  /** never 'success' — that is for results (POPUP-SYSTEM.md) */
+  tone: 'default' | 'danger' | 'warning';
   /** a rejection has to say why */
   needsNote: boolean;
 }
@@ -469,7 +470,7 @@ export const MATERIAL_REQUEST_STEP_CONFIG: Record<
     message:
       'The Project Manager accepts the request. Approved quantities can be cut per item before approving; a blank quantity means the full amount asked for, and 0 drops the line.',
     confirmLabel: 'Approve request',
-    tone: 'success',
+    tone: 'default',
     needsNote: false,
   },
   rejected: {

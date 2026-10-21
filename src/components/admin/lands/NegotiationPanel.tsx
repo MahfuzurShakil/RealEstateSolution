@@ -231,7 +231,7 @@ function AcceptDialog({
       open
       title="Accept this round"
       subtitle={`Round ${round.round_no} · ${formatBdt(round.amount)}`}
-      tone="success"
+      tone="default"
       icon={Handshake}
       confirmLabel="Accept round"
       busy={busy}
@@ -251,8 +251,8 @@ function AcceptDialog({
       {current > 0 && Math.abs(current - round.amount) > 0.01 && (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
           The land currently shows an agreed amount of <strong>{formatBdt(current)}</strong>.
-          Accepting this round replaces it with <strong>{formatBdt(round.amount)}</strong>, and the
-          payment plan is built from that figure.
+          Accepting this round replaces it with <strong>{formatBdt(round.amount)}</strong>, which
+          becomes the land price&rsquo;s deal amount on the Land Cost tab.
         </p>
       )}
     </ConfirmDialog>
@@ -337,7 +337,7 @@ function RoundDialog({
       title="Record a negotiation round"
       subtitle={`${land.code} · ${land.name}`}
       icon={ArrowLeftRight}
-      size="xl"
+      size="lg"
       onClose={onClose}
       footer={
         <>

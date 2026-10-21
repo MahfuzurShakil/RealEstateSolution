@@ -1174,7 +1174,8 @@ export interface ProjectStepConfig {
   title: string;
   question: string;
   confirmLabel: string;
-  tone: 'default' | 'danger' | 'success' | 'warning';
+  /** never 'success' — that is for results (POPUP-SYSTEM.md) */
+  tone: 'default' | 'danger' | 'warning';
   fields: ProjectStepField[];
 }
 
@@ -1225,7 +1226,7 @@ export const PROJECT_STEP_CONFIG: Record<ProjectStatus, ProjectStepConfig> = {
     title: 'Start construction',
     question: 'Confirm that construction has begun. This also sets the actual start date.',
     confirmLabel: 'Start construction',
-    tone: 'success',
+    tone: 'default',
     fields: [
       { key: 'event_date', label: 'Actual start date', placeholder: '', type: 'date', required: true },
       { key: 'performed_by', label: 'Contractor', placeholder: 'e.g. Base Tech Engineering', type: 'text' },
@@ -1247,7 +1248,7 @@ export const PROJECT_STEP_CONFIG: Record<ProjectStatus, ProjectStepConfig> = {
     title: 'Start handover',
     question: 'Record that units are being handed over to buyers.',
     confirmLabel: 'Start handover',
-    tone: 'success',
+    tone: 'default',
     fields: [
       { key: 'event_date', label: 'Handover started on', placeholder: '', type: 'date', required: true },
       { key: 'reference_no', label: 'Occupancy certificate no.', placeholder: 'e.g. OC-2026-021', type: 'text' },
@@ -1258,7 +1259,7 @@ export const PROJECT_STEP_CONFIG: Record<ProjectStatus, ProjectStepConfig> = {
     title: 'Close the project',
     question: 'Every unit is handed over and the project is finished.',
     confirmLabel: 'Close project',
-    tone: 'success',
+    tone: 'default',
     fields: [
       { key: 'event_date', label: 'Closed on', placeholder: '', type: 'date', required: true },
       REMARKS('Final accounts settled, warranty period notes...', true),

@@ -21,8 +21,12 @@ const money = (n: number) => Math.round(n * 100) / 100;
 export interface AcquisitionCostLine {
   cost_head: AcquisitionCostHead;
   estimated: number;
+  /** 2026-10-21 — the deal amount for this head; null until agreed */
+  agreed: number | null;
   /** ledger payments plus anything paid before this system (v29) */
   actual: number;
+  /** what is still to pay: the deal (or the budget, before one) less actual */
+  pending: number;
   /** v29 — the part of `actual` that predates this system */
   historic: number;
   remarks: string | null;
@@ -30,18 +34,39 @@ export interface AcquisitionCostLine {
   variance: number | null;
 }
 
+/** One development activity on the cost sheet (2026-10-21). */
+export interface DevelopmentCostLine {
+  activity_id: string;
+  label: string;
+  status: string;
+  estimated: number;
+  agreed: number | null;
+  actual: number;
+  pending: number;
+}
+
 export interface AcquisitionCostSheet {
   lines: AcquisitionCostLine[];
   /** acquisition heads only — the land itself and what it took to get it */
   estimatedTotal: number;
+  /** deal per head, budget where a head has no deal yet; null before any deal */
+  agreedTotal: number | null;
   actualTotal: number;
+  pendingTotal: number;
   /** what the ledger holds that no line accounts for — see the note below */
   unclassifiedActual: number;
   /**
    * v29 — land development (filling, boundary, internal roads): its budget
    * and what has been incurred, from the development activities (DEV-001…).
    */
-  development: { estimated: number; actual: number };
+  development: {
+    estimated: number;
+    /** contract where awarded, budget otherwise; null before any contract */
+    agreed: number | null;
+    actual: number;
+    pending: number;
+    lines: DevelopmentCostLine[];
+  };
   /** v29 — acquisition plus development: what this land costs in cash */
   landTotal: { estimated: number; actual: number };
   /**
@@ -147,6 +172,32 @@ class LandAcquisitionCostRepository extends BaseRepository<LandAcquisitionCost> 
   }
 
   /**
+   * Writes the budget and the deal amount for several heads at once — the
+   * Land Cost tab edits them as one sheet (2026-10-21). A head left at zero
+   * budget and no deal is not stored at all.
+   */
+  async setAmounts(
+    landId: string,
+    /** `remarks` left out keeps whatever note the head already has */
+    rows: Array<{ head: AcquisitionCostHead; estimated: number; agreed: number | null; remarks?: string | null }>,
+    createdBy: string | null = null,
+  ): Promise<void> {
+    const existing = new Map((await this.listForLand(landId)).map((r) => [r.cost_head, r]));
+    for (const row of rows) {
+      const changes = {
+        estimated_amount: money(row.estimated),
+        agreed_amount: row.agreed == null ? null : money(row.agreed),
+        ...(row.remarks !== undefined ? { remarks: row.remarks } : {}),
+      };
+      const prev = existing.get(row.head);
+      if (prev) await this.update(prev.id, changes);
+      else if (row.estimated > 0 || row.agreed != null) {
+        await this.create({ land_id: landId, cost_head: row.head, ...changes }, createdBy);
+      }
+    }
+  }
+
+  /**
    * v29 — what an owned land cost before this system existed.
    *
    * The estimate is set to the same figure when the head has none: for land
@@ -208,8 +259,20 @@ class LandAcquisitionCostRepository extends BaseRepository<LandAcquisitionCost> 
 
     const actualByHead = new Map<AcquisitionCostHead, number>();
     let unclassified = 0;
+    const devPaidBy = new Map<string, number>();
+    const activityIds = new Set(activities.map((a) => a.id));
     for (const e of expenses) {
       const amount = Number(e.amount) || 0;
+      /*
+       * 2026-10-21 — a development payment belongs to its activity, not a
+       * head. One whose activity was deleted falls through to unclassified,
+       * so the money never drops out of the total.
+       */
+      if (e.land_development_activity_id && activityIds.has(e.land_development_activity_id)) {
+        const id = e.land_development_activity_id;
+        devPaidBy.set(id, (devPaidBy.get(id) ?? 0) + amount);
+        continue;
+      }
       // v29 — a fee that names its head goes on that line
       const head: AcquisitionCostHead | null =
         e.cost_category === 'land_payment'
@@ -243,10 +306,19 @@ class LandAcquisitionCostRepository extends BaseRepository<LandAcquisitionCost> 
       }
       const historic = money(Number(row?.historic_paid_amount) || 0);
       const actual = money((actualByHead.get(head) ?? 0) + historic);
+      // the deal, or for the land price the amount the accepted round set
+      const agreed =
+        row?.agreed_amount != null
+          ? money(Number(row.agreed_amount))
+          : head === 'land_price' && land && Number(land.final_agreed_amount) > 0
+            ? money(Number(land.final_agreed_amount))
+            : null;
       return {
         cost_head: head,
         estimated,
+        agreed,
         actual,
+        pending: money(Math.max(0, (agreed ?? estimated) - actual)),
         historic,
         remarks,
         /*
@@ -264,30 +336,46 @@ class LandAcquisitionCostRepository extends BaseRepository<LandAcquisitionCost> 
 
     const estimatedTotal = money(lines.reduce((s, l) => s + l.estimated, 0));
     const actualTotal = money(lines.reduce((s, l) => s + l.actual, 0) + unclassified);
+    /*
+     * Once any head has a deal, the deal total counts the budget for the heads
+     * that have none yet — otherwise a land with only its price agreed shows
+     * the fees as "paid beyond the deal".
+     */
+    const agreedTotal = lines.some((l) => l.agreed != null)
+      ? money(lines.reduce((s, l) => s + (l.agreed ?? l.estimated), 0))
+      : null;
+    const pendingTotal = money(lines.reduce((s, l) => s + l.pending, 0));
 
     /*
-     * Development, read the way `landDevelopmentRepository.readinessForLand`
-     * reads it: a cancelled activity costs nothing more, and its incurred
-     * total is the last progress report's running figure.
+     * Development, per activity: budget, contract, and what the payments
+     * recorded against it add up to (2026-10-21). A cancelled activity costs
+     * nothing more, but money already paid on it still counts.
      */
-    const live = activities.filter((a) => a.status !== 'cancelled');
-    const progress = live.length
-      ? await db.land_development_progress
-          .where('activity_id')
-          .anyOf(live.map((a) => a.id))
-          .toArray()
-      : [];
-    const incurredByActivity = new Map<string, { at: string; amount: number }>();
-    for (const p of progress) {
-      const prev = incurredByActivity.get(p.activity_id);
-      const at = `${p.progress_date}|${p.created_at}`;
-      if (!prev || at > prev.at) {
-        incurredByActivity.set(p.activity_id, { at, amount: Number(p.amount_incurred) || 0 });
-      }
-    }
+    const devLines = activities
+      .filter((a) => a.status !== 'cancelled' || devPaidBy.has(a.id))
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .map((a) => {
+        const budget = a.status === 'cancelled' ? 0 : money(Number(a.budget_amount) || 0);
+        const contract = a.contract_amount != null ? money(Number(a.contract_amount)) : null;
+        const paid = money(devPaidBy.get(a.id) ?? 0);
+        return {
+          activity_id: a.id,
+          label: a.activity_type,
+          status: a.status,
+          estimated: budget,
+          agreed: contract,
+          actual: paid,
+          pending: a.status === 'cancelled' ? 0 : money(Math.max(0, (contract ?? budget) - paid)),
+        };
+      });
     const development = {
-      estimated: money(live.reduce((s, a) => s + (Number(a.budget_amount) || 0), 0)),
-      actual: money(live.reduce((s, a) => s + (incurredByActivity.get(a.id)?.amount ?? 0), 0)),
+      estimated: money(devLines.reduce((s, l) => s + l.estimated, 0)),
+      agreed: devLines.some((l) => l.agreed != null)
+        ? money(devLines.reduce((s, l) => s + (l.agreed ?? l.estimated), 0))
+        : null,
+      actual: money(devLines.reduce((s, l) => s + l.actual, 0)),
+      pending: money(devLines.reduce((s, l) => s + l.pending, 0)),
+      lines: devLines,
     };
 
     let landownerShare: AcquisitionCostSheet['landownerShare'] = null;
@@ -314,7 +402,9 @@ class LandAcquisitionCostRepository extends BaseRepository<LandAcquisitionCost> 
     return {
       lines,
       estimatedTotal,
+      agreedTotal,
       actualTotal,
+      pendingTotal,
       unclassifiedActual: money(unclassified),
       development,
       landTotal: {
@@ -334,11 +424,10 @@ class LandAcquisitionCostRepository extends BaseRepository<LandAcquisitionCost> 
    * because the finance overview needs it for every project at once.
    */
   async cashActualByLand(): Promise<Map<string, number>> {
-    const [expenses, costs, activities, progress] = await Promise.all([
+    // development payments are expenses on the land, so they are in here already
+    const [expenses, costs] = await Promise.all([
       db.expenses.toArray(),
       db.land_acquisition_costs.toArray(),
-      db.land_development_activities.toArray(),
-      db.land_development_progress.toArray(),
     ]);
     const out = new Map<string, number>();
     const add = (landId: string, amount: number) =>
@@ -347,17 +436,6 @@ class LandAcquisitionCostRepository extends BaseRepository<LandAcquisitionCost> 
     for (const e of expenses) if (e.land_id) add(e.land_id, Number(e.amount) || 0);
     for (const c of costs) add(c.land_id, Number(c.historic_paid_amount) || 0);
 
-    // latest report per activity — each one states the running total
-    const latest = new Map<string, { at: string; amount: number }>();
-    for (const p of progress) {
-      const at = `${p.progress_date}|${p.created_at}`;
-      const prev = latest.get(p.activity_id);
-      if (!prev || at > prev.at) latest.set(p.activity_id, { at, amount: Number(p.amount_incurred) || 0 });
-    }
-    for (const a of activities) {
-      if (a.status === 'cancelled') continue;
-      add(a.land_id, latest.get(a.id)?.amount ?? 0);
-    }
     return out;
   }
 

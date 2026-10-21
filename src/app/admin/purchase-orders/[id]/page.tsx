@@ -22,6 +22,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { ResultDialog } from '@/components/ui/ResultDialog';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -634,15 +635,14 @@ export default function PurchaseOrderDetailPage() {
         }}
       />
 
-      <ConfirmDialog
+      {/* a notice, not a question — one button (POPUP-SYSTEM.md) */}
+      <ResultDialog
         open={deleteBlocked !== null}
-        title="This order cannot be deleted"
         tone="warning"
+        title="This order cannot be deleted"
         message={deleteBlocked ?? ''}
-        confirmLabel="Understood"
-        cancelLabel="Close"
-        onCancel={() => setDeleteBlocked(null)}
-        onConfirm={() => setDeleteBlocked(null)}
+        actionLabel="OK"
+        onClose={() => setDeleteBlocked(null)}
       />
 
       <ConfirmDialog

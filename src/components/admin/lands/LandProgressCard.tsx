@@ -18,9 +18,7 @@ import {
   landDevelopmentRepository,
   landFeasibilityRepository,
   landNegotiationRepository,
-  paymentScheduleRepository,
   siteVisitRepository,
-  ownerSettlementRepository,
 } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 
@@ -53,24 +51,14 @@ export function LandProgressCard({
   onOpen: (section: TimelineSection) => void;
 }) {
   const data = useLiveQuery(async () => {
-    const [visits, studies, dd, rounds, schedule, dev] = await Promise.all([
+    const [visits, studies, dd, rounds, dev] = await Promise.all([
       siteVisitRepository.listForLand(land.id),
       landFeasibilityRepository.listForLand(land.id),
       landDdRepository.progressForLand(land.id),
       landNegotiationRepository.listForLand(land.id),
-      paymentScheduleRepository.withInstallmentsForLand(land.id),
       landDevelopmentRepository.readinessForLand(land.id),
     ]);
-    /*
-     * A land runs either the land-level plan or per-owner plans, never both,
-     * so this step has to look at both. Reading only the land-level one left
-     * a fully scheduled multi-owner plot showing "Settlement schedule" as not
-     * done (review 2026-09-20).
-     */
-    const ownerPlans = schedule
-      ? false
-      : await ownerSettlementRepository.hasOwnerPlanCoverage(land.id);
-    return { visits, studies, dd, rounds, schedule, dev, ownerPlans };
+    return { visits, studies, dd, rounds, dev };
   }, [land.id, land.status]);
 
   const isJv = land.acquisition_type === 'joint_venture';
@@ -79,10 +67,11 @@ export function LandProgressCard({
 
   let steps: Step[] = [];
   if (data) {
-    const { visits, studies, dd, rounds, schedule, dev, ownerPlans } = data;
+    const { visits, studies, dd, rounds, dev } = data;
     const doneVisits = visits.filter((v) => v.status !== 'planned').length;
     const planned = visits.length - doneVisits;
-    const approved = studies.find((s) => s.status === 'approved');
+    // studies come newest first; the current one's recommendation is the decision
+    const current = studies[0];
     steps = [
       {
         key: 'visit',
@@ -95,8 +84,8 @@ export function LandProgressCard({
       },
       {
         key: 'feasibility',
-        label: 'Feasibility approved',
-        done: approved?.recommendation === 'proceed',
+        label: 'Feasibility study',
+        done: current?.recommendation === 'proceed',
         count: studies.length ? plural(studies.length, 'version') : undefined,
         section: 'site',
       },
@@ -112,23 +101,6 @@ export function LandProgressCard({
         label: 'Price agreed',
         done: rounds.some((r) => r.status === 'accepted'),
         count: rounds.length ? plural(rounds.length, 'round') : undefined,
-        section: 'acquisition',
-      },
-      {
-        key: 'settlement',
-        label: 'Settlement schedule',
-        // a JV paid only in units has no cash to schedule, once it is signed
-        done:
-          Boolean(schedule) ||
-          ownerPlans ||
-          (isJv && landIsHeld(land.status) && !(Number(land.final_agreed_amount) > 0)),
-        count: schedule
-          ? plural(schedule.installments.length, 'instalment')
-          : ownerPlans
-            ? 'per owner'
-            : isJv && landIsHeld(land.status) && !(Number(land.final_agreed_amount) > 0)
-              ? 'not needed'
-              : undefined,
         section: 'acquisition',
       },
       {
@@ -159,7 +131,7 @@ export function LandProgressCard({
      * check done for comfort) still ticks.
      */
     if (owned) {
-      const acquisitionSteps = new Set(['visit', 'feasibility', 'dd', 'negotiation', 'settlement']);
+      const acquisitionSteps = new Set(['visit', 'feasibility', 'dd', 'negotiation']);
       steps = steps.map((step) => {
         if (step.key === 'closing') return { ...step, label: 'Owned (entered as owned)' };
         if (acquisitionSteps.has(step.key) && !step.done) {
@@ -191,38 +163,49 @@ export function LandProgressCard({
           <ol className="space-y-1">
             {steps.map((step) => (
               <li key={step.key}>
+                {/*
+                  Two lines (2026-10-21): the step's name, then its count and
+                  the status it sets. On one line the narrow sidebar wrapped
+                  the name and slid the count on top of it.
+                */}
                 <button
                   type="button"
                   onClick={() => onOpen(step.section)}
-                  className="group flex w-full items-center gap-3 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-admin-50/60"
+                  className="group flex w-full items-start gap-3 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-admin-50/60"
                 >
-                  <Tick done={step.done} na={step.na} />
-                  <span
-                    className={cn(
-                      'min-w-0 flex-1 text-sm',
-                      step.done ? 'text-ink' : step.na ? 'text-slate-400' : 'text-ink-muted',
-                    )}
-                  >
-                    {step.label}
+                  <span className="mt-0.5">
+                    <Tick done={step.done} na={step.na} />
                   </span>
-                  {step.count && (
-                    <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium tabular-nums text-ink-muted">
-                      {step.count}
+                  <span className="min-w-0 flex-1">
+                    <span
+                      className={cn(
+                        'block text-sm leading-snug',
+                        step.done ? 'text-ink' : step.na ? 'text-slate-400' : 'text-ink-muted',
+                      )}
+                    >
+                      {step.label}
                     </span>
-                  )}
-                  {/*
-                    Which status this step sets, so the card and the status
-                    badge stop looking like two competing lists. A step with no
-                    status is a gate (feasibility) or a record (the schedule).
-                  */}
-                  <span className="hidden shrink-0 text-[11px] text-slate-400 sm:block">
-                    {step.na
-                      ? 'not applicable'
-                      : STEP_SETS_STATUS[step.key]
-                        ? `→ ${landStatusLabel(STEP_SETS_STATUS[step.key]!, land.acquisition_type)}`
-                        : 'no status'}
+                    <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-slate-400">
+                      {step.count && (
+                        <span className="rounded-full bg-slate-100 px-1.5 py-px font-medium tabular-nums text-ink-muted">
+                          {step.count}
+                        </span>
+                      )}
+                      {/*
+                        Which status this step sets, so the card and the status
+                        badge stop looking like two competing lists. A step with
+                        no status is a gate (feasibility) or a record.
+                      */}
+                      <span>
+                        {step.na
+                          ? 'not applicable'
+                          : STEP_SETS_STATUS[step.key]
+                            ? `→ ${landStatusLabel(STEP_SETS_STATUS[step.key]!, land.acquisition_type)}`
+                            : 'no status change'}
+                      </span>
+                    </span>
                   </span>
-                  <ChevronRight className="size-3.5 shrink-0 text-slate-300 group-hover:text-admin-600" />
+                  <ChevronRight className="mt-1 size-3.5 shrink-0 text-slate-300 group-hover:text-admin-600" />
                 </button>
               </li>
             ))}
@@ -238,7 +221,7 @@ export function LandProgressCard({
                 Status moves on its own as this work is recorded.{' '}
                 {isJv
                   ? 'JV signing is recorded on the Joint Venture tab'
-                  : 'Registration is recorded from the Registered step above (Timeline → Negotiation & Acquisition)'}
+                  : 'Registration is recorded from the Registered step above (Acquisition Steps → Deal & Registration)'}
                 ; reject or divest from the page header.
               </>
             )}

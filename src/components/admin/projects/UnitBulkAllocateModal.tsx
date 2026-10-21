@@ -81,7 +81,7 @@ export function UnitBulkAllocateModal({
       title="Allocate units"
       subtitle={`${unitIds.length} unit${unitIds.length === 1 ? '' : 's'} selected`}
       icon={Handshake}
-      size="sm"
+      size="md"
       onClose={onClose}
       footer={
         <>

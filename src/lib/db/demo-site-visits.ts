@@ -47,7 +47,6 @@ export interface DemoFeasibility {
   est_acquisition_cost: number;
   est_development_cost: number;
   est_other_cost: number;
-  expected_revenue: number;
   assumptions?: string;
   risks?: string;
   recommendation: FeasibilityRecommendation;
@@ -395,7 +394,6 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     est_acquisition_cost: 6_000_000,
     est_development_cost: 4_500_000,
     est_other_cost: 9_000_000,
-    expected_revenue: 145_000_000,
     assumptions:
       '55:45 JV split on flat count, 9 floors approved, BDT 11,000/sqft achievable in Block K, 34 months to handover',
     risks:
@@ -414,7 +412,6 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     est_acquisition_cost: 39_000_000,
     est_development_cost: 2_000_000,
     est_other_cost: 6_500_000,
-    expected_revenue: 78_000_000,
     assumptions: 'Outright purchase at asking, 7 floors, BDT 9,800/sqft',
     risks: 'Asking price leaves a thin margin if the achievable rate slips',
     recommendation: 'hold',
@@ -431,7 +428,6 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     est_acquisition_cost: 36_000_000,
     est_development_cost: 2_000_000,
     est_other_cost: 6_500_000,
-    expected_revenue: 78_000_000,
     assumptions: 'Purchase capped at 36,000,000 — the owner has signalled room below asking. 7 floors, BDT 9,800/sqft',
     risks: 'No gas connection in the block — buyers will ask, and the answer costs something',
     recommendation: 'proceed',
@@ -448,7 +444,6 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     est_acquisition_cost: 27_000_000,
     est_development_cost: 11_000_000,
     est_other_cost: 4_000_000,
-    expected_revenue: 58_000_000,
     assumptions: '4 ft fill across 9 katha, 6 floors, BDT 6,800/sqft achievable in Fatullah',
     risks:
       'Fill depth is a site-visit estimate, not a survey. Sitting tenants — vacancy date not agreed. No WASA line.',
@@ -464,7 +459,6 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     est_acquisition_cost: 54_000_000,
     est_development_cost: 16_000_000,
     est_other_cost: 7_000_000,
-    expected_revenue: 118_000_000,
     assumptions:
       'CDA hill-cutting permission granted, retaining wall in the development cost, premium pricing for the view',
     risks:
@@ -480,7 +474,6 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     est_acquisition_cost: 41_000_000,
     est_development_cost: 34_000_000,
     est_other_cost: 5_000_000,
-    expected_revenue: 82_000_000,
     assumptions: '9 ft fill across 18 katha, approach road to be built, services brought in',
     risks: 'Annual flooding from the river. No utilities. The fill alone is most of the land price.',
     recommendation: 'reject',
@@ -500,7 +493,6 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     est_acquisition_cost: 42_000_000,
     est_development_cost: 6_000_000,
     est_other_cost: 5_000_000,
-    expected_revenue: 82_000_000,
     assumptions: 'Outright purchase near 41 crore, industrial-worker housing, 8 floors',
     risks: 'No WASA line; the east-edge drainage may need a retaining drain',
     recommendation: 'proceed',
@@ -517,7 +509,6 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     est_acquisition_cost: 5_000_000,
     est_development_cost: 3_000_000,
     est_other_cost: 6_000_000,
-    expected_revenue: 96_000_000,
     assumptions: 'JV 60:40 on flat count, 6 floors, highway-facing shops on the ground floor',
     risks: 'Two heirs must both sign; tin shed on the east strip',
     recommendation: 'proceed',
@@ -534,7 +525,6 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     est_acquisition_cost: 8_000_000,
     est_development_cost: 5_000_000,
     est_other_cost: 9_000_000,
-    expected_revenue: 210_000_000,
     assumptions: 'JV on commercial floor area, 10 floors, bank tenants for the podium',
     risks: 'Demolition of the existing structure; soil not yet tested',
     recommendation: 'proceed',
@@ -551,7 +541,6 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     est_acquisition_cost: 86_000_000,
     est_development_cost: 4_000_000,
     est_other_cost: 9_000_000,
-    expected_revenue: 150_000_000,
     assumptions: 'Outright purchase around 82–84 crore, 9 floors, BDT 17,000/sqft',
     risks: 'Price is high; the margin depends on the Dhanmondi rate holding',
     recommendation: 'proceed',
@@ -568,7 +557,6 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     est_acquisition_cost: 52_000_000,
     est_development_cost: 9_000_000,
     est_other_cost: 6_000_000,
-    expected_revenue: 105_000_000,
     assumptions: 'Staff housing, 6 floors, 5 ft fill across 3 bigha',
     risks: 'Paddy land — fill depth is an estimate; no WASA line',
     recommendation: 'proceed',
@@ -585,7 +573,6 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     est_acquisition_cost: 4_000_000,
     est_development_cost: 0,
     est_other_cost: 3_000_000,
-    expected_revenue: 68_000_000,
     assumptions: 'JV 58:42 on flat count, 8 floors, serviced plot needs no development',
     risks: 'Single owner abroad — power of attorney needed for signing',
     recommendation: 'proceed',
@@ -603,7 +590,6 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     est_acquisition_cost: 24_000_000,
     est_development_cost: 3_500_000,
     est_other_cost: 16_500_000,
-    expected_revenue: 402_000_000,
     assumptions:
       '55:45 JV on flat count, 12 floors at FAR 4.0, 2,40,00,000 signing money, BDT 13,500/sqft achievable in Sector 18, 38 months to handover',
     risks:
@@ -623,7 +609,6 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     est_acquisition_cost: 18_000_000,
     est_development_cost: 2_800_000,
     est_other_cost: 15_200_000,
-    expected_revenue: 402_000_000,
     assumptions:
       '52:48 JV on flat count, 12 floors at FAR 4.0, 1,80,00,000 signing money, BDT 13,500/sqft achievable, raft foundation per the soil report, 36 months to handover',
     risks:
@@ -642,7 +627,6 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     est_acquisition_cost: 30_500_000,
     est_development_cost: 7_500_000,
     est_other_cost: 3_200_000,
-    expected_revenue: 71_000_000,
     assumptions:
       'Outright purchase at 30,500,000, 5 ft fill across 24 katha, plots sold rather than built on',
     risks:
@@ -661,7 +645,6 @@ export const DEMO_FEASIBILITY: DemoFeasibility[] = [
     est_acquisition_cost: 24_000_000,
     est_development_cost: 1_000_000,
     est_other_cost: 2_900_000,
-    expected_revenue: 58_000_000,
     assumptions: 'Outright purchase, 7 floors, 40ft access road as shown on the DAP sheet',
     risks: 'The access road is planned, not built. The whole revenue assumes it.',
     recommendation: 'proceed',

@@ -245,8 +245,8 @@ function SettingsForm({
               with "Correct status" on the land page, which records why.
             */}
             <AlwaysOnGate
-              label="SITE-003 · An approved feasibility study before negotiation"
-              detail="No negotiation round can be recorded until a feasibility study recommending Proceed is approved."
+              label="SITE-003 · A feasibility study before negotiation"
+              detail="No negotiation round can be recorded until the latest feasibility study recommends Proceed."
             />
             <AlwaysOnGate
               label="DD-004 · Mandatory due diligence before acquisition"

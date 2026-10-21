@@ -320,7 +320,7 @@ export function ProjectStatusCard({ project }: { project: Project }) {
         icon={GitBranch}
         confirmLabel={forwardMove && stage ? stage.button : 'Move back'}
         message={forwardMove ? stage?.meaning : config?.question}
-        size={forwardMove ? 'lg' : 'sm'}
+        size={forwardMove ? 'lg' : undefined}
         busy={busy}
         onCancel={() => setTarget(null)}
         onConfirm={confirm}

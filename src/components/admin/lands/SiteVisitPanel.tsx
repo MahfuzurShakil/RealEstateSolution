@@ -325,7 +325,7 @@ function VisitDialog({
       }
       subtitle={`${land.code} · ${land.name}`}
       icon={MapPin}
-      size="xl"
+      size="lg"
       onClose={onClose}
       footer={
         <>

@@ -1,7 +1,8 @@
 'use client';
 
 import { db } from '../db/database';
-import type { DdChecklistItem, DdItemStatus, LandDdItem } from '../db/types';
+import type { DdChecklistItem, DdItemStatus, DocumentRecord, LandDdItem } from '../db/types';
+import { DD_ITEM_DOCUMENT_TYPE } from '../db/types';
 import { BaseRepository, type NewRecord } from './base.repository';
 import { documentRepository } from './document.repository';
 
@@ -27,6 +28,25 @@ export interface DdProgress {
   mandatoryOutstanding: number;
   /** mandatory items explicitly marked failed and not waived */
   mandatoryFailed: number;
+}
+
+/** A checklist row's display name — the master label, or the name typed in. */
+export function ddItemLabel(row: LandDdItemWithMaster): string {
+  return row.item?.label ?? row.custom_label ?? 'Retired checklist item';
+}
+
+/**
+ * The document type a file uploaded against this row is filed under, so the
+ * upload never asks (2026-10-21). `other` carries the row's own name.
+ */
+export function ddItemDocumentType(row: LandDdItemWithMaster): {
+  document_type: string;
+  custom_type_name: string | null;
+} {
+  const type = row.item ? DD_ITEM_DOCUMENT_TYPE[row.item.code] : undefined;
+  return type
+    ? { document_type: type, custom_type_name: null }
+    : { document_type: 'other', custom_type_name: ddItemLabel(row) };
 }
 
 /** A single item's own idea of "done". */
@@ -81,53 +101,108 @@ class LandDdRepository extends BaseRepository<LandDdItem> {
   async listForLand(landId: string): Promise<LandDdItemWithMaster[]> {
     const rows = await db.land_dd_items.where('land_id').equals(landId).toArray();
     const joined = await Promise.all(
-      rows.map(async (r) => ({ ...r, item: await db.dd_checklist_items.get(r.item_id) })),
+      rows.map(async (r) => ({
+        ...r,
+        // a hand-added document has no master row
+        item: r.custom_label ? undefined : await db.dd_checklist_items.get(r.item_id),
+      })),
     );
     /*
      * Ordered by the master's sort order, not by when the rows were written.
      * A checklist that reorders itself between visits is a checklist nobody
-     * trusts. Items whose master row is missing sort last rather than throwing.
+     * trusts. Hand-added documents follow in the order they were added.
      */
-    return joined.sort((a, b) => (a.item?.sort_order ?? 9999) - (b.item?.sort_order ?? 9999));
+    return joined.sort(
+      (a, b) =>
+        (a.item?.sort_order ?? 9999) - (b.item?.sort_order ?? 9999) ||
+        a.created_at.localeCompare(b.created_at),
+    );
   }
 
   /**
-   * Creates the land's checklist from the active master items, skipping any it
-   * already has.
+   * Creates the land's required documents, and only those (2026-10-21).
    *
-   * Safe to call repeatedly: opening the tab tops the checklist up with items
-   * added to the master since, without disturbing findings already recorded.
-   * `is_mandatory` is snapshotted here — see the note on the type.
+   * Safe to call repeatedly: opening the tab tops the list up with items made
+   * mandatory in the master since, without disturbing findings already
+   * recorded. Everything optional is added by hand with `addItems` when the
+   * land needs it — a list of seventeen where eleven do not apply was the
+   * complaint. `is_mandatory` is snapshotted here — see the note on the type.
+   *
+   * It also clears out optional rows an earlier version created up front,
+   * but only ones nobody has touched: still pending, no finding, nobody
+   * assigned, no file. Anything with work on it stays.
    */
   async ensureForLand(landId: string, createdBy: string | null = null): Promise<void> {
     const [master, existing] = await Promise.all([
-      ddChecklistRepository.activeItems(),
+      ddChecklistRepository.allItems(),
       db.land_dd_items.where('land_id').equals(landId).toArray(),
     ]);
-    const have = new Set(existing.map((r) => r.item_id));
-    const missing = master.filter((m) => !have.has(m.id));
-    if (missing.length === 0) return;
+    const masterById = new Map(master.map((m) => [m.id, m]));
 
+    for (const row of existing) {
+      const item = masterById.get(row.item_id);
+      if (!item || item.is_mandatory || row.added_by_user) continue;
+      if (row.status !== 'pending' || row.finding || row.assigned_to) continue;
+      const files = await documentRepository.listForEntity('land_dd_item', row.id);
+      if (files.length === 0) await db.land_dd_items.delete(row.id);
+    }
+
+    const have = new Set(existing.map((r) => r.item_id));
+    const missing = master.filter((m) => m.is_active && m.is_mandatory && !have.has(m.id));
     for (const item of missing) {
+      await this.create(blankRow(landId, item.id, true), createdBy);
+    }
+  }
+
+  /**
+   * Adds documents the land team picked: optional master items by id, and
+   * documents of their own by name.
+   */
+  async addItems(
+    landId: string,
+    input: { itemIds: string[]; customLabels: string[] },
+    createdBy: string | null = null,
+  ): Promise<void> {
+    const existing = await db.land_dd_items.where('land_id').equals(landId).toArray();
+    const have = new Set(existing.map((r) => r.item_id));
+    for (const itemId of input.itemIds) {
+      if (have.has(itemId)) continue;
+      const item = await db.dd_checklist_items.get(itemId);
       await this.create(
-        {
-          land_id: landId,
-          item_id: item.id,
-          status: 'pending',
-          assigned_to: null,
-          finding: null,
-          submitted_by: null,
-          submitted_at: null,
-          reviewed_by: null,
-          reviewed_at: null,
-          waiver_reason: null,
-          waived_by: null,
-          waived_at: null,
-          is_mandatory: item.is_mandatory,
-        } as NewRecord<LandDdItem>,
+        { ...blankRow(landId, itemId, Boolean(item?.is_mandatory)), added_by_user: true },
         createdBy,
       );
     }
+    for (const label of input.customLabels) {
+      const name = label.trim();
+      if (!name) continue;
+      await this.create(
+        {
+          ...blankRow(landId, `custom-${crypto.randomUUID()}`, false),
+          custom_label: name,
+          added_by_user: true,
+        },
+        createdBy,
+      );
+    }
+  }
+
+  /** Every file filed against this land's checklist, by checklist row. */
+  async documentsForLand(landId: string): Promise<Map<string, DocumentRecord[]>> {
+    const rows = await db.land_dd_items.where('land_id').equals(landId).toArray();
+    const out = new Map<string, DocumentRecord[]>();
+    for (const row of rows) {
+      out.set(row.id, await documentRepository.listForEntity('land_dd_item', row.id));
+    }
+    return out;
+  }
+
+  /** Removes one optional document row and its files. Mandatory rows stay. */
+  async removeItem(id: string): Promise<void> {
+    const row = await db.land_dd_items.get(id);
+    if (!row || row.is_mandatory) return;
+    await documentRepository.removeForEntity('land_dd_item', id);
+    await db.land_dd_items.delete(id);
   }
 
   async progressForLand(landId: string): Promise<DdProgress> {
@@ -153,3 +228,21 @@ class LandDdRepository extends BaseRepository<LandDdItem> {
 
 export const ddChecklistRepository = new DdChecklistRepository();
 export const landDdRepository = new LandDdRepository();
+
+function blankRow(landId: string, itemId: string, isMandatory: boolean): NewRecord<LandDdItem> {
+  return {
+    land_id: landId,
+    item_id: itemId,
+    status: 'pending',
+    assigned_to: null,
+    finding: null,
+    submitted_by: null,
+    submitted_at: null,
+    reviewed_by: null,
+    reviewed_at: null,
+    waiver_reason: null,
+    waived_by: null,
+    waived_at: null,
+    is_mandatory: isMandatory,
+  } as NewRecord<LandDdItem>;
+}

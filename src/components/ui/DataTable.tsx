@@ -45,6 +45,7 @@ export function DataTable<T extends { id: string }>({
   mobileCard,
   sort,
   onSortChange,
+  pageSize,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -63,6 +64,8 @@ export function DataTable<T extends { id: string }>({
    */
   sort?: { key: string; direction: Direction };
   onSortChange?: (sort: { key: string; direction: Direction }) => void;
+  /** rows per page to start with; 25 unless the page knows better */
+  pageSize?: number;
 }) {
   const [ownSortKey, setOwnSortKey] = useState<string | null>(initialSort?.key ?? null);
   const [ownDirection, setOwnDirection] = useState<Direction>(initialSort?.direction ?? 'asc');
@@ -89,7 +92,7 @@ export function DataTable<T extends { id: string }>({
    * instalments was 21 pages, and the first page was five rows belonging to
    * one customer.
    */
-  const paged = usePagination(sorted, 25);
+  const paged = usePagination(sorted, pageSize ?? 25);
 
   function toggleSort(column: Column<T>) {
     if (!column.sortValue) return;

@@ -29,18 +29,11 @@ export interface DemoDdFinding {
 /** The seeded checklist's mandatory items (DD_CHECKLIST_SEED). */
 const MANDATORY_CODES = [
   'ownership_proof',
-  'heir_consent',
   'deed_chain',
   'khatian_verified',
   'mutation_done',
   'encumbrance_search',
-  'mortgage_clear',
-  'litigation_clear',
   'land_tax_paid',
-  'acquisition_check',
-  'boundary_survey',
-  'possession_clear',
-  'land_use_clearance',
 ];
 
 export const DEMO_DD_FINDINGS: DemoDdFinding[] = [
@@ -388,7 +381,9 @@ function passAllMandatory(
   land: string,
   overrides: Partial<Record<string, Pick<DemoDdFinding, 'status' | 'finding'>>> = {},
 ): DemoDdFinding[] {
-  return MANDATORY_CODES.map((code) => ({
+  // an override can name an optional item too; it is added to the land
+  const codes = [...new Set([...MANDATORY_CODES, ...Object.keys(overrides)])];
+  return codes.map((code) => ({
     land,
     code,
     status: 'passed',

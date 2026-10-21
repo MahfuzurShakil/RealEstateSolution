@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { ResultDialog } from '@/components/ui/ResultDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { BOOKING_STATUS_META } from '@/lib/domain/booking';
@@ -351,23 +352,28 @@ export default function CustomerDetailPage() {
         title={`Delete ${customer.code}`}
         subtitle={customer.name}
         confirmLabel="Delete customer"
-        message={
-          deleteError ||
-          'This deletes the customer record and its documents. It cannot be undone.'
-        }
-        tone={deleteError ? 'warning' : 'danger'}
-        onCancel={() => {
-          setConfirmDelete(false);
-          setDeleteError('');
-        }}
+        message="This deletes the customer record and its documents. It cannot be undone."
+        tone="danger"
+        onCancel={() => setConfirmDelete(false)}
         onConfirm={async () => {
           const result = await customerRepository.removeCascade(customer.id);
           if (!result.removed) {
+            // refused: close the question and say why, in a notice of its own
+            setConfirmDelete(false);
             setDeleteError(result.reason ?? 'This customer cannot be deleted.');
             return;
           }
           router.push('/admin/customers');
         }}
+      />
+
+      <ResultDialog
+        open={Boolean(deleteError)}
+        tone="warning"
+        title="This customer cannot be deleted"
+        message={deleteError}
+        actionLabel="OK"
+        onClose={() => setDeleteError('')}
       />
     </>
   );

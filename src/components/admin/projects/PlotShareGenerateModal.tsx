@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Field, SelectInput, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
+import { ResultDialog } from '@/components/ui/ResultDialog';
 import { LAND_SIZE_UNITS, type LandSizeUnit, type Tower } from '@/lib/db/types';
 import { LAND_SIZE_UNIT_LABEL } from '@/lib/domain/land';
 import type { ProjectShape } from '@/lib/domain/project';
@@ -181,6 +182,34 @@ export function PlotShareGenerateModal({
     }
   }
 
+  // the outcome is its own small popup (POPUP-SYSTEM.md), not the generator's frame
+  if (result) {
+    const noun = result.created === 1 ? L.item.toLowerCase() : L.itemPlural.toLowerCase();
+    return (
+      <ResultDialog
+        open={open}
+        title={`${result.created} ${noun} created`}
+        message={isPlot ? `in ${tower.name}` : undefined}
+        onClose={onClose}
+      >
+        {result.skipped.length > 0 && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <p className="text-sm font-medium text-amber-800">
+              {result.skipped.length} code{result.skipped.length === 1 ? '' : 's'} already existed
+              and {result.skipped.length === 1 ? 'was' : 'were'} left untouched
+            </p>
+            <p className="mt-1 text-xs text-amber-700">{result.skipped.join(', ')}</p>
+          </div>
+        )}
+        <p className="text-xs text-ink-muted">
+          {isPlot
+            ? 'Run this again for a different plot size, and edit the odd plot afterwards.'
+            : 'Edit a share afterwards to record a buyer taking two as one holding.'}
+        </p>
+      </ResultDialog>
+    );
+  }
+
   return (
     <Modal
       open={open}
@@ -191,13 +220,10 @@ export function PlotShareGenerateModal({
           : 'How many shares the plot is divided into, and the price of one'
       }
       icon={Layers}
-      size="xl"
+      size="lg"
       onClose={onClose}
       footer={
-        result ? (
-          <Button onClick={onClose} viewSafe>Done</Button>
-        ) : (
-          <>
+        <>
             <Button variant="outline" onClick={onClose} viewSafe disabled={busy}>
               Cancel
             </Button>
@@ -214,33 +240,10 @@ export function PlotShareGenerateModal({
                 ? 'Generating…'
                 : `${!isPlot && (shareContext?.existing ?? 0) > 0 ? 'Regenerate' : 'Generate'} ${n} ${n === 1 ? L.item.toLowerCase() : L.itemPlural.toLowerCase()}`}
             </Button>
-          </>
-        )
+        </>
       }
     >
-      {result ? (
-        <div className="space-y-3">
-          <p className="text-sm text-ink">
-            <span className="font-semibold text-admin-700">{result.created}</span>{' '}
-            {result.created === 1 ? L.item.toLowerCase() : L.itemPlural.toLowerCase()} created
-            {isPlot ? ` in ${tower.name}` : ''}.
-          </p>
-          {result.skipped.length > 0 && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-              <p className="text-sm font-medium text-amber-800">
-                {result.skipped.length} code{result.skipped.length === 1 ? '' : 's'} already existed
-                and {result.skipped.length === 1 ? 'was' : 'were'} left untouched
-              </p>
-              <p className="mt-1 text-xs text-amber-700">{result.skipped.join(', ')}</p>
-            </div>
-          )}
-          <p className="text-xs text-ink-muted">
-            {isPlot
-              ? 'Run this again for a different plot size — a block of 5-katha and 3-katha plots takes two runs — and edit the odd plot afterwards.'
-              : 'Edit a share afterwards to record a buyer taking two as one holding.'}
-          </p>
-        </div>
-      ) : (
+      {(
         <div className="space-y-5">
           {!isPlot && shareContext && (
             <ShareLandBanner context={shareContext} count={n} />

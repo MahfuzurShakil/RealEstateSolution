@@ -10,8 +10,13 @@ import { cn } from '@/lib/utils/cn';
 import { useReadOnly } from './ViewOnly';
 import { formatBdt, formatTakaWords } from '@/lib/utils/format';
 
+/*
+ * The border is slate-300, not the hairline used for card edges: a control has
+ * to read as a box you can type in, and on a white popup the hairline all but
+ * vanished (client review 2026-10-21).
+ */
 const CONTROL =
-  'w-full rounded-xl border border-hairline bg-white px-3 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-slate-400 focus:border-admin-400 focus:ring-2 focus:ring-admin-100 disabled:bg-slate-50';
+  'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-ink shadow-[0_1px_0_rgba(15,23,42,0.03)] outline-none transition-colors placeholder:text-slate-400 hover:border-slate-400 focus:border-admin-500 focus:ring-2 focus:ring-admin-100 disabled:bg-slate-50 disabled:hover:border-slate-300';
 
 /** Label above, control below (Design Reference A.9). */
 export function Field({

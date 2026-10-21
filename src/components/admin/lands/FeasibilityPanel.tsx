@@ -2,86 +2,78 @@
 
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Calculator, Check, Plus, Send, ShieldCheck, X } from 'lucide-react';
+import { Calculator, Check, Pause, Pencil, Plus, X } from 'lucide-react';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Field, MoneyInput, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
+import { Field, MoneyInput, TextArea, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
-import type {
-  FeasibilityRecommendation,
-  FeasibilityStatus,
-  Land,
-  LandFeasibility,
-} from '@/lib/db/types';
+import type { FeasibilityRecommendation, Land, LandFeasibility } from '@/lib/db/types';
 import { FEASIBILITY_RECOMMENDATIONS } from '@/lib/db/types';
+import { LAND_SIZE_UNIT_LABEL } from '@/lib/domain/land';
 import { landFeasibilityRepository } from '@/lib/repositories';
+import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 import { TimelineItem, TimelineList } from '@/components/admin/lands/TimelineItem';
 
-const STATUS_META: Record<FeasibilityStatus, { label: string; tone: BadgeTone }> = {
-  draft: { label: 'Draft', tone: 'neutral' },
-  submitted: { label: 'Submitted', tone: 'amber' },
-  approved: { label: 'Approved', tone: 'green' },
-  rejected: { label: 'Rejected', tone: 'red' },
+const RECOMMENDATION_META: Record<
+  FeasibilityRecommendation,
+  { label: string; tone: BadgeTone; hint: string; icon: typeof Check }
+> = {
+  proceed: { label: 'Proceed', tone: 'green', hint: 'Worth buying — opens negotiation', icon: Check },
+  hold: { label: 'Hold', tone: 'amber', hint: 'Wait for something to change', icon: Pause },
+  reject: { label: 'Reject', tone: 'red', hint: 'Not worth buying at this price', icon: X },
 };
 
-const RECOMMENDATION_META: Record<FeasibilityRecommendation, { label: string; tone: BadgeTone }> = {
-  proceed: { label: 'Proceed', tone: 'green' },
-  hold: { label: 'Hold', tone: 'amber' },
-  reject: { label: 'Reject', tone: 'red' },
-};
+/** Total cost is always derived from the three heads, never stored. */
+function totalCost(f: Pick<LandFeasibility, 'est_acquisition_cost' | 'est_development_cost' | 'est_other_cost'>) {
+  return Number(f.est_acquisition_cost) + Number(f.est_development_cost) + Number(f.est_other_cost);
+}
 
-/** Total cost and margin are always derived, never stored — see the note below. */
-function totals(f: LandFeasibility) {
-  const cost =
-    Number(f.est_acquisition_cost) + Number(f.est_development_cost) + Number(f.est_other_cost);
-  const margin = Number(f.expected_revenue) - cost;
-  const pct = f.expected_revenue > 0 ? (margin / Number(f.expected_revenue)) * 100 : null;
-  return { cost, margin, pct };
+/** Cost per katha / decimal / bigha — the number a land team compares plots on. */
+function perUnit(land: Land, cost: number): string | null {
+  const size = Number(land.land_size);
+  if (!(size > 0) || !(cost > 0)) return null;
+  return `${formatBdt(Math.round(cost / size))} per ${LAND_SIZE_UNIT_LABEL[land.land_size_unit] ?? 'unit'}`;
 }
 
 /**
  * Feasibility studies for one land (BRD SITE-002, SITE-003).
  *
- * Versioned rather than edited in place: the numbers move when the site visit
- * turns up two feet of fill, and the version the board approved has to stay
- * readable afterwards. Only a draft is editable; anything submitted or decided
- * is superseded by a new version instead.
+ * 2026-10-21 — no approval step and no expected revenue. A study is made
+ * before anyone knows whether the land becomes flats or a plot sale, so it
+ * estimates what the land will cost and records the call: Proceed, Hold or
+ * Reject. The current (highest) version's call is what opens negotiation.
  *
- * Total cost and margin are computed on read and never stored. A stored total
- * is a second answer to a question the three cost fields already answer, and
- * the two drift the first time someone edits one without the other.
+ * Still versioned: when the numbers move, a new version keeps the old one
+ * readable. The current version can be corrected in place.
  */
 export function FeasibilityPanel({ land }: { land: Land }) {
-  const { userId } = useMockSession();
   const [editing, setEditing] = useState<LandFeasibility | 'new' | null>(null);
-  const [deciding, setDeciding] = useState<{ row: LandFeasibility; approve: boolean } | null>(null);
-  const [submitId, setSubmitId] = useState<string | null>(null);
 
   const studies = useLiveQuery(() => landFeasibilityRepository.listForLand(land.id), [land.id]);
   const current = studies?.[0];
 
   return (
     <>
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-ink-muted">
-          {studies?.length ?? 0} version{studies?.length === 1 ? '' : 's'} · the highest is the
-          current study
-        </p>
-        <Button size="sm" className="w-full sm:w-auto" onClick={() => setEditing('new')}>
-          <Plus className="size-4" />
-          {studies?.length ? 'New version' : 'Add a study'}
-        </Button>
-      </div>
+      {studies && studies.length > 0 && (
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-ink-muted">
+            {studies.length} version{studies.length === 1 ? '' : 's'} · the newest is the one that
+            counts
+          </p>
+          <Button size="sm" variant="outline" className="w-full sm:w-auto" onClick={() => setEditing('new')}>
+            <Plus className="size-4" /> New version
+          </Button>
+        </div>
+      )}
 
       {studies && studies.length === 0 ? (
         <EmptyState
           icon={Calculator}
           title="No feasibility study yet"
-          description="Estimate what this land will cost to acquire and develop, what it should return, and what could go wrong. An approved study recommending Proceed is what opens negotiation with the owner (BRD SITE-003)."
+          description="Estimate what this land will cost to buy and get ready, note what could go wrong, and decide: Proceed, Hold or Reject. Proceed opens negotiation with the owner."
           action={
             <Button onClick={() => setEditing('new')}>
               <Plus className="size-4" /> Add a study
@@ -91,125 +83,57 @@ export function FeasibilityPanel({ land }: { land: Land }) {
       ) : (
         <TimelineList>
           {studies?.map((study) => {
-            const t = totals(study);
+            const cost = totalCost(study);
             const isCurrent = study.id === current?.id;
+            const rec = RECOMMENDATION_META[study.recommendation];
             return (
               <TimelineItem
                 key={study.id}
                 marker={`v${study.version_no}`}
                 markerClassName={
-                  study.status === 'approved'
-                    ? 'bg-emerald-500 text-white'
-                    : isCurrent
-                      ? undefined
-                      : 'bg-slate-100 text-slate-500'
+                  isCurrent
+                    ? study.recommendation === 'proceed'
+                      ? 'bg-emerald-500 text-white'
+                      : undefined
+                    : 'bg-slate-100 text-slate-500'
                 }
                 muted={!isCurrent}
                 defaultOpen={isCurrent}
-                date={formatDate(study.decided_at ?? study.submitted_at ?? study.created_at)}
+                date={formatDate(study.created_at)}
                 title={
                   <>
                     Feasibility version {study.version_no}
-                    <Badge tone={STATUS_META[study.status].tone}>{STATUS_META[study.status].label}</Badge>
-                    <Badge tone={RECOMMENDATION_META[study.recommendation].tone}>
-                      {RECOMMENDATION_META[study.recommendation].label}
-                    </Badge>
+                    <Badge tone={rec.tone}>{rec.label}</Badge>
                     {isCurrent && <Badge tone="teal">Current</Badge>}
                   </>
                 }
                 meta={study.prepared_by ? `Prepared by ${study.prepared_by}` : undefined}
                 aside={
-                  <span
-                    className={
-                      t.margin >= 0
-                        ? 'text-sm font-medium tabular-nums text-emerald-700'
-                        : 'text-sm font-medium tabular-nums text-red-700'
-                    }
-                  >
-                    {t.pct != null ? `${t.pct.toFixed(1)}% margin` : formatBdt(t.margin)}
-                  </span>
+                  <span className="text-sm font-medium tabular-nums text-ink">{formatBdt(cost)}</span>
                 }
               >
                 <div className="grid gap-px overflow-hidden rounded-xl border border-hairline bg-hairline sm:grid-cols-2 lg:grid-cols-4">
-                  <Figure label="Acquisition" value={study.est_acquisition_cost} />
-                  <Figure label="Development" value={study.est_development_cost} />
-                  <Figure label="Other costs" value={study.est_other_cost} />
-                  <Figure label="Expected revenue" value={study.expected_revenue} />
+                  <Figure label="Land purchase" value={formatBdt(study.est_acquisition_cost)} />
+                  <Figure label="Land development" value={formatBdt(study.est_development_cost)} />
+                  <Figure label="Other costs" value={formatBdt(study.est_other_cost)} />
+                  <Figure label="Total cost" value={formatBdt(cost)} strong sub={perUnit(land, cost)} />
                 </div>
 
-                <div className="mt-3 flex flex-wrap items-baseline justify-between gap-3">
-                  <span className="text-sm text-ink-muted">
-                    Total cost <strong className="text-ink tabular-nums">{formatBdt(t.cost)}</strong>
-                  </span>
-                  <span
-                    className={
-                      t.margin >= 0
-                        ? 'text-sm font-medium text-emerald-700 tabular-nums'
-                        : 'text-sm font-medium text-red-700 tabular-nums'
-                    }
-                  >
-                    Margin {formatBdt(t.margin)}
-                    {t.pct != null && ` · ${t.pct.toFixed(1)}%`}
-                  </span>
-                </div>
-
-                {(study.assumptions || study.risks || study.decision_note) && (
+                {(study.assumptions || study.risks || study.remarks || study.decision_note) && (
                   <dl className="mt-3 grid gap-3 border-t border-hairline pt-3 sm:grid-cols-2">
-                    {study.assumptions && (
-                      <div>
-                        <dt className="text-xs text-ink-muted">Assumptions</dt>
-                        <dd className="whitespace-pre-wrap text-sm text-ink">{study.assumptions}</dd>
-                      </div>
-                    )}
-                    {study.risks && (
-                      <div>
-                        <dt className="text-xs text-ink-muted">Risks</dt>
-                        <dd className="whitespace-pre-wrap text-sm text-ink">{study.risks}</dd>
-                      </div>
-                    )}
-                    {study.decision_note && (
-                      <div className="sm:col-span-2">
-                        <dt className="text-xs text-ink-muted">
-                          Decision {study.decided_at ? `· ${formatDate(study.decided_at)}` : ''}
-                        </dt>
-                        <dd className="whitespace-pre-wrap text-sm text-ink">
-                          {study.decision_note}
-                        </dd>
-                      </div>
-                    )}
+                    {study.assumptions && <Note label="Assumptions" text={study.assumptions} />}
+                    {study.risks && <Note label="Risks" text={study.risks} />}
+                    {study.remarks && <Note label="Remarks" text={study.remarks} />}
+                    {/* decisions recorded before the approval step was retired */}
+                    {study.decision_note && <Note label="Decision note" text={study.decision_note} />}
                   </dl>
                 )}
 
-                {/*
-                  Actions only on the current version. Deciding a superseded
-                  study would approve numbers nobody is working from.
-                */}
-                {isCurrent && study.status !== 'approved' && study.status !== 'rejected' && (
+                {isCurrent && (
                   <div className="mt-3 flex flex-wrap gap-2 border-t border-hairline pt-3">
-                    {study.status === 'draft' && (
-                      <>
-                        <Button size="sm" variant="outline" onClick={() => setEditing(study)}>
-                          Edit draft
-                        </Button>
-                        <Button size="sm" onClick={() => setSubmitId(study.id)}>
-                          <Send className="size-4" /> Submit for approval
-                        </Button>
-                      </>
-                    )}
-                    {study.status === 'submitted' && (
-                      <>
-                        <Button size="sm" onClick={() => setDeciding({ row: study, approve: true })}>
-                          <Check className="size-4" /> Approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setDeciding({ row: study, approve: false })}
-                        >
-                          <X className="size-4" /> Reject
-                        </Button>
-                      </>
-                    )}
+                    <Button size="sm" variant="outline" onClick={() => setEditing(study)}>
+                      <Pencil className="size-4" /> Edit
+                    </Button>
                   </div>
                 )}
               </TimelineItem>
@@ -226,140 +150,38 @@ export function FeasibilityPanel({ land }: { land: Land }) {
           onClose={() => setEditing(null)}
         />
       )}
-
-      <ConfirmDialog
-        open={submitId !== null}
-        title="Submit for approval"
-        message="The study is locked from editing once submitted. A change after this means a new version."
-        confirmLabel="Submit"
-        icon={Send}
-        onCancel={() => setSubmitId(null)}
-        onConfirm={async () => {
-          if (submitId) {
-            await landFeasibilityRepository.update(submitId, {
-              status: 'submitted',
-              submitted_at: new Date().toISOString(),
-            });
-          }
-          setSubmitId(null);
-        }}
-      />
-
-      {deciding && (
-        <DecisionDialog
-          study={deciding.row}
-          approve={deciding.approve}
-          userId={userId}
-          onClose={() => setDeciding(null)}
-        />
-      )}
     </>
   );
 }
 
-function Figure({ label, value }: { label: string; value: number }) {
+function Figure({
+  label,
+  value,
+  sub,
+  strong,
+}: {
+  label: string;
+  value: string;
+  sub?: string | null;
+  strong?: boolean;
+}) {
   return (
-    <div className="bg-white px-4 py-3">
+    <div className={cn('px-4 py-3', strong ? 'bg-admin-50' : 'bg-white')}>
       <p className="text-xs text-ink-muted">{label}</p>
-      <p className="text-sm font-medium text-ink tabular-nums">{formatBdt(value)}</p>
+      <p className={cn('text-sm tabular-nums text-ink', strong ? 'font-semibold' : 'font-medium')}>
+        {value}
+      </p>
+      {sub && <p className="mt-0.5 text-[11px] text-ink-muted tabular-nums">{sub}</p>}
     </div>
   );
 }
 
-function DecisionDialog({
-  study,
-  approve,
-  userId,
-  onClose,
-}: {
-  study: LandFeasibility;
-  approve: boolean;
-  userId: string | null;
-  onClose: () => void;
-}) {
-  const [note, setNote] = useState('');
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  const t = totals(study);
-
+function Note({ label, text }: { label: string; text: string }) {
   return (
-    <ConfirmDialog
-      open
-      title={approve ? 'Approve this feasibility study' : 'Reject this feasibility study'}
-      subtitle={`Version ${study.version_no} · recommends ${study.recommendation}`}
-      message={
-        approve
-          ? 'Approving records the board’s decision on these numbers. An approved study recommending Proceed opens negotiation with the owner.'
-          : 'Rejecting closes this version. A changed decision means a new version, so the rejected numbers stay readable.'
-      }
-      tone={approve ? 'success' : 'danger'}
-      icon={ShieldCheck}
-      confirmLabel={approve ? 'Approve study' : 'Reject study'}
-      busy={busy}
-      onCancel={onClose}
-      onConfirm={async () => {
-        if (!note.trim()) {
-          setError('Say why — this is the decision record.');
-          return;
-        }
-        setBusy(true);
-        try {
-          await landFeasibilityRepository.update(study.id, {
-            status: approve ? 'approved' : 'rejected',
-            decided_by: userId,
-            decided_at: new Date().toISOString(),
-            decision_note: note.trim(),
-          });
-          onClose();
-        } finally {
-          setBusy(false);
-        }
-      }}
-    >
-      <div className="grid gap-4">
-        <div className="rounded-xl border border-hairline bg-slate-50 px-3 py-2.5 text-sm">
-          <p className="text-ink-muted">
-            Total cost <strong className="text-ink tabular-nums">{formatBdt(t.cost)}</strong> ·
-            revenue{' '}
-            <strong className="text-ink tabular-nums">{formatBdt(study.expected_revenue)}</strong> ·
-            margin{' '}
-            <strong className={t.margin >= 0 ? 'text-emerald-700' : 'text-red-700'}>
-              {formatBdt(t.margin)}
-              {t.pct != null && ` (${t.pct.toFixed(1)}%)`}
-            </strong>
-          </p>
-        </div>
-
-        {/*
-          An approved study that recommends hold or reject does not open gate
-          G1 — approving the paperwork is not approving the deal. Said here
-          rather than discovered at the pipeline button.
-        */}
-        {approve && study.recommendation !== 'proceed' && (
-          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
-            This study recommends <strong>{study.recommendation}</strong>, not proceeding. Approving
-            it records the decision but will <strong>not</strong> let the land move on to due
-            diligence — that needs a version recommending Proceed.
-          </p>
-        )}
-
-        <Field label="Decision note" required error={error || undefined}>
-          <TextArea
-            value={note}
-            placeholder={
-              approve
-                ? 'e.g. Board approved 12 Sep. Proceed subject to the fill estimate holding.'
-                : 'e.g. Margin below the 18% threshold at this land price.'
-            }
-            onChange={(e) => {
-              setNote(e.target.value);
-              setError('');
-            }}
-          />
-        </Field>
-      </div>
-    </ConfirmDialog>
+    <div>
+      <dt className="text-xs text-ink-muted">{label}</dt>
+      <dd className="whitespace-pre-wrap text-sm text-ink">{text}</dd>
+    </div>
   );
 }
 
@@ -370,7 +192,7 @@ function StudyDialog({
   onClose,
 }: {
   land: Land;
-  /** editing an existing draft */
+  /** correcting the current version */
   study?: LandFeasibility;
   /** starting a new version from the last one */
   previous?: LandFeasibility;
@@ -378,24 +200,21 @@ function StudyDialog({
 }) {
   const { userId } = useMockSession();
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
 
   /*
    * A new version starts from the last one's numbers rather than from blank.
-   * A re-study usually changes one line — the fill cost, the achievable
-   * price — and retyping the other five is how the other five come to differ
-   * from the version that was approved.
+   * A re-study usually changes one line, and retyping the rest is how the rest
+   * come to differ from what was decided.
    */
   const base = study ?? previous;
   const [form, setForm] = useState({
     est_acquisition_cost: base ? String(base.est_acquisition_cost) : String(land.asking_price || ''),
     est_development_cost: base ? String(base.est_development_cost) : '',
     est_other_cost: base ? String(base.est_other_cost) : '',
-    expected_revenue: base ? String(base.expected_revenue) : '',
     assumptions: base?.assumptions ?? '',
     risks: base?.risks ?? '',
     recommendation: (base?.recommendation ?? 'proceed') as FeasibilityRecommendation,
-    prepared_by: study?.prepared_by ?? '',
+    prepared_by: study?.prepared_by ?? previous?.prepared_by ?? '',
     remarks: study?.remarks ?? '',
   });
 
@@ -404,15 +223,9 @@ function StudyDialog({
 
   const n = (v: string) => Number(v) || 0;
   const cost = n(form.est_acquisition_cost) + n(form.est_development_cost) + n(form.est_other_cost);
-  const margin = n(form.expected_revenue) - cost;
-  const pct = n(form.expected_revenue) > 0 ? (margin / n(form.expected_revenue)) * 100 : null;
+  const unitCost = perUnit(land, cost);
 
   async function save() {
-    if (!form.expected_revenue.trim()) {
-      setError('Expected revenue is what the margin is measured against');
-      return;
-    }
-    setError('');
     setSaving(true);
     try {
       const payload = {
@@ -420,7 +233,6 @@ function StudyDialog({
         est_acquisition_cost: n(form.est_acquisition_cost),
         est_development_cost: n(form.est_development_cost),
         est_other_cost: n(form.est_other_cost),
-        expected_revenue: n(form.expected_revenue),
         assumptions: form.assumptions.trim() || null,
         risks: form.risks.trim() || null,
         recommendation: form.recommendation,
@@ -428,9 +240,20 @@ function StudyDialog({
         remarks: form.remarks.trim() || null,
       };
 
-      if (study) await landFeasibilityRepository.update(study.id, payload);
-      // version_no is omitted on purpose — the repository assigns the next one
-      else await landFeasibilityRepository.create({ ...payload, status: 'draft' }, userId);
+      if (study) {
+        await landFeasibilityRepository.update(study.id, payload);
+      } else {
+        /*
+         * Saved as decided: the recommendation is the decision now. The status
+         * column stays for studies recorded under the old approval step.
+         * version_no is omitted — the repository assigns the next one.
+         */
+        const now = new Date().toISOString();
+        await landFeasibilityRepository.create(
+          { ...payload, status: 'approved', submitted_at: now, decided_by: userId, decided_at: now },
+          userId,
+        );
+      }
       onClose();
     } finally {
       setSaving(false);
@@ -440,10 +263,10 @@ function StudyDialog({
   return (
     <Modal
       open
-      title={study ? `Edit version ${study.version_no}` : 'New feasibility study'}
+      title={study ? `Edit version ${study.version_no}` : previous ? 'New feasibility version' : 'New feasibility study'}
       subtitle={`${land.code} · ${land.name}`}
       icon={Calculator}
-      size="xl"
+      size="lg"
       onClose={onClose}
       footer={
         <>
@@ -451,7 +274,7 @@ function StudyDialog({
             Cancel
           </Button>
           <Button onClick={save} disabled={saving}>
-            {saving ? 'Saving…' : study ? 'Save draft' : 'Save as draft'}
+            {saving ? 'Saving…' : 'Save study'}
           </Button>
         </>
       }
@@ -460,103 +283,127 @@ function StudyDialog({
         {previous && (
           <p className="rounded-xl border border-hairline bg-slate-50 px-3 py-2.5 text-xs text-ink-muted">
             Started from version {previous.version_no}. Change what has moved and leave the rest —
-            the approved version stays readable either way.
+            version {previous.version_no} stays readable.
           </p>
         )}
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Estimated acquisition cost" hint="Land price plus registration and legal">
-            <MoneyInput
-              value={form.est_acquisition_cost}
-              placeholder="e.g. 40000000"
-              onChange={(e) => set('est_acquisition_cost', e.target.value)}
-            />
-          </Field>
-          <Field label="Estimated development cost" hint="Filling, boundary, roads, utilities">
-            <MoneyInput
-              value={form.est_development_cost}
-              placeholder="e.g. 8000000"
-              onChange={(e) => set('est_development_cost', e.target.value)}
-            />
-          </Field>
-          <Field label="Other costs" hint="Design, approvals, marketing, admin">
-            <MoneyInput
-              value={form.est_other_cost}
-              placeholder="e.g. 3000000"
-              onChange={(e) => set('est_other_cost', e.target.value)}
-            />
-          </Field>
-          <Field label="Expected revenue" required error={error || undefined}>
-            <MoneyInput
-              value={form.expected_revenue}
-              placeholder="e.g. 72000000"
-              onChange={(e) => set('expected_revenue', e.target.value)}
-            />
-          </Field>
-        </div>
+        <section>
+          <h4 className="mb-3 text-sm font-semibold text-ink">1. What will it cost?</h4>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field label="Land purchase" hint="Price plus registration and legal">
+              <MoneyInput
+                value={form.est_acquisition_cost}
+                placeholder="e.g. 40000000"
+                onChange={(e) => set('est_acquisition_cost', e.target.value)}
+              />
+            </Field>
+            <Field label="Land development" hint="Filling, boundary, roads, utilities">
+              <MoneyInput
+                value={form.est_development_cost}
+                placeholder="e.g. 8000000"
+                onChange={(e) => set('est_development_cost', e.target.value)}
+              />
+            </Field>
+            <Field label="Other costs" hint="Approvals, broker, admin">
+              <MoneyInput
+                value={form.est_other_cost}
+                placeholder="e.g. 3000000"
+                onChange={(e) => set('est_other_cost', e.target.value)}
+              />
+            </Field>
+          </div>
+          <div className="mt-3 flex flex-wrap items-baseline justify-between gap-3 rounded-xl border border-admin-100 bg-admin-50 px-4 py-3">
+            <span className="text-sm text-ink-muted">
+              Total cost <strong className="text-base text-ink tabular-nums">{formatBdt(cost)}</strong>
+            </span>
+            {unitCost && <span className="text-sm text-ink-muted tabular-nums">{unitCost}</span>}
+          </div>
+        </section>
 
-        {/* computed live, so the recommendation is made against a visible number */}
-        <div className="flex flex-wrap items-baseline justify-between gap-3 rounded-xl border border-hairline bg-slate-50 px-4 py-3">
-          <span className="text-sm text-ink-muted">
-            Total cost <strong className="text-ink tabular-nums">{formatBdt(cost)}</strong>
-          </span>
-          <span
-            className={
-              margin >= 0
-                ? 'text-sm font-medium text-emerald-700 tabular-nums'
-                : 'text-sm font-medium text-red-700 tabular-nums'
-            }
-          >
-            Margin {formatBdt(margin)}
-            {pct != null && ` · ${pct.toFixed(1)}%`}
-          </span>
-        </div>
+        <section>
+          <h4 className="mb-3 text-sm font-semibold text-ink">2. What could go wrong?</h4>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Assumptions" hint="What the numbers depend on">
+              <TextArea
+                value={form.assumptions}
+                placeholder="e.g. 8 floors approvable, fill of 4 ft, owner vacates in 3 months"
+                onChange={(e) => set('assumptions', e.target.value)}
+              />
+            </Field>
+            <Field label="Risks" hint="What would make these numbers wrong">
+              <TextArea
+                value={form.risks}
+                placeholder="e.g. Lowland — fill depth unconfirmed; two co-owners abroad"
+                onChange={(e) => set('risks', e.target.value)}
+              />
+            </Field>
+          </div>
+        </section>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Recommendation" required>
-            <SelectInput
-              value={form.recommendation}
-              onChange={(e) => set('recommendation', e.target.value as FeasibilityRecommendation)}
-            >
-              {FEASIBILITY_RECOMMENDATIONS.map((r) => (
-                <option key={r} value={r}>
-                  {RECOMMENDATION_META[r].label}
-                </option>
-              ))}
-            </SelectInput>
-          </Field>
-          <Field label="Prepared by">
-            <TextInput
-              value={form.prepared_by}
-              placeholder="e.g. Rifat Ahmed (Land Team)"
-              onChange={(e) => set('prepared_by', e.target.value)}
-            />
-          </Field>
-        </div>
-
-        <div className="grid gap-4">
-          <Field label="Assumptions" hint="What the numbers depend on being true">
-            <TextArea
-              value={form.assumptions}
-              placeholder="e.g. 55:45 JV split, 8 floors approved, BDT 9,500/sqft achievable, 30 months to handover"
-              onChange={(e) => set('assumptions', e.target.value)}
-            />
-          </Field>
-          <Field label="Risks" hint="What would make these numbers wrong">
-            <TextArea
-              value={form.risks}
-              placeholder="e.g. Lowland — fill depth unconfirmed; two co-owners abroad; RAJUK height limit under review"
-              onChange={(e) => set('risks', e.target.value)}
-            />
-          </Field>
-          <Field label="Remarks">
-            <TextArea
-              value={form.remarks}
-              placeholder="Anything else the board should read"
-              onChange={(e) => set('remarks', e.target.value)}
-            />
-          </Field>
-        </div>
+        <section>
+          <h4 className="mb-3 text-sm font-semibold text-ink">3. Your decision</h4>
+          <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Recommendation">
+            {FEASIBILITY_RECOMMENDATIONS.map((r) => {
+              const meta = RECOMMENDATION_META[r];
+              const Icon = meta.icon;
+              const on = form.recommendation === r;
+              return (
+                <button
+                  key={r}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => set('recommendation', r)}
+                  className={cn(
+                    'flex items-start gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors',
+                    on
+                      ? r === 'proceed'
+                        ? 'border-emerald-400 bg-emerald-50'
+                        : r === 'hold'
+                          ? 'border-amber-400 bg-amber-50'
+                          : 'border-red-400 bg-red-50'
+                      : 'border-hairline bg-white hover:border-admin-300',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'mt-0.5 grid size-6 shrink-0 place-items-center rounded-full',
+                      on
+                        ? r === 'proceed'
+                          ? 'bg-emerald-500 text-white'
+                          : r === 'hold'
+                            ? 'bg-amber-500 text-white'
+                            : 'bg-red-500 text-white'
+                        : 'bg-slate-100 text-slate-400',
+                    )}
+                  >
+                    <Icon className="size-3.5" />
+                  </span>
+                  <span>
+                    <span className="block text-sm font-medium text-ink">{meta.label}</span>
+                    <span className="block text-xs text-ink-muted">{meta.hint}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <Field label="Prepared by">
+              <TextInput
+                value={form.prepared_by}
+                placeholder="e.g. Rifat Ahmed (Land Team)"
+                onChange={(e) => set('prepared_by', e.target.value)}
+              />
+            </Field>
+            <Field label="Remarks">
+              <TextInput
+                value={form.remarks}
+                placeholder="Anything else worth noting"
+                onChange={(e) => set('remarks', e.target.value)}
+              />
+            </Field>
+          </div>
+        </section>
       </div>
     </Modal>
   );

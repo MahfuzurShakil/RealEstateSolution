@@ -26,8 +26,16 @@ export interface DevelopmentActivityWithProgress extends LandDevelopmentActivity
   updates: LandDevelopmentProgress[];
   /** the most recent report's percentage, or 0 when nothing is reported */
   pct_complete: number;
-  /** what site has reported spending, which is not the same as the budget */
+  /**
+   * What has been paid against this activity — the payments recorded on the
+   * Land Cost tab (2026-10-21). Named `incurred` because every reader of the
+   * old site-reported figure means "money spent on it".
+   */
   incurred: number;
+  /** the contract amount, or the budget before a contractor is awarded */
+  committed: number;
+  /** committed less paid, never below zero */
+  pending: number;
 }
 
 /** What gate G3 reads (BRD DEV-004). */
@@ -47,7 +55,16 @@ class LandDevelopmentRepository extends BaseRepository<LandDevelopmentActivity> 
   }
 
   async listForLand(landId: string): Promise<DevelopmentActivityWithProgress[]> {
-    const rows = await db.land_development_activities.where('land_id').equals(landId).toArray();
+    const [rows, expenses] = await Promise.all([
+      db.land_development_activities.where('land_id').equals(landId).toArray(),
+      db.expenses.where('land_id').equals(landId).toArray(),
+    ]);
+    const paidBy = new Map<string, number>();
+    for (const e of expenses) {
+      if (!e.land_development_activity_id) continue;
+      const id = e.land_development_activity_id;
+      paidBy.set(id, (paidBy.get(id) ?? 0) + (Number(e.amount) || 0));
+    }
 
     const joined = await Promise.all(
       rows.map(async (row) => {
@@ -67,12 +84,11 @@ class LandDevelopmentRepository extends BaseRepository<LandDevelopmentActivity> 
            * make a correction impossible to record.
            */
           pct_complete: sorted[0]?.pct_complete ?? 0,
-          /*
-           * The latest report's figure too, for the same reason: each report
-           * states the running total spent, not that day's spend. Summing them
-           * would multiply the cost by the number of times anybody reported.
-           */
-          incurred: money(Number(sorted[0]?.amount_incurred) || 0),
+          incurred: money(paidBy.get(row.id) ?? 0),
+          committed: money(Number(row.contract_amount ?? row.budget_amount) || 0),
+          pending: money(
+            Math.max(0, (Number(row.contract_amount ?? row.budget_amount) || 0) - (paidBy.get(row.id) ?? 0)),
+          ),
         };
       }),
     );

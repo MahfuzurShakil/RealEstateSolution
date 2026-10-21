@@ -62,22 +62,6 @@ class LandFeasibilityRepository extends BaseRepository<LandFeasibility> {
   }
 
   /**
-   * The study gate G1 reads (BRD SITE-003).
-   *
-   * Deliberately the *latest* approved one rather than any approved one. A
-   * land whose approved study was superseded by a draft that has not been
-   * decided yet is still cleared to move — the board's last word stands until
-   * they give a new one. What must not happen is a rejected re-study silently
-   * leaving an old approval in place to open the gate, and it cannot: a
-   * rejected version is not approved, so the newest *approved* row is still
-   * the board's last approval.
-   */
-  async latestApprovedForLand(landId: string): Promise<LandFeasibility | undefined> {
-    const rows = await this.listForLand(landId);
-    return rows.find((r) => r.status === 'approved');
-  }
-
-  /**
    * `version_no` is assigned here, not by the caller.
    *
    * Two forms open at once would otherwise both save version 3, and

@@ -62,8 +62,34 @@ class LandRepository extends BaseRepository<Land> {
     if (district) rows = rows.filter((l) => l.location_district === district);
     if (search?.trim()) {
       const q = search.trim().toLowerCase();
+      /*
+       * 2026-10-22 — owners' names, khatian and road too: "which plot is
+       * Karim's" and "the one on khatian 88/4" are how the land team asks.
+       */
+      const [mappings, owners] = await Promise.all([
+        db.land_owner_mapping.toArray(),
+        db.landowners.toArray(),
+      ]);
+      const ownerName = new Map(owners.map((o) => [o.id, o.name]));
+      const ownersOf = new Map<string, string[]>();
+      for (const m of mappings) {
+        const name = ownerName.get(m.owner_id);
+        if (!name) continue;
+        ownersOf.set(m.land_id, [...(ownersOf.get(m.land_id) ?? []), name]);
+      }
       rows = rows.filter((l) =>
-        [l.code, l.name, l.location_area, l.location_district, l.mouza, l.dag_number]
+        [
+          l.code,
+          l.name,
+          l.location_area,
+          l.location_upazila,
+          l.location_district,
+          l.road,
+          l.mouza,
+          l.dag_number,
+          l.khatian_number,
+          ...(ownersOf.get(l.id) ?? []),
+        ]
           .filter(Boolean)
           .some((f) => String(f).toLowerCase().includes(q)),
       );
@@ -191,6 +217,23 @@ class LandownerRepository extends BaseRepository<Landowner> {
     return rows.filter((o) =>
       [o.name, o.phone, o.nid].filter(Boolean).some((f) => String(f).toLowerCase().includes(q)),
     );
+  }
+
+  /**
+   * Every owner's lands, in one pass — the Landowners list shows the codes
+   * (2026-10-22). Read here rather than in the page, which used to query
+   * the mapping table itself.
+   */
+  async landsByOwner(): Promise<Map<string, Array<{ id: string; code: string; name: string }>>> {
+    const [mappings, lands] = await Promise.all([db.land_owner_mapping.toArray(), db.lands.toArray()]);
+    const byId = new Map(lands.map((l) => [l.id, l]));
+    const out = new Map<string, Array<{ id: string; code: string; name: string }>>();
+    for (const m of mappings) {
+      const land = byId.get(m.land_id);
+      if (!land) continue;
+      out.set(m.owner_id, [...(out.get(m.owner_id) ?? []), { id: land.id, code: land.code, name: land.name }]);
+    }
+    return out;
   }
 
   /** Lands this owner is attached to (an owner is reusable across lands). */

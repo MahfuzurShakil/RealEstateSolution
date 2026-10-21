@@ -537,7 +537,12 @@ export interface LandFeasibility extends BaseEntity {
   est_development_cost: number;
   /** registration, legal, marketing — anything not in the two above */
   est_other_cost: number;
-  expected_revenue: number;
+  /**
+   * Retired 2026-10-21. A study is made before anyone knows whether the land
+   * becomes flats or a plot sale, so there was no honest number to put here.
+   * Kept optional so studies recorded before then still read.
+   */
+  expected_revenue?: number | null;
   assumptions?: string | null;
   risks?: string | null;
   recommendation: FeasibilityRecommendation;
@@ -595,9 +600,23 @@ export interface LandDevelopmentActivity extends BaseEntity {
   contractor_id?: UUID | null;
   /** what the quantity is counted in — cft of fill, rft of wall, sft of road */
   unit?: string | null;
+  /**
+   * 2026-10-21 — the measurements this kind of work is planned in (area and
+   * depth for filling, length and height for a wall…), keyed by the fields in
+   * `WORK_KINDS` (domain/land-development.ts). `planned_qty` and `unit` are
+   * worked out from them. Unindexed.
+   */
+  specs?: Record<string, string | number | null> | null;
   planned_qty?: number | null;
-  /** BRD DEV-002 — the budget. Committed and actual arrive with cost centers. */
+  /** BRD DEV-002 — the budget. */
   budget_amount: number;
+  /**
+   * 2026-10-21 — what the contractor agreed to do it for: the activity's
+   * "deal", beside its budget, the way a cost head has one on Land Cost.
+   * Null until a contractor is awarded. Paid is read from the payments
+   * recorded against the activity (`expenses.land_development_activity_id`).
+   */
+  contract_amount?: number | null;
   start_date?: ISODate | null;
   target_date?: ISODate | null;
   status: DevelopmentActivityStatus;
@@ -610,7 +629,11 @@ export interface LandDevelopmentProgress extends BaseEntity {
   progress_date: ISODate;
   qty_done?: number | null;
   pct_complete: number;
-  /** money actually spent so far, as reported from site */
+  /**
+   * Money spent so far, as reported from site. Retired 2026-10-21 — spend is
+   * now the payments recorded against the activity on Land Cost; kept so old
+   * reports still read.
+   */
   amount_incurred?: number | null;
   recorded_by?: UUID | null;
   remarks?: string | null;
@@ -713,7 +736,17 @@ export const ACQUISITION_COST_HEAD_LABEL: Record<AcquisitionCostHead, string> = 
 export interface LandAcquisitionCost extends BaseEntity {
   land_id: UUID;
   cost_head: AcquisitionCostHead;
+  /** the budget — set before the deal and revised as the land is studied */
   estimated_amount: number;
+  /**
+   * 2026-10-21 — what was actually agreed for this head once the deal is
+   * made. Null until then; the budget stays beside it, so the owner sees how
+   * far the deal moved from the plan. Pending is measured against this.
+   *
+   * For `land_price`, null falls back to `lands.final_agreed_amount`, which
+   * the accepted negotiation round already sets.
+   */
+  agreed_amount?: number | null;
   /**
    * v29 — paid before this system existed, so not in the expense ledger.
    *
@@ -814,7 +847,20 @@ export type DdItemStatus = (typeof DD_ITEM_STATUSES)[number];
 /** One checklist item as it stands on one land (BRD DD-002, DD-003). */
 export interface LandDdItem extends BaseEntity {
   land_id: UUID;
+  /**
+   * The master item, or `custom-<uuid>` for a document the land team added
+   * by name (2026-10-21) — unique per row, so the [land_id+item_id] index
+   * still holds and the master join simply finds nothing.
+   */
   item_id: UUID;
+  /** the name of a document added by hand; null for master items */
+  custom_label?: string | null;
+  /**
+   * Added on this land by a person rather than built from the required set.
+   * Only the required documents are created up front (2026-10-21); everything
+   * else is added when the land actually needs it.
+   */
+  added_by_user?: boolean | null;
   status: DdItemStatus;
   /** who is doing the check */
   assigned_to?: UUID | null;
@@ -852,7 +898,30 @@ export const DD_EVIDENCE_DOCUMENT_TYPES = [
 ] as const;
 
 /**
+ * The document filed against each checklist item, so uploading from the item
+ * never asks for a type (2026-10-21). Anything not listed files as `other`
+ * under the item's own name.
+ */
+export const DD_ITEM_DOCUMENT_TYPE: Record<string, (typeof DD_EVIDENCE_DOCUMENT_TYPES)[number]> = {
+  ownership_proof: 'dolil_deed',
+  deed_chain: 'dolil_deed',
+  khatian_verified: 'khatian_copy',
+  mutation_done: 'mutation_certificate',
+  encumbrance_search: 'search_report',
+  land_tax_paid: 'tax_receipt',
+  holding_tax_paid: 'tax_receipt',
+  mortgage_clear: 'ncc_certificate',
+  litigation_clear: 'court_order',
+  acquisition_check: 'search_report',
+  boundary_survey: 'survey_report',
+};
+
+/**
  * The checklist a fresh install starts with (BRD DD-001).
+ *
+ * 2026-10-21 — only six items are mandatory: the papers every Bangladeshi
+ * purchase turns on. They are the ones a land starts with; the rest are
+ * offered for the land team to add when a plot needs them.
  *
  * Every item the BRD names, plus the ones a Bangladeshi land purchase actually
  * turns on. The mandatory set is the one the client still has to confirm —
@@ -877,7 +946,7 @@ export const DD_CHECKLIST_SEED: Array<{
     code: 'heir_consent',
     label: 'Heirs / co-owners consent',
     category: 'ownership',
-    is_mandatory: true,
+    is_mandatory: false,
     guidance: 'Warisan certificate where inherited; written consent from every co-owner.',
   },
   {
@@ -919,14 +988,14 @@ export const DD_CHECKLIST_SEED: Array<{
     code: 'mortgage_clear',
     label: 'No subsisting mortgage',
     category: 'encumbrance',
-    is_mandatory: true,
+    is_mandatory: false,
     guidance: 'Bank NOC or redemption evidence where a charge was ever registered.',
   },
   {
     code: 'litigation_clear',
     label: 'No pending litigation',
     category: 'encumbrance',
-    is_mandatory: true,
+    is_mandatory: false,
     guidance: 'Civil and land-survey court searches; check for injunctions.',
   },
   {
@@ -947,21 +1016,21 @@ export const DD_CHECKLIST_SEED: Array<{
     code: 'acquisition_check',
     label: 'Not under government acquisition',
     category: 'statutory',
-    is_mandatory: true,
+    is_mandatory: false,
     guidance: 'L.A. case search — check for requisition and for khas classification.',
   },
   {
     code: 'boundary_survey',
     label: 'Boundary survey matches the deed',
     category: 'physical',
-    is_mandatory: true,
+    is_mandatory: false,
     guidance: 'Amin survey against the dag; note any encroachment.',
   },
   {
     code: 'possession_clear',
     label: 'Vacant possession deliverable',
     category: 'physical',
-    is_mandatory: true,
+    is_mandatory: false,
     guidance: 'Tenants, structures and any adverse possession identified with a vacancy date.',
   },
   {
@@ -975,7 +1044,7 @@ export const DD_CHECKLIST_SEED: Array<{
     code: 'land_use_clearance',
     label: 'Land use permits development',
     category: 'authority',
-    is_mandatory: true,
+    is_mandatory: false,
     guidance: 'RAJUK / CDA detailed area plan — zoning allows the intended use.',
   },
   {
@@ -2752,6 +2821,13 @@ export interface Expense extends BaseEntity {
    * what the registration actually cost against what was estimated.
    */
   land_cost_head?: AcquisitionCostHead | null;
+  /**
+   * 2026-10-21 — the land development activity this pays (filling, boundary
+   * wall…), when it was recorded from the Land Cost tab against one. Its
+   * category is `land_extra_cost` with no `land_cost_head`. Unindexed: a
+   * land's expenses are a handful of rows, filtered in memory.
+   */
+  land_development_activity_id?: UUID | null;
   cost_category: CostCategory;
   /** short, plain label — the whole point of the ledger when category='other' */
   cost_reason: string;

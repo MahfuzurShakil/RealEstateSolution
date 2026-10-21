@@ -3,7 +3,6 @@ import type {
   AcquisitionCostHead,
   AcquisitionType,
   FeasibilityRecommendation,
-  FeasibilityStatus,
   LandEntryMode,
   LandStatus,
 } from '@/lib/db/types';
@@ -76,7 +75,7 @@ export function landStage(status: LandStatus): LandStage {
  * Status otherwise follows the work: the four middle steps move when a visit,
  * a due-diligence check, a round or an accepted round is recorded
  * (`nextAutomaticStep`), and Acquired / JV Signed are recorded where the deal
- * is closed — registration on the Negotiation & Acquisition timeline, signing
+ * is closed — registration on the Deal & Registration timeline, signing
  * on the Joint Venture tab. What is left here is what only a person can
  * decide: drop the land, sell it on, or reconsider it.
  */
@@ -115,57 +114,29 @@ export function allowedNextStatuses(current: LandStatus): LandStatus[] {
  * ------------------------------------------------------------------ */
 
 /**
- * BRD SITE-003 — no negotiation until the numbers are approved.
+ * BRD SITE-003 — no negotiation until a study says the land is worth buying.
  *
- * The BRD puts the approval before *acquisition negotiation*, and L7 moved the
- * gate there (it used to guard due diligence). Nobody should be talking price
- * with an owner on a plot the board has not agreed is worth buying. Always on.
+ * 2026-10-21 — there is no approval step any more. A small developer's owner
+ * makes the study and the call in one sitting, so the study's own
+ * recommendation is the decision: the current (highest) version recommending
+ * Proceed opens the gate, whatever its stored status.
  *
  * Returns the reason it is shut, or `null` when it is open. A sentence rather
- * than a boolean because the dialog has to say *what is missing* — "blocked"
- * on its own sends the user hunting.
+ * than a boolean because the dialog has to say *what is missing*.
  */
 export interface FeasibilityGateInput {
-  /** the highest version, whatever its status — what the land is working from */
-  current?: { version_no: number; status: FeasibilityStatus } | undefined;
-  /** the newest approved version, which is the only one that opens the gate */
-  latestApproved?:
-    | { version_no: number; recommendation: FeasibilityRecommendation }
-    | undefined;
+  /** the highest version — what the land is working from */
+  current?: { version_no: number; recommendation: FeasibilityRecommendation } | undefined;
 }
 
-export function feasibilityGateBlockReason({
-  current,
-  latestApproved,
-}: FeasibilityGateInput): string | null {
-  /*
-   * An approved study that says hold or reject is a decision, not a
-   * formality — approving the paperwork is not approving the deal, and the
-   * gate would be pointless if it let a "reject" through. Checked first
-   * because it is the case where a study *exists and was approved*, which is
-   * the most confusing one to be blocked by.
-   */
-  if (latestApproved && latestApproved.recommendation !== 'proceed') {
-    return `Version ${latestApproved.version_no} was approved but recommends "${latestApproved.recommendation}", not proceeding. Record a new version recommending Proceed if the decision has changed.`;
-  }
-  if (latestApproved) return null;
-
-  /*
-   * Nothing approved. The message names what the land *does* have, because
-   * "no approved study" sends someone to create a second one when the first
-   * is sitting in front of an approver.
-   */
+export function feasibilityGateBlockReason({ current }: FeasibilityGateInput): string | null {
   if (!current) {
-    return 'No feasibility study has been recorded for this land. Add one under Site Visit & Feasibility and get it approved before negotiating.';
+    return 'No feasibility study has been recorded for this land. Add one under Site Visit & Feasibility before negotiating.';
   }
-  if (current.status === 'submitted') {
-    return `Version ${current.version_no} has been submitted and is waiting for approval. Approve it under Site Visit & Feasibility before negotiating.`;
+  if (current.recommendation !== 'proceed') {
+    return `Feasibility version ${current.version_no} recommends "${current.recommendation}", not proceeding. Record a new version recommending Proceed if the decision has changed.`;
   }
-  if (current.status === 'draft') {
-    return `Version ${current.version_no} is still a draft. Submit it and have it approved before negotiating.`;
-  }
-  // rejected
-  return `Version ${current.version_no} was rejected. Record a new version before negotiating.`;
+  return null;
 }
 
 /**
@@ -275,7 +246,6 @@ export const WAITING_KEYS = [
   'feasibility',
   'dd',
   'negotiation',
-  'settlement',
   'registration',
   'development',
   'project',
@@ -286,10 +256,9 @@ export type WaitingKey = (typeof WAITING_KEYS)[number];
 
 export const WAITING_LABEL: Record<WaitingKey, string> = {
   visit: 'A site visit',
-  feasibility: 'Feasibility approval',
+  feasibility: 'A feasibility study',
   dd: 'Due diligence',
   negotiation: 'A negotiation round',
-  settlement: 'A settlement schedule',
   registration: 'Registration / signing',
   development: 'Land development',
   project: 'A project',
@@ -307,7 +276,6 @@ export interface LandWaitingInput {
   dd?: { mandatoryTotal: number; mandatoryOutstanding: number; mandatoryFailed: number };
   openRound?: { round_no: number };
   roundCount: number;
-  hasSchedule: boolean;
   development?: { total: number; outstanding: number };
   noDevelopmentRequired?: boolean;
 }
@@ -331,19 +299,30 @@ export function landWaitingOn(input: LandWaitingInput): { key: WaitingKey; text:
       if (!reason) return { key: 'dd', text: 'Due diligence to start' };
       const current = input.feasibility.current;
       if (!current) return { key: 'feasibility', text: 'A feasibility study' };
-      if (current.status === 'submitted')
-        return { key: 'feasibility', text: `Approval of feasibility v${current.version_no}` };
-      if (current.status === 'draft')
-        return { key: 'feasibility', text: `Feasibility v${current.version_no} to be submitted` };
-      return { key: 'feasibility', text: 'A new feasibility study' };
+      return { key: 'feasibility', text: `A decision — v${current.version_no} says ${current.recommendation}` };
     }
     case 'dd_in_progress': {
       if (feasibilityGateBlockReason(input.feasibility)) {
-        return { key: 'feasibility', text: 'Feasibility approval before negotiating' };
+        return { key: 'feasibility', text: 'A feasibility study recommending Proceed' };
       }
       const dd = input.dd;
       if (dd && dd.mandatoryFailed > 0)
-        return { key: 'dd', text: `${dd.mandatoryFailed} failed legal check${dd.mandatoryFailed === 1 ? '' : 's'}` };
+        return { key: 'dd', text: `${dd.mandatoryFailed} legal paper${dd.mandatoryFailed === 1 ? '' : 's'} with a problem` };
+      /*
+       * 2026-10-21 — a land in due diligence is waiting on its papers until
+       * they are verified. Negotiation may start alongside, but "waiting on a
+       * negotiation round" for a land with five papers unchecked hid the
+       * actual hold-up, and the Due diligence filter found nothing.
+       */
+      if (dd && (dd.mandatoryTotal === 0 || dd.mandatoryOutstanding > 0)) {
+        return {
+          key: 'dd',
+          text:
+            dd.mandatoryTotal === 0
+              ? 'Legal papers to be started'
+              : `${dd.mandatoryOutstanding} legal paper${dd.mandatoryOutstanding === 1 ? '' : 's'} to verify`,
+        };
+      }
       return { key: 'negotiation', text: 'A first negotiation round' };
     }
     case 'negotiation':
@@ -355,10 +334,12 @@ export function landWaitingOn(input: LandWaitingInput): { key: WaitingKey; text:
       if (dd && (dd.mandatoryOutstanding > 0 || dd.mandatoryTotal === 0)) {
         return {
           key: 'dd',
-          text: dd.mandatoryTotal === 0 ? 'Due diligence to start' : `${dd.mandatoryOutstanding} legal checks`,
+          text:
+            dd.mandatoryTotal === 0
+              ? 'Legal papers to be started'
+              : `${dd.mandatoryOutstanding} legal paper${dd.mandatoryOutstanding === 1 ? '' : 's'} to verify`,
         };
       }
-      if (!isJv && !input.hasSchedule) return { key: 'settlement', text: 'A settlement schedule' };
       return { key: 'registration', text: isJv ? 'JV signing' : 'Registration' };
     }
     case 'acquired':
@@ -659,27 +640,21 @@ export function paymentPlanBlockReason(status: LandStatus, agreedAmount: number)
 /**
  * What stops registration (direct purchase) or JV signing.
  *
- * DD-004 is always on (it was a Settings switch). A purchase also needs its
- * settlement schedule first (ACQ-003), so every payment made at and after the
- * deed has a line to settle.
+ * DD-004 is always on (it was a Settings switch). The settlement schedule
+ * is no longer asked for (2026-10-21): payments are recorded on the Land Cost
+ * tab as they are made, against the deal amount, with no plan in between.
  */
 export function closingBlockReason(input: {
   status: LandStatus;
   acquisitionType: AcquisitionType;
   dd: { mandatoryTotal: number; mandatoryOutstanding: number; mandatoryFailed: number } | undefined;
-  hasSchedule: boolean;
 }): string | null {
   if (input.status !== 'agreed') {
     return input.acquisitionType === 'joint_venture'
       ? 'Signing is recorded once the JV terms are agreed — accept a negotiation round first.'
       : 'Registration is recorded once a price is agreed — accept a negotiation round first.';
   }
-  const dd = ddGateBlockReason(input.dd);
-  if (dd) return dd;
-  if (input.acquisitionType === 'direct_purchase' && !input.hasSchedule) {
-    return 'Record the owner settlement schedule (payment plan) before registration.';
-  }
-  return null;
+  return ddGateBlockReason(input.dd);
 }
 
 /**
@@ -742,6 +717,17 @@ export const LAND_SIZE_UNIT_LABEL: Record<string, string> = {
   decimal: 'Decimal',
 };
 
+/** Square feet in one unit — 1 bigha is 20 katha; 1 decimal is 1/100 acre. */
+const SQFT_PER_UNIT: Record<string, number> = { katha: 720, bigha: 14_400, decimal: 435.6 };
+
+/**
+ * A land's size in square feet, so plots measured in different units can be
+ * compared — sorting the raw number put 18 katha above 3 bigha.
+ */
+export function landSizeSqft(land: { land_size: number; land_size_unit: string }): number {
+  return (Number(land.land_size) || 0) * (SQFT_PER_UNIT[land.land_size_unit] ?? 1);
+}
+
 /** A land is "closed" once acquired/JV-signed/rejected/disposed. */
 export function isTerminalStatus(status: LandStatus): boolean {
   return (
@@ -799,7 +785,8 @@ export interface StatusStepConfig {
   title: string;
   question: string;
   confirmLabel: string;
-  tone: 'default' | 'danger' | 'success' | 'warning';
+  /** never 'success' — that is for results (POPUP-SYSTEM.md) */
+  tone: 'default' | 'danger' | 'warning';
   fields: StatusStepField[];
 }
 
@@ -875,7 +862,7 @@ const BASE_STATUS_STEP_CONFIG: Partial<Record<LandStatus, StatusStepConfig>> = {
     title: 'Mark as acquired',
     question: 'Confirm the land has been purchased. This closes the pipeline.',
     confirmLabel: 'Mark acquired',
-    tone: 'success',
+    tone: 'default',
     fields: [
       { key: 'event_date', label: 'Registration date', placeholder: '', type: 'date', required: true },
       { key: 'amount', label: 'Final agreed amount (BDT)', placeholder: 'e.g. 40000000', type: 'number', required: true },
@@ -1004,7 +991,7 @@ const JV_STATUS_STEP_CONFIG: Partial<Record<LandStatus, StatusStepConfig>> = {
     title: 'Mark JV as signed',
     question: 'Confirm the joint venture agreement has been signed.',
     confirmLabel: 'Mark JV signed',
-    tone: 'success',
+    tone: 'default',
     fields: [
       { key: 'event_date', label: 'Agreement date', placeholder: '', type: 'date', required: true },
       ...SHARE_FIELDS,
@@ -1082,7 +1069,7 @@ export function finalAmountLabel(acquisitionType: AcquisitionType): string {
 
 export function finalAmountHint(acquisitionType: AcquisitionType): string {
   return acquisitionType === 'joint_venture'
-    ? 'Signing money, and any rent agreed for the owner during construction. Leave at 0 if the owner is paid only in units — the payment plan is built from this.'
+    ? 'Signing money, and any rent agreed for the owner during construction. Leave at 0 if the owner is paid only in units.'
     : 'Reference only — payments are tracked in the Finance module';
 }
 

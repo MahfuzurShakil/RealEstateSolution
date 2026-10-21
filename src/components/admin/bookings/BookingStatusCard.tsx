@@ -91,7 +91,8 @@ export function BookingStatusCard({ booking }: { booking: Booking }) {
       title: string;
       message: string;
       confirmLabel: string;
-      tone: 'default' | 'danger' | 'success' | 'warning';
+      /** never 'success' — that is for results (POPUP-SYSTEM.md) */
+  tone: 'default' | 'danger' | 'warning';
       needsNote: boolean;
     }
   > = {
@@ -99,7 +100,7 @@ export function BookingStatusCard({ booking }: { booking: Booking }) {
       title: 'Approve this discount',
       message: `${pct.toFixed(2)}% (${formatBdt(booking.discount_amount)}) will be approved. If the booking amount is already received, the booking confirms straight away.`,
       confirmLabel: 'Approve discount',
-      tone: 'success',
+      tone: 'default',
       needsNote: false,
     },
     reject: {

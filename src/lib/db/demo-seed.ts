@@ -73,6 +73,7 @@ import { DEMO_FEASIBILITY, DEMO_SITE_VISITS } from './demo-site-visits';
 import { DEMO_DD_FINDINGS } from './demo-dd';
 import { DEMO_ACQUISITION_COSTS, DEMO_NEGOTIATION_ROUNDS } from './demo-negotiation';
 import { DEMO_DEVELOPMENT, DEMO_NO_DEVELOPMENT_LANDS } from './demo-development';
+import { specsFromQuantity } from '../domain/land-development';
 import { DEMO_BOOKINGS, DEMO_CUSTOMERS, DEMO_DISCOUNT_RULES } from './demo-bookings';
 import { DEMO_LEADS, DEMO_USER_JOINED_DAYS_AGO, DEMO_USERS } from './demo-leads';
 import { DEMO_PROJECTS } from './demo-projects';
@@ -304,7 +305,6 @@ async function seedDemoSiteVisits(
         est_acquisition_cost: demo.est_acquisition_cost,
         est_development_cost: demo.est_development_cost,
         est_other_cost: demo.est_other_cost,
-        expected_revenue: demo.expected_revenue,
         assumptions: demo.assumptions ?? null,
         risks: demo.risks ?? null,
         recommendation: demo.recommendation,
@@ -370,8 +370,12 @@ async function seedDemoDueDiligence(
     const itemId = byCode.get(demo.code);
     if (!landId || !itemId) continue;
 
-    const rows = await landDdRepository.listForLand(landId);
-    const row = rows.find((r) => r.item_id === itemId);
+    // optional items are not created up front any more — add the ones with findings
+    let row = (await landDdRepository.listForLand(landId)).find((r) => r.item_id === itemId);
+    if (!row) {
+      await landDdRepository.addItems(landId, { itemIds: [itemId], customLabels: [] }, createdBy);
+      row = (await landDdRepository.listForLand(landId)).find((r) => r.item_id === itemId);
+    }
     if (!row) continue;
 
     const settled =
@@ -442,11 +446,22 @@ async function seedDemoNegotiation(
   for (const demo of DEMO_ACQUISITION_COSTS) {
     const landId = landIds.get(demo.land);
     if (!landId) continue;
-    await landAcquisitionCostRepository.setEstimate(
+    /*
+     * 2026-10-21 — a land whose deal is made carries a deal amount on its fee
+     * heads too: the fees are set by schedule, so the deal is the budget. The
+     * land price's deal is the accepted round, read from the land itself.
+     */
+    const dealMade = Number((await getDb().lands.get(landId))?.final_agreed_amount) > 0;
+    await landAcquisitionCostRepository.setAmounts(
       landId,
-      demo.cost_head,
-      demo.estimated_amount,
-      demo.remarks ?? null,
+      [
+        {
+          head: demo.cost_head,
+          estimated: demo.estimated_amount,
+          agreed: dealMade && demo.cost_head !== 'land_price' ? demo.estimated_amount : null,
+          remarks: demo.remarks ?? null,
+        },
+      ],
       createdBy,
     );
   }
@@ -700,7 +715,18 @@ async function seedDemoDevelopment(
         contractor_id: contractor?.id ?? null,
         unit: demo.unit ?? null,
         planned_qty: demo.planned_qty ?? null,
+        /*
+         * 2026-10-21 — the measurements behind the quantity. Demo fills are
+         * planned at 4 ft, so their area is the volume over four; the rest
+         * come straight from the sft or rft.
+         */
+        specs:
+          demo.activity_type === 'Earth filling' && demo.unit === 'cft' && demo.planned_qty
+            ? { area_sft: Math.round(demo.planned_qty / 4), depth_ft: 4, material: 'Sand' }
+            : specsFromQuantity(demo.activity_type, demo.planned_qty, demo.unit),
         budget_amount: demo.budget_amount,
+        // an awarded job has a contract; demo contracts match the budget
+        contract_amount: contractor ? demo.budget_amount : null,
         start_date: demo.start_date ?? null,
         target_date: demo.target_date ?? null,
         // the reports below drive the status; this is where it starts
@@ -717,9 +743,42 @@ async function seedDemoDevelopment(
           progress_date: p.progress_date,
           qty_done: p.qty_done ?? null,
           pct_complete: p.pct_complete,
-          amount_incurred: p.amount_incurred ?? null,
+          amount_incurred: null,
           recorded_by: createdBy,
           remarks: p.remarks ?? null,
+        },
+        createdBy,
+      );
+    }
+
+    /*
+     * 2026-10-21 — what site reported as spent becomes the payment made to
+     * the contractor, dated with the latest report. Development is paid from
+     * Land Cost now, so the paid figure is these payments. The account is
+     * set by the account pass at the end of the seed.
+     */
+    const spent = [...(demo.progress ?? [])]
+      .sort((x, y) => y.progress_date.localeCompare(x.progress_date))
+      .find((p) => p.amount_incurred != null);
+    if (spent?.amount_incurred) {
+      await expenseRepository.createExpense(
+        {
+          land_id: landId,
+          project_id: null,
+          account_id: null,
+          cost_category: 'land_extra_cost',
+          land_cost_head: null,
+          land_development_activity_id: activity.id,
+          owner_mapping_id: null,
+          installment_id: null,
+          cost_reason: `Land development — ${demo.activity_type}`,
+          amount: spent.amount_incurred,
+          expense_date: spent.progress_date,
+          paid_to: contractor?.name ?? 'Site contractor',
+          payment_method: 'bank',
+          reference_no: null,
+          paid_by: createdBy,
+          notes: null,
         },
         createdBy,
       );

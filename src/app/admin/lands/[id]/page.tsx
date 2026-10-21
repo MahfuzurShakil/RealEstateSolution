@@ -15,18 +15,23 @@ import {
   Wrench,
 } from 'lucide-react';
 import { LandTimeline } from '@/components/admin/lands/LandTimeline';
-import { LandPaymentPlanPanel } from '@/components/admin/lands/LandPaymentPlanPanel';
 import { SiteVisitPanel } from '@/components/admin/lands/SiteVisitPanel';
 import { FeasibilityPanel } from '@/components/admin/lands/FeasibilityPanel';
 import { DueDiligencePanel } from '@/components/admin/lands/DueDiligencePanel';
 import { NegotiationPanel } from '@/components/admin/lands/NegotiationPanel';
-import { AcquisitionCostPanel } from '@/components/admin/lands/AcquisitionCostPanel';
-import { OwnerSettlementPanel } from '@/components/admin/lands/OwnerSettlementPanel';
+import { LandCostPanel } from '@/components/admin/lands/LandCostPanel';
 import { DevelopmentPanel } from '@/components/admin/lands/DevelopmentPanel';
 import { LocationCard } from '@/components/ui/map/LocationCard';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { LandProgressCard, type TimelineSection } from '@/components/admin/lands/LandProgressCard';
+import {
+  LandStageStepper,
+  SECTION_FOR_WAITING,
+  sectionForStatus,
+} from '@/components/admin/lands/LandStageStepper';
 import { LandClosingCard } from '@/components/admin/lands/LandClosingCard';
+import { Fact, FactGroup } from '@/components/admin/lands/LandFacts';
+import { LandMoneyCard } from '@/components/admin/lands/LandMoneyCard';
 import { LandEventDialog } from '@/components/admin/lands/LandEventDialog';
 import { CorrectStatusDialog } from '@/components/admin/lands/CorrectStatusDialog';
 import { OwnerAmountsDialog } from '@/components/admin/lands/OwnerAmountsDialog';
@@ -45,15 +50,12 @@ import {
   correctableStatuses,
   landStatusLabel,
   statusStepConfig,
-  finalAmountLabel,
   landHeadlineAmount,
   landEntryMode,
   landIsHeld,
-  landUsesPurchasePricing,
 } from '@/lib/domain/land';
 import { JV_SHARE_BASIS_LABEL } from '@/lib/domain/project';
 import {
-  expenseRepository,
   landRepository,
   landDdRepository,
   landNegotiationRepository,
@@ -76,12 +78,12 @@ import { LandPapersPanel, OwnedLandCard } from '@/components/admin/lands/OwnedLa
  * and the documents are one tab each; everything that *happens* to the land
  * lives under Timeline, in the four sections BRD §8–11 names.
  */
-type Tab = 'overview' | 'owners' | 'jv' | 'papers' | 'documents' | 'timeline';
+type Tab = 'overview' | 'owners' | 'jv' | 'papers' | 'cost' | 'documents' | 'timeline';
 
 const SECTIONS: { key: TimelineSection; label: string }[] = [
   { key: 'site', label: 'Site Visit & Feasibility' },
   { key: 'legal', label: 'Legal Due Diligence' },
-  { key: 'acquisition', label: 'Negotiation & Acquisition' },
+  { key: 'acquisition', label: 'Deal & Registration' },
   { key: 'development', label: 'Land Development' },
 ];
 
@@ -177,7 +179,8 @@ export default function LandDetailPage() {
   // QA audit X-01 — the land team acts; everyone else with access reads
   const { role } = useMockSession();
   const mayEdit = canEdit(role, 'land');
-  const [section, setSection] = useState<TimelineSection>('site');
+  // null until someone picks one — the Timeline opens on the stage the land is in
+  const [section, setSection] = useState<TimelineSection | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deciding, setDeciding] = useState<LandStatus | null>(null);
   const [correcting, setCorrecting] = useState(false);
@@ -185,8 +188,6 @@ export default function LandDetailPage() {
   const [resuming, setResuming] = useState(false);
 
   const land = useLiveQuery(() => landRepository.getWithRelations(id), [id]);
-  /** what has actually been paid against this land, from the cost ledger (L-1) */
-  const landCosts = useLiveQuery(() => expenseRepository.landPaymentSummary(id), [id]);
   const visitCount = useLiveQuery(() => siteVisitRepository.countForLand(id), [id]);
   // the tab badge counts what BLOCKS, not what is done — see the panel
   const ddProgress = useLiveQuery(() => landDdRepository.progressForLand(id), [id]);
@@ -207,6 +208,14 @@ export default function LandDetailPage() {
   const roundCount = useLiveQuery(
     async () => (await landNegotiationRepository.listForLand(id)).length,
     [id],
+  );
+  // the one thing this land needs next — the same line the land list shows
+  const waitingOn = useLiveQuery(
+    async () => {
+      const row = await landRepository.getById(id);
+      return row ? (await landPipelineRepository.waitingOnForLands([row])).get(id) : undefined;
+    },
+    [id, land?.status, visitCount, ddProgress?.mandatoryOutstanding, roundCount, devReadiness?.outstanding],
   );
 
   if (land === undefined) return <p className="text-sm text-ink-muted">Loading…</p>;
@@ -231,14 +240,13 @@ export default function LandDetailPage() {
     land.owners.length > 0 &&
     (Number(land.final_agreed_amount) || 0) > 0 &&
     (land.status === 'agreed' || landIsHeld(land.status) || land.status === 'disposed');
-  const purchasePricing = landUsesPurchasePricing(land.acquisition_type);
   const headline = landHeadlineAmount(land);
-  // held covers under development and ready too — the sheet used to vanish
-  // the moment a plot went into development
-  const costSheetRelevant =
-    owned || land.status === 'agreed' || landIsHeld(land.status) || land.status === 'disposed';
+  // 2026-10-21 — the work first, then the money, then the parties and papers
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
+    { key: 'timeline', label: owned ? 'Development' : 'Acquisition Steps' },
+    // budget, deal, paid and pending, with the payments
+    { key: 'cost', label: 'Land Cost' },
     {
       key: 'owners',
       label: `${owned && land.acquisition_type === 'inherited' ? 'Heirs' : 'Owners'} (${land.owners.length})`,
@@ -246,18 +254,49 @@ export default function LandDetailPage() {
     ...(isJv ? [{ key: 'jv' as Tab, label: 'Joint Venture' }] : []),
     ...(owned ? [{ key: 'papers' as Tab, label: 'Papers' }] : []),
     { key: 'documents', label: 'Documents' },
-    { key: 'timeline', label: owned ? 'Development' : 'Timeline' },
   ];
   // an owned land skipped the acquisition: its timeline is only development
   const sections = owned ? SECTIONS.filter((x) => x.key === 'development') : SECTIONS;
-  const activeSection: TimelineSection = owned ? 'development' : section;
-  // small counts on the section pills — the same numbers the progress card shows
-  const sectionCount: Record<TimelineSection, number | undefined> = {
-    site: visitCount || undefined,
-    legal: ddProgress?.mandatoryOutstanding || undefined,
-    acquisition: roundCount || undefined,
-    development: devReadiness?.total || undefined,
-  };
+  const currentSection = sectionForStatus(land.status);
+  const activeSection: TimelineSection = owned ? 'development' : (section ?? currentSection);
+  const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
+  const stages = SECTIONS.map((sec) => {
+    switch (sec.key) {
+      case 'site':
+        return {
+          ...sec,
+          done: !['sourced', 'under_review', 'on_hold', 'rejected'].includes(land.status),
+          sub: visitCount ? plural(visitCount, 'visit') : undefined,
+        };
+      case 'legal':
+        return {
+          ...sec,
+          done: Boolean(ddProgress && ddProgress.mandatoryTotal > 0 && ddProgress.mandatoryOutstanding === 0),
+          sub: ddProgress?.mandatoryTotal
+            ? `${ddProgress.mandatoryTotal - ddProgress.mandatoryOutstanding}/${ddProgress.mandatoryTotal} papers`
+            : undefined,
+        };
+      case 'acquisition':
+        return {
+          ...sec,
+          done: landIsHeld(land.status) || land.status === 'disposed',
+          sub: roundCount ? plural(roundCount, 'round') : undefined,
+        };
+      case 'development':
+        return {
+          ...sec,
+          done:
+            land.status === 'ready_for_project' ||
+            Boolean(land.no_development_required) ||
+            Boolean(devReadiness && devReadiness.total > 0 && devReadiness.outstanding === 0),
+          sub: land.no_development_required
+            ? 'not needed'
+            : devReadiness?.total
+              ? `${devReadiness.total - devReadiness.outstanding}/${devReadiness.total}`
+              : undefined,
+        };
+    }
+  });
   const openSection = (next: TimelineSection) => {
     setTab('timeline');
     setSection(next);
@@ -369,126 +408,45 @@ export default function LandDetailPage() {
             <div className="space-y-5">
               <Card>
                 <CardHeader title="Land Information" />
-                <Row label="Land name" value={land.name} />
-                <Row label="Code" value={land.code} />
-                <Row
-                  label="Size"
-                  value={`${land.land_size} ${LAND_SIZE_UNIT_LABEL[land.land_size_unit]}`}
-                />
-                <Row
-                  label="Acquisition type"
-                  value={ACQUISITION_TYPE_LABEL[land.acquisition_type]}
-                />
-                <Row label="Classification" value={land.land_classification} />
-                {!owned && <Row label="Source" value={land.source} />}
-                <Row label="Division" value={land.location_division} />
-                <Row label="District" value={land.location_district} />
-                <Row label="Upazila / Thana" value={land.location_upazila} />
-                <Row label="Area" value={land.location_area} />
-                <Row label="Road" value={land.road} />
-                <Row label="Road access" value={land.road_access} />
-                <Row label="Mouza" value={land.mouza} />
-                <Row label="Dag number" value={land.dag_number} />
-                <Row label="Khatian number" value={land.khatian_number} />
-                <Row
-                  label="GPS"
-                  value={land.gps_lat && land.gps_lng ? `${land.gps_lat}, ${land.gps_lng}` : '—'}
-                />
-                {/* BRD LAND-001 — the land officer on this plot (2026-10-04) */}
-                {!owned && <Row label="Assigned to" value={assignee?.name} />}
-              </Card>
-
-              {!owned && (
-              <Card>
-                <CardHeader title="Commercials" />
-                {/* asking → negotiated → agreed is a purchase; a JV has only
-                    the cash side, and showing the other two would report a
-                    price nobody agreed to pay */}
-                {purchasePricing && (
-                  <>
-                    <Row label="Asking price" value={formatBdt(land.asking_price)} />
-                  </>
-                )}
-                <Row
-                  label={finalAmountLabel(land.acquisition_type)}
-                  value={formatBdt(land.final_agreed_amount)}
-                />
-
                 {/*
-                  The page used to say payments were "tracked in the Finance
-                  module" and stop there — no figure, no link — while EXP rows
-                  worth tens of millions sat against this exact land. Paid is
-                  what has actually gone out; a land payment *schedule* (what
-                  is due and when) is still to come, so balance is stated as
-                  agreed less paid and nothing more is implied.
+                  2026-10-21 — grouped and laid across, label over value: the
+                  one-fact-per-line list was sixteen rows of scrolling with
+                  most of the card empty.
                 */}
-                {landCosts && landCosts.count > 0 && (
-                  <>
-                    <Row label="Paid to date" value={formatBdt(landCosts.paid)} />
-                    {landCosts.other > 0 && (
-                      <Row
-                        label="— of which fees and extras"
-                        value={formatBdt(landCosts.other)}
-                      />
-                    )}
-                    {(land.final_agreed_amount ?? 0) > 0 && (
-                      <Row
-                        label="Balance"
-                        value={formatBdt((land.final_agreed_amount ?? 0) - landCosts.land_payment)}
-                      />
-                    )}
-                  </>
-                )}
-
-                <p className="mt-3 text-xs text-ink-muted">
-                  {landCosts && landCosts.count > 0 ? (
-                    <>
-                      From {landCosts.count} cost
-                      {landCosts.count === 1 ? '' : 's'} booked against this land. Balance compares
-                      the agreed amount with land-payment costs only, so registration and legal
-                      fees do not reduce what the owner is still owed.{' '}
-                      <button
-                        type="button"
-                        onClick={() => openSection('acquisition')}
-                        className="font-medium text-admin-700 hover:underline"
-                      >
-                        See the agreed plan
-                      </button>{' '}
-                      for what was due and when.{' '}
-                      <Link
-                        href={`/admin/expenses?land=${land.id}`}
-                        className="font-medium text-admin-700 hover:underline"
-                      >
-                        View the payments →
-                      </Link>
-                    </>
-                  ) : (
-                    <>
-                      Nothing has been booked against this land in the cost ledger yet. Payments
-                      are recorded as costs in the Finance module.{' '}
-                      <Link
-                        href={`/admin/expenses?land=${land.id}`}
-                        className="font-medium text-admin-700 hover:underline"
-                      >
-                        Open the cost ledger →
-                      </Link>
-                    </>
-                  )}
-                </p>
+                <FactGroup title="Basics">
+                  <Fact label="Land name" value={land.name} />
+                  <Fact label="Code" value={land.code} />
+                  <Fact
+                    label="Size"
+                    value={`${land.land_size} ${LAND_SIZE_UNIT_LABEL[land.land_size_unit]}`}
+                  />
+                  <Fact label="Acquisition type" value={ACQUISITION_TYPE_LABEL[land.acquisition_type]} />
+                  <Fact label="Classification" value={land.land_classification} />
+                  {!owned && <Fact label="Source" value={land.source} />}
+                  {/* BRD LAND-001 — the land officer on this plot (2026-10-04) */}
+                  {!owned && <Fact label="Assigned to" value={assignee?.name} />}
+                </FactGroup>
+                <FactGroup title="Location">
+                  <Fact label="Area" value={land.location_area} />
+                  <Fact label="Upazila / Thana" value={land.location_upazila} />
+                  <Fact label="District" value={land.location_district} />
+                  <Fact label="Division" value={land.location_division} />
+                  <Fact label="Road" value={land.road} />
+                  <Fact label="Road access" value={land.road_access} />
+                  <Fact
+                    label="GPS"
+                    value={land.gps_lat && land.gps_lng ? `${land.gps_lat}, ${land.gps_lng}` : null}
+                  />
+                </FactGroup>
+                <FactGroup title="Land records" last>
+                  <Fact label="Mouza" value={land.mouza} />
+                  <Fact label="Dag number" value={land.dag_number} />
+                  <Fact label="Khatian number" value={land.khatian_number} />
+                </FactGroup>
               </Card>
-              )}
 
-              {/*
-                v29 — the one number per land (PLATFORM-REPLAN.md §1.4), on the
-                first tab anybody opens. The same sheet stays in the Timeline's
-                acquisition section, where the estimates are worked out.
-              */}
-              {costSheetRelevant && (
-                <Card>
-                  <CardHeader title="Land Cost Sheet" />
-                  <AcquisitionCostPanel land={land} />
-                </Card>
-              )}
+              {/* 2026-10-21 — read from the cost sheet, so it matches Land Cost */}
+              {!owned && <LandMoneyCard land={land} onOpenCost={() => setTab('cost')} />}
 
               {(land.nearby_facilities || land.remarks) && (
                 <Card>
@@ -654,33 +612,19 @@ export default function LandDetailPage() {
 
           {tab === 'timeline' && (
             <div className="space-y-5">
-              <div className="flex flex-wrap gap-1.5">
-                {sections.length > 1 && sections.map((sec) => (
-                  <button
-                    key={sec.key}
-                    type="button"
-                    onClick={() => setSection(sec.key)}
-                    className={cn(
-                      'inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors',
-                      activeSection === sec.key
-                        ? 'border-admin-500 bg-admin-500 text-white'
-                        : 'border-hairline bg-white text-ink-muted hover:border-admin-300 hover:text-admin-700',
-                    )}
-                  >
-                    {sec.label}
-                    {sectionCount[sec.key] != null && (
-                      <span
-                        className={cn(
-                          'rounded-full px-1.5 text-[11px] tabular-nums',
-                          activeSection === sec.key ? 'bg-white/20' : 'bg-slate-100',
-                        )}
-                      >
-                        {sectionCount[sec.key]}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
+              {sections.length > 1 && (
+                <LandStageStepper
+                  stages={stages}
+                  active={activeSection}
+                  current={currentSection}
+                  next={
+                    waitingOn && waitingOn.key !== 'nothing'
+                      ? { text: waitingOn.text, section: SECTION_FOR_WAITING[waitingOn.key] }
+                      : undefined
+                  }
+                  onSelect={setSection}
+                />
+              )}
 
               {activeSection === 'site' && (
                 <>
@@ -727,19 +671,17 @@ export default function LandDetailPage() {
                   ) : (
                     <LandClosingCard land={land} />
                   )}
-                  {/* the cost sheet only once there is a deal to cost */}
-                  {costSheetRelevant && (
-                    <Card>
-                      <CardHeader title="Land Cost Sheet" />
-                      <AcquisitionCostPanel land={land} />
-                    </Card>
-                  )}
-                  {/* BRD ACQ-003 — the owner settlement schedule, open from Agreed */}
-                  <div id="land-payment-plan" className="scroll-mt-4">
-                    <LandPaymentPlanPanel land={land} />
-                  </div>
-                  {/* renders nothing at all on a single-owner plot */}
-                  <OwnerSettlementPanel land={land} />
+                  <p className="rounded-xl border border-hairline bg-white px-4 py-3 text-sm text-ink-muted">
+                    Budget, deal amount and payments for this land are on the{' '}
+                    <button
+                      type="button"
+                      onClick={() => setTab('cost')}
+                      className="font-medium text-admin-700 hover:underline"
+                    >
+                      Land Cost tab
+                    </button>
+                    .
+                  </p>
                 </>
               )}
 
@@ -753,6 +695,8 @@ export default function LandDetailPage() {
           )}
 
           {tab === 'papers' && owned && <LandPapersPanel land={land} readOnly={!mayEdit} />}
+
+          {tab === 'cost' && <LandCostPanel land={land} />}
 
           {tab === 'documents' && (
             <Card>

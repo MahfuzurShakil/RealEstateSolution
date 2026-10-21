@@ -152,6 +152,20 @@ async function ensureSystemCostCategories(): Promise<void> {
  */
 async function ensureDdChecklist(): Promise<void> {
   const existing = await ddChecklistRepository.allItems();
+
+  /*
+   * 2026-10-21 — the mandatory set shrank to six. A row nobody has touched
+   * since it was seeded (updated_at still equals created_at) follows the new
+   * flag; one the office has edited keeps whatever they chose.
+   */
+  const seedByCode = new Map(DD_CHECKLIST_SEED.map((c) => [c.code, c]));
+  for (const row of existing) {
+    const seeded = seedByCode.get(row.code);
+    if (seeded && row.updated_at === row.created_at && row.is_mandatory !== seeded.is_mandatory) {
+      await ddChecklistRepository.update(row.id, { is_mandatory: seeded.is_mandatory });
+    }
+  }
+
   const known = new Set(existing.map((r) => r.code));
   const missing = DD_CHECKLIST_SEED.filter((c) => !known.has(c.code));
   if (missing.length === 0) return;

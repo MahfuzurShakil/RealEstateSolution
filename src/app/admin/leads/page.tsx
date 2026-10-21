@@ -505,6 +505,7 @@ export default function LeadsListPage() {
 
       <ConfirmDialog
         open={bulkConfirm}
+        tone="default"
         title={`Assign ${rows.length} lead${rows.length === 1 ? '' : 's'}`}
         subtitle={
           bulkAssignee === '__clear__'

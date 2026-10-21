@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Field, SelectInput, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
+import { ResultDialog } from '@/components/ui/ResultDialog';
 import type { Tower } from '@/lib/db/types';
 import {
   cleanTowerCode,
@@ -150,59 +151,53 @@ export function UnitBulkGenerateModal({
     </Field>
   );
 
+  if (result) {
+    return (
+      <ResultDialog
+        open={open}
+        title={`${result.created} unit${result.created === 1 ? '' : 's'} created`}
+        message={`in ${tower.name}`}
+        onClose={onClose}
+      >
+        {result.drafts > 0 && (
+          <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-ink">
+            {result.drafts} saved as <span className="font-medium">Draft</span>. Open each from the
+            unit grid to add its type, size and price — a draft becomes Available once those are in.
+          </p>
+        )}
+        {result.skipped.length > 0 && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <p className="text-sm font-medium text-amber-800">
+              {result.skipped.length} code{result.skipped.length === 1 ? '' : 's'} already existed
+              and {result.skipped.length === 1 ? 'was' : 'were'} left untouched
+            </p>
+            <p className="mt-1 text-xs text-amber-700">{result.skipped.join(', ')}</p>
+          </div>
+        )}
+      </ResultDialog>
+    );
+  }
+
   return (
     <Modal
       open={open}
       title={`Generate units — ${tower.name}`}
       subtitle="One floor layout, repeated over a floor range"
       icon={Layers}
-      size="xl"
+      size="lg"
       onClose={onClose}
       footer={
-        result ? (
-          <Button onClick={onClose} viewSafe>
-            Done
+        <>
+          <Button variant="outline" onClick={onClose} viewSafe disabled={busy}>
+            Cancel
           </Button>
-        ) : (
-          <>
-            <Button variant="outline" onClick={onClose} viewSafe disabled={busy}>
-              Cancel
-            </Button>
-            <Button onClick={generate} disabled={busy || problems.length > 0 || codes.length === 0}>
-              {busy ? 'Generating…' : `Generate ${codes.length} unit${codes.length === 1 ? '' : 's'}`}
-            </Button>
-          </>
-        )
+          <Button onClick={generate} disabled={busy || problems.length > 0 || codes.length === 0}>
+            {busy ? 'Generating…' : `Generate ${codes.length} unit${codes.length === 1 ? '' : 's'}`}
+          </Button>
+        </>
       }
     >
-      {result ? (
-        <div className="space-y-3">
-          <p className="text-sm text-ink">
-            <span className="font-semibold text-admin-700">{result.created}</span> unit
-            {result.created === 1 ? '' : 's'} created in {tower.name}.
-          </p>
-          {result.drafts > 0 && (
-            <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-ink">
-              {result.drafts} saved as <span className="font-medium">Draft</span>. Open each from the
-              unit grid to fill in what is missing. A draft cannot be booked; it becomes Available once
-              its type, size and price are in.
-            </p>
-          )}
-          {result.skipped.length > 0 && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-              <p className="text-sm font-medium text-amber-800">
-                {result.skipped.length} code{result.skipped.length === 1 ? '' : 's'} already existed
-                and {result.skipped.length === 1 ? 'was' : 'were'} left untouched
-              </p>
-              <p className="mt-1 text-xs text-amber-700">{result.skipped.join(', ')}</p>
-            </div>
-          )}
-          <p className="text-xs text-ink-muted">
-            Run this again for a different floor range (a penthouse or duplex floor) and edit the odd
-            unit afterwards.
-          </p>
-        </div>
-      ) : (
+      {(
         <div className="space-y-5">
           <section className="rounded-xl border border-hairline bg-white p-4">
             <h3 className="mb-3 text-sm font-semibold text-ink">1. Floor range</h3>

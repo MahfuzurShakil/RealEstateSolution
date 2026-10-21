@@ -92,7 +92,8 @@ export interface LeadStepConfig {
   title: string;
   question: string;
   confirmLabel: string;
-  tone: 'default' | 'danger' | 'success' | 'warning';
+  /** never 'success' — that is for results (POPUP-SYSTEM.md) */
+  tone: 'default' | 'danger' | 'warning';
   /** prompts for the note that goes into the logged activity */
   notesPlaceholder: string;
   notesRequired?: boolean;
@@ -146,7 +147,7 @@ export const LEAD_STEP_CONFIG: Record<LeadStatus, LeadStepConfig> = {
     question:
       'The buyer has committed. Booking, payment schedule and the customer record are handled in the Booking module.',
     confirmLabel: 'Mark booked',
-    tone: 'success',
+    tone: 'default',
     notesPlaceholder: 'Unit booked, agreed price, booking money taken…',
     notesRequired: true,
   },

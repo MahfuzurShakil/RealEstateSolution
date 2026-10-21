@@ -109,7 +109,8 @@ export function AddWorkItemModal({
   return (
     <Modal
       open
-      size={step === 1 ? 'lg' : 'xl'}
+      // one width for both steps, so the popup does not jump between them
+      size="lg"
       icon={ListChecks}
       title={step === 1 ? `Add work · ${tower.name}` : `Budget · ${name.trim() || workType}`}
       subtitle={

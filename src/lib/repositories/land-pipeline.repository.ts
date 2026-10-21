@@ -35,7 +35,6 @@ import {
   landDevelopmentProgressRepository,
   landDevelopmentRepository,
 } from './land-development.repository';
-import { paymentScheduleRepository } from './finance.repository';
 import {
   landJvRepository,
   landOwnerMappingRepository,
@@ -43,7 +42,6 @@ import {
   landStatusEventRepository,
 } from './land.repository';
 import { landAcquisitionCostRepository, landNegotiationRepository } from './negotiation.repository';
-import { ownerSettlementRepository } from './owner-settlement.repository';
 import { landFeasibilityRepository, siteVisitRepository } from './site-visit.repository';
 
 /** A rule stopped the change. `message` is the sentence to show the user. */
@@ -187,12 +185,11 @@ class LandPipelineRepository {
    */
   async waitingOnForLands(lands: Land[]): Promise<Map<string, { key: WaitingKey; text: string }>> {
     const ids = new Set(lands.map((l) => l.id));
-    const [visits, studies, ddItems, rounds, schedules, activities, checklist, mappings] = await Promise.all([
+    const [visits, studies, ddItems, rounds, activities, checklist, mappings] = await Promise.all([
       db.site_visits.toArray(),
       db.land_feasibility.toArray(),
       db.land_dd_items.toArray(),
       db.land_negotiations.toArray(),
-      db.payment_schedules.where('entity_type').equals('land').toArray(),
       db.land_development_activities.toArray(),
       db.dd_checklist_items.toArray(),
       db.land_project_mapping.toArray(),
@@ -215,9 +212,6 @@ class LandPipelineRepository {
     const ddBy = byLand(ddItems);
     const roundsBy = byLand(rounds);
     const activitiesBy = byLand(activities);
-    const scheduleFor = new Set(schedules.map((s) => s.entity_id));
-    // lands whose settlement is scheduled owner by owner rather than land-wide
-    const ownerPlanLands = await ownerSettlementRepository.landsCoveredByOwnerPlans();
 
     const out = new Map<string, { key: WaitingKey; text: string }>();
     for (const land of lands) {
@@ -233,10 +227,7 @@ class LandPipelineRepository {
           inProject: inProject.has(land.id),
           acquisitionType: land.acquisition_type,
           doneVisits: (visitsBy.get(land.id) ?? []).filter((v) => v.status !== 'planned').length,
-          feasibility: {
-            current: landStudies[0],
-            latestApproved: landStudies.find((s) => s.status === 'approved'),
-          },
+          feasibility: { current: landStudies[0] },
           dd: {
             mandatoryTotal: mandatory.length,
             mandatoryOutstanding: mandatory.filter((d) => !settledDd.has(d.status)).length,
@@ -245,7 +236,6 @@ class LandPipelineRepository {
           openRound: landRounds.find((r) => r.status === 'open'),
           roundCount: landRounds.length,
           // either plan settles the land — see `hasOwnerPlanCoverage`
-          hasSchedule: scheduleFor.has(land.id) || ownerPlanLands.has(land.id),
           development: {
             total: landActivities.length,
             outstanding: landActivities.filter(
@@ -354,10 +344,7 @@ class LandPipelineRepository {
   /** Why a round cannot be recorded yet (BRD SITE-003), or null. */
   async negotiationBlockReason(landId: string): Promise<string | null> {
     const studies = await landFeasibilityRepository.listForLand(landId);
-    return feasibilityGateBlockReason({
-      current: studies[0],
-      latestApproved: studies.find((s) => s.status === 'approved'),
-    });
+    return feasibilityGateBlockReason({ current: studies[0] });
   }
 
   async addNegotiationRound(
@@ -415,18 +402,11 @@ class LandPipelineRepository {
   async closingBlockReason(landId: string): Promise<string | null> {
     const land = await landRepository.getById(landId);
     if (!land) return 'This land no longer exists.';
-    const [dd, schedule, ownerPlans] = await Promise.all([
-      landDdRepository.progressForLand(landId),
-      paymentScheduleRepository.withInstallmentsForLand(landId),
-      ownerSettlementRepository.hasOwnerPlanCoverage(landId),
-    ]);
+    const dd = await landDdRepository.progressForLand(landId);
     return closingBlockReason({
       status: land.status,
       acquisitionType: land.acquisition_type,
       dd,
-      // ACQ-003 is satisfied by either plan, and a multi-owner plot uses the
-      // per-owner one — refusing it here blocked a registration that was ready
-      hasSchedule: Boolean(schedule) || ownerPlans,
     });
   }
 

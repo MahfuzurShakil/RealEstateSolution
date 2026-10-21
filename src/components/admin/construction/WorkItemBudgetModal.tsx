@@ -56,7 +56,7 @@ export function WorkItemBudgetModal({
   return (
     <Modal
       open
-      size="xl"
+      size="lg"
       icon={Calculator}
       title={`Budget · ${workItem.name}`}
       subtitle="What this work should cost. Costs recorded against it are compared line by line."

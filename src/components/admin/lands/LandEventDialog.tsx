@@ -159,7 +159,13 @@ export function LandEventDialog({
     const value = values[field.key] ?? '';
     const onChange = (v: string) => setValues((prev) => ({ ...prev, [field.key]: v }));
     return (
-      <Field key={field.key} label={field.label} required={field.required}>
+      // short fields pair up two to a row; a note takes the whole row
+      <Field
+        key={field.key}
+        label={field.label}
+        required={field.required}
+        className={field.type === 'textarea' ? 'sm:col-span-2' : undefined}
+      >
         {field.type === 'select' ? (
           <SelectInput value={value} onChange={(e) => onChange(e.target.value)}>
             {(field.options ?? []).map((o) => (
@@ -196,22 +202,24 @@ export function LandEventDialog({
       onCancel={onClose}
       onConfirm={confirm}
     >
-      <div className="grid gap-4">
+      <div className="grid gap-4 sm:grid-cols-2">
         {blocked && (
-          <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+          <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800 sm:col-span-2">
             <Lock className="mt-0.5 size-4 shrink-0" />
             <span>{blocked}</span>
           </p>
         )}
         {config.fields.map(renderField)}
-        <StepAttachments
-          files={files}
-          onChange={setFiles}
-          prompt={statusStepAttachment(target, land.acquisition_type).prompt}
-          error={fileError}
-          onError={setFileError}
-        />
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        <div className="sm:col-span-2">
+          <StepAttachments
+            files={files}
+            onChange={setFiles}
+            prompt={statusStepAttachment(target, land.acquisition_type).prompt}
+            error={fileError}
+            onError={setFileError}
+          />
+        </div>
+        {error && <p className="text-sm text-red-600 sm:col-span-2">{error}</p>}
       </div>
     </ConfirmDialog>
   );

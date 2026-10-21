@@ -352,7 +352,7 @@ export function MaterialRequestStatusCard({
         icon={action ? ICONS[action] : undefined}
         confirmLabel={config?.confirmLabel ?? 'Confirm'}
         message={config?.message}
-        size={action === 'approved' ? 'lg' : 'sm'}
+        size={action === 'approved' ? 'lg' : undefined}
         busy={busy}
         onCancel={() => setAction(null)}
         onConfirm={confirm}

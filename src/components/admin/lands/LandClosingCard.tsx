@@ -16,9 +16,9 @@ import { formatBdt, formatDate } from '@/lib/utils/format';
  * for a joint venture.
  *
  * These stay manual because nothing else in the system can know a deed was
- * registered. What the card adds is the reason it cannot be done yet — DD-004,
- * and for a purchase the ACQ-003 settlement schedule — stated before anybody
- * clicks, and once done, the record itself.
+ * registered. What the card adds is the reason it cannot be done yet — the
+ * required legal papers (DD-004) — stated before anybody clicks, and once
+ * done, the record itself.
  */
 export function LandClosingCard({ land }: { land: Land }) {
   const [open, setOpen] = useState(false);

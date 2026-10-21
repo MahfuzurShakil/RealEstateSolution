@@ -66,7 +66,7 @@ export function CorrectStatusDialog({
       open
       title="Correct this status"
       subtitle={`${land.code} · currently ${landStatusLabel(land.status, land.acquisition_type)}`}
-      message="Use this when the status is wrong, not to move a land on. Site visits, feasibility approvals and negotiation rounds move it by themselves; this skips that and the pipeline gates, so it records why."
+      message="Use this when the status is wrong, not to move a land on. Site visits, feasibility studies and negotiation rounds move it by themselves; this skips that and the pipeline gates, so it records why."
       tone="warning"
       icon={Wrench}
       confirmLabel="Correct status"
