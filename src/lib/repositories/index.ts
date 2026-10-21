@@ -236,3 +236,10 @@ export {
   type LedgerRow,
 } from './fund.repository';
 export { costAlerts, ALERT_KIND_LABEL, type CostAlert, type AlertKind, type AlertArea } from './alerts.repository';
+export {
+  ownerDashboard,
+  type OwnerDashboard,
+  type DashboardProjectRow,
+  type ProjectHealth,
+  type MonthFlow,
+} from './dashboard.repository';

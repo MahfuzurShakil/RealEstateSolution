@@ -182,6 +182,33 @@ export function AdminSidebar({
             const groupActive = group.items.some((i) => isActiveHref(pathname, i.href));
             const isOpen = toggled[group.label] ?? groupActive;
 
+            /*
+             * A group left with one item (Dashboard, Projects, Construction —
+             * or any group the role/purchase mode trims to one) is a plain
+             * link: opening a drawer to reveal a single entry is a wasted click.
+             */
+            if (group.items.length === 1 && !group.items[0].disabled) {
+              const only = group.items[0];
+              return (
+                <div key={group.label} className="mb-1">
+                  <Link
+                    href={only.href}
+                    onClick={onClose}
+                    title={showLabels ? undefined : group.label}
+                    className={cn(
+                      'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
+                      groupActive
+                        ? 'bg-admin-500 text-white'
+                        : 'text-ink-muted hover:bg-admin-50/70 hover:text-admin-700',
+                    )}
+                  >
+                    <Icon className="size-[18px] shrink-0" />
+                    {showLabels && <span className="flex-1 text-left">{group.label}</span>}
+                  </Link>
+                </div>
+              );
+            }
+
             return (
               <div key={group.label} className="mb-1">
                 <button
