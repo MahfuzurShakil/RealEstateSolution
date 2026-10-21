@@ -213,6 +213,26 @@ class BankAccountRepository extends BaseRepository<BankAccount> {
     return (await this.flows()).filter((f) => f.account_id === accountId);
   }
 
+  /** Movements recorded with no account — the ones the Cash Position warns about. */
+  async unattributedMovements(): Promise<CashFlowRow[]> {
+    return (await this.flows()).filter((f) => !f.account_id);
+  }
+
+  /**
+   * Put a movement recorded without an account onto one, after the fact
+   * (client, 2026-10-21). The warning on Cash Position used to say "set the
+   * account" with nowhere to do it. Only the four tables where the account
+   * is optional can be missing one; site payments and money in require it.
+   */
+  async setAccountOnMovement(kind: CashFlowRow['kind'], id: string, accountId: string): Promise<void> {
+    const changes = { account_id: accountId, updated_at: new Date().toISOString() };
+    if (kind === 'receipt') await db.payments.update(id, changes);
+    else if (kind === 'expense') await db.expenses.update(id, changes);
+    else if (kind === 'supplier_payment') await db.supplier_vouchers.update(id, changes);
+    else if (kind === 'refund') await db.refunds.update(id, changes);
+    else throw new Error(`A ${kind} always carries its account`);
+  }
+
   /**
    * Deletable only while nothing points at it — the rule suppliers and material
    * items already follow. Closing an account keeps its statement readable.

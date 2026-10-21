@@ -198,16 +198,12 @@ export default function CashPositionPage() {
         page is for.
       */}
       {position.unattributed_count > 0 && (
-        <p className="mb-5 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          <span>
-            {position.unattributed_count} movement
-            {position.unattributed_count === 1 ? '' : 's'} — {formatBdt(position.unattributed_in)} in
-            and {formatBdt(position.unattributed_out)} out — are not against any account, so they
-            are <span className="font-medium">not</span> in the balance above. Set the account on
-            them and the figure becomes something a bank statement can be checked against.
-          </span>
-        </p>
+        <UnattributedMovements
+          count={position.unattributed_count}
+          moneyIn={position.unattributed_in}
+          moneyOut={position.unattributed_out}
+          mayEdit={mayEdit}
+        />
       )}
 
       <Card>
@@ -466,5 +462,101 @@ function StatementModal({
         />
       )}
     </Modal>
+  );
+}
+
+/**
+ * The movements recorded with no account, each with the account to put it
+ * on (client, 2026-10-21). The warning used to say "set the account" with
+ * nowhere to set it; picking one here moves the money into that account's
+ * balance and the row leaves the list.
+ */
+function UnattributedMovements({
+  count,
+  moneyIn,
+  moneyOut,
+  mayEdit,
+}: {
+  count: number;
+  moneyIn: number;
+  moneyOut: number;
+  mayEdit: boolean;
+}) {
+  const rows = useLiveQuery(() => bankAccountRepository.unattributedMovements(), []);
+  const accounts = useLiveQuery(() => bankAccountRepository.options(), []);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const assign = async (row: CashFlowRow, accountId: string) => {
+    if (!accountId) return;
+    setSaving(row.id);
+    setError(null);
+    try {
+      await bankAccountRepository.setAccountOnMovement(row.kind, row.id, accountId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save the account.');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return (
+    <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+      <p className="flex items-start gap-2">
+        <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+        <span>
+          {count} movement{count === 1 ? '' : 's'} — {formatBdt(moneyIn)} in and {formatBdt(moneyOut)} out —{' '}
+          {count === 1 ? 'has' : 'have'} no account, so {count === 1 ? 'it is' : 'they are'}{' '}
+          <span className="font-medium">not</span> in the balance below.{' '}
+          {mayEdit ? 'Choose the account the money went through:' : 'Someone from Accounts can set the account.'}
+        </span>
+      </p>
+      {error && <p className="mt-2 text-red-700">{error}</p>}
+      <ul className="mt-3 divide-y divide-amber-200/70 overflow-hidden rounded-lg border border-amber-200 bg-white">
+        {(rows ?? []).map((row) => {
+          const isIn = row.amount >= 0;
+          return (
+            <li key={`${row.kind}-${row.id}`} className="flex flex-wrap items-center gap-3 px-3 py-2.5 text-ink">
+              <span
+                className={
+                  isIn
+                    ? 'grid size-7 shrink-0 place-items-center rounded-full bg-admin-50 text-admin-600'
+                    : 'grid size-7 shrink-0 place-items-center rounded-full bg-orange-50 text-accent-coral'
+                }
+              >
+                {isIn ? <ArrowDownLeft className="size-3.5" /> : <ArrowUpRight className="size-3.5" />}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium">{row.label}</p>
+                <p className="text-xs text-ink-muted">
+                  {CASH_FLOW_LABEL[row.kind]} · {formatDate(row.date)}
+                  {row.reference ? ` · ${row.reference}` : ''}
+                </p>
+              </div>
+              <span className="shrink-0 font-medium tabular-nums">
+                {isIn ? '+' : '−'}
+                {formatBdt(Math.abs(row.amount))}
+              </span>
+              {mayEdit && (
+                <SelectInput
+                  aria-label={`Account for ${row.label}`}
+                  value=""
+                  disabled={saving === row.id || !accounts?.length}
+                  onChange={(e) => void assign(row, e.target.value)}
+                  className="w-full sm:w-56"
+                >
+                  <option value="">{isIn ? 'Received into…' : 'Paid from…'}</option>
+                  {(accounts ?? []).map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </SelectInput>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
