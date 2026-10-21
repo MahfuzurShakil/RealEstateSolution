@@ -2,12 +2,12 @@
 
 import { Fragment, useState } from 'react';
 import Link from 'next/link';
-import { ChevronDown, PieChart } from 'lucide-react';
+import { ChevronDown, FileText } from 'lucide-react';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
 import { FilterBar, FilterSelect } from '@/components/ui/FilterBar';
 import type { FundOverview, ProjectFundRow } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
+import { ShareBar } from './ShareBar';
 import { formatBdt } from '@/lib/utils/format';
 
 type FundState = 'ok' | 'low' | 'over';
@@ -32,18 +32,15 @@ function fundState(r: ProjectFundRow): FundState {
  */
 export function ProjectFundTable({
   overview,
-  mayEdit,
-  onEditShares,
+  colors,
 }: {
   overview: FundOverview;
-  mayEdit: boolean;
-  onEditShares: (row: ProjectFundRow) => void;
+  colors: Map<string, string>;
 }) {
   const [search, setSearch] = useState('');
   const [state, setState] = useState<'all' | FundState>('all');
   const [open, setOpen] = useState<string | null>(null);
 
-  const partnerName = new Map(overview.partners.map((p) => [p.id, p.name]));
   const all = overview.projects;
   const rows = all.filter(
     (r) =>
@@ -52,7 +49,6 @@ export function ProjectFundTable({
         `${r.project_name} ${r.project_code}`.toLowerCase().includes(search.trim().toLowerCase())),
   );
   const total = (pick: (r: ProjectFundRow) => number) => rows.reduce((s, r) => s + pick(r), 0);
-  const hasPartners = overview.partners.some((p) => p.is_active);
 
   return (
     <>
@@ -155,39 +151,27 @@ export function ProjectFundTable({
                             <Line label="Bills not yet paid" value={r.owed} />
                             <Line label="Left in hand" value={r.remaining} strong warn={r.remaining < 0} />
                           </Detail>
-                          <Detail
-                            title="Partners in this project"
-                            action={
-                              mayEdit &&
-                              hasPartners && (
-                                <Button size="sm" variant="outline" onClick={() => onEditShares(r)}>
-                                  <PieChart className="size-4" /> Change split
-                                </Button>
-                              )
-                            }
-                          >
-                            {r.shares.length === 0 ? (
-                              <p className="text-xs text-ink-muted">No partners set.</p>
-                            ) : (
-                              r.shares.map((sh) => (
-                                <div key={sh.partner_id} className="flex justify-between py-1 text-sm">
-                                  <span className="text-ink-muted">{partnerName.get(sh.partner_id) ?? '—'}</span>
-                                  <span className="font-medium text-ink">{sh.share_pct}%</span>
-                                </div>
-                              ))
-                            )}
-                            <p className="mt-1 text-[11px] text-ink-muted">
-                              {r.own_split ? 'Own split for this project' : "Company's usual split"} ·{' '}
-                              {formatBdt(r.partners_used)} of partners&apos; money used
+                          <Detail title="Who owns this project">
+                            <ShareBar slices={r.shares} colors={colors} />
+                            <p className="mt-2 text-[11px] text-ink-muted">
+                              {formatBdt(r.partners_used)} of the partners&apos; own money used so far
                             </p>
                           </Detail>
                         </div>
-                        <Link
-                          href={`/admin/projects/${r.project_id}`}
-                          className="mt-3 inline-block text-xs text-admin-700 hover:underline"
-                        >
-                          Open project →
-                        </Link>
+                        <div className="mt-3 flex flex-wrap items-center gap-4">
+                          <Link
+                            href={`/admin/fund/${r.project_id}`}
+                            className="inline-flex items-center gap-2 rounded-xl bg-admin-500 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-admin-600"
+                          >
+                            <FileText className="size-4" /> Full statement: budget, income, cost, profit share
+                          </Link>
+                          <Link
+                            href={`/admin/projects/${r.project_id}`}
+                            className="text-xs text-admin-700 hover:underline"
+                          >
+                            Open project →
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   )}

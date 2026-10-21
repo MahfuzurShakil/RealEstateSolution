@@ -10,6 +10,7 @@ import type { FundOverview, PartnerRow } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt } from '@/lib/utils/format';
 import { Detail, Line } from './ProjectFundTable';
+import { ShareBar } from './ShareBar';
 
 /**
  * One row per partner: their share, what they put in, how much of it the
@@ -20,11 +21,13 @@ import { Detail, Line } from './ProjectFundTable';
 export function PartnersTable({
   overview,
   projectNames,
+  colors,
   mayEdit,
   onEdit,
 }: {
   overview: FundOverview;
   projectNames: Map<string, string>;
+  colors: Map<string, string>;
   mayEdit: boolean;
   onEdit: (partner: Partner) => void;
 }) {
@@ -58,6 +61,8 @@ export function PartnersTable({
           The company partners&apos; shares add up to {overview.share_total}%, not 100%. Edit a partner to fix it.
         </p>
       )}
+      <OwnershipMap overview={overview} colors={colors} />
+
       <FilterBar
         search={{ value: search, onChange: setSearch, placeholder: 'Name, code or phone' }}
         isFiltered={search !== '' || kind !== 'all' || status !== 'active'}
@@ -117,10 +122,11 @@ export function PartnersTable({
                     )}
                   >
                     <td className="py-3 pr-3">
-                      <p className="font-medium text-ink">
+                      <p className="flex items-center gap-2 font-medium text-ink">
+                        <span className="size-2.5 shrink-0 rounded-sm" style={{ background: colors.get(p.id) }} />
                         {p.name} {!p.is_active && <Badge tone="neutral">Former</Badge>}
                       </p>
-                      <p className="text-xs text-ink-muted">{p.code}</p>
+                      <p className="pl-[18px] text-xs text-ink-muted">{p.code}</p>
                     </td>
                     <td className="py-3 pr-3">
                       <p className="font-medium text-ink">{p.share_pct}%</p>
@@ -238,5 +244,50 @@ export function PartnersTable({
         </table>
       </div>
     </>
+  );
+}
+
+/**
+ * Every project and who owns it, one bar each: the two rules made visible.
+ * Company partners own every project; an investor takes their share of one
+ * project first and the company partners share the rest.
+ */
+function OwnershipMap({ overview, colors }: { overview: FundOverview; colors: Map<string, string> }) {
+  const company = overview.partners
+    .filter((p) => p.is_active && !p.project_id)
+    .sort((a, b) => b.share_pct - a.share_pct);
+  if (company.length === 0) return null;
+  return (
+    <div className="mb-5 rounded-xl border border-hairline p-4">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-sm font-semibold text-ink">Who owns each project</p>
+        <p className="text-xs text-ink-muted">
+          Company split: {company.map((p) => `${p.name} ${p.share_pct}%`).join(' · ')}
+        </p>
+      </div>
+      <ul className="space-y-3">
+        {overview.projects.map((r) => {
+          const investors = r.shares.filter((s) => s.kind === 'investor');
+          return (
+            <li key={r.project_id} className="grid items-center gap-2 sm:grid-cols-[14rem_1fr]">
+              <div className="min-w-0">
+                <p className="truncate text-sm text-ink">{r.project_name}</p>
+                <p className="text-[11px] text-ink-muted">
+                  {investors.length > 0
+                    ? `+ ${investors.map((i) => i.name).join(', ')} (this project only)`
+                    : 'Company partners only'}
+                </p>
+              </div>
+              <div>
+                <ShareBar slices={r.shares} colors={colors} size="sm" showLegend={false} />
+                <p className="mt-1 text-[11px] text-ink-muted">
+                  {r.shares.map((s) => `${s.name.split(' ')[0]} ${s.share_pct}%`).join(' · ')}
+                </p>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }

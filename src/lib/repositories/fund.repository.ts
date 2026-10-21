@@ -1,7 +1,7 @@
 'use client';
 
 import { db } from '../db/database';
-import type { FundAllocation, FundReceipt, Partner, ProjectPartner } from '../db/types';
+import type { FundAllocation, FundReceipt, Partner } from '../db/types';
 import type { CashFlowRow } from '../domain/cash';
 import { money } from '../domain/procurement';
 import { nextCode } from '../utils/id';
@@ -14,12 +14,6 @@ import { bankAccountRepository } from './bank.repository';
  * is, what each project has received and spent, and what each partner's part
  * has been used for. Accounts say where money *sits*; this says whose it is.
  */
-
-const projectPartnerRepository = new (class extends BaseRepository<ProjectPartner> {
-  constructor() {
-    super(() => db.project_partners);
-  }
-})();
 
 class PartnerRepository extends BaseRepository<Partner> {
   constructor() {
@@ -63,32 +57,6 @@ class PartnerRepository extends BaseRepository<Partner> {
     }
     const codes = (await db.partners.toArray()).map((p) => p.code);
     return this.create({ ...payload, code: nextCode('PTN', codes) }, userId);
-  }
-
-  /** A project's own split, or `[]` when it follows the company's. */
-  async projectShares(projectId: string): Promise<ProjectPartner[]> {
-    return db.project_partners.where('project_id').equals(projectId).toArray();
-  }
-
-  /** Empty `rows` puts the project back on the company split. */
-  async setProjectShares(
-    projectId: string,
-    rows: { partner_id: string; share_pct: number }[],
-    userId: string | null,
-  ): Promise<void> {
-    const kept = rows.filter((r) => Number(r.share_pct) > 0);
-    const total = kept.reduce((s, r) => s + Number(r.share_pct), 0);
-    if (kept.length > 0 && Math.abs(total - 100) > 0.01) {
-      throw new Error(`A project's shares must add up to 100% (now ${Math.round(total * 100) / 100}%).`);
-    }
-    const old = await this.projectShares(projectId);
-    await db.project_partners.bulkDelete(old.map((o) => o.id));
-    for (const r of kept) {
-      await projectPartnerRepository.create(
-        { project_id: projectId, partner_id: r.partner_id, share_pct: Number(r.share_pct) },
-        userId,
-      );
-    }
   }
 }
 
@@ -160,6 +128,57 @@ export const fundAllocationRepository = new FundAllocationRepository();
  * The overview
  * ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ *
+ * Who owns a project
+ * ------------------------------------------------------------------ */
+
+export interface ShareSlice {
+  partner_id: string;
+  name: string;
+  /** share of this project */
+  share_pct: number;
+  /** an investor in this project only, or one of the company's partners */
+  kind: 'investor' | 'company';
+  /** a company partner's share of the company, which their slice is scaled from */
+  company_pct: number | null;
+}
+
+/**
+ * The two cases the business actually has (client, 2026-10-21):
+ *
+ * 1. The company's partners own every project, in their company shares.
+ * 2. Someone may invest in one project only. They take their share of that
+ *    project first; the company's partners share what is left, still in
+ *    their company proportions.
+ *
+ * So Lakeview with Shafiqul at 30% and the company at 50/30/20 is Shafiqul
+ * 30%, Karim 35%, Rahim 21%, Selina 14%. A separately negotiated split for
+ * one project (the old `project_partners` override) is not offered; the
+ * table stays, unread, until that case is asked for again.
+ */
+export function splitProject(projectId: string, partners: Partner[]): ShareSlice[] {
+  const active = partners.filter((p) => p.is_active);
+  const investors = active.filter((p) => p.project_id === projectId);
+  const company = active.filter((p) => !p.project_id);
+  const left = Math.max(0, 100 - investors.reduce((s, p) => s + p.share_pct, 0));
+  const companyTotal = company.reduce((s, p) => s + p.share_pct, 0) || 100;
+  const round = (n: number) => Math.round(n * 100) / 100;
+  return [
+    ...investors
+      .sort((a, b) => b.share_pct - a.share_pct)
+      .map((p) => ({ partner_id: p.id, name: p.name, share_pct: p.share_pct, kind: 'investor' as const, company_pct: null })),
+    ...company
+      .sort((a, b) => b.share_pct - a.share_pct)
+      .map((p) => ({
+        partner_id: p.id,
+        name: p.name,
+        share_pct: round((p.share_pct * left) / companyTotal),
+        kind: 'company' as const,
+        company_pct: p.share_pct,
+      })),
+  ];
+}
+
 export interface ProjectFundRow {
   project_id: string;
   project_name: string;
@@ -186,9 +205,8 @@ export interface ProjectFundRow {
    * pool, which is partners' money too.
    */
   partners_used: number;
-  /** partners' split for this project, own or the company's */
-  shares: { partner_id: string; share_pct: number }[];
-  own_split: boolean;
+  /** who owns this project — see `splitProject` */
+  shares: ShareSlice[];
 }
 
 export interface PartnerRow extends Partner {
@@ -221,7 +239,6 @@ export interface FundOverview {
 export async function fundOverview(): Promise<FundOverview> {
   const [
     partners,
-    projectPartners,
     receipts,
     allocations,
     projects,
@@ -237,7 +254,6 @@ export async function fundOverview(): Promise<FundOverview> {
     accounts,
   ] = await Promise.all([
     db.partners.toArray(),
-    db.project_partners.toArray(),
     db.fund_receipts.toArray(),
     db.fund_allocations.toArray(),
     db.projects.toArray(),
@@ -260,24 +276,6 @@ export async function fundOverview(): Promise<FundOverview> {
   const sum = <T>(rows: T[], f: (r: T) => number) => money(rows.reduce((s, r) => s + (f(r) || 0), 0));
   const active = partners.filter((p) => p.is_active).sort((a, b) => b.share_pct - a.share_pct);
   const companyPartners = active.filter((p) => !p.project_id);
-  /*
-   * Who carries a project (client, 2026-10-21): its own outside partners take
-   * their share first; the company's partners share what is left in their
-   * company proportions.
-   */
-  const defaultShares = (projectId: string) => {
-    const outside = active.filter((p) => p.project_id === projectId);
-    const left = Math.max(0, 100 - outside.reduce((s, p) => s + p.share_pct, 0));
-    const companyTotal = companyPartners.reduce((s, p) => s + p.share_pct, 0) || 100;
-    return [
-      ...outside.map((p) => ({ partner_id: p.id, share_pct: p.share_pct })),
-      ...companyPartners.map((p) => ({
-        partner_id: p.id,
-        share_pct: Math.round(((p.share_pct * left) / companyTotal) * 100) / 100,
-      })),
-    ].sort((a, b) => b.share_pct - a.share_pct);
-  };
-
   const rows: ProjectFundRow[] = [];
   for (const p of projects) {
     const direct_in = sum(receipts.filter((r) => r.project_id === p.id), (r) => r.amount);
@@ -304,7 +302,6 @@ export async function fundOverview(): Promise<FundOverview> {
       (received > 0 ? (fromPot * partnerIn) / received : 0) + Math.max(0, spent - received),
     );
     if (received === 0 && spent === 0 && cost === 0) continue;
-    const own = projectPartners.filter((x) => x.project_id === p.id);
     rows.push({
       project_id: p.id,
       project_name: p.name,
@@ -318,11 +315,7 @@ export async function fundOverview(): Promise<FundOverview> {
       owed: sum(mine, (x) => x.amount - (x.paid_amount || 0)),
       cost,
       partners_used,
-      shares:
-        own.length > 0
-          ? own.map((o) => ({ partner_id: o.partner_id, share_pct: o.share_pct })).sort((a, b) => b.share_pct - a.share_pct)
-          : defaultShares(p.id),
-      own_split: own.length > 0,
+      shares: splitProject(p.id, partners),
     });
   }
   rows.sort((a, b) => b.cost - a.cost);

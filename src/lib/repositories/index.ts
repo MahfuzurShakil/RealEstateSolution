@@ -237,6 +237,8 @@ export {
   fundAllocationRepository,
   fundOverview,
   fundLedger,
+  splitProject,
+  type ShareSlice,
   type FundReceiptInput,
   type FundOverview,
   type ProjectFundRow,
@@ -251,3 +253,11 @@ export {
   type ProjectHealth,
   type MonthFlow,
 } from './dashboard.repository';
+export {
+  projectStatement,
+  type ProjectStatement,
+  type StatementCostLine,
+  type StatementBooking,
+  type StatementEntry,
+  type StatementPartner,
+} from './project-statement.repository';
