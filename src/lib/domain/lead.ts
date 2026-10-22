@@ -10,8 +10,11 @@ import type { LeadActivityType, LeadSource, LeadStatus, UserRole } from '@/lib/d
  *   [any stage] → lost
  *   lost → revived back to an earlier active status, history intact
  *
- * `booked` is where Module 4 (Booking & Customer) takes over, so nothing moves
- * out of it here.
+ * `booked` is never set by hand (client, 2026-10-22): it follows a real
+ * booking. "Book a unit" on the lead opens the booking form, saving it makes
+ * the customer from the lead and moves the lead to `booked`; cancelling the
+ * last live booking puts the lead back in `negotiation`. So a booked lead
+ * always has a customer and a booking behind it.
  */
 export const LEAD_STATUS_META: Record<LeadStatus, { label: string; tone: BadgeTone }> = {
   new: { label: 'New', tone: 'neutral' },
@@ -44,7 +47,8 @@ export function allowedNextLeadStatuses(current: LeadStatus): LeadStatus[] {
     return ['contacted', 'site_visit_scheduled', 'site_visit_done', 'negotiation'];
   }
   const next = LEAD_PIPELINE_STEPS[LEAD_PIPELINE_STEPS.indexOf(current) + 1];
-  return [...(next ? [next] : []), 'lost'];
+  // `booked` comes from saving a booking, never from a status button
+  return [...(next && next !== 'booked' ? [next] : []), 'lost'];
 }
 
 export function isLeadClosed(status: LeadStatus): boolean {
@@ -83,83 +87,6 @@ export const MANUAL_ACTIVITY_TYPES: LeadActivityType[] = [
 
 /** Roles that carry leads. Assignment is manual (Section 4.7). */
 export const SALES_ROLES: UserRole[] = ['sales_executive', 'sales_manager', 'head_of_sales'];
-
-/**
- * What each status change asks for before it is confirmed. Every move is
- * logged as a `status_change` activity, so the trail explains itself later.
- */
-export interface LeadStepConfig {
-  title: string;
-  question: string;
-  confirmLabel: string;
-  /** never 'success' — that is for results (POPUP-SYSTEM.md) */
-  tone: 'default' | 'danger' | 'warning';
-  /** prompts for the note that goes into the logged activity */
-  notesPlaceholder: string;
-  notesRequired?: boolean;
-  /** whether the dialog offers a next follow-up date */
-  asksFollowUp?: boolean;
-}
-
-export const LEAD_STEP_CONFIG: Record<LeadStatus, LeadStepConfig> = {
-  new: {
-    title: 'Move back to new',
-    question: 'Put the lead back at the start of the pipeline.',
-    confirmLabel: 'Move to new',
-    tone: 'warning',
-    notesPlaceholder: 'Why is this lead being reset?',
-    asksFollowUp: true,
-  },
-  contacted: {
-    title: 'Mark as contacted',
-    question: 'Record that the buyer has been reached.',
-    confirmLabel: 'Mark contacted',
-    tone: 'default',
-    notesPlaceholder: 'What did they say? Budget, preferred size, timeline…',
-    asksFollowUp: true,
-  },
-  site_visit_scheduled: {
-    title: 'Schedule a site visit',
-    question: 'Record that a site visit has been fixed with the buyer.',
-    confirmLabel: 'Schedule visit',
-    tone: 'default',
-    notesPlaceholder: 'Which project, which day, who is taking them…',
-    asksFollowUp: true,
-  },
-  site_visit_done: {
-    title: 'Confirm site visit',
-    question: 'Record that the buyer has visited the site.',
-    confirmLabel: 'Confirm visit',
-    tone: 'default',
-    notesPlaceholder: 'Which units were shown, what did they react to…',
-    asksFollowUp: true,
-  },
-  negotiation: {
-    title: 'Move to negotiation',
-    question: 'Record that price and terms are being discussed.',
-    confirmLabel: 'Start negotiation',
-    tone: 'default',
-    notesPlaceholder: 'Unit under discussion, price expectation, payment terms…',
-    asksFollowUp: true,
-  },
-  booked: {
-    title: 'Mark as booked',
-    question:
-      'The buyer has committed. Booking, payment schedule and the customer record are handled in the Booking module.',
-    confirmLabel: 'Mark booked',
-    tone: 'default',
-    notesPlaceholder: 'Unit booked, agreed price, booking money taken…',
-    notesRequired: true,
-  },
-  lost: {
-    title: 'Mark as lost',
-    question: 'The lead is dropping out. A reason is required — it is reported on later.',
-    confirmLabel: 'Mark lost',
-    tone: 'danger',
-    notesPlaceholder: 'Why is this lead lost? (required)',
-    notesRequired: true,
-  },
-};
 
 /* ------------------------------------------------------------------ *
  * Follow-up helpers — the sales team's daily task list (Section 4.4)

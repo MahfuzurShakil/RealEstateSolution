@@ -1,15 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { AlertTriangle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
-import { Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
+import { Field, TextArea, TextInput } from '@/components/ui/Field';
 import { useMockSession } from '@/lib/auth/mock-session';
-import type { Customer, Lead } from '@/lib/db/types';
+import type { Customer } from '@/lib/db/types';
 import {
   customerRepository,
   leadRepository,
@@ -42,42 +42,20 @@ const str = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 /**
  * Add / Edit form for a customer (Section 5.3).
  *
- * Picking the lead copies name/phone/email across, so converting a booked lead
- * is not a retyping exercise. Phone is unique here as it is on leads, so the
- * form checks it before saving.
+ * For buyers who never came through the lead pipeline (a walk-in, a referral
+ * taken straight to booking). A lead becomes a customer by being booked
+ * (client, 2026-10-22) — there is no separate "convert" here. If the phone
+ * matches a lead anyway, the customer is linked to it so the trail is kept.
+ * Phone is unique here as it is on leads, so the form checks it before saving.
  */
 export function CustomerForm({ customer }: { customer?: CustomerWithRelations }) {
   const router = useRouter();
-  const params = useSearchParams();
   const { userId } = useMockSession();
   const isEdit = Boolean(customer);
 
   const [form, setForm] = useState<FormState>(customer ? toFormState(customer) : EMPTY);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
-
-  /** Leads worth converting — booked ones first, but any lead is allowed. */
-  const leads = useLiveQuery<Lead[]>(() => leadRepository.list(), []) ?? [];
-
-  // "Create customer" from a lead page hands the lead in through the URL
-  useEffect(() => {
-    const leadId = params.get('lead');
-    if (!leadId) return;
-    leadRepository.getById(leadId).then((lead) => {
-      if (!lead) return;
-      setForm((f) =>
-        f.name || f.phone
-          ? f
-          : {
-              ...f,
-              lead_id: lead.id,
-              name: lead.name,
-              phone: lead.phone,
-              email: lead.email ?? '',
-            },
-      );
-    });
-  }, [params]);
 
   const duplicate =
     useLiveQuery<Customer | null>(
@@ -91,20 +69,17 @@ export function CustomerForm({ customer }: { customer?: CustomerWithRelations })
       [form.phone, customer?.id],
     ) ?? null;
 
+  /** a lead with this phone, so the customer stays linked to its history */
+  const leadMatch = useLiveQuery(
+    () =>
+      isEdit || normalizePhone(form.phone).length < 11
+        ? Promise.resolve(undefined)
+        : leadRepository.findByPhone(form.phone),
+    [form.phone, isEdit],
+  );
+
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
-
-  /** Choosing a lead pulls its details over (Section 5.3). */
-  function pickLead(leadId: string) {
-    const lead = leads.find((l) => l.id === leadId);
-    setForm((f) => ({
-      ...f,
-      lead_id: leadId,
-      ...(lead
-        ? { name: lead.name, phone: lead.phone, email: lead.email ?? f.email }
-        : {}),
-    }));
-  }
 
   function validate(): boolean {
     const next: Record<string, string> = {};
@@ -131,7 +106,7 @@ export function CustomerForm({ customer }: { customer?: CustomerWithRelations })
         nid: form.nid.trim() || null,
         address: form.address.trim() || null,
         profession: form.profession.trim() || null,
-        lead_id: form.lead_id || null,
+        lead_id: form.lead_id || leadMatch?.id || null,
       };
 
       if (customer) {
@@ -151,25 +126,6 @@ export function CustomerForm({ customer }: { customer?: CustomerWithRelations })
       <Card>
         <CardHeader title="Customer" />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Field
-            label="Converted From Lead"
-            className="xl:col-span-3"
-            hint="Picking a lead copies the name, phone and email across."
-          >
-            <SelectInput
-              value={form.lead_id}
-              disabled={isEdit}
-              onChange={(e) => pickLead(e.target.value)}
-            >
-              <option value="">Not from a lead (walk-in buyer)</option>
-              {leads.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.code} — {l.name} ({l.status.replace(/_/g, ' ')})
-                </option>
-              ))}
-            </SelectInput>
-          </Field>
-
           <Field label="Name" required error={errors.name}>
             <TextInput
               value={form.name}
@@ -178,7 +134,12 @@ export function CustomerForm({ customer }: { customer?: CustomerWithRelations })
               invalid={Boolean(errors.name)}
             />
           </Field>
-          <Field label="Phone" required error={errors.phone}>
+          <Field
+            label="Phone"
+            required
+            error={errors.phone}
+            hint={leadMatch ? `Matches lead ${leadMatch.code} (${leadMatch.name}) — it will be linked` : undefined}
+          >
             <TextInput
               value={form.phone}
               onChange={(e) => set('phone', e.target.value)}

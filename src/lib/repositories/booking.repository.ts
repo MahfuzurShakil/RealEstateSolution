@@ -219,6 +219,11 @@ class CustomerRepository extends BaseRepository<Customer> {
 }
 
 export interface BookingInput {
+  /**
+   * Empty when booking straight from a lead: `lead_id` then names the buyer
+   * and the customer is made (or found by phone) as the booking is saved, so
+   * a lead never has to be "converted" as a separate step first.
+   */
   customer_id: string;
   unit_id: string;
   lead_id?: string | null;
@@ -305,6 +310,7 @@ class BookingRepository extends BaseRepository<Booking> {
    * booking money rather than chosen.
    */
   async createBooking(input: BookingInput, createdBy: string | null = null): Promise<Booking> {
+    input = { ...input, ...(await this.resolveBuyer(input, createdBy)) };
     const unit = await db.units.get(input.unit_id);
     if (!unit) throw new Error('Unit not found');
     /*
@@ -375,6 +381,24 @@ class BookingRepository extends BaseRepository<Booking> {
     return booking;
   }
 
+  /**
+   * The customer and lead a booking belongs to. Booked from a lead → the
+   * customer is that lead's (made now if this is its first booking). Booked
+   * for a customer → the lead it came from, if any, so the lead still moves.
+   */
+  private async resolveBuyer(
+    input: Pick<BookingInput, 'customer_id' | 'lead_id'>,
+    createdBy: string | null,
+  ): Promise<{ customer_id: string; lead_id: string | null }> {
+    if (!input.customer_id) {
+      if (!input.lead_id) throw new Error('Pick the buyer — a customer or a lead.');
+      const customer = await customerRepository.fromLead(input.lead_id, createdBy);
+      return { customer_id: customer.id, lead_id: input.lead_id };
+    }
+    const customer = await db.customers.get(input.customer_id);
+    return { customer_id: input.customer_id, lead_id: input.lead_id ?? customer?.lead_id ?? null };
+  }
+
   async generateGroupCode(): Promise<string> {
     const codes = (await db.bookings.toArray())
       .map((b) => b.booking_group)
@@ -407,6 +431,8 @@ class BookingRepository extends BaseRepository<Booking> {
       if (clash) throw new Error(`${clash.code} is already active on ${unit.code}.`);
     }
 
+    // one customer for every unit, made from the lead once rather than per line
+    shared = { ...shared, ...(await this.resolveBuyer(shared, createdBy)) };
     // a single unit is just a booking — no group to tie together
     const booking_group = lines.length > 1 ? await this.generateGroupCode() : null;
     const bookings: Booking[] = [];
@@ -533,9 +559,10 @@ class BookingRepository extends BaseRepository<Booking> {
   /**
    * The side-effects of Section 5.6, in one place so they cannot drift apart:
    *
-   *   hold                   → unit reserved
+   *   hold                   → unit reserved, lead booked
    *   confirmed              → unit booked, lead booked
-   *   cancelled              → unit back to available
+   *   cancelled              → unit back to available, lead back to
+   *                            negotiation unless it has another live booking
    *
    * A unit that a human already moved past booking (sold, handed over) is left
    * alone — those belong to later modules, not to this one.
@@ -556,22 +583,41 @@ class BookingRepository extends BaseRepository<Booking> {
       await db.units.update(unit.id, { status: target, updated_at: nowIso() });
     }
 
-    if (booking.status === 'confirmed' && booking.lead_id) {
-      const lead = await db.leads.get(booking.lead_id);
-      if (lead && lead.status !== 'booked') {
-        await leadActivityRepository.create(
-          {
-            lead_id: lead.id,
-            activity_type: 'status_change',
-            activity_date: nowIso(),
-            next_follow_up_date: null,
-            notes: `${lead.status} → booked. Booking ${booking.code} confirmed for unit ${unit.code}.`,
-          },
-          createdBy,
-        );
-        await db.leads.update(lead.id, { status: 'booked', updated_at: nowIso() });
-      }
-    }
+    if (booking.lead_id) await this.syncLead(booking.lead_id, booking, unit.code, createdBy);
+  }
+
+  /**
+   * A lead is `booked` exactly while it has a live booking (client,
+   * 2026-10-22). Made → booked; its last live booking cancelled or deleted →
+   * back to negotiation, so the desk follows the buyer up again.
+   */
+  private async syncLead(
+    leadId: string,
+    booking: Booking,
+    unitCode: string,
+    createdBy: string | null,
+  ): Promise<void> {
+    const lead = await db.leads.get(leadId);
+    if (!lead) return;
+    const live = (await db.bookings.where('lead_id').equals(leadId).toArray()).some(
+      (b) => b.status !== 'cancelled' && b.id !== (booking.status === 'cancelled' ? booking.id : ''),
+    );
+    const target = live ? 'booked' : lead.status === 'booked' ? 'negotiation' : lead.status;
+    if (target === lead.status) return;
+    await leadActivityRepository.create(
+      {
+        lead_id: lead.id,
+        activity_type: 'status_change',
+        activity_date: nowIso(),
+        next_follow_up_date: null,
+        notes:
+          target === 'booked'
+            ? `${lead.status} → booked. Booking ${booking.code} made for unit ${unitCode}.`
+            : `booked → negotiation. Booking ${booking.code} on ${unitCode} was cancelled.`,
+      },
+      createdBy,
+    );
+    await db.leads.update(lead.id, { status: target, updated_at: nowIso() });
   }
 
   async list(filters: BookingFilters = {}): Promise<Booking[]> {
@@ -702,6 +748,16 @@ class BookingRepository extends BaseRepository<Booking> {
     await db.unit_deliveries.bulkDelete(deliveries.map((d) => d.id));
     await documentRepository.removeForEntity('booking', id);
     await this.remove(id);
+    // a deleted booking frees its lead the same way a cancelled one does
+    if (booking?.lead_id) {
+      await this.syncLead(booking.lead_id, { ...booking, status: 'cancelled' }, '', null);
+    }
+  }
+
+  /** Bookings made from a lead, newest first — the lead page lists them. */
+  async listForLead(leadId: string): Promise<Booking[]> {
+    const rows = await db.bookings.where('lead_id').equals(leadId).toArray();
+    return rows.sort((a, b) => b.created_at.localeCompare(a.created_at));
   }
 }
 

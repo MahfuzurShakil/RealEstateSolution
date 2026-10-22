@@ -9,10 +9,10 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Checkbox, Field, SelectInput, TextInput } from '@/components/ui/Field';
 import { AccountPicker } from '@/components/admin/finance/AccountPicker';
+import { BuyerSelect, buyerValueForLead, parseBuyer } from './BuyerSelect';
 import { useMockSession } from '@/lib/auth/mock-session';
 import {
   PAYMENT_METHODS,
-  type Customer,
   type PaymentMethod,
   type Project,
   type Unit,
@@ -33,7 +33,6 @@ import {
 } from '@/lib/domain/project';
 import {
   bookingRepository,
-  customerRepository,
   projectRepository,
   unitRepository,
   userRepository,
@@ -90,7 +89,9 @@ export function MultiBookingForm() {
   const params = useSearchParams();
   const { userId } = useMockSession();
 
-  const [customerId, setCustomerId] = useState(params.get('customer') ?? '');
+  const [customerId, setCustomerId] = useState(
+    params.get('lead') ? buyerValueForLead(params.get('lead')!) : (params.get('customer') ?? ''),
+  );
   const [projectId, setProjectId] = useState('');
   const [bookingDate, setBookingDate] = useState(todayLocal());
   const [bookedBy, setBookedBy] = useState('');
@@ -101,14 +102,12 @@ export function MultiBookingForm() {
   const [paymentReference, setPaymentReference] = useState('');
   const [accountId, setAccountId] = useState('');
 
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [salesTeam, setSalesTeam] = useState<User[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    customerRepository.list().then(setCustomers);
     projectRepository.list().then(setProjects);
     userRepository.salesTeam().then(setSalesTeam);
   }, []);
@@ -166,7 +165,7 @@ export function MultiBookingForm() {
 
   function validate(): boolean {
     const next: Record<string, string> = {};
-    if (!customerId) next.customer_id = 'Pick the customer';
+    if (!customerId) next.customer_id = 'Pick the buyer';
     if (!bookingDate) next.booking_date = 'Required';
     if (!bookedBy) next.booked_by = 'Pick who made this booking';
     if (lines.length === 0) next.lines = `Tick at least one of the ${itemPlural} below`;
@@ -189,11 +188,10 @@ export function MultiBookingForm() {
     if (!validate()) return;
     setSaving(true);
     try {
-      const customer = customers.find((c) => c.id === customerId);
-      await bookingRepository.createGroupBooking(
+      const result = await bookingRepository.createGroupBooking(
         {
-          customer_id: customerId,
-          lead_id: customer?.lead_id ?? null,
+          // a lead as the buyer becomes a customer as this saves
+          ...parseBuyer(customerId),
           booking_date: bookingDate,
           booked_by: bookedBy,
         },
@@ -217,7 +215,7 @@ export function MultiBookingForm() {
         })),
         userId,
       );
-      router.push(`/admin/customers/${customerId}`);
+      router.push(`/admin/customers/${result.bookings[0]?.customer_id ?? ''}`);
     } catch (err) {
       setErrors({ lines: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -230,20 +228,7 @@ export function MultiBookingForm() {
       <Card>
         <CardHeader title="Buyer" />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Field label="Customer" required error={errors.customer_id}>
-            <SelectInput
-              value={customerId}
-              onChange={(e) => setCustomerId(e.target.value)}
-              invalid={Boolean(errors.customer_id)}
-            >
-              <option value="">Pick a customer</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.code} — {c.name}
-                </option>
-              ))}
-            </SelectInput>
-          </Field>
+          <BuyerSelect value={customerId} onChange={setCustomerId} error={errors.customer_id} />
           <Field label="Booking Date" required error={errors.booking_date}>
             <TextInput
               type="date"

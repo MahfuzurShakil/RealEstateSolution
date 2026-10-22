@@ -1592,6 +1592,12 @@ export interface LeadActivity extends BaseEntity {
   activity_date: ISODateTime;
   /** drives the sales team's daily task list (Section 4.4) */
   next_follow_up_date?: ISODate | null;
+  /**
+   * What a completed stage recorded (lib/domain/lead-stages.ts), as
+   * label → value ready to show, e.g. { "How they took it": "Liked it" }.
+   * Not indexed, so no Dexie version; absent on ordinary log entries.
+   */
+  details?: Record<string, string> | null;
 }
 
 /** Document types for entity_type = 'lead' (Section 4.8) */

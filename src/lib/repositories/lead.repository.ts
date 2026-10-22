@@ -308,6 +308,44 @@ class LeadRepository extends BaseRepository<Lead> {
     });
   }
 
+  /**
+   * Completes the lead's current stage (lib/domain/lead-stages.ts): one log
+   * entry carrying what happened in it, the lead's own record brought up to
+   * date (budget, project, unit), and the lead moved to the next stage.
+   */
+  async completeStage(
+    id: string,
+    input: {
+      to: LeadStatus;
+      activity_type: LeadActivityType;
+      /** when the stage actually happened (YYYY-MM-DD) */
+      event_date: string;
+      title: string;
+      details: Record<string, string>;
+      notes: string;
+      next_follow_up_date: string | null;
+      updates: Partial<Pick<Lead, 'budget_range' | 'interested_project_id' | 'interested_unit_id'>>;
+    },
+    createdBy: string | null = null,
+  ): Promise<Lead | undefined> {
+    const current = await this.getById(id);
+    if (!current) return undefined;
+    // the day it happened, at the time it is being recorded
+    const at = new Date(`${input.event_date}T${new Date().toTimeString().slice(0, 8)}`).toISOString();
+    await leadActivityRepository.create(
+      {
+        lead_id: id,
+        activity_type: input.activity_type,
+        activity_date: at,
+        next_follow_up_date: input.next_follow_up_date,
+        notes: `${input.title}.${input.notes.trim() ? ` ${input.notes.trim()}` : ''}`,
+        details: Object.keys(input.details).length ? input.details : null,
+      },
+      createdBy,
+    );
+    return this.update(id, { ...input.updates, status: input.to, lost_reason: null });
+  }
+
   /** Manual assignment (Section 4.7), logged like any other change. */
   async assign(id: string, userId: string | null, createdBy: string | null = null): Promise<void> {
     const user = userId ? await db.users.get(userId) : undefined;
@@ -324,22 +362,6 @@ class LeadRepository extends BaseRepository<Lead> {
     await this.update(id, { assigned_to: userId });
   }
 
-  /**
-   * Assign several leads at once (C-4).
-   *
-   * A morning's website enquiries arrive together and go to one executive;
-   * doing that one lead at a time meant opening each record. Deliberately a
-   * loop over `assign` rather than a bulk `update`, so every lead still gets
-   * its activity row — the assignment trail is the point of Section 4.7, and
-   * a faster path that skipped it would be a worse feature.
-   */
-  async bulkAssign(
-    ids: string[],
-    userId: string | null,
-    createdBy: string | null = null,
-  ): Promise<void> {
-    for (const id of ids) await this.assign(id, userId, createdBy);
-  }
 
   async countByStatus(): Promise<Record<string, number>> {
     const rows = await db.leads.toArray();

@@ -16,10 +16,10 @@ import {
   validateAgreement,
   type AgreementForm,
 } from './AgreementFields';
+import { BuyerSelect, buyerValueForLead, parseBuyer } from './BuyerSelect';
 import { useMockSession } from '@/lib/auth/mock-session';
 import {
   PAYMENT_METHODS,
-  type Customer,
   type PaymentMethod,
   type Project,
   type Unit,
@@ -40,6 +40,7 @@ import {
 import {
   bookingRepository,
   customerRepository,
+  leadRepository,
   projectRepository,
   unitRepository,
   userRepository,
@@ -130,19 +131,20 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
   const { userId } = useMockSession();
   const isEdit = Boolean(booking);
 
-  // a customer can be handed in from the customer page ("Book a unit")
+  // the buyer can be handed in: ?customer= from a customer page, ?lead= from a lead
   const [form, setForm] = useState<FormState>(() =>
     booking
       ? toFormState(booking)
       : {
           ...EMPTY,
-          customer_id: params.get('customer') ?? '',
+          customer_id: params.get('lead')
+            ? buyerValueForLead(params.get('lead')!)
+            : (params.get('customer') ?? ''),
           // "Sell this unit / share / plot" from the project page hands both in
           project_id: params.get('project') ?? '',
           unit_id: params.get('unit') ?? '',
         },
   );
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [salesTeam, setSalesTeam] = useState<User[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -151,10 +153,43 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    customerRepository.list().then(setCustomers);
     projectRepository.list().then(setProjects);
     userRepository.salesTeam().then(setSalesTeam);
   }, []);
+
+  /*
+   * "Book a unit" on a lead: use its customer if it already has one, and start
+   * from the project and unit the buyer was interested in (if still free), so
+   * nothing the sales desk already knows is typed twice.
+   */
+  const leadParam = isEdit ? null : params.get('lead');
+  useEffect(() => {
+    if (!leadParam) return;
+    (async () => {
+      const lead = await leadRepository.getById(leadParam);
+      if (!lead) return;
+      const customer = await customerRepository.findByPhone(lead.phone);
+      const unit = lead.interested_unit_id ? await unitRepository.getById(lead.interested_unit_id) : undefined;
+      setForm((f) => ({
+        ...f,
+        customer_id: customer ? customer.id : f.customer_id,
+        booked_by: f.booked_by || lead.assigned_to || '',
+        ...(!f.project_id && lead.interested_project_id
+          ? {
+              project_id: lead.interested_project_id,
+              ...(unit && isUnitSellable(unit.status)
+                ? {
+                    unit_id: unit.id,
+                    base_price: String(unit.base_price),
+                    parking_charge:
+                      unit.parking_allocated > 0 ? String(unit.parking_allocated * 500000) : f.parking_charge,
+                  }
+                : {}),
+            }
+          : {}),
+      }));
+    })();
+  }, [leadParam]);
 
   const loadedUnits = useLiveQuery<Unit[]>(
     () =>
@@ -221,7 +256,7 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
 
   function validate(): boolean {
     const next: Record<string, string> = {};
-    if (!form.customer_id) next.customer_id = 'Pick the customer';
+    if (!form.customer_id) next.customer_id = 'Pick the buyer';
     if (!form.unit_id) next.unit_id = `Pick the ${shape.labels.item.toLowerCase()} being booked`;
     if (!form.booking_date) next.booking_date = 'Required';
     if (n(form.base_price) <= 0)
@@ -277,13 +312,12 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
         return;
       }
 
-      const customer = customers.find((c) => c.id === form.customer_id);
       const saved = await bookingRepository.createBooking(
         {
           ...pricing,
-          customer_id: form.customer_id,
+          // a lead as the buyer becomes a customer as this saves
+          ...parseBuyer(form.customer_id),
           unit_id: form.unit_id,
-          lead_id: customer?.lead_id ?? null,
           booked_by: form.booked_by,
           // recording the receipt here creates a real payment row
           payment: form.booking_amount_received
@@ -311,21 +345,12 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
       <Card>
         <CardHeader title="Booking" />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Field label="Customer" required error={errors.customer_id}>
-            <SelectInput
-              value={form.customer_id}
-              disabled={isEdit}
-              onChange={(e) => set('customer_id', e.target.value)}
-              invalid={Boolean(errors.customer_id)}
-            >
-              <option value="">Pick a customer</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.code} — {c.name}
-                </option>
-              ))}
-            </SelectInput>
-          </Field>
+          <BuyerSelect
+            value={form.customer_id}
+            onChange={(v) => set('customer_id', v)}
+            error={errors.customer_id}
+            disabled={isEdit}
+          />
           <Field label="Booking Date" required error={errors.booking_date}>
             <TextInput
               type="date"

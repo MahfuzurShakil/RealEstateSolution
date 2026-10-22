@@ -128,6 +128,18 @@ export function LeadActivityPanel({ leadId }: { leadId: string }) {
 
                   <p className="mt-3 whitespace-pre-wrap text-sm text-ink">{activity.notes}</p>
 
+                  {/* what a completed stage recorded (lib/domain/lead-stages.ts) */}
+                  {activity.details && (
+                    <dl className="mt-3 grid gap-x-6 gap-y-1.5 rounded-xl bg-canvas/70 p-3 text-xs sm:grid-cols-2">
+                      {Object.entries(activity.details).map(([label, value]) => (
+                        <div key={label} className="flex justify-between gap-3">
+                          <dt className="text-ink-muted">{label}</dt>
+                          <dd className="text-right font-medium text-ink">{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+
                   {activity.next_follow_up_date && (
                     <p className="mt-3 flex flex-wrap items-center gap-2 border-t border-hairline pt-3 text-xs text-ink-muted">
                       <CalendarClock className="size-3.5" />

@@ -861,6 +861,29 @@ export class AppDatabase extends Dexie {
         await tx.table('payment_schedules').bulkDelete([...ids]);
         await tx.table('payments').toCollection().modify({ installment_id: null });
       });
+
+    /*
+     * v38 — client 2026-10-22: a lead is `booked` exactly while it has a live
+     * booking. One marked booked by hand with no booking goes back to
+     * negotiation; one whose booking was still on hold catches up to booked.
+     */
+    this.version(38)
+      .stores({})
+      .upgrade(async (tx) => {
+        const live = new Set(
+          (await tx.table('bookings').toArray())
+            .filter((b) => b.status !== 'cancelled' && b.lead_id)
+            .map((b) => b.lead_id as string),
+        );
+        for (const lead of await tx.table('leads').toArray()) {
+          if (lead.status === 'lost') continue;
+          if (live.has(lead.id) && lead.status !== 'booked') {
+            await tx.table('leads').update(lead.id, { status: 'booked' });
+          } else if (!live.has(lead.id) && lead.status === 'booked') {
+            await tx.table('leads').update(lead.id, { status: 'negotiation' });
+          }
+        }
+      });
   }
 }
 
