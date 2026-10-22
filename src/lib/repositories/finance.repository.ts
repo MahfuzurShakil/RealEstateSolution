@@ -804,6 +804,8 @@ class RefundRepository extends BaseRepository<Refund> {
   async issue(
     input: Omit<NewRecord<Refund>, 'code' | 'net_refund'> & { code?: string },
     createdBy: string | null = null,
+    /** demo history only: records that predate the fund rule */
+    options: { skipFundCheck?: boolean } = {},
   ): Promise<Refund> {
     const booking = await db.bookings.get(input.booking_id);
     if (!booking) throw new Error('The booking this refund belongs to no longer exists.');
@@ -821,6 +823,16 @@ class RefundRepository extends BaseRepository<Refund> {
       throw new Error(
         `Only ${left.toLocaleString('en-BD')} BDT is left to refund on this booking — the rest has already been returned.`,
       );
+    }
+
+    // money handed back leaves the project's fund like any other payment (client, 2026-10-22)
+    if (!options.skipFundCheck) {
+      const unit = await db.units.get(booking.unit_id);
+      const tower = unit ? await db.towers.get(unit.tower_id) : undefined;
+      if (tower) {
+        const { assertProjectCanSpend } = await import('./fund.repository');
+        await assertProjectCanSpend(tower.project_id, money(amount - deduction));
+      }
     }
 
     const code = input.code?.trim() ? input.code : await this.generateCode();

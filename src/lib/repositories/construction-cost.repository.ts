@@ -18,6 +18,7 @@ import { formatBdt, todayLocal } from '../utils/format';
 import { bankAccountRepository } from './bank.repository';
 import { BaseRepository, type NewRecord } from './base.repository';
 import { documentRepository } from './document.repository';
+import { assertProjectCanSpend } from './fund.repository';
 import { towerWorkItemRepository } from './site-progress.repository';
 
 /* ------------------------------------------------------------------ *
@@ -554,6 +555,8 @@ class DirectPurchasePaymentRepository extends BaseRepository<DirectPurchasePayme
     if (account.closing_balance + 0.005 < amount) {
       throw new InsufficientFundsError(account.name, account.closing_balance, amount);
     }
+    // the bank may hold it, but it has to be this project's money
+    await assertProjectCanSpend(purchase.project_id, amount);
 
     const saved = await this.create(
       {

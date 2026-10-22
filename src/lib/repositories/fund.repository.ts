@@ -411,3 +411,40 @@ export async function fundLedger(): Promise<{ opening: number; rows: LedgerRow[]
     });
   return { opening, rows };
 }
+
+/* ------------------------------------------------------------------ *
+ * A project spends only its own money
+ * ------------------------------------------------------------------ */
+
+export class ProjectFundShortError extends Error {
+  constructor(
+    public projectName: string,
+    public available: number,
+    public needed: number,
+  ) {
+    super(
+      `${projectName} has ${formatBdt(Math.max(0, available))} left in its fund; this needs ${formatBdt(needed)}. ` +
+        'Give it money from the company pool, or record money in for it, first.',
+    );
+    this.name = 'ProjectFundShortError';
+  }
+}
+
+/** What a project still has to spend: received (own capital, pool, buyers) less paid out. */
+export async function projectFundLeft(projectId: string): Promise<number> {
+  const { projects } = await fundOverview();
+  return projects.find((r) => r.project_id === projectId)?.remaining ?? 0;
+}
+
+/**
+ * Client, 2026-10-22: "money cannot go from nowhere — it must have a
+ * source." A payment out of a project is refused when the project's own
+ * fund cannot cover it; the bank balance alone is no longer enough, because
+ * that money may belong to another project or to the pool.
+ */
+export async function assertProjectCanSpend(projectId: string, amount: number): Promise<void> {
+  const left = await projectFundLeft(projectId);
+  if (left + 0.005 >= amount) return;
+  const project = await db.projects.get(projectId);
+  throw new ProjectFundShortError(project?.name ?? 'This project', left, amount);
+}

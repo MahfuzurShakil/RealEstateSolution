@@ -39,6 +39,7 @@ import {
   partnerRepository,
   fundReceiptRepository,
   fundAllocationRepository,
+  projectFundLeft,
   goodsReceiptRepository,
   purchaseOrderItemRepository,
   purchaseOrderRepository,
@@ -1952,6 +1953,8 @@ async function seedDemoSitePayments(createdBy: string | null): Promise<void> {
     // every third one is paid in part, the way a vendor is often kept waiting
     const amount = i % 3 === 0 ? Math.round(row.due / 2 / 100) * 100 : row.due;
     if (account.closing_balance < amount) continue;
+    // a project short of its own fund leaves the bill unpaid, as the app would
+    if ((await projectFundLeft(row.project_id)) < amount) continue;
     await directPurchasePaymentRepository.pay(
       {
         purchase_id: row.id,
@@ -2513,6 +2516,8 @@ async function seedDemoFinance(
         notes: demo.notes ?? null,
       },
       createdBy,
+      // seeded before the fund exists; the refund is history, not a new payment
+      { skipFundCheck: true },
     );
     const refundedAt = daysFromToday(-demo.days_ago);
     await db.refunds.update(saved.id, { created_at: refundedAt, updated_at: refundedAt });
