@@ -9,7 +9,6 @@ import {
   Layers,
   Plus,
   Search,
-  ShieldAlert,
   UserRound,
   Wallet,
 } from 'lucide-react';
@@ -25,7 +24,6 @@ import { ResultsLayout, ViewToggle, type ViewMode } from '@/components/ui/ViewTo
 import { BOOKING_STATUSES, type BookingStatus } from '@/lib/db/types';
 import {
   BOOKING_STATUS_META,
-  DISCOUNT_APPROVAL_META,
   discountPct,
 } from '@/lib/domain/booking';
 import { projectShape, unitSizeLabel } from '@/lib/domain/project';
@@ -41,13 +39,12 @@ import { formatBdt, formatDate } from '@/lib/utils/format';
 
 type SortKey = 'newest' | 'oldest' | 'value_high' | 'value_low';
 
-/** Booking list — Design Reference A.7, with the approval queue on top. */
+/** Booking list — Design Reference A.7. */
 export default function BookingsListPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<BookingStatus | 'all'>('all');
   const [projectId, setProjectId] = useState('');
   const [bookedBy, setBookedBy] = useState('all');
-  const [awaitingOnly, setAwaitingOnly] = useState(false);
   const [sort, setSort] = useState<SortKey>('newest');
   const [view, setView] = useState<ViewMode>('list');
 
@@ -58,9 +55,8 @@ export default function BookingsListPage() {
         status,
         project_id: projectId || undefined,
         booked_by: bookedBy,
-        awaiting_approval: awaitingOnly,
       }),
-    [search, status, projectId, bookedBy, awaitingOnly],
+    [search, status, projectId, bookedBy],
   );
 
   const allBookings = useLiveQuery(() => bookingRepository.getAll(), []);
@@ -105,11 +101,6 @@ export default function BookingsListPage() {
     [salesTeam],
   );
 
-  const pendingCount = useMemo(
-    () => (allBookings ?? []).filter((b) => b.discount_approval_status === 'pending').length,
-    [allBookings],
-  );
-
   const rows = useMemo(() => {
     const list = [...(bookings ?? [])];
     switch (sort) {
@@ -129,21 +120,20 @@ export default function BookingsListPage() {
   const loading = bookings === undefined;
   const hasAny = (allBookings?.length ?? 0) > 0;
   const filtersActive =
-    Boolean(search) || status !== 'all' || Boolean(projectId) || bookedBy !== 'all' || awaitingOnly;
+    Boolean(search) || status !== 'all' || Boolean(projectId) || bookedBy !== 'all';
 
   function resetFilters() {
     setSearch('');
     setStatus('all');
     setProjectId('');
     setBookedBy('all');
-    setAwaitingOnly(false);
   }
 
   return (
     <>
       <PageHeader
         title="Bookings"
-        subtitle="Units taken by customers — on hold, awaiting discount approval, confirmed or cancelled."
+        subtitle="Units taken by customers — on hold until the booking money is in, then confirmed."
         action={
           <div className="flex gap-2">
             <Link href="/admin/bookings/new-multi">
@@ -159,27 +149,6 @@ export default function BookingsListPage() {
           </div>
         }
       />
-
-      {pendingCount > 0 && (
-        <div className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl border border-hairline bg-white p-4 shadow-sm">
-          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-amber-50 text-amber-600">
-            <ShieldAlert className="size-5" />
-          </span>
-          <p className="mr-auto text-sm text-ink">
-            <span className="font-semibold">Discount approvals:</span>{' '}
-            <span className="text-amber-600">
-              {pendingCount} booking{pendingCount === 1 ? '' : 's'} waiting
-            </span>
-          </p>
-          <Button
-            size="sm"
-            variant={awaitingOnly ? 'primary' : 'outline'}
-            onClick={() => setAwaitingOnly(!awaitingOnly)}
-          >
-            {awaitingOnly ? 'Show all' : 'Show pending'}
-          </Button>
-        </div>
-      )}
 
       <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
         <aside className="min-w-0 space-y-5">
@@ -315,14 +284,7 @@ export default function BookingsListPage() {
                       code={booking.code}
                       title={customer?.name ?? 'Unknown customer'}
                       status={
-                        <>
-                          {booking.discount_approval_status === 'pending' && (
-                            <Badge tone="amber">
-                              <ShieldAlert className="size-3.5" /> Approval pending
-                            </Badge>
-                          )}
-                          <Badge tone={meta.tone}>{meta.label}</Badge>
-                        </>
+                        <Badge tone={meta.tone}>{meta.label}</Badge>
                       }
                       footer={`Booked ${formatDate(booking.booking_date)}`}
                       facts={
@@ -350,14 +312,10 @@ export default function BookingsListPage() {
                             {formatBdt(booking.final_price )}
                           </Badge>
                           {booking.discount_amount > 0 && (
-                            <Badge
-                              tone={DISCOUNT_APPROVAL_META[booking.discount_approval_status].tone}
-                            >
-                              {pct.toFixed(1)}% discount
-                            </Badge>
+                            <Badge tone="neutral">{pct.toFixed(1)}% discount</Badge>
                           )}
                           <Badge tone={booking.booking_amount_received ? 'green' : 'amber'}>
-                            {booking.booking_amount_received ? 'Amount received' : 'Amount pending'}
+                            {booking.booking_amount_received ? 'Booking money in' : 'Booking money pending'}
                           </Badge>
                           {seller && (
                             <Badge tone="blue">

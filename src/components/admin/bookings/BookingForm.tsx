@@ -3,11 +3,19 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { AlertTriangle, Info, ShieldCheck } from 'lucide-react';
+import { FileSignature, Info } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Checkbox, Field, MoneyInput, SelectInput, TextInput } from '@/components/ui/Field';
+import { AccountPicker } from '@/components/admin/finance/AccountPicker';
+import {
+  AgreementFields,
+  agreementInput,
+  emptyAgreement,
+  validateAgreement,
+  type AgreementForm,
+} from './AgreementFields';
 import { useMockSession } from '@/lib/auth/mock-session';
 import {
   PAYMENT_METHODS,
@@ -17,12 +25,7 @@ import {
   type Unit,
   type User,
 } from '@/lib/db/types';
-import {
-  PAYMENT_METHOD_LABEL,
-  discountPct,
-  finalPrice,
-  needsDiscountApproval,
-} from '@/lib/domain/booking';
+import { PAYMENT_METHOD_LABEL, discountPct, finalPrice } from '@/lib/domain/booking';
 import {
   PREMIUM_HINT,
   PREMIUM_LABEL,
@@ -37,8 +40,6 @@ import {
 import {
   bookingRepository,
   customerRepository,
-  discountApprovalRuleRepository,
-  installmentPlanTemplateRepository,
   projectRepository,
   unitRepository,
   userRepository,
@@ -62,10 +63,14 @@ interface FormState {
   booking_amount: string;
   booking_amount_received: boolean;
   booked_by: string;
-  installment_tenure_months: string;
+  /** how much of the booking money came in with the booking (may be part of it) */
+  payment_amount: string;
   payment_date: string;
   payment_method: PaymentMethod;
   payment_reference: string;
+  payment_account_id: string;
+  /** SALES-FLOW-PLAN.md S3 — the agreement signed together with the booking */
+  with_agreement: boolean;
 }
 
 const EMPTY: FormState = {
@@ -84,20 +89,21 @@ const EMPTY: FormState = {
   booking_amount: '',
   booking_amount_received: false,
   booked_by: '',
-  installment_tenure_months: '',
+  payment_amount: '',
   payment_date: todayLocal(),
   payment_method: 'bank',
   payment_reference: '',
+  payment_account_id: '',
+  with_agreement: false,
 };
 
 const n = (v: string) => Number(v) || 0;
 
 /**
- * Add / Edit form for Module 4 (Design Reference A.9).
- *
- * The booking's status is never picked here — it is derived from the two
- * gating facts (Section 5.2), and the form shows in advance what the discount
- * will trigger, so nobody is surprised by a `pending_approval` after saving.
+ * Add / Edit form for Module 4 (Design Reference A.9), simplified 2026-10-22
+ * (SALES-FLOW-PLAN.md S2): who, what, the price, the booking money — and,
+ * optionally, the agreement. The status is never picked: the booking money in
+ * full confirms it. A discount is just a number; nobody has to approve it.
  */
 /**
  * Where each premium lives in this form, and in the computed price parts.
@@ -113,7 +119,7 @@ const PREMIUM_FORM_KEY = {
   road: 'road_premium',
   corner: 'corner_premium',
   // the literal types matter: `keyof FormState` would widen these to include
-  // the boolean field and `form[key]` would stop being a string
+  // the boolean fields and `form[key]` would stop being a string
 } as const satisfies Record<PremiumKind, keyof FormState>;
 
 const PREMIUM_PART_KEY = PREMIUM_FORM_KEY;
@@ -140,6 +146,8 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [salesTeam, setSalesTeam] = useState<User[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [agreement, setAgreement] = useState<AgreementForm>(() => emptyAgreement(todayLocal()));
+  const [agreementErrors, setAgreementErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -174,21 +182,6 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
   const selectedProject = projects.find((p) => p.id === form.project_id);
   const shape = projectShape(selectedProject?.project_type ?? 'apartment');
 
-  /** the project plan template - drives the tenure default and the preview */
-  const plan = useLiveQuery(
-    () =>
-      form.project_id
-        ? installmentPlanTemplateRepository.listForProject(form.project_id)
-        : Promise.resolve([]),
-    [form.project_id],
-  );
-
-  const seller = salesTeam.find((u) => u.id === form.booked_by);
-  const ceiling = useLiveQuery<number | null>(
-    () => discountApprovalRuleRepository.maxDiscountPctFor(seller?.role),
-    [seller?.role],
-  );
-
   const parts = {
     base_price: n(form.base_price),
     /*
@@ -206,20 +199,11 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
   };
   const total = finalPrice(parts);
   const pct = discountPct(parts.base_price, parts.discount_amount);
-  const ceilingValue = ceiling === undefined ? null : ceiling;
-  const willNeedApproval = needsDiscountApproval(
-    parts.base_price,
-    parts.discount_amount,
-    ceilingValue,
-  );
+  const paidNow = form.booking_amount_received ? n(form.payment_amount) : 0;
+  const willConfirm = n(form.booking_amount) > 0 && paidNow >= n(form.booking_amount);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
-
-  const tenureMonths =
-    Number(form.installment_tenure_months) ||
-    plan?.find((p) => p.schedule_type === 'monthly')?.month_count ||
-    0;
 
   /** Picking a unit snapshots its price (Section 5.5). */
   function pickUnit(unitId: string) {
@@ -251,12 +235,15 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
       next.booking_amount = 'Booking amount is more than the final price';
     }
     if (!form.booked_by) next.booked_by = 'Pick who made this booking';
-    const tenure = Number(form.installment_tenure_months);
-    if (form.installment_tenure_months.trim() && (tenure < 1 || tenure > 120)) {
-      next.installment_tenure_months = 'Enter between 1 and 120 months';
+    if (!isEdit && form.booking_amount_received) {
+      if (!(n(form.payment_amount) > 0)) next.payment_amount = 'How much came in?';
+      else if (n(form.payment_amount) > total) next.payment_amount = 'More than the final price';
+      if (!form.payment_account_id) next.payment_account_id = 'Pick the account it went into';
     }
+    const agreementErr = !isEdit && form.with_agreement ? validateAgreement(agreement) : {};
     setErrors(next);
-    return Object.keys(next).length === 0;
+    setAgreementErrors(agreementErr);
+    return Object.keys(next).length === 0 && Object.keys(agreementErr).length === 0;
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -275,7 +262,6 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
         other_charges: parts.other_charges,
         discount_amount: parts.discount_amount,
         booking_amount: n(form.booking_amount),
-        installment_tenure_months: Number(form.installment_tenure_months) || null,
       };
 
       if (booking) {
@@ -302,13 +288,15 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
           // recording the receipt here creates a real payment row
           payment: form.booking_amount_received
             ? {
-                amount: n(form.booking_amount),
+                amount: n(form.payment_amount),
                 payment_date: form.payment_date,
                 payment_method: form.payment_method,
                 reference_no: form.payment_reference,
+                account_id: form.payment_account_id,
                 notes: 'Booking money taken at the time of booking',
               }
             : null,
+          agreement: form.with_agreement ? agreementInput(agreement) : null,
         },
         userId,
       );
@@ -346,18 +334,7 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
               invalid={Boolean(errors.booking_date)}
             />
           </Field>
-          <Field
-            label="Booked By"
-            required
-            error={errors.booked_by}
-            hint={
-              seller && ceilingValue !== null
-                ? `May give up to ${ceilingValue}% without approval`
-                : seller
-                  ? 'No discount ceiling configured — any discount needs approval'
-                  : undefined
-            }
-          >
+          <Field label="Booked By" required error={errors.booked_by}>
             <SelectInput
               value={form.booked_by}
               disabled={isEdit}
@@ -511,48 +488,15 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
           </dl>
         </div>
 
-        {parts.discount_amount > 0 && (
-          <div
-            className={`mt-4 rounded-xl border p-3 ${
-              willNeedApproval
-                ? 'border-amber-200 bg-amber-50'
-                : 'border-emerald-200 bg-emerald-50'
-            }`}
-          >
-            <p
-              className={`flex items-start gap-2 text-sm font-medium ${
-                willNeedApproval ? 'text-amber-800' : 'text-emerald-800'
-              }`}
-            >
-              {willNeedApproval ? (
-                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-              ) : (
-                <ShieldCheck className="mt-0.5 size-4 shrink-0" />
-              )}
-              {willNeedApproval
-                ? `${pct.toFixed(2)}% discount needs approval`
-                : `${pct.toFixed(2)}% discount is within limit`}
-            </p>
-            <p
-              className={`mt-1 text-xs ${willNeedApproval ? 'text-amber-700' : 'text-emerald-700'}`}
-            >
-              {willNeedApproval
-                ? `Above what ${seller?.name ?? 'this role'} may give on their own${
-                    ceilingValue !== null ? ` (${ceilingValue}%)` : ''
-                  }. The booking will sit at Pending Approval until a manager signs off.`
-                : `Within ${seller?.name ?? 'this role'}'s limit — no approval needed.`}
-            </p>
-          </div>
-        )}
       </Card>
 
       <Card>
-        <CardHeader title="Booking Amount & Payment Terms" />
+        <CardHeader title="Booking Money" />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <Field
             label="Booking Amount"
             error={errors.booking_amount}
-            hint="The advance expected from the buyer"
+            hint="The advance that confirms the booking once it is in"
           >
             <MoneyInput
               value={form.booking_amount}
@@ -560,33 +504,19 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
               invalid={Boolean(errors.booking_amount)}
             />
           </Field>
-          <Field
-            label="Instalment Tenure (months)"
-            error={errors.installment_tenure_months}
-            hint={
-              plan && plan.length > 0
-                ? `Project default is ${plan.find((p) => p.schedule_type === 'monthly')?.month_count ?? 24} months`
-                : 'Pick a project first'
-            }
-          >
-            <TextInput
-              type="number"
-              min="1"
-              max="120"
-              value={form.installment_tenure_months}
-              onChange={(e) => set('installment_tenure_months', e.target.value)}
-              placeholder={String(
-                plan?.find((p) => p.schedule_type === 'monthly')?.month_count ?? 24,
-              )}
-              invalid={Boolean(errors.installment_tenure_months)}
-            />
-          </Field>
           {!isEdit && (
-            <div className="flex items-center pt-6">
+            <div className="flex items-center pt-6 xl:col-span-2">
               <Checkbox
-                label="Booking money already received"
+                label="Money received with the booking"
                 checked={form.booking_amount_received}
-                onChange={(e) => set('booking_amount_received', e.target.checked)}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setForm((f) => ({
+                    ...f,
+                    booking_amount_received: on,
+                    payment_amount: on && !f.payment_amount ? f.booking_amount : f.payment_amount,
+                  }));
+                }}
               />
             </div>
           )}
@@ -594,7 +524,23 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
 
         {/* receipt details, so nobody has to reconstruct them months later */}
         {!isEdit && form.booking_amount_received && (
-          <div className="mt-4 grid gap-4 rounded-xl border border-hairline bg-canvas/50 p-4 md:grid-cols-3">
+          <div className="mt-4 grid gap-4 rounded-xl border border-hairline bg-canvas/50 p-4 md:grid-cols-2 xl:grid-cols-3">
+            <Field
+              label="Amount received"
+              required
+              error={errors.payment_amount}
+              hint={
+                n(form.payment_amount) > 0 && n(form.payment_amount) < n(form.booking_amount)
+                  ? `${formatBdt(n(form.booking_amount) - n(form.payment_amount))} short — stays on Hold`
+                  : undefined
+              }
+            >
+              <MoneyInput
+                value={form.payment_amount}
+                onChange={(e) => set('payment_amount', e.target.value)}
+                invalid={Boolean(errors.payment_amount)}
+              />
+            </Field>
             <Field label="Received on" required>
               <TextInput
                 type="date"
@@ -614,6 +560,13 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
                 ))}
               </SelectInput>
             </Field>
+            <AccountPicker
+              value={form.payment_account_id}
+              onChange={(id) => set('payment_account_id', id)}
+              label="Received into"
+              required
+              error={errors.payment_account_id}
+            />
             <Field label="Reference" hint="Cheque no., bank slip, bKash TrxID">
               <TextInput
                 value={form.payment_reference}
@@ -624,54 +577,49 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
           </div>
         )}
 
-        {plan && plan.length > 0 && total > 0 && (
-          <div className="mt-4 rounded-xl border border-hairline p-4">
-            <p className="mb-2 text-sm font-medium text-ink">Payment plan for this buyer</p>
-            <ul className="space-y-1 text-sm text-ink-muted">
-              {plan.map((row) => {
-                const amount = (total * Number(row.percentage)) / 100;
-                const months = row.schedule_type === 'monthly' ? tenureMonths : 0;
-                return (
-                  <li key={row.id} className="flex flex-wrap justify-between gap-2">
-                    <span>
-                      {row.percentage}% {row.label}
-                      {months > 0 && ` over ${months} months`}
-                      {months > 0 && (
-                        <span className="text-xs">
-                          {' '}
-                          ({formatBdt(Math.round(amount / months))}/month)
-                        </span>
-                      )}
-                    </span>
-                    <span className="text-ink">{formatBdt(amount)}</span>
-                  </li>
-                );
-              })}
-            </ul>
-            <p className="mt-3 text-xs text-ink-muted">
-              The instalment rows themselves are generated in the Finance module when the booking
-              confirms — this is the plan they will follow.
-            </p>
-          </div>
-        )}
-
         <p className="mt-3 flex items-start gap-2 text-xs text-ink-muted">
           <Info className="mt-0.5 size-3.5 shrink-0" />
-          A booking confirms itself only when the booking money is fully received <em>and</em> the
-          discount is settled — the status is never set by hand.
+          The booking confirms itself once the full booking amount is received — until then it
+          stays on Hold.
           {isEdit && ' Receipts are recorded on the Payments tab of this booking.'}
         </p>
       </Card>
 
+      {/* SALES-FLOW-PLAN.md S3 — optional now, or later from the Agreement tab */}
+      {!isEdit && (
+        <Card>
+          <CardHeader
+            title="Agreement (চুক্তি)"
+            action={
+              <Checkbox
+                label="Signed now"
+                checked={form.with_agreement}
+                onChange={(e) => set('with_agreement', e.target.checked)}
+              />
+            }
+          />
+          {form.with_agreement ? (
+            <AgreementFields
+              value={agreement}
+              onChange={setAgreement}
+              errors={agreementErrors}
+              finalPrice={total}
+              bookingAmount={n(form.booking_amount)}
+            />
+          ) : (
+            <p className="flex items-start gap-2 text-sm text-ink-muted">
+              <FileSignature className="mt-0.5 size-4 shrink-0" />
+              Not signed yet? Record it later from the booking&apos;s Agreement tab — payment terms,
+              handover date and the scanned copy.
+            </p>
+          )}
+        </Card>
+      )}
+
       <div className="flex flex-wrap items-center justify-end gap-2">
         {!isEdit && (
-          <Badge tone={form.booking_amount_received && !willNeedApproval ? 'green' : 'amber'}>
-            Will be saved as{' '}
-            {form.booking_amount_received && !willNeedApproval
-              ? 'Confirmed'
-              : willNeedApproval
-                ? 'Pending Approval'
-                : 'Hold'}
+          <Badge tone={willConfirm ? 'green' : 'amber'}>
+            Will be saved as {willConfirm ? 'Confirmed' : 'Hold'}
           </Badge>
         )}
         <Button variant="outline" onClick={() => router.back()} disabled={saving}>
@@ -702,11 +650,11 @@ function toFormState(booking: BookingWithRelations): FormState {
     booking_amount: String(booking.booking_amount),
     booking_amount_received: booking.booking_amount_received,
     booked_by: booking.booked_by ?? '',
-    installment_tenure_months: booking.installment_tenure_months
-      ? String(booking.installment_tenure_months)
-      : '',
+    payment_amount: '',
     payment_date: todayLocal(),
     payment_method: 'bank',
     payment_reference: '',
+    payment_account_id: '',
+    with_agreement: false,
   };
 }

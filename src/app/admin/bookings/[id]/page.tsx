@@ -1,14 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
-import { useState, type ReactNode } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ArrowLeft, Building2, Layers, Pencil, Printer, Trash2, Undo2, UserRound } from 'lucide-react';
-import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { BookingStatusCard } from '@/components/admin/bookings/BookingStatusCard';
 import { DeliveryCard } from '@/components/admin/bookings/DeliveryCard';
-import { InstallmentSchedulePanel } from '@/components/admin/finance/InstallmentSchedulePanel';
+import { AgreementPanel } from '@/components/admin/bookings/AgreementPanel';
 import { RefundModal } from '@/components/admin/finance/RefundModal';
 import { PaymentPanel } from '@/components/admin/bookings/PaymentPanel';
 import { Badge } from '@/components/ui/Badge';
@@ -16,7 +15,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { BOOKING_STATUS_META } from '@/lib/domain/booking';
+import { BOOKING_STATUS_META, SALE_PAYMENT_MODE_LABEL, hasAgreement } from '@/lib/domain/booking';
 import { LEAD_STATUS_META } from '@/lib/domain/lead';
 import {
   PREMIUM_FIELD,
@@ -31,7 +30,9 @@ import { bookingRepository, refundRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate, formatPhone } from '@/lib/utils/format';
 
-type Tab = 'overview' | 'schedule' | 'payments' | 'documents';
+/** SALES-FLOW-PLAN.md — the agreement and its documents replace the generated instalments */
+type Tab = 'overview' | 'agreement' | 'payments';
+const TABS: Tab[] = ['overview', 'agreement', 'payments'];
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -42,11 +43,15 @@ function Row({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-/** Booking detail — Design Reference A.8. */
-export default function BookingDetailPage() {
+/** Booking detail — Design Reference A.8. `?tab=` opens a tab directly. */
+function BookingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>('overview');
+  const params = useSearchParams();
+  const [tab, setTab] = useState<Tab>(() => {
+    const asked = params.get('tab') as Tab | null;
+    return asked && TABS.includes(asked) ? asked : 'overview';
+  });
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [refundOpen, setRefundOpen] = useState(false);
 
@@ -71,9 +76,8 @@ export default function BookingDetailPage() {
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
-    { key: 'schedule', label: 'Instalments' },
+    { key: 'agreement', label: hasAgreement(booking) ? 'Agreement' : 'Agreement · not recorded' },
     { key: 'payments', label: 'Payments' },
-    { key: 'documents', label: 'Documents' },
   ];
 
   /*
@@ -210,8 +214,8 @@ export default function BookingDetailPage() {
                     </p>
                     <p className="text-xs text-ink-muted">
                       {formatBdt(booking.final_price - booking.amount_received)} outstanding
-                      {booking.installment_tenure_months
-                        ? ` · ${booking.installment_tenure_months}-month plan`
+                      {booking.payment_mode
+                        ? ` · ${SALE_PAYMENT_MODE_LABEL[booking.payment_mode].toLowerCase()}`
                         : ''}
                     </p>
                   </div>
@@ -320,8 +324,7 @@ export default function BookingDetailPage() {
             </div>
           )}
 
-          {/* Section 8.2 — the schedule the receipts are measured against */}
-          {tab === 'schedule' && <InstallmentSchedulePanel booking={booking} />}
+          {tab === 'agreement' && <AgreementPanel booking={booking} />}
 
           {tab === 'payments' && (
             <Card>
@@ -330,12 +333,6 @@ export default function BookingDetailPage() {
             </Card>
           )}
 
-          {tab === 'documents' && (
-            <Card>
-              <CardHeader title="Documents" />
-              <DocumentsPanel entityType="booking" entityId={booking.id} />
-            </Card>
-          )}
         </div>
 
         <aside className="min-w-0 space-y-5 lg:order-2">
@@ -400,7 +397,7 @@ export default function BookingDetailPage() {
             <Row label="Status" value={BOOKING_STATUS_META[booking.status].label} />
             <Row label="Booking date" value={formatDate(booking.booking_date)} />
             <Row label="Booked by" value={booking.seller?.name} />
-            <Row label="Approved by" value={booking.approver?.name} />
+            <Row label="Agreement" value={booking.agreement_date ? formatDate(booking.agreement_date) : 'Not recorded'} />
             <Row label="Created" value={formatDate(booking.created_at)} />
             <Row label="Last updated" value={formatDate(booking.updated_at)} />
           </Card>
@@ -422,5 +419,14 @@ export default function BookingDetailPage() {
         }}
       />
     </>
+  );
+}
+
+/** `useSearchParams` needs a Suspense boundary (the ?tab= link). */
+export default function Page() {
+  return (
+    <Suspense fallback={<p className="text-sm text-ink-muted">Loading…</p>}>
+      <BookingDetailPage />
+    </Suspense>
   );
 }

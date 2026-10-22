@@ -2,35 +2,23 @@ import type { BadgeTone } from '@/components/ui/Badge';
 import type {
   Booking,
   BookingStatus,
-  DiscountApprovalStatus,
   PaymentMethod,
-  UserRole,
+  SalePaymentMode,
 } from '@/lib/db/types';
 
 /**
- * Module 4 status pipeline (Scope v3.md, Section 5.2):
+ * Booking status (SALES-FLOW-PLAN.md S1, client 2026-10-22):
  *
- *   hold → pending_approval → confirmed
- *        → cancelled  (from hold or pending_approval)
+ *   hold → confirmed      (the booking money is in)
+ *        → cancelled
  *
- * `pending_approval` is conditional — it only appears when the discount goes
- * past what the booking user's role may give away on its own (5.4).
+ * There is no discount approval any more: a small developer's owner gives the
+ * discount himself, so the discount is recorded and shown but never gates.
  */
 export const BOOKING_STATUS_META: Record<BookingStatus, { label: string; tone: BadgeTone }> = {
   hold: { label: 'Hold', tone: 'amber' },
-  pending_approval: { label: 'Pending Approval', tone: 'blue' },
   confirmed: { label: 'Confirmed', tone: 'green' },
   cancelled: { label: 'Cancelled', tone: 'red' },
-};
-
-export const DISCOUNT_APPROVAL_META: Record<
-  DiscountApprovalStatus,
-  { label: string; tone: BadgeTone }
-> = {
-  not_required: { label: 'Not Required', tone: 'neutral' },
-  pending: { label: 'Pending', tone: 'amber' },
-  approved: { label: 'Approved', tone: 'green' },
-  rejected: { label: 'Rejected', tone: 'red' },
 };
 
 export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
@@ -43,7 +31,7 @@ export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
 };
 
 /** The trail shown on the detail page; `cancelled` sits outside it. */
-export const BOOKING_PIPELINE_STEPS: BookingStatus[] = ['hold', 'pending_approval', 'confirmed'];
+export const BOOKING_PIPELINE_STEPS: BookingStatus[] = ['hold', 'confirmed'];
 
 /* ------------------------------------------------------------------ *
  * Pricing (Section 5.6)
@@ -84,9 +72,9 @@ export function finalPrice(parts: PriceParts): number {
 }
 
 /**
- * Discount as a percentage of base price — the number the approval rule is
- * compared against (Section 5.4). Base price is the denominator, not the
- * gross total, so premiums cannot be used to disguise a bigger discount.
+ * Discount as a percentage of base price, shown beside the amount. Base price
+ * is the denominator, not the gross total, so premiums cannot make a big
+ * discount look small.
  */
 export function discountPct(basePrice: number, discountAmount: number): number {
   const base = Number(basePrice) || 0;
@@ -95,111 +83,132 @@ export function discountPct(basePrice: number, discountAmount: number): number {
 }
 
 /* ------------------------------------------------------------------ *
- * Gating (Section 5.2)
+ * Status
  * ------------------------------------------------------------------ */
 
 /**
- * Does this discount need someone senior to sign off?
- * `null` ceiling means the role has no rule configured, so anything it gives
- * away needs approval — safer than silently allowing it.
- */
-export function needsDiscountApproval(
-  basePrice: number,
-  discountAmount: number,
-  maxDiscountPct: number | null,
-): boolean {
-  const pct = discountPct(basePrice, discountAmount);
-  if (pct <= 0) return false;
-  if (maxDiscountPct === null) return true;
-  // a hair of floating-point slack, so 5.00% against a 5% ceiling passes
-  return pct > maxDiscountPct + 0.001;
-}
-
-/**
- * The only rule that promotes a booking to `confirmed` (Section 5.2):
- * the money is in AND the discount is either not an issue or signed off.
- * Both conditions, or it stays where it is.
- */
-export function canConfirm(booking: Pick<
-  Booking,
-  'booking_amount_received' | 'discount_approval_status'
->): boolean {
-  return (
-    booking.booking_amount_received === true &&
-    (booking.discount_approval_status === 'not_required' ||
-      booking.discount_approval_status === 'approved')
-  );
-}
-
-/**
  * Where a booking should sit given its current facts. Called after every edit
- * so the status is never something a user typed by hand — it is derived.
+ * so the status is never something a user typed by hand — it is derived from
+ * the money: the full booking amount received means confirmed.
  */
 export function derivedStatus(
-  booking: Pick<Booking, 'booking_amount_received' | 'discount_approval_status' | 'status'>,
+  booking: Pick<Booking, 'booking_amount_received' | 'status'>,
 ): BookingStatus {
   // cancelled is terminal and only ever set deliberately
   if (booking.status === 'cancelled') return 'cancelled';
-  if (canConfirm(booking)) return 'confirmed';
-  if (booking.discount_approval_status === 'pending') return 'pending_approval';
-  return 'hold';
+  return booking.booking_amount_received ? 'confirmed' : 'hold';
 }
 
-/** What is still missing before the booking can be confirmed. */
-export function blockersForConfirm(
-  booking: Pick<Booking, 'booking_amount_received' | 'discount_approval_status'>,
-): string[] {
-  const blockers: string[] = [];
-  if (!booking.booking_amount_received) blockers.push('Booking amount has not been received');
-  if (booking.discount_approval_status === 'pending') {
-    blockers.push('Discount is waiting for approval');
-  }
-  if (booking.discount_approval_status === 'rejected') {
-    blockers.push('Discount was rejected — adjust it and submit again');
-  }
-  return blockers;
+/* ------------------------------------------------------------------ *
+ * Agreement terms (SALES-FLOW-PLAN.md S3)
+ * ------------------------------------------------------------------ */
+
+export const SALE_PAYMENT_MODE_LABEL: Record<SalePaymentMode, string> = {
+  full: 'Full payment',
+  installment: 'Instalments (kisti)',
+};
+
+export type AgreementTerms = Pick<
+  Booking,
+  | 'booking_date'
+  | 'final_price'
+  | 'booking_amount'
+  | 'payment_mode'
+  | 'full_payment_due_date'
+  | 'installment_count'
+  | 'installment_amount'
+  | 'first_installment_date'
+>;
+
+export function hasAgreement(b: Pick<Booking, 'agreement_date' | 'payment_mode'>): boolean {
+  return Boolean(b.agreement_date || b.payment_mode);
 }
 
-export function isBookingClosed(status: BookingStatus): boolean {
-  return status === 'confirmed' || status === 'cancelled';
+/** `YYYY-MM-DD` plus whole months, the day held (31 Jan + 1 → 28/29 Feb). */
+export function addMonths(date: string, months: number): string {
+  const [y, m, d] = date.split('-').map(Number);
+  const first = new Date(Date.UTC(y, m - 1 + months, 1));
+  const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  first.setUTCDate(Math.min(d, last));
+  return first.toISOString().slice(0, 10);
 }
 
-/** Roles allowed to approve a discount — anyone above a sales executive. */
-export const DISCOUNT_APPROVER_ROLES: UserRole[] = [
-  'sales_manager',
-  'head_of_sales',
-  'management',
-  'super_admin',
-];
-
-export function canApproveDiscount(role: UserRole): boolean {
-  return DISCOUNT_APPROVER_ROLES.includes(role);
+/** What one kisti is: the typed amount, or the balance after booking money split evenly. */
+export function kistiAmount(t: AgreementTerms): number {
+  const typed = Number(t.installment_amount) || 0;
+  if (typed > 0) return typed;
+  const n = Number(t.installment_count) || 0;
+  if (n <= 0) return 0;
+  // whole taka; the last line closes at the final price, so rounding never strands money
+  return Math.round(Math.max(Number(t.final_price) - Number(t.booking_amount), 0) / n);
 }
 
 /**
- * One sentence explaining why the approval step is where it is. "(not needed)"
- * on its own left people guessing, which is exactly the wrong thing for a rule
- * about giving money away.
+ * The dates money is expected on, in order, from the agreement's plain terms.
+ * Nothing is stored: change the terms and every figure built on this moves
+ * with them. The last line always closes at the final price, so rounding in a
+ * typed kisti amount never leaves a few taka owed for ever.
  */
-export function discountApprovalExplanation(
-  booking: Pick<Booking, 'base_price' | 'discount_amount' | 'discount_approval_status'>,
-  sellerName: string | undefined,
-  ceilingPct: number | null,
-): string {
-  const pct = discountPct(booking.base_price, booking.discount_amount);
-  const who = sellerName ?? 'this role';
-  const limit = ceilingPct === null ? 'no configured limit' : `${ceilingPct}% limit`;
+export function expectedLines(t: AgreementTerms): Array<{ date: string; label: string; cumulative: number }> {
+  const total = Number(t.final_price) || 0;
+  const booking = Math.min(Number(t.booking_amount) || 0, total);
+  const lines = [{ date: t.booking_date, label: 'Booking money', cumulative: booking }];
 
-  switch (booking.discount_approval_status) {
-    case 'not_required':
-      return booking.discount_amount > 0
-        ? `${pct.toFixed(2)}% discount is inside ${who}'s ${limit}, so no approval was needed.`
-        : 'No discount was given, so there was nothing to approve.';
-    case 'pending':
-      return `${pct.toFixed(2)}% discount is above ${who}'s ${limit} — a Sales Manager or above has to sign it off before the booking can confirm.`;
-    case 'approved':
-      return `${pct.toFixed(2)}% discount was above ${who}'s ${limit} and has been approved.`;
-    case 'rejected':
-      return `${pct.toFixed(2)}% discount was rejected. Lower it and save — if it lands inside the ${limit}, no approval is needed at all.`;
+  if (t.payment_mode === 'full' && t.full_payment_due_date) {
+    lines.push({ date: t.full_payment_due_date, label: 'Full payment', cumulative: total });
   }
+  if (t.payment_mode === 'installment' && t.first_installment_date) {
+    const n = Math.max(Math.floor(Number(t.installment_count) || 0), 0);
+    const each = kistiAmount(t);
+    for (let k = 1; k <= n; k++) {
+      lines.push({
+        date: addMonths(t.first_installment_date, k - 1),
+        label: `Kisti ${k} of ${n}`,
+        cumulative: k === n ? total : Math.min(booking + each * k, total),
+      });
+    }
+  }
+  return lines;
+}
+
+/** How much the agreement says should be in by `asOf`. */
+export function expectedByDate(t: AgreementTerms, asOf: string): number {
+  let expected = 0;
+  for (const line of expectedLines(t)) if (line.date <= asOf) expected = line.cumulative;
+  return expected;
+}
+
+/**
+ * The first date the receipts do not yet cover, and what is still owed on it.
+ * Its date can be in the past — that is the line the buyer is late on.
+ */
+export function nextDue(
+  t: AgreementTerms,
+  received: number,
+): { date: string; label: string; amount: number } | null {
+  let before = 0;
+  for (const line of expectedLines(t)) {
+    if (line.cumulative > received + 0.5) {
+      return { date: line.date, label: line.label, amount: line.cumulative - Math.max(before, received) };
+    }
+    before = line.cumulative;
+  }
+  return null;
+}
+
+/** The buyer's money in one line: owed, in, left, and how far behind the agreement. */
+export function buyerLedger(t: AgreementTerms, received: number, asOf: string) {
+  const total = Number(t.final_price) || 0;
+  const expected = expectedByDate(t, asOf);
+  const monthEnd = `${asOf.slice(0, 7)}-31`;
+  return {
+    total,
+    received,
+    balance: Math.max(total - received, 0),
+    expected,
+    behind: Math.max(expected - received, 0),
+    /** falling due later this month, on top of anything already behind */
+    due_this_month: Math.max(expectedByDate(t, monthEnd) - Math.max(expected, received), 0),
+    next: nextDue(t, received),
+  };
 }

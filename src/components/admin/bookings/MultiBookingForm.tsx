@@ -3,11 +3,12 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { AlertTriangle, Info, Trash2 } from 'lucide-react';
+import { Info, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Checkbox, Field, SelectInput, TextInput } from '@/components/ui/Field';
+import { AccountPicker } from '@/components/admin/finance/AccountPicker';
 import { useMockSession } from '@/lib/auth/mock-session';
 import {
   PAYMENT_METHODS,
@@ -21,7 +22,6 @@ import {
   PAYMENT_METHOD_LABEL,
   discountPct,
   finalPrice,
-  needsDiscountApproval,
 } from '@/lib/domain/booking';
 import {
   PREMIUM_LABEL,
@@ -34,7 +34,6 @@ import {
 import {
   bookingRepository,
   customerRepository,
-  discountApprovalRuleRepository,
   projectRepository,
   unitRepository,
   userRepository,
@@ -81,10 +80,10 @@ function lineParts(line: Line) {
 /**
  * v32 — "Book several units": one buyer takes two or three units in one go.
  *
- * Each picked unit still becomes its own booking — its own schedule, receipts,
- * discount check and delivery — and the repository ties them together with a
- * shared `booking_group`. Customer, date, sales person, tenure and the receipt
- * details are entered once for all of them.
+ * Each picked unit still becomes its own booking — its own receipts, agreement
+ * and delivery — and the repository ties them together with a shared
+ * `booking_group`. Customer, date, sales person and the receipt details are
+ * entered once for all of them; each agreement is recorded per booking after.
  */
 export function MultiBookingForm() {
   const router = useRouter();
@@ -95,12 +94,12 @@ export function MultiBookingForm() {
   const [projectId, setProjectId] = useState('');
   const [bookingDate, setBookingDate] = useState(todayLocal());
   const [bookedBy, setBookedBy] = useState('');
-  const [tenure, setTenure] = useState('');
   const [lines, setLines] = useState<Line[]>([]);
   const [received, setReceived] = useState(false);
   const [paymentDate, setPaymentDate] = useState(todayLocal());
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('bank');
   const [paymentReference, setPaymentReference] = useState('');
+  const [accountId, setAccountId] = useState('');
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -128,13 +127,6 @@ export function MultiBookingForm() {
   const shape = projectShape(project?.project_type ?? 'apartment');
   const itemPlural = shape.labels.itemPlural.toLowerCase();
 
-  const seller = salesTeam.find((u) => u.id === bookedBy);
-  const ceiling = useLiveQuery<number | null>(
-    () => discountApprovalRuleRepository.maxDiscountPctFor(seller?.role),
-    [seller?.role],
-  );
-  const ceilingValue = ceiling === undefined ? null : ceiling;
-
   const picked = new Set(lines.map((l) => l.unit_id));
   const totals = lines.reduce(
     (acc, l) => {
@@ -144,10 +136,6 @@ export function MultiBookingForm() {
     },
     { final: 0, booking: 0 },
   );
-  const approvals = lines.filter((l) =>
-    needsDiscountApproval(n(l.base_price), n(l.discount_amount), ceilingValue),
-  ).length;
-
   /** Ticking a unit snapshots its price, as picking one on the single form does. */
   function toggleUnit(unit: Unit) {
     setLines((ls) =>
@@ -182,8 +170,7 @@ export function MultiBookingForm() {
     if (!bookingDate) next.booking_date = 'Required';
     if (!bookedBy) next.booked_by = 'Pick who made this booking';
     if (lines.length === 0) next.lines = `Tick at least one of the ${itemPlural} below`;
-    const t = Number(tenure);
-    if (tenure.trim() && (t < 1 || t > 120)) next.tenure = 'Enter between 1 and 120 months';
+    if (received && !accountId) next.account_id = 'Pick the account it went into';
     for (const l of lines) {
       const code = unitById.get(l.unit_id)?.code ?? 'a unit';
       const parts = lineParts(l);
@@ -209,13 +196,12 @@ export function MultiBookingForm() {
           lead_id: customer?.lead_id ?? null,
           booking_date: bookingDate,
           booked_by: bookedBy,
-          installment_tenure_months: Number(tenure) || null,
         },
         lines.map((l) => ({
           unit_id: l.unit_id,
           ...lineParts(l),
           booking_amount: n(l.booking_amount),
-          // each unit's booking money is its own receipt, so each schedule
+          // each unit's booking money is its own receipt, so each booking
           // is credited with exactly what was paid against it
           payment:
             received && n(l.booking_amount) > 0
@@ -224,6 +210,7 @@ export function MultiBookingForm() {
                   payment_date: paymentDate,
                   payment_method: paymentMethod,
                   reference_no: paymentReference,
+                  account_id: accountId,
                   notes: 'Booking money taken at the time of booking (multi-unit)',
                 }
               : null,
@@ -265,16 +252,7 @@ export function MultiBookingForm() {
               invalid={Boolean(errors.booking_date)}
             />
           </Field>
-          <Field
-            label="Booked By"
-            required
-            error={errors.booked_by}
-            hint={
-              seller && ceilingValue !== null
-                ? `May give up to ${ceilingValue}% without approval`
-                : undefined
-            }
-          >
+          <Field label="Booked By" required error={errors.booked_by}>
             <SelectInput
               value={bookedBy}
               onChange={(e) => setBookedBy(e.target.value)}
@@ -305,20 +283,6 @@ export function MultiBookingForm() {
                   </option>
                 ))}
             </SelectInput>
-          </Field>
-          <Field
-            label="Instalment Tenure (months)"
-            error={errors.tenure}
-            hint="Same for every unit; blank uses the project default"
-          >
-            <TextInput
-              type="number"
-              min="1"
-              max="120"
-              value={tenure}
-              onChange={(e) => setTenure(e.target.value)}
-              invalid={Boolean(errors.tenure)}
-            />
           </Field>
         </div>
       </Card>
@@ -373,11 +337,6 @@ export function MultiBookingForm() {
                 {lines.map((l) => {
                   const unit = unitById.get(l.unit_id);
                   const parts = lineParts(l);
-                  const needs = needsDiscountApproval(
-                    parts.base_price,
-                    parts.discount_amount,
-                    ceilingValue,
-                  );
                   const cell = (key: keyof Line) => (
                     <td className="py-2 pr-2">
                       <TextInput
@@ -421,11 +380,8 @@ export function MultiBookingForm() {
                           className="min-w-[110px]"
                         />
                         {parts.discount_amount > 0 && (
-                          <span
-                            className={`mt-1 block text-xs ${needs ? 'text-amber-700' : 'text-emerald-700'}`}
-                          >
-                            {discountPct(parts.base_price, parts.discount_amount).toFixed(2)}%
-                            {needs ? ' · needs approval' : ' · within limit'}
+                          <span className="mt-1 block text-xs text-ink-muted">
+                            {discountPct(parts.base_price, parts.discount_amount).toFixed(2)}% of base
                           </span>
                         )}
                       </td>
@@ -470,7 +426,7 @@ export function MultiBookingForm() {
           onChange={(e) => setReceived(e.target.checked)}
         />
         {received && (
-          <div className="mt-4 grid gap-4 rounded-xl border border-hairline bg-canvas/50 p-4 md:grid-cols-3">
+          <div className="mt-4 grid gap-4 rounded-xl border border-hairline bg-canvas/50 p-4 md:grid-cols-2 xl:grid-cols-4">
             <Field label="Received on" required>
               <TextInput
                 type="date"
@@ -490,6 +446,13 @@ export function MultiBookingForm() {
                 ))}
               </SelectInput>
             </Field>
+            <AccountPicker
+              value={accountId}
+              onChange={setAccountId}
+              label="Received into"
+              required
+              error={errors.account_id}
+            />
             <Field label="Reference" hint="Cheque no., bank slip, bKash TrxID">
               <TextInput
                 value={paymentReference}
@@ -500,15 +463,10 @@ export function MultiBookingForm() {
         )}
         <p className="mt-3 flex items-start gap-2 text-xs text-ink-muted">
           <Info className="mt-0.5 size-3.5 shrink-0" />
-          Each unit becomes its own booking with its own instalment schedule, all sharing one group
-          reference. A unit confirms itself when its booking money is in and its discount is settled.
+          Each unit becomes its own booking, all sharing one group reference. A unit confirms
+          itself when its booking money is in; record each one&apos;s agreement from its booking
+          page.
         </p>
-        {approvals > 0 && (
-          <p className="mt-2 flex items-start gap-2 text-xs text-amber-700">
-            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-            {approvals} of {lines.length} will wait for discount approval.
-          </p>
-        )}
       </Card>
 
       <div className="flex flex-wrap items-center justify-end gap-2">

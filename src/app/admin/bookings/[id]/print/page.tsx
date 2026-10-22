@@ -3,6 +3,7 @@
 import { use } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { PrintField, PrintSheet, SignatureRow } from '@/components/print/PrintSheet';
+import { kistiAmount } from '@/lib/domain/booking';
 import { amountInWords } from '@/lib/domain/document';
 import {
   PREMIUM_FIELD,
@@ -171,11 +172,13 @@ export default function BookingFormPrintPage({ params }: { params: Promise<{ id:
         <div className="grid grid-cols-3 gap-4">
           <PrintField label="Booking money" value={formatBdt(booking.booking_amount)} />
           <PrintField
-            label="Instalment tenure"
+            label="Payment"
             value={
-              booking.installment_tenure_months
-                ? `${booking.installment_tenure_months} months`
-                : 'As per project plan'
+              booking.payment_mode === 'installment' && booking.installment_count
+                ? `${booking.installment_count} monthly kisti of ${formatBdt(kistiAmount(booking))} from ${formatDate(booking.first_installment_date)}`
+                : booking.payment_mode === 'full'
+                  ? `Full price by ${formatDate(booking.full_payment_due_date)}`
+                  : 'As per agreement'
             }
           />
           <PrintField label="Received to date" value={formatBdt(booking.amount_received)} />

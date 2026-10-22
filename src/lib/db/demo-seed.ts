@@ -4,7 +4,6 @@ import { resetCodeMarks } from '../utils/id';
 import {
   bookingRepository,
   customerRepository,
-  discountApprovalRuleRepository,
   documentRepository,
   landProjectMappingRepository,
   leadActivityRepository,
@@ -75,7 +74,8 @@ import { DEMO_DD_FINDINGS } from './demo-dd';
 import { DEMO_ACQUISITION_COSTS, DEMO_NEGOTIATION_ROUNDS } from './demo-negotiation';
 import { DEMO_DEVELOPMENT, DEMO_NO_DEVELOPMENT_LANDS } from './demo-development';
 import { specsFromQuantity } from '../domain/land-development';
-import { DEMO_BOOKINGS, DEMO_CUSTOMERS, DEMO_DISCOUNT_RULES } from './demo-bookings';
+import { DEMO_BOOKINGS, DEMO_CUSTOMERS } from './demo-bookings';
+import { addMonths } from '../domain/booking';
 import { DEMO_LEADS, DEMO_USER_JOINED_DAYS_AGO, DEMO_USERS } from './demo-leads';
 import { DEMO_PROJECTS } from './demo-projects';
 import { templateForItem, towerBasements, workTypeDef } from '../domain/construction-cost';
@@ -1480,11 +1480,6 @@ async function seedDemoBookings(
   const db = getDb();
   const bookingIds = new Map<string, string>();
 
-  // the discount ceilings the gating rule reads (Section 5.4)
-  for (const rule of DEMO_DISCOUNT_RULES) {
-    await discountApprovalRuleRepository.upsertForRole(rule.role, rule.max_discount_pct);
-  }
-
   const customerIds = new Map<string, string>();
   for (const demo of DEMO_CUSTOMERS) {
     const saved = await customerRepository.create(
@@ -1517,12 +1512,13 @@ async function seedDemoBookings(
     if (!customerId || !unitId || !unit) continue;
 
     const customer = await db.customers.get(customerId);
+    const bookingDate = daysFromToday(-demo.days_ago).slice(0, 10);
     const booking = await bookingRepository.createBooking(
       {
         customer_id: customerId,
         unit_id: unitId,
         lead_id: customer?.lead_id ?? null,
-        booking_date: daysFromToday(-demo.days_ago).slice(0, 10),
+        booking_date: bookingDate,
         base_price: unit.base_price,
         floor_premium: demo.floor_premium,
         facing_premium: demo.facing_premium,
@@ -1533,7 +1529,6 @@ async function seedDemoBookings(
         other_charges: demo.other_charges,
         discount_amount: demo.discount_amount,
         booking_amount: demo.booking_amount,
-        installment_tenure_months: demo.installment_tenure_months ?? null,
         booked_by: userIds.get(demo.booked_by_key) ?? null,
         booking_group: demo.group_key
           ? (groupCodes.get(demo.group_key) ??
@@ -1546,7 +1541,7 @@ async function seedDemoBookings(
     );
 
     // receipts drive `booking_amount_received`, so they go in through the
-    // repository and the gating rule settles the status by itself
+    // repository and the status settles by itself
     for (const receipt of demo.payments ?? []) {
       await bookingRepository.recordPayment(
         booking.id,
@@ -1562,14 +1557,28 @@ async function seedDemoBookings(
       );
     }
 
-    if (demo.discount_decision) {
-      await bookingRepository.decideDiscount(
-        booking.id,
-        demo.discount_decision.decision,
-        userIds.get(demo.discount_decision.approver_key) ?? null,
-        demo.discount_decision.note,
-        createdBy,
-      );
+    /*
+     * SALES-FLOW-PLAN.md S3 — the agreement, signed a few days after the
+     * booking money, recorded only on bookings that got their money in.
+     * Six or fewer months reads as "full price by then"; more as monthly kisti.
+     */
+    const paidIn = (demo.payments ?? []).reduce((s, p) => s + p.amount, 0);
+    if (demo.kisti_count && paidIn >= demo.booking_amount && !demo.cancel) {
+      const signed = daysFromToday(-Math.max(demo.days_ago - 5, 0)).slice(0, 10);
+      const full = demo.kisti_count <= 6;
+      await bookingRepository.saveAgreement(booking.id, {
+        agreement_date: signed,
+        agreement_no: `AGR-${booking.code.slice(-3)}`,
+        payment_mode: full ? 'full' : 'installment',
+        full_payment_due_date: full ? addMonths(bookingDate, demo.kisti_count) : null,
+        installment_count: full ? null : demo.kisti_count,
+        installment_amount: null,
+        first_installment_date: full ? null : addMonths(bookingDate, 1),
+        handover_date: addMonths(bookingDate, Math.max(demo.kisti_count, 24)),
+        agreement_terms: full
+          ? 'Full price within the agreed date; registration cost borne by the buyer.'
+          : 'Monthly kisti by the 10th; 2% late fee after 30 days. Utility connection charged at cost.',
+      });
     }
 
     if (demo.cancel) {

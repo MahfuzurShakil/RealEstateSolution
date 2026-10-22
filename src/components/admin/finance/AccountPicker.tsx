@@ -19,18 +19,40 @@ export function AccountPicker({
   value,
   onChange,
   label = 'Paid from',
+  required = false,
+  error,
 }: {
   value: string;
   onChange: (accountId: string) => void;
   label?: string;
+  /**
+   * Buyer receipts (SALES-FLOW-PLAN.md S4): every taka a buyer pays must land
+   * in an account, or Cash Position and the project's money never see it.
+   */
+  required?: boolean;
+  error?: string;
 }) {
   const accounts = useLiveQuery(() => bankAccountRepository.options(), []);
-  if (!accounts || accounts.length === 0) return null;
-
+  if (!accounts) return null;
+  if (accounts.length === 0) {
+    if (!required) return null;
+    return (
+      <Field label={label} required error={error}>
+        <p className="rounded-xl border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+          No bank or cash account is set up yet. Add one under Accounts → Cash Position first.
+        </p>
+      </Field>
+    );
+  }
   return (
-    <Field label={label} hint="Leave blank if it is not known — it shows as unattributed">
-      <SelectInput value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">Not recorded</option>
+    <Field
+      label={label}
+      required={required}
+      error={error}
+      hint={required ? 'The bank or cash account the money went into' : 'Leave blank if it is not known — it shows as unattributed'}
+    >
+      <SelectInput value={value} onChange={(e) => onChange(e.target.value)} invalid={Boolean(error)}>
+        <option value="">{required ? 'Pick an account' : 'Not recorded'}</option>
         {accounts.map((account) => (
           <option key={account.id} value={account.id}>
             {account.name}

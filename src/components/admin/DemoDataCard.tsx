@@ -52,7 +52,7 @@ export function DemoDataCard() {
         <p className="text-sm text-ink-muted">
           {landCount === 0
             ? 'All records have been cleared. Reload the sample dataset to explore the modules with realistic records.'
-            : 'This install is preloaded with sample Bangladeshi records — every pipeline status, both acquisition types, towers with generated units, bookings waiting on a discount approval, and a construction log with towers running ahead of and behind plan.'}
+            : 'This install is preloaded with sample Bangladeshi records — every pipeline status, both acquisition types, towers with generated units, bookings with kisti and full-payment agreements (some buyers behind), and a construction log with towers running ahead of and behind plan.'}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => setAction('reset')}>

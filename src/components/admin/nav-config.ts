@@ -94,6 +94,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Leads', href: '/admin/leads', module: 'crm' },
       { label: 'Bookings', href: '/admin/bookings', module: 'booking' },
       { label: 'Customers', href: '/admin/customers', module: 'booking' },
+      // SALES-FLOW-PLAN.md S5 — who owes what against their agreement, in every purchase mode
+      { label: 'Collections', href: '/admin/collections', module: 'finance_collection' },
     ],
   },
   /*
@@ -144,7 +146,6 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: Coins,
     items: [
       { label: 'Overview', href: '/admin/finance', module: 'dashboard', hiddenInDirect: true },
-      { label: 'Collections', href: '/admin/collections', module: 'finance_collection', hiddenInDirect: true },
       { label: 'Expenses', href: '/admin/expenses', module: 'finance_expense', hiddenInDirect: true },
       { label: 'Refunds', href: '/admin/refunds', module: 'finance_collection', hiddenInDirect: true },
     ],

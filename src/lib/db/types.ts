@@ -1633,12 +1633,11 @@ export interface DiscountApprovalRule extends BaseEntity {
   max_discount_pct: number;
 }
 
-export const BOOKING_STATUSES = [
-  'hold',
-  'pending_approval',
-  'confirmed',
-  'cancelled',
-] as const;
+/**
+ * Client, 2026-10-22 (SALES-FLOW-PLAN.md S1): no discount approval, so no
+ * `pending_approval`. Booking money in → confirmed; v37 re-derived the rest.
+ */
+export const BOOKING_STATUSES = ['hold', 'confirmed', 'cancelled'] as const;
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 
 export const DISCOUNT_APPROVAL_STATUSES = [
@@ -1705,13 +1704,40 @@ export interface Booking extends BaseEntity {
   cancellation_reason?: string | null;
   /** Sales Executive who made the booking */
   booked_by?: UUID | null;
+
+  /*
+   * The agreement (চুক্তি) — SALES-FLOW-PLAN.md S3, client 2026-10-22.
+   *
+   * Replaces the generated instalment schedule: the buyer pays what was
+   * agreed, typed in plain terms, and what should be in by a date is worked
+   * out when read (`expectedByDate`) rather than stored as rows. One agreement
+   * per booking, so the fields live here; none is indexed, so no Dexie store
+   * change. All null until the agreement is recorded.
+   */
+  agreement_date?: ISODate | null;
+  /** deed / agreement serial as written on the paper */
+  agreement_no?: string | null;
+  payment_mode?: SalePaymentMode | null;
+  /** `full` — the whole price is due by this date */
+  full_payment_due_date?: ISODate | null;
+  /** `installment` — the balance after the booking money, in equal monthly kisti */
+  installment_count?: number | null;
+  installment_amount?: number | null;
+  first_installment_date?: ISODate | null;
+  /** promised handover / registration date */
+  handover_date?: ISODate | null;
+  /** anything else the paper says */
+  agreement_terms?: string | null;
 }
+
+export const SALE_PAYMENT_MODES = ['full', 'installment'] as const;
+export type SalePaymentMode = (typeof SALE_PAYMENT_MODES)[number];
 
 /** Document types for entity_type = 'customer' (Section 5.7) */
 export const CUSTOMER_DOCUMENT_TYPES = ['nid_copy', 'photo', 'other'] as const;
 
 /** Document types for entity_type = 'booking' (Section 5.8) */
-export const BOOKING_DOCUMENT_TYPES = ['booking_form', 'payment_receipt', 'other'] as const;
+export const BOOKING_DOCUMENT_TYPES = ['booking_form', 'sale_agreement', 'payment_receipt', 'other'] as const;
 
 
 /* ------------------------------------------------------------------ *

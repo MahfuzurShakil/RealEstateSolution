@@ -88,6 +88,7 @@ function PaymentDialog({
   const [notes, setNotes] = useState('');
   const [accountId, setAccountId] = useState('');
   const [error, setError] = useState('');
+  const [accountError, setAccountError] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function save() {
@@ -100,6 +101,8 @@ function PaymentDialog({
     if (value <= 0) return setError('Amount must be greater than zero');
     if (received === undefined) return;
     if (value > outstanding + 0.01) return setError('That is more than the outstanding balance');
+    setError('');
+    if (!accountId) return setAccountError('Pick the account it went into');
 
     setBusy(true);
     try {
@@ -169,7 +172,17 @@ function PaymentDialog({
             placeholder="e.g. TRX8H2K91LM"
           />
         </Field>
-        <AccountPicker value={accountId} onChange={setAccountId} label="Received into" />
+        {/* SALES-FLOW-PLAN.md S4 — every receipt is money into a bank or cash account */}
+        <AccountPicker
+          value={accountId}
+          onChange={(id) => {
+            setAccountId(id);
+            setAccountError('');
+          }}
+          label="Received into"
+          required
+          error={accountError || undefined}
+        />
 
         <Field label="Notes" className="sm:col-span-2">
           <TextArea

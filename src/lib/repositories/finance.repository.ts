@@ -17,21 +17,19 @@ import type {
 } from '../db/types';
 import { LAND_LINKED_COST_CATEGORIES, PROCUREMENT_BUDGET_HEAD } from '../db/types';
 import {
-  installmentStatus,
   money,
   daysOverdue,
   outstandingOn,
-  planInstallments,
   settledStatus,
   summariseSchedule,
   type ProjectFinanceSummary,
-  type ScheduleSummary,
 } from '../domain/finance';
 import {
   allocatePayments,
   planLandInstallments,
   type LandPaymentTerms,
 } from '../domain/land-schedule';
+import { buyerLedger } from '../domain/booking';
 import { nextCode } from '../utils/id';
 import { todayLocal } from '../utils/format';
 import { BaseRepository, type NewRecord, type UpdateRecord } from './base.repository';
@@ -51,20 +49,6 @@ import { landAcquisitionCostRepository } from './negotiation.repository';
 /* ------------------------------------------------------------------ *
  * Payment schedule + instalments (Section 8.2)
  * ------------------------------------------------------------------ */
-
-export interface ScheduleWithInstallments extends PaymentSchedule {
-  installments: PaymentInstallment[];
-  summary: ScheduleSummary;
-  /** money received that the schedule could not absorb — an advance */
-  unallocated: number;
-  /**
-   * True when the booking has been repriced since the schedule was generated.
-   * The schedule is a snapshot (Section 8.2), so it is never silently rebuilt
-   * — Accounts is shown the gap and decides.
-   */
-  stale_total: boolean;
-  booking_total: number;
-}
 
 /** A land's agreed plan, read alongside what the ledger says has been paid. */
 export interface LandScheduleWithInstallments extends PaymentSchedule {
@@ -100,120 +84,6 @@ class PaymentScheduleRepository extends BaseRepository<PaymentSchedule> {
   constructor() {
     super(() => db.payment_schedules);
   }
-
-  async forBooking(bookingId: string): Promise<PaymentSchedule | undefined> {
-    const rows = await db.payment_schedules
-      .where('[entity_type+entity_id]')
-      .equals(['booking', bookingId])
-      .toArray();
-    return rows[0];
-  }
-
-  /**
-   * Builds the schedule for a confirmed booking (Section 8.2).
-   *
-   * Idempotent: a booking that already has one keeps it, because the lines may
-   * have been edited by hand since ("this buyer pays the milestone in March")
-   * and regenerating would quietly throw that away. `regenerate()` is the
-   * deliberate way to rebuild.
-   */
-  async generateForBooking(
-    bookingId: string,
-    createdBy: string | null = null,
-  ): Promise<PaymentSchedule | undefined> {
-    const existing = await this.forBooking(bookingId);
-    if (existing) return existing;
-
-    const booking = await db.bookings.get(bookingId);
-    if (!booking) return undefined;
-
-    const unit = await db.units.get(booking.unit_id);
-    const tower = unit ? await db.towers.get(unit.tower_id) : undefined;
-    if (!tower) return undefined;
-
-    const template = (await db.installment_plan_templates
-      .where('project_id')
-      .equals(tower.project_id)
-      .toArray()) as Array<{
-      sequence_no: number;
-      label: string;
-      percentage: number;
-      schedule_type: 'on_booking' | 'monthly' | 'on_handover' | 'manual';
-      month_count?: number | null;
-    }>;
-    // a project with no plan gets no schedule rather than a made-up one
-    if (template.length === 0) return undefined;
-
-    const schedule = await this.create(
-      {
-        entity_type: 'booking',
-        entity_id: bookingId,
-        total_amount: money(booking.final_price),
-      },
-      createdBy,
-    );
-
-    const planned = planInstallments(template, {
-      totalAmount: booking.final_price,
-      bookingDate: booking.booking_date,
-      tenureMonths: booking.installment_tenure_months,
-      // the money actually agreed with this buyer beats the template's
-      // percentage, so confirming does not invent an arrear on day one
-      bookingAmount: booking.booking_amount,
-    });
-
-    for (const line of planned) {
-      await paymentInstallmentRepository.create(
-        {
-          schedule_id: schedule.id,
-          installment_no: line.installment_no,
-          label: line.label,
-          due_date: line.due_date,
-          amount_due: line.amount_due,
-          amount_paid: 0,
-          status: 'pending',
-        },
-        createdBy,
-      );
-    }
-
-    // money already taken at booking time now finds its place on the schedule
-    await recalculateForBooking(bookingId);
-    return schedule;
-  }
-
-  /** Throws the schedule away and builds it again from the current price. */
-  async regenerate(bookingId: string, createdBy: string | null = null): Promise<PaymentSchedule | undefined> {
-    await this.removeForBooking(bookingId);
-    return this.generateForBooking(bookingId, createdBy);
-  }
-
-  /** `null` when there is no schedule — distinct from a pending read. */
-  async withInstallments(bookingId: string): Promise<ScheduleWithInstallments | null> {
-    const schedule = await this.forBooking(bookingId);
-    if (!schedule) return null;
-
-    const [installments, booking, payments] = await Promise.all([
-      paymentInstallmentRepository.listForSchedule(schedule.id),
-      db.bookings.get(bookingId),
-      paymentRepository.listForBooking(bookingId),
-    ]);
-
-    const today = todayLocal();
-    const received = money(payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0));
-    const allocated = money(installments.reduce((sum, i) => sum + (Number(i.amount_paid) || 0), 0));
-
-    return {
-      ...schedule,
-      installments,
-      summary: summariseSchedule(installments, today),
-      unallocated: money(Math.max(0, received - allocated)),
-      booking_total: money(booking?.final_price ?? schedule.total_amount),
-      stale_total: Boolean(booking) && Math.abs(booking!.final_price - schedule.total_amount) > 0.009,
-    };
-  }
-
-  /* --- Land purchase schedules (Tier 3.4, Section 8.2) --- */
 
   async forLand(landId: string): Promise<PaymentSchedule | undefined> {
     const rows = await db.payment_schedules
@@ -380,18 +250,6 @@ class PaymentScheduleRepository extends BaseRepository<PaymentSchedule> {
     await this.remove(schedule.id);
   }
 
-  async removeForBooking(bookingId: string): Promise<void> {
-    const schedule = await this.forBooking(bookingId);
-    if (!schedule) return;
-    const lines = await paymentInstallmentRepository.listForSchedule(schedule.id);
-    await db.payment_installments.bulkDelete(lines.map((l) => l.id));
-    // the receipts stay; they just stop pointing at a line that is gone
-    const payments = await paymentRepository.listForBooking(bookingId);
-    for (const payment of payments) {
-      if (payment.installment_id) await paymentRepository.update(payment.id, { installment_id: null });
-    }
-    await this.remove(schedule.id);
-  }
 }
 
 class PaymentInstallmentRepository extends BaseRepository<PaymentInstallment> {
@@ -425,231 +283,114 @@ class PaymentInstallmentRepository extends BaseRepository<PaymentInstallment> {
     });
 
     /*
-     * Which recalculation depends on what the schedule is for. Before Tier 3.4
-     * this called `recalculateForBooking` with whatever `entity_id` held, which
-     * was always a booking id. A land id passed to it would have found no
-     * booking schedule and returned quietly — harmless, and wrong in the way
-     * that only shows up much later.
+     * Only land schedules are left since v37 (buyers follow their agreement
+     * instead), so a line edited here re-spreads the land's payments.
      */
     const schedule = await db.payment_schedules.get(line.schedule_id);
-    if (schedule?.entity_type === 'booking') {
-      await recalculateForBooking(schedule.entity_id, createdBy);
-    } else if (schedule?.entity_type === 'land') {
+    if (schedule?.entity_type === 'land') {
       await recalculateForLand(schedule.entity_id, createdBy);
     }
     return updated;
   }
 }
 
-/**
- * Spreads what the buyer has actually paid across the schedule, oldest
- * instalment first, and writes each line's `amount_paid` and money status.
- *
- * Why a waterfall rather than "one receipt belongs to one instalment":
- *
- * A receipt is a physical event — a cheque, a bKash transfer — and splitting
- * one in half to make it fit two instalment lines would be inventing a
- * transaction that never happened. But buyers do pay in lumps that clear three
- * monthlies at once, and they pay the booking money *before* the schedule
- * exists at all (Module 4 takes it at `hold`, and the schedule is only built
- * at `confirmed`). Both of those are normal, and both break a strict
- * one-receipt-one-line rule.
- *
- * So the receipts stay whole and the ledger allocates them in order.
- * `payments.installment_id` records the line a receipt *started* filling,
- * which is what a receipt is asked to show ("this was your booking money"),
- * and the overflow runs on to the next line. Nothing is stored twice:
- * `amount_paid` is always recomputed from the receipts, so the two can never
- * drift apart.
- *
- * Money left over once every line is full stays unallocated and is reported as
- * an advance rather than being forced onto a line that did not ask for it.
- */
-export async function recalculateForBooking(
-  bookingId: string,
-  createdBy: string | null = null,
-): Promise<void> {
-  void createdBy;
-  const schedule = await paymentScheduleRepository.forBooking(bookingId);
-  if (!schedule) return;
-
-  const installments = await paymentInstallmentRepository.listForSchedule(schedule.id);
-  const payments = (await paymentRepository.listForBooking(bookingId)).sort(
-    (a, b) => a.payment_date.localeCompare(b.payment_date) || a.created_at.localeCompare(b.created_at),
-  );
-
-  const filled = new Map<string, number>(installments.map((line) => [line.id, 0]));
-  const startedAt = new Map<string, string | null>();
-
-  let cursor = 0;
-  for (const payment of payments) {
-    let remaining = Number(payment.amount) || 0;
-    let firstTouched: string | null = null;
-
-    while (remaining > 0.005 && cursor < installments.length) {
-      const line = installments[cursor];
-      const room = (Number(line.amount_due) || 0) - (filled.get(line.id) ?? 0);
-      if (room <= 0.005) {
-        cursor += 1;
-        continue;
-      }
-      const take = Math.min(remaining, room);
-      filled.set(line.id, money((filled.get(line.id) ?? 0) + take));
-      firstTouched ??= line.id;
-      remaining = money(remaining - take);
-      if (take >= room - 0.005) cursor += 1;
-    }
-
-    startedAt.set(payment.id, firstTouched);
-  }
-
-  for (const line of installments) {
-    const paid = money(filled.get(line.id) ?? 0);
-    const status = settledStatus(line.amount_due, paid);
-    if (Math.abs(paid - (Number(line.amount_paid) || 0)) > 0.005 || status !== line.status) {
-      await db.payment_installments.update(line.id, {
-        amount_paid: paid,
-        status,
-        updated_at: new Date().toISOString(),
-      });
-    }
-  }
-
-  for (const payment of payments) {
-    const target = startedAt.get(payment.id) ?? null;
-    if ((payment.installment_id ?? null) !== target) {
-      await db.payments.update(payment.id, {
-        installment_id: target,
-        updated_at: new Date().toISOString(),
-      });
-    }
-  }
-}
-
 /* ------------------------------------------------------------------ *
- * The collections queue (Section 8.2 / 8.3 dashboard)
+ * The collections queue — one row per live booking (SALES-FLOW-PLAN.md S5)
+ *
+ * Since 2026-10-22 a buyer has no generated instalment rows. What should be in
+ * by today comes from the booking's agreement terms (`buyerLedger`), worked
+ * out at read time, so this list is "who owes what, and who is behind".
  * ------------------------------------------------------------------ */
 
 export interface CollectionRow {
-  /** the instalment's own id, so the shared DataTable can key on the row */
+  /** the booking's id, so the shared DataTable can key on the row */
   id: string;
-  installment: PaymentInstallment;
-  /** overdue layered on at read time — see the note on the type */
-  status: 'pending' | 'partially_paid' | 'paid' | 'overdue';
-  outstanding: number;
   booking: Booking;
   customer?: Customer;
   unit?: Unit;
   project?: Project;
+  total: number;
+  received: number;
+  balance: number;
+  /** what the agreement says should be in by today */
+  expected: number;
+  behind: number;
+  due_this_month: number;
+  next: { date: string; label: string; amount: number } | null;
+  state: 'behind' | 'on_track' | 'paid';
 }
 
 export interface CollectionFilters {
   search?: string;
   project_id?: string;
-  status?: 'all' | 'pending' | 'partially_paid' | 'paid' | 'overdue';
-  /** the collections desk's actual worklist */
-  due_only?: boolean;
+  state?: 'all' | CollectionRow['state'];
 }
 
 class CollectionRepository {
   /**
-   * Every instalment across every live booking, with what it is for.
-   *
-   * Cancelled bookings are left out: chasing a buyer for an instalment on a
-   * booking that no longer exists is exactly the mistake this list should
-   * prevent. Their money is still visible through the refund screen.
+   * Every live booking with its money. Cancelled bookings are left out:
+   * chasing a buyer on a booking that no longer exists is exactly the mistake
+   * this list should prevent — their money is on the refund screen.
    */
   async list(filters: CollectionFilters = {}, today = todayLocal()): Promise<CollectionRow[]> {
-    const [schedules, installments, bookings, customers, units, towers, projects] =
-      await Promise.all([
-        db.payment_schedules.toArray(),
-        db.payment_installments.toArray(),
-        db.bookings.toArray(),
-        db.customers.toArray(),
-        db.units.toArray(),
-        db.towers.toArray(),
-        db.projects.toArray(),
-      ]);
+    const [bookings, payments, customers, units, towers, projects] = await Promise.all([
+      db.bookings.toArray(),
+      db.payments.toArray(),
+      db.customers.toArray(),
+      db.units.toArray(),
+      db.towers.toArray(),
+      db.projects.toArray(),
+    ]);
 
-    const bookingById = new Map(bookings.map((b) => [b.id, b]));
+    const paidByBooking = new Map<string, number>();
+    for (const p of payments) {
+      paidByBooking.set(p.booking_id, (paidByBooking.get(p.booking_id) ?? 0) + (Number(p.amount) || 0));
+    }
     const customerById = new Map(customers.map((c) => [c.id, c]));
     const unitById = new Map(units.map((u) => [u.id, u]));
     const towerById = new Map(towers.map((t) => [t.id, t]));
     const projectById = new Map(projects.map((p) => [p.id, p]));
-    /*
-     * Buyer schedules only (Tier 3.4). Since land schedules exist, this table
-     * holds two kinds of instalment and this queue means exactly one of them:
-     * what a *buyer* still owes us. A land instalment is money we owe an owner,
-     * and it has no customer to chase.
-     *
-     * Filtering on `entity_type` rather than relying on the booking join below
-     * to drop them. The join does drop them today, but only as a side effect of
-     * a land id never matching a booking id — an invariant nothing states and
-     * nothing protects.
-     */
-    const bookingByScheduleId = new Map(
-      schedules
-        .filter((s) => s.entity_type === 'booking')
-        .map((s) => [s.id, bookingById.get(s.entity_id)]),
-    );
 
     let rows: CollectionRow[] = [];
-    for (const line of installments) {
-      const booking = bookingByScheduleId.get(line.schedule_id);
-      if (!booking || booking.status === 'cancelled') continue;
-
+    for (const booking of bookings) {
+      if (booking.status === 'cancelled') continue;
       const unit = unitById.get(booking.unit_id);
       const tower = unit ? towerById.get(unit.tower_id) : undefined;
-
+      const ledger = buyerLedger(booking, money(paidByBooking.get(booking.id) ?? 0), today);
       rows.push({
-        id: line.id,
-        installment: line,
-        status: installmentStatus(line, today),
-        outstanding: outstandingOn(line),
+        id: booking.id,
         booking,
         customer: customerById.get(booking.customer_id),
         unit,
         project: tower ? projectById.get(tower.project_id) : undefined,
+        ...ledger,
+        behind: money(ledger.behind),
+        state: ledger.balance <= 0.5 ? 'paid' : ledger.behind > 0.5 ? 'behind' : 'on_track',
       });
     }
 
-    if (filters.due_only) rows = rows.filter((r) => r.status !== 'paid');
-    if (filters.status && filters.status !== 'all') {
-      rows = rows.filter((r) => r.status === filters.status);
-    }
+    if (filters.state && filters.state !== 'all') rows = rows.filter((r) => r.state === filters.state);
     if (filters.project_id) rows = rows.filter((r) => r.project?.id === filters.project_id);
     if (filters.search?.trim()) {
       const q = filters.search.trim().toLowerCase();
       rows = rows.filter((r) =>
-        [
-          r.booking.code,
-          r.customer?.name,
-          r.customer?.phone,
-          r.unit?.code,
-          r.project?.name,
-          r.installment.label,
-        ]
+        [r.booking.code, r.customer?.name, r.customer?.phone, r.unit?.code, r.project?.name]
           .filter(Boolean)
           .some((f) => String(f).toLowerCase().includes(q)),
       );
     }
 
-    /*
-     * Overdue first, then by due date. A collections list read top-down should
-     * be the order somebody works through it, and an undated `manual` line is
-     * nobody's problem today — so it sits at the bottom rather than sorting as
-     * an empty string at the top.
-     */
-    const rank = (r: CollectionRow) => (r.status === 'overdue' ? 0 : r.status === 'paid' ? 2 : 1);
+    // behind first (most first), then whoever is due next
+    const rank = (r: CollectionRow) => (r.state === 'behind' ? 0 : r.state === 'on_track' ? 1 : 2);
     return rows.sort(
       (a, b) =>
         rank(a) - rank(b) ||
-        (a.installment.due_date ?? '9999').localeCompare(b.installment.due_date ?? '9999') ||
-        a.installment.installment_no - b.installment.installment_no,
+        b.behind - a.behind ||
+        (a.next?.date ?? '9999').localeCompare(b.next?.date ?? '9999'),
     );
   }
 
-  /** Headline numbers for the collections page. */
+  /** Headline numbers for the collections page and the owner dashboard. */
   async summary(today = todayLocal()): Promise<{
     billed: number;
     collected: number;
@@ -659,35 +400,26 @@ class CollectionRepository {
     due_this_month: number;
   }> {
     const rows = await this.list({}, today);
-    const monthEnd = `${today.slice(0, 7)}-31`;
-
     let billed = 0;
     let collected = 0;
-    let overdue = 0;
-    let overdueCount = 0;
+    let behind = 0;
+    let behindCount = 0;
     let dueThisMonth = 0;
-
     for (const row of rows) {
-      billed += Number(row.installment.amount_due) || 0;
-      collected += Number(row.installment.amount_paid) || 0;
-      if (row.status === 'overdue') {
-        overdue += row.outstanding;
-        overdueCount += 1;
-      } else if (
-        row.status !== 'paid' &&
-        row.installment.due_date &&
-        row.installment.due_date <= monthEnd
-      ) {
-        dueThisMonth += row.outstanding;
+      billed += row.total;
+      collected += row.received;
+      if (row.behind > 0.5) {
+        behind += row.behind;
+        behindCount += 1;
       }
+      dueThisMonth += row.due_this_month;
     }
-
     return {
       billed: money(billed),
       collected: money(collected),
       outstanding: money(Math.max(0, billed - collected)),
-      overdue_amount: money(overdue),
-      overdue_count: overdueCount,
+      overdue_amount: money(behind),
+      overdue_count: behindCount,
       due_this_month: money(dueThisMonth),
     };
   }
@@ -1206,8 +938,6 @@ class FinanceDashboardRepository {
       towers,
       units,
       bookings,
-      schedules,
-      installments,
       refunds,
       expenses,
       payments,
@@ -1218,8 +948,6 @@ class FinanceDashboardRepository {
       db.towers.toArray(),
       db.units.toArray(),
       db.bookings.toArray(),
-      db.payment_schedules.toArray(),
-      db.payment_installments.toArray(),
       db.refunds.toArray(),
       db.expenses.toArray(),
       db.payments.toArray(),
@@ -1243,17 +971,6 @@ class FinanceDashboardRepository {
       unitById.get(booking.unit_id)?.for_sale_by === 'company';
 
     const bookingById = new Map(bookings.map((b) => [b.id, b]));
-    // buyer schedules only — see the note in `collectionRepository.list`
-    const scheduleBooking = new Map(
-      schedules.filter((s) => s.entity_type === 'booking').map((s) => [s.id, s.entity_id]),
-    );
-    const installmentsBySchedule = new Map<string, typeof installments>();
-    for (const line of installments) {
-      const list = installmentsBySchedule.get(line.schedule_id);
-      if (list) list.push(line);
-      else installmentsBySchedule.set(line.schedule_id, [line]);
-    }
-
     const blank = (project: Project): ProjectFinanceSummary => ({
       project_id: project.id,
       project_name: project.name,
@@ -1286,8 +1003,7 @@ class FinanceDashboardRepository {
      * Collected is read from the receipts rather than from the instalment
      * lines: money taken before a booking was confirmed has no schedule to sit
      * on yet, and leaving it out would under-report what is actually in the
-     * bank. The instalments are used for the overdue cut, which is the one
-     * thing receipts cannot answer.
+     * bank. Overdue is how far each buyer is behind their agreement.
      */
     for (const payment of payments) {
       const booking = bookingById.get(payment.booking_id);
@@ -1297,16 +1013,18 @@ class FinanceDashboardRepository {
       row.collected = money(row.collected + (Number(payment.amount) || 0));
     }
 
-    for (const [scheduleId, lines] of installmentsBySchedule) {
-      const booking = bookingById.get(scheduleBooking.get(scheduleId) ?? '');
-      if (!booking || booking.status === 'cancelled' || !isCompanySale(booking)) continue;
+    const paidByBooking = new Map<string, number>();
+    for (const p of payments) {
+      paidByBooking.set(p.booking_id, (paidByBooking.get(p.booking_id) ?? 0) + (Number(p.amount) || 0));
+    }
+    for (const booking of bookings) {
+      if (booking.status === 'cancelled' || !isCompanySale(booking)) continue;
       const row = byId.get(projectOfBooking(booking) ?? '');
       if (!row) continue;
-      for (const line of lines) {
-        if (installmentStatus(line, today) !== 'overdue') continue;
-        row.overdue_amount = money(row.overdue_amount + outstandingOn(line));
-        row.overdue_count += 1;
-      }
+      const { behind } = buyerLedger(booking, paidByBooking.get(booking.id) ?? 0, today);
+      if (behind <= 0.5) continue;
+      row.overdue_amount = money(row.overdue_amount + behind);
+      row.overdue_count += 1;
     }
 
     for (const refund of refunds) {

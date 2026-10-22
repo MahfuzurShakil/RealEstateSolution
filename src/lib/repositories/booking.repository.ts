@@ -5,25 +5,19 @@ import type {
   Booking,
   BookingStatus,
   Customer,
-  DiscountApprovalRule,
   Lead,
   Project,
   Tower,
   PaymentMethod,
   Unit,
   User,
-  UserRole,
 } from '../db/types';
-import { derivedStatus, finalPrice, needsDiscountApproval } from '../domain/booking';
+import { derivedStatus, finalPrice } from '../domain/booking';
 import { nextCode, nowIso } from '../utils/id';
 import { BaseRepository, type NewRecord } from './base.repository';
 import { documentRepository } from './document.repository';
 import { leadActivityRepository, normalizePhone } from './lead.repository';
-import {
-  paymentScheduleRepository,
-  recalculateForBooking,
-  refundRepository,
-} from './finance.repository';
+import { refundRepository } from './finance.repository';
 import { paymentRepository } from './payment.repository';
 
 export interface BookingFilters {
@@ -31,8 +25,6 @@ export interface BookingFilters {
   status?: BookingStatus | 'all';
   project_id?: string;
   booked_by?: string | 'all';
-  /** narrows to bookings a manager has to act on */
-  awaiting_approval?: boolean;
 }
 
 /** A booking plus everything its detail page shows. */
@@ -43,7 +35,6 @@ export interface BookingWithRelations extends Booking {
   project: Project | undefined;
   lead: Lead | undefined;
   seller: User | undefined;
-  approver: User | undefined;
   /** money actually received against this booking so far */
   amount_received: number;
   /** v32 — the other bookings made in the same go, with their unit codes */
@@ -227,25 +218,6 @@ class CustomerRepository extends BaseRepository<Customer> {
   }
 }
 
-class DiscountApprovalRuleRepository extends BaseRepository<DiscountApprovalRule> {
-  constructor() {
-    super(() => db.discount_approval_rules);
-  }
-
-  /** Ceiling for a role, or null when no rule is configured (Section 5.4). */
-  async maxDiscountPctFor(role: UserRole | undefined): Promise<number | null> {
-    if (!role) return null;
-    const rule = await db.discount_approval_rules.where('role').equals(role).first();
-    return rule ? Number(rule.max_discount_pct) : null;
-  }
-
-  async upsertForRole(role: UserRole, maxDiscountPct: number): Promise<void> {
-    const existing = await db.discount_approval_rules.where('role').equals(role).first();
-    if (existing) await this.update(existing.id, { max_discount_pct: maxDiscountPct });
-    else await this.create({ role, max_discount_pct: maxDiscountPct });
-  }
-}
-
 export interface BookingInput {
   customer_id: string;
   unit_id: string;
@@ -265,10 +237,11 @@ export interface BookingInput {
   other_charges: number;
   discount_amount: number;
   booking_amount: number;
-  installment_tenure_months?: number | null;
   booked_by: string | null;
   /** v32 — set by `createGroupBooking`; a single booking leaves it null */
   booking_group?: string | null;
+  /** SALES-FLOW-PLAN.md S3 — optional at booking time, can be recorded later */
+  agreement?: AgreementInput | null;
   /**
    * Optional receipt taken at the same moment as the booking. Recording it
    * creates a real `payments` row — `booking_amount_received` is then derived
@@ -280,7 +253,39 @@ export interface BookingInput {
     payment_method: PaymentMethod;
     reference_no?: string | null;
     notes?: string | null;
+    /** the account the money landed in — what puts it in Cash Position */
+    account_id?: string | null;
   } | null;
+}
+
+/** The agreement (চুক্তি) fields, as typed — see `Booking` for what each means. */
+export type AgreementInput = Pick<
+  Booking,
+  | 'agreement_date'
+  | 'agreement_no'
+  | 'payment_mode'
+  | 'full_payment_due_date'
+  | 'installment_count'
+  | 'installment_amount'
+  | 'first_installment_date'
+  | 'handover_date'
+  | 'agreement_terms'
+>;
+
+/** Keeps only the fields the chosen payment mode uses, so stale terms never linger. */
+function cleanAgreement(a: AgreementInput): AgreementInput {
+  const mode = a.payment_mode ?? null;
+  return {
+    agreement_date: a.agreement_date || null,
+    agreement_no: a.agreement_no?.trim() || null,
+    payment_mode: mode,
+    full_payment_due_date: mode === 'full' ? a.full_payment_due_date || null : null,
+    installment_count: mode === 'installment' ? Number(a.installment_count) || null : null,
+    installment_amount: mode === 'installment' ? Number(a.installment_amount) || null : null,
+    first_installment_date: mode === 'installment' ? a.first_installment_date || null : null,
+    handover_date: a.handover_date || null,
+    agreement_terms: a.agreement_terms?.trim() || null,
+  };
 }
 
 class BookingRepository extends BaseRepository<Booking> {
@@ -294,10 +299,10 @@ class BookingRepository extends BaseRepository<Booking> {
   }
 
   /**
-   * Creates a booking and applies every side-effect of Section 5.6 together:
-   * the unit is reserved (or marked booked when the booking lands confirmed),
-   * the lead is moved to `booked` on confirmation, and the status itself is
-   * derived from the gating rule rather than chosen.
+   * Creates a booking and applies every side-effect together: the unit is
+   * reserved (or marked booked when the booking lands confirmed), the lead is
+   * moved to `booked` on confirmation, and the status is derived from the
+   * booking money rather than chosen.
    */
   async createBooking(input: BookingInput, createdBy: string | null = null): Promise<Booking> {
     const unit = await db.units.get(input.unit_id);
@@ -313,22 +318,9 @@ class BookingRepository extends BaseRepository<Booking> {
       throw new Error(`Sales are not open on ${project.code}, so it cannot take a booking. Open sales on the project first.`);
     }
 
-    const seller = input.booked_by ? await db.users.get(input.booked_by) : undefined;
-    const ceiling = await discountApprovalRuleRepository.maxDiscountPctFor(seller?.role);
-    const requiresApproval = needsDiscountApproval(
-      input.base_price,
-      input.discount_amount,
-      ceiling,
-    );
-
-    const discount_approval_status = requiresApproval ? 'pending' : 'not_required';
     // the money decides this, not a checkbox
     const received = (input.payment?.amount ?? 0) >= input.booking_amount && input.booking_amount > 0;
-    const status = derivedStatus({
-      booking_amount_received: received,
-      discount_approval_status,
-      status: 'hold',
-    });
+    const status = derivedStatus({ booking_amount_received: received, status: 'hold' });
 
     const booking = await super.create(
       {
@@ -349,14 +341,16 @@ class BookingRepository extends BaseRepository<Booking> {
         final_price: finalPrice(input),
         booking_amount: input.booking_amount,
         booking_amount_received: received,
-        installment_tenure_months: input.installment_tenure_months ?? null,
-        discount_approval_status,
+        installment_tenure_months: null,
+        // the column is the scope's; nothing gates on it since v37
+        discount_approval_status: 'not_required',
         discount_approved_by: null,
         discount_decision_note: null,
         status,
         cancellation_reason: null,
         booked_by: input.booked_by,
         booking_group: input.booking_group ?? null,
+        ...(input.agreement ? cleanAgreement(input.agreement) : {}),
       },
       createdBy,
     );
@@ -368,6 +362,7 @@ class BookingRepository extends BaseRepository<Booking> {
           amount: input.payment.amount,
           payment_date: input.payment.payment_date,
           payment_method: input.payment.payment_method,
+          account_id: input.payment.account_id ?? null,
           reference_no: input.payment.reference_no,
           received_by: input.booked_by,
           notes: input.payment.notes,
@@ -389,21 +384,15 @@ class BookingRepository extends BaseRepository<Booking> {
 
   /**
    * v32 — one buyer, several units, one go. Each unit still becomes its own
-   * booking (its own price, discount check, schedule and receipts), all
+   * booking (its own price, receipts and agreement), all
    * carrying the same `booking_group`. Every unit is checked before anything
    * is written, so a clash on the third unit does not leave the first two
    * booked on their own.
    */
   async createGroupBooking(
-    shared: Pick<
-      BookingInput,
-      'customer_id' | 'lead_id' | 'booking_date' | 'booked_by' | 'installment_tenure_months'
-    >,
+    shared: Pick<BookingInput, 'customer_id' | 'lead_id' | 'booking_date' | 'booked_by'>,
     lines: Array<
-      Omit<
-        BookingInput,
-        'customer_id' | 'lead_id' | 'booking_date' | 'booked_by' | 'installment_tenure_months' | 'booking_group'
-      >
+      Omit<BookingInput, 'customer_id' | 'lead_id' | 'booking_date' | 'booked_by' | 'booking_group'>
     >,
     createdBy: string | null = null,
   ): Promise<{ booking_group: string | null; bookings: Booking[] }> {
@@ -437,7 +426,7 @@ class BookingRepository extends BaseRepository<Booking> {
 
   /**
    * Re-derives `booking_amount_received` from the payments actually recorded,
-   * then lets the gating rule settle the status. Called after any money moves,
+   * then lets that settle the status. Called after any money moves,
    * so the flag can never drift away from the receipts.
    */
   async syncFromPayments(id: string, createdBy: string | null = null): Promise<Booking | undefined> {
@@ -455,34 +444,17 @@ class BookingRepository extends BaseRepository<Booking> {
     return updated;
   }
 
-  /** Edits the money on a booking and re-runs the gating rule. */
+  /** Edits the money on a booking and re-derives its status. */
   async updatePricing(
     id: string,
     input: Omit<
       BookingInput,
-      'customer_id' | 'unit_id' | 'lead_id' | 'booked_by' | 'payment'
+      'customer_id' | 'unit_id' | 'lead_id' | 'booked_by' | 'payment' | 'agreement'
     >,
     createdBy: string | null = null,
   ): Promise<Booking | undefined> {
     const current = await this.getById(id);
     if (!current) return undefined;
-
-    const seller = current.booked_by ? await db.users.get(current.booked_by) : undefined;
-    const ceiling = await discountApprovalRuleRepository.maxDiscountPctFor(seller?.role);
-    const requiresApproval = needsDiscountApproval(
-      input.base_price,
-      input.discount_amount,
-      ceiling,
-    );
-
-    /*
-     * Re-submitting after a rejection is the documented way back (5.6): the
-     * discount is adjusted and goes round again. If it now sits inside the
-     * ceiling, no approval is needed at all.
-     */
-    let discount_approval_status = current.discount_approval_status;
-    if (!requiresApproval) discount_approval_status = 'not_required';
-    else if (current.discount_approval_status !== 'approved') discount_approval_status = 'pending';
 
     // changing the expected booking amount can flip whether it is covered
     const received = await paymentRepository.totalForBooking(id);
@@ -492,26 +464,19 @@ class BookingRepository extends BaseRepository<Booking> {
       ...input,
       booking_amount_received: isReceived,
       final_price: finalPrice(input),
-      discount_approval_status,
-      discount_approved_by:
-        discount_approval_status === 'approved' ? current.discount_approved_by : null,
-      // a resubmitted discount starts with a clean slate
-      discount_decision_note:
-        discount_approval_status === current.discount_approval_status
-          ? current.discount_decision_note
-          : null,
-      status: derivedStatus({
-        booking_amount_received: isReceived,
-        discount_approval_status,
-        status: current.status,
-      }),
+      status: derivedStatus({ booking_amount_received: isReceived, status: current.status }),
     });
 
     if (updated) await this.applySideEffects(updated, createdBy);
     return updated;
   }
 
-  /** Records a receipt against the booking, then re-runs the gating rule. */
+  /** Records or edits the agreement (চুক্তি). Status does not depend on it. */
+  async saveAgreement(id: string, input: AgreementInput): Promise<Booking | undefined> {
+    return this.update(id, cleanAgreement(input));
+  }
+
+  /** Records a receipt against the booking, then re-derives its status. */
   async recordPayment(
     id: string,
     input: {
@@ -545,7 +510,7 @@ class BookingRepository extends BaseRepository<Booking> {
     return this.syncFromPayments(id, createdBy);
   }
 
-  /** Deletes a receipt entered by mistake, then re-runs the gating rule. */
+  /** Deletes a receipt entered by mistake, then re-derives the status. */
   async removePayment(
     bookingId: string,
     paymentId: string,
@@ -553,98 +518,6 @@ class BookingRepository extends BaseRepository<Booking> {
   ): Promise<Booking | undefined> {
     await paymentRepository.removeCascade(paymentId);
     return this.syncFromPayments(bookingId, createdBy);
-  }
-
-  /**
-   * Approve or reject the discount (Section 5.6). A rejection drops the
-   * booking back to `hold` with the reason recorded, so the sales person can
-   * adjust and submit again.
-   */
-  async decideDiscount(
-    id: string,
-    decision: 'approved' | 'rejected',
-    approverId: string | null,
-    note: string,
-    createdBy: string | null = null,
-  ): Promise<Booking | undefined> {
-    const current = await this.getById(id);
-    if (!current) return undefined;
-
-    const updated = await this.update(id, {
-      discount_approval_status: decision,
-      discount_approved_by: decision === 'approved' ? approverId : null,
-      discount_decision_note: note.trim() || null,
-      // a rejection lands back on `hold`, which derivedStatus works out on its own
-      status: derivedStatus({ ...current, discount_approval_status: decision }),
-    });
-
-    if (updated) {
-      await this.applySideEffects(updated, createdBy);
-      // the decision belongs on the lead's trail too, when there is one
-      if (updated.lead_id) {
-        await leadActivityRepository.create(
-          {
-            lead_id: updated.lead_id,
-            activity_type: 'status_change',
-            activity_date: nowIso(),
-            next_follow_up_date: null,
-            notes: `Discount ${decision} on ${updated.code}${note.trim() ? `. ${note.trim()}` : ''}`,
-          },
-          createdBy,
-        );
-      }
-    }
-    return updated;
-  }
-
-  /**
-   * Puts a rejected discount back in front of an approver.
-   *
-   * A rejection leaves the booking on `hold` with the discount unchanged, and
-   * the only route back was the Edit form — where re-saving the same figures
-   * is what re-queues it, which is not something a sales person would guess.
-   * This is that same transition, said out loud.
-   *
-   * Only a rejected discount can be resubmitted. If the discount had been
-   * lowered inside the seller's ceiling, `update` would already have set it
-   * to `not_required`, so reaching this state means it still needs a decision.
-   */
-  async resubmitDiscount(
-    id: string,
-    note: string,
-    createdBy: string | null = null,
-  ): Promise<Booking | undefined> {
-    const current = await this.getById(id);
-    if (!current) return undefined;
-    if (current.discount_approval_status !== 'rejected') {
-      throw new Error('Only a rejected discount can be resubmitted for approval.');
-    }
-
-    const updated = await this.update(id, {
-      discount_approval_status: 'pending',
-      discount_approved_by: null,
-      discount_decision_note: note.trim() || null,
-      status: derivedStatus({ ...current, discount_approval_status: 'pending' }),
-    });
-
-    if (updated) {
-      await this.applySideEffects(updated, createdBy);
-      if (updated.lead_id) {
-        await leadActivityRepository.create(
-          {
-            lead_id: updated.lead_id,
-            activity_type: 'status_change',
-            activity_date: nowIso(),
-            next_follow_up_date: null,
-            notes: `Discount resubmitted for approval on ${updated.code}${
-              note.trim() ? `. ${note.trim()}` : ''
-            }`,
-          },
-          createdBy,
-        );
-      }
-    }
-    return updated;
   }
 
   /** Cancels a booking and hands the unit back (Section 5.6). */
@@ -660,7 +533,7 @@ class BookingRepository extends BaseRepository<Booking> {
   /**
    * The side-effects of Section 5.6, in one place so they cannot drift apart:
    *
-   *   hold / pending_approval → unit reserved
+   *   hold                   → unit reserved
    *   confirmed              → unit booked, lead booked
    *   cancelled              → unit back to available
    *
@@ -682,21 +555,6 @@ class BookingRepository extends BaseRepository<Booking> {
     if (!untouchable && unit.status !== target) {
       await db.units.update(unit.id, { status: target, updated_at: nowIso() });
     }
-
-    /*
-     * Section 8.2 — a confirmed booking gets its instalment schedule, built
-     * from the project's plan template. It is generated here rather than on
-     * the Finance screens so it exists the moment the booking is real, and
-     * `generateForBooking` is idempotent: a booking that already has one keeps
-     * it, edits and all.
-     */
-    if (booking.status === 'confirmed') {
-      await paymentScheduleRepository.generateForBooking(booking.id, createdBy);
-    }
-
-    // money already taken is spread across the schedule (or re-spread, when a
-    // receipt has just been added or removed)
-    await recalculateForBooking(booking.id, createdBy);
 
     if (booking.status === 'confirmed' && booking.lead_id) {
       const lead = await db.leads.get(booking.lead_id);
@@ -721,9 +579,6 @@ class BookingRepository extends BaseRepository<Booking> {
 
     if (filters.status && filters.status !== 'all') {
       rows = rows.filter((b) => b.status === filters.status);
-    }
-    if (filters.awaiting_approval) {
-      rows = rows.filter((b) => b.discount_approval_status === 'pending');
     }
     if (filters.booked_by && filters.booked_by !== 'all') {
       rows = rows.filter((b) => b.booked_by === filters.booked_by);
@@ -789,9 +644,6 @@ class BookingRepository extends BaseRepository<Booking> {
       lead: booking.lead_id ? await db.leads.get(booking.lead_id) : undefined,
       seller: booking.booked_by ? await db.users.get(booking.booked_by) : undefined,
       amount_received: await paymentRepository.totalForBooking(booking.id),
-      approver: booking.discount_approved_by
-        ? await db.users.get(booking.discount_approved_by)
-        : undefined,
     };
   }
 
@@ -840,9 +692,7 @@ class BookingRepository extends BaseRepository<Booking> {
         await db.units.update(unit.id, { status: 'available', updated_at: nowIso() });
       }
     }
-    // the schedule, the receipts and any refund all belong to this booking and
-    // mean nothing without it
-    await paymentScheduleRepository.removeForBooking(id);
+    // the receipts and any refund belong to this booking and mean nothing without it
     for (const refund of await refundRepository.listForBooking(id)) {
       await refundRepository.removeCascade(refund.id);
     }
@@ -863,4 +713,3 @@ async function unitIdsForProject(projectId: string): Promise<string[]> {
 
 export const customerRepository = new CustomerRepository();
 export const bookingRepository = new BookingRepository();
-export const discountApprovalRuleRepository = new DiscountApprovalRuleRepository();

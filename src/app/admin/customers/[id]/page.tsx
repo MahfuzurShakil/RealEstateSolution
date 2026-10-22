@@ -227,9 +227,11 @@ export default function CustomerDetailPage() {
                                   customer.finance.received_by_booking[booking.id] ?? 0 ,
                                 )}{' '}
                                 received
-                                {booking.installment_tenure_months
-                                  ? ` · ${booking.installment_tenure_months}-month plan`
-                                  : ''}
+                                {booking.payment_mode === 'installment' && booking.installment_count
+                                  ? ` · ${booking.installment_count} kisti`
+                                  : booking.payment_mode === 'full'
+                                    ? ' · full payment'
+                                    : ''}
                               </>
                             )}
                           </p>

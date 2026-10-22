@@ -4,14 +4,8 @@ import Link from 'next/link';
 import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
-import {
-  AlertTriangle,
-  Building2,
-  CalendarClock,
-  CircleDollarSign,
-  Wallet,
-} from 'lucide-react';
-import { Badge } from '@/components/ui/Badge';
+import { AlertTriangle, Building2, CalendarClock, CircleDollarSign, Wallet } from 'lucide-react';
+import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -19,28 +13,23 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { FilterBar, FilterSelect } from '@/components/ui/FilterBar';
 import { ExportCsvButton } from '@/components/ui/ExportCsvButton';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { INSTALLMENT_STATUS_META, daysOverdue } from '@/lib/domain/finance';
 import type { CollectionRow } from '@/lib/repositories';
 import type { CsvColumn } from '@/lib/utils/csv';
 import { collectionRepository, projectRepository } from '@/lib/repositories';
 import { formatBdt, formatDate, formatPhone, todayLocal } from '@/lib/utils/format';
 import { RecordPaymentModal } from '@/components/admin/bookings/RecordPaymentModal';
 
-type StatusFilter = 'all' | 'pending' | 'partially_paid' | 'paid' | 'overdue';
+type StateFilter = 'all' | CollectionRow['state'];
 
-/**
- * The collections queue (Section 8.2).
- *
- * Every instalment across every live booking, overdue first — this is meant to
- * be worked through from the top. Cancelled bookings are excluded by the
- * repository: chasing an instalment on a booking that no longer exists is the
- * mistake this list is here to prevent.
- */
+const STATE_META: Record<CollectionRow['state'], { label: string; tone: BadgeTone }> = {
+  behind: { label: 'Behind', tone: 'red' },
+  on_track: { label: 'On track', tone: 'blue' },
+  paid: { label: 'Fully paid', tone: 'green' },
+};
+
 /*
- * The export carries the ids and dates a spreadsheet needs to be reconciled
- * against the system afterwards — `formatBdt` output would arrive in Excel as
- * text reading "BDT 1,500,000" and refuse to be summed, so amounts go out as
- * plain numbers and dates as ISO, which every spreadsheet sorts correctly.
+ * Amounts go out as plain numbers and dates as ISO, so a spreadsheet can sum
+ * and sort them — `formatBdt` text would arrive as "BDT 1,500,000".
  */
 const COLLECTION_CSV_COLUMNS: CsvColumn<CollectionRow>[] = [
   { header: 'Booking', value: (r) => r.booking.code },
@@ -48,42 +37,38 @@ const COLLECTION_CSV_COLUMNS: CsvColumn<CollectionRow>[] = [
   { header: 'Phone', value: (r) => r.customer?.phone ?? '' },
   { header: 'Project', value: (r) => r.project?.name ?? '' },
   { header: 'Unit', value: (r) => r.unit?.code ?? '' },
-  { header: 'Instalment no', value: (r) => r.installment.installment_no },
-  { header: 'Instalment', value: (r) => r.installment.label },
-  { header: 'Due date', value: (r) => r.installment.due_date ?? '' },
-  { header: 'Amount due', value: (r) => r.installment.amount_due },
-  { header: 'Amount paid', value: (r) => r.installment.amount_paid },
-  { header: 'Outstanding', value: (r) => r.outstanding },
-  { header: 'Status', value: (r) => r.status },
+  { header: 'Total price', value: (r) => r.total },
+  { header: 'Received', value: (r) => r.received },
+  { header: 'Balance', value: (r) => r.balance },
+  { header: 'Expected by today', value: (r) => r.expected },
+  { header: 'Behind', value: (r) => r.behind },
+  { header: 'Next due date', value: (r) => r.next?.date ?? '' },
+  { header: 'Next due amount', value: (r) => r.next?.amount ?? '' },
+  { header: 'State', value: (r) => r.state },
 ];
 
+/**
+ * Collections — one row per live booking (SALES-FLOW-PLAN.md S5).
+ *
+ * What each buyer owes, has paid, and how far behind their agreement they are,
+ * most behind first, so it reads as a worklist. "Expected" comes from the
+ * agreement's terms; a booking with no agreement only expects its booking money.
+ */
 function CollectionsPage() {
   const params = useSearchParams();
-  const initialStatus = params.get('status');
+  const initial = params.get('state') ?? (params.get('status') === 'overdue' ? 'behind' : null);
 
   const [search, setSearch] = useState('');
   const [projectId, setProjectId] = useState(params.get('project') ?? '');
-  const [status, setStatus] = useState<StatusFilter>(
-    initialStatus === 'overdue' || initialStatus === 'pending' || initialStatus === 'paid'
-      ? initialStatus
-      : 'all',
+  const [state, setState] = useState<StateFilter>(
+    initial === 'behind' || initial === 'on_track' || initial === 'paid' ? initial : 'all',
   );
   const [payFor, setPayFor] = useState<CollectionRow | null>(null);
-  const [dueOnly, setDueOnly] = useState(true);
 
   const today = todayLocal();
   const rows = useLiveQuery(
-    () =>
-      collectionRepository.list(
-        {
-          search,
-          project_id: projectId || undefined,
-          status,
-          due_only: dueOnly && status === 'all',
-        },
-        today,
-      ),
-    [search, projectId, status, dueOnly, today],
+    () => collectionRepository.list({ search, project_id: projectId || undefined, state }, today),
+    [search, projectId, state, today],
   );
   const summary = useLiveQuery(() => collectionRepository.summary(today), [today]);
   const projects = useLiveQuery(() => projectRepository.list(), []);
@@ -109,10 +94,7 @@ function CollectionsPage() {
       key: 'booking',
       header: 'Booking',
       cell: (row) => (
-        <Link
-          href={`/admin/bookings/${row.booking.id}`}
-          className="text-admin-700 hover:underline"
-        >
+        <Link href={`/admin/bookings/${row.booking.id}?tab=payments`} className="text-admin-700 hover:underline">
           {row.booking.code}
           <span className="block text-xs text-ink-muted">{row.unit?.code ?? '—'}</span>
         </Link>
@@ -134,80 +116,69 @@ function CollectionsPage() {
       sortValue: (row) => row.project?.name ?? '',
     },
     {
-      key: 'label',
-      header: 'Instalment',
-      cell: (row) => <span className="text-sm text-ink">{row.installment.label}</span>,
-      sortValue: (row) => row.installment.installment_no,
+      key: 'total',
+      header: 'Total',
+      align: 'right',
+      cell: (row) => formatBdt(row.total),
+      sortValue: (row) => row.total,
     },
     {
-      key: 'due_date',
-      header: 'Due',
-      cell: (row) => {
-        if (!row.installment.due_date) return <span className="text-ink-muted">not set</span>;
-        const late = daysOverdue(row.installment, today);
-        return (
-          <span className="text-sm text-ink">
-            {formatDate(row.installment.due_date)}
-            {late > 0 && (
-              <span className="block text-xs text-red-600">
-                {late} day{late === 1 ? '' : 's'} late
-              </span>
-            )}
+      key: 'received',
+      header: 'Received',
+      align: 'right',
+      cell: (row) => <span className="text-emerald-700">{formatBdt(row.received)}</span>,
+      sortValue: (row) => row.received,
+    },
+    {
+      key: 'balance',
+      header: 'Balance',
+      align: 'right',
+      cell: (row) => <span className="font-medium text-ink">{formatBdt(row.balance)}</span>,
+      sortValue: (row) => row.balance,
+    },
+    {
+      key: 'behind',
+      header: 'Behind',
+      align: 'right',
+      cell: (row) =>
+        row.behind > 0.5 ? (
+          <span className="font-medium text-red-600">{formatBdt(row.behind)}</span>
+        ) : (
+          <span className="text-ink-muted">—</span>
+        ),
+      sortValue: (row) => row.behind,
+    },
+    {
+      key: 'next',
+      header: 'Next due',
+      cell: (row) =>
+        row.next ? (
+          <span className={row.next.date < today ? 'text-sm text-red-600' : 'text-sm text-ink'}>
+            {formatDate(row.next.date)}
+            {row.next.date < today && ' · late'}
+            <span className="block text-xs text-ink-muted">
+              {row.next.label} · {formatBdt(row.next.amount)}
+            </span>
           </span>
-        );
-      },
-      sortValue: (row) => row.installment.due_date ?? '9999',
+        ) : (
+          <span className="text-ink-muted">—</span>
+        ),
+      sortValue: (row) => row.next?.date ?? '9999',
     },
     {
-      key: 'amount_due',
-      header: 'Amount',
-      align: 'right',
-      cell: (row) => formatBdt(row.installment.amount_due),
-      sortValue: (row) => row.installment.amount_due,
+      key: 'state',
+      header: 'State',
+      cell: (row) => <Badge tone={STATE_META[row.state].tone}>{STATE_META[row.state].label}</Badge>,
+      sortValue: (row) => row.state,
     },
     {
-      key: 'outstanding',
-      header: 'Outstanding',
-      align: 'right',
-      cell: (row) => (
-        <span
-          className={
-            row.status === 'overdue'
-              ? 'font-medium text-red-600'
-              : row.outstanding > 0.009
-                ? 'font-medium text-ink'
-                : 'text-emerald-700'
-          }
-        >
-          {row.outstanding > 0.009 ? formatBdt(row.outstanding) : 'settled'}
-        </span>
-      ),
-      sortValue: (row) => row.outstanding,
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      cell: (row) => {
-        const meta = INSTALLMENT_STATUS_META[row.status];
-        return <Badge tone={meta.tone}>{meta.label}</Badge>;
-      },
-      sortValue: (row) => row.status,
-    },
-    {
-      /*
-       * Taking the money was four steps from the screen built for chasing it:
-       * open the booking, Payments tab, dialog, save. The same dialog opens
-       * here with this instalment's shortfall filled in — the receipt is still
-       * allocated oldest-first by the finance repository, so it lands where the
-       * schedule says, not necessarily on the row that was clicked.
-       */
       key: 'actions',
       header: '',
       align: 'right',
       cell: (row) =>
-        row.outstanding > 0.009 ? (
+        row.balance > 0.5 ? (
           <Button size="sm" variant="outline" onClick={() => setPayFor(row)}>
-            <CircleDollarSign className="size-4" /> Record payment
+            <CircleDollarSign className="size-4" /> Receive
           </Button>
         ) : null,
     },
@@ -215,34 +186,18 @@ function CollectionsPage() {
 
   const tiles = summary
     ? [
-        {
-          label: 'Billed',
-          value: formatBdt(summary.billed ),
-          hint: 'across every live schedule',
-          icon: CalendarClock,
-        },
-        {
-          /*
-           * Deliberately not called "Collected". The Finance Overview counts
-           * every receipt, including money taken on a booking that is still on
-           * hold and therefore has no schedule to sit on — so the two pages
-           * showed different figures under the same word.
-           */
-          label: 'Allocated to instalments',
-          value: formatBdt(summary.collected),
-          hint: 'confirmed bookings only',
-          icon: Wallet,
-        },
+        { label: 'Total sales', value: formatBdt(summary.billed), hint: 'live bookings', icon: CalendarClock },
+        { label: 'Received', value: formatBdt(summary.collected), hint: 'every receipt so far', icon: Wallet },
         {
           label: 'Due this month',
-          value: formatBdt(summary.due_this_month ),
-          hint: 'not yet overdue',
+          value: formatBdt(summary.due_this_month),
+          hint: 'falling due later this month',
           icon: CircleDollarSign,
         },
         {
-          label: 'Overdue',
-          value: formatBdt(summary.overdue_amount ),
-          hint: `${summary.overdue_count} instalment${summary.overdue_count === 1 ? '' : 's'}`,
+          label: 'Behind',
+          value: formatBdt(summary.overdue_amount),
+          hint: `${summary.overdue_count} buyer${summary.overdue_count === 1 ? '' : 's'}`,
           icon: AlertTriangle,
           alert: summary.overdue_count > 0,
         },
@@ -253,37 +208,11 @@ function CollectionsPage() {
     <>
       <PageHeader
         title="Collections"
-        subtitle="What every buyer owes and when — overdue first, so the list reads as a worklist."
+        subtitle="What every buyer owes against their agreement — the most behind first."
         action={
-          <ExportCsvButton
-            rows={rows ?? []}
-            columns={COLLECTION_CSV_COLUMNS}
-            filenamePrefix="collections"
-          />
+          <ExportCsvButton rows={rows ?? []} columns={COLLECTION_CSV_COLUMNS} filenamePrefix="collections" />
         }
       />
-
-      {summary && summary.overdue_count > 0 && (
-        <div className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl border border-hairline bg-white p-4 shadow-sm">
-          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-red-50 text-red-600">
-            <AlertTriangle className="size-5" />
-          </span>
-          <p className="mr-auto text-sm text-ink">
-            <span className="font-semibold">Overdue:</span>{' '}
-            <span className="text-red-600">
-              {formatBdt(summary.overdue_amount)} across {summary.overdue_count} instalment
-              {summary.overdue_count === 1 ? '' : 's'}
-            </span>
-          </p>
-          <Button
-            size="sm"
-            variant={status === 'overdue' ? 'primary' : 'outline'}
-            onClick={() => setStatus(status === 'overdue' ? 'all' : 'overdue')}
-          >
-            {status === 'overdue' ? 'Show all' : 'Show overdue only'}
-          </Button>
-        </div>
-      )}
 
       {tiles.length > 0 && (
         <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -303,36 +232,21 @@ function CollectionsPage() {
               </div>
             </Card>
           ))}
-          <p className="col-span-full text-xs text-ink-muted">
-            A booking only gets a schedule when it is confirmed, so money taken while one is still
-            on hold has no instalment to sit against and is not counted here. The Finance
-            Overview&rsquo;s &ldquo;Collected&rdquo; counts every receipt, which is why it reads
-            higher.
-          </p>
         </div>
       )}
 
       <Card>
         <FilterBar
-          search={{
-            value: search,
-            onChange: setSearch,
-            placeholder: 'Customer, booking, unit…',
-          }}
-          isFiltered={Boolean(search || projectId) || status !== 'all' || !dueOnly}
+          search={{ value: search, onChange: setSearch, placeholder: 'Customer, booking, unit…' }}
+          isFiltered={Boolean(search || projectId) || state !== 'all'}
           onReset={() => {
             setSearch('');
             setProjectId('');
-            setStatus('all');
-            setDueOnly(true);
+            setState('all');
           }}
-          resultLabel={loading ? 'Loading…' : `${list.length} instalment${list.length === 1 ? '' : 's'}`}
+          resultLabel={loading ? 'Loading…' : `${list.length} booking${list.length === 1 ? '' : 's'}`}
         >
-          <FilterSelect
-            label="Project"
-            value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
-          >
+          <FilterSelect label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
             <option value="">All projects</option>
             {(projects ?? []).map((p) => (
               <option key={p.id} value={p.id}>
@@ -340,26 +254,12 @@ function CollectionsPage() {
               </option>
             ))}
           </FilterSelect>
-          <FilterSelect
-            label="Status"
-            value={status}
-            onChange={(e) => setStatus(e.target.value as StatusFilter)}
-          >
-            <option value="all">All statuses</option>
-            <option value="overdue">Overdue</option>
-            <option value="pending">Pending</option>
-            <option value="partially_paid">Partly paid</option>
-            <option value="paid">Paid</option>
+          <FilterSelect label="State" value={state} onChange={(e) => setState(e.target.value as StateFilter)}>
+            <option value="all">All</option>
+            <option value="behind">Behind</option>
+            <option value="on_track">On track</option>
+            <option value="paid">Fully paid</option>
           </FilterSelect>
-          {status === 'all' && (
-            <Button
-              variant={dueOnly ? 'primary' : 'outline'}
-              className="shrink-0"
-              onClick={() => setDueOnly(!dueOnly)}
-            >
-              {dueOnly ? 'Hiding settled' : 'Show settled too'}
-            </Button>
-          )}
         </FilterBar>
 
         {loading ? (
@@ -368,88 +268,50 @@ function CollectionsPage() {
           <DataTable
             rows={list}
             columns={columns}
-            label="instalments"
-            /*
-             * Nine columns is a table a phone cannot use — the outstanding
-             * amount, which is the whole reason this screen exists, was three
-             * swipes to the right. The card leads with who owes and how much.
-             */
-            mobileCard={(row) => {
-              const meta = INSTALLMENT_STATUS_META[row.status];
-              const late = daysOverdue(row.installment, today);
-              return (
-                <div className="space-y-2">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-ink">
-                        {row.customer?.name ?? 'Customer removed'}
-                      </p>
-                      <p className="truncate text-xs text-ink-muted">
-                        {row.booking.code} · {row.unit?.code ?? '—'}
-                      </p>
-                    </div>
-                    <Badge tone={meta.tone}>{meta.label}</Badge>
-                  </div>
-
-                  <p className="text-xs text-ink-muted">
-                    {row.installment.label}
-                    {row.project ? ` · ${row.project.name}` : ''}
-                  </p>
-
-                  <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
-                    <p className="text-xs text-ink-muted">
-                      Due{' '}
-                      {row.installment.due_date ? formatDate(row.installment.due_date) : 'not set'}
-                      {late > 0 && (
-                        <span className="block text-red-600">
-                          {late} day{late === 1 ? '' : 's'} late
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-right text-sm">
-                      <span className="block text-xs text-ink-muted">
-                        {row.outstanding > 0.009 ? 'outstanding' : 'settled'}
-                      </span>
-                      <span
-                        className={
-                          row.status === 'overdue'
-                            ? 'font-semibold text-red-600'
-                            : row.outstanding > 0.009
-                              ? 'font-semibold text-ink'
-                              : 'font-medium text-emerald-700'
-                        }
-                      >
-                        {row.outstanding > 0.009 ? formatBdt(row.outstanding) : '—'}
-                      </span>
-                      <span className="block text-xs text-ink-muted">
-                        of {formatBdt(row.installment.amount_due)}
-                      </span>
+            label="bookings"
+            mobileCard={(row) => (
+              <div className="space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-ink">{row.customer?.name ?? 'Customer removed'}</p>
+                    <p className="truncate text-xs text-ink-muted">
+                      {row.booking.code} · {row.unit?.code ?? '—'}
+                      {row.project ? ` · ${row.project.name}` : ''}
                     </p>
                   </div>
-
-                  {row.outstanding > 0.009 && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => setPayFor(row)}
-                    >
-                      <CircleDollarSign className="size-4" /> Record payment
-                    </Button>
-                  )}
+                  <Badge tone={STATE_META[row.state].tone}>{STATE_META[row.state].label}</Badge>
                 </div>
-              );
-            }}
+                <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+                  <p className="text-xs text-ink-muted">
+                    {formatBdt(row.received)} of {formatBdt(row.total)} in
+                    {row.next && (
+                      <span className="block">
+                        Next {formatDate(row.next.date)} · {formatBdt(row.next.amount)}
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-right text-sm">
+                    <span className="block text-xs text-ink-muted">{row.behind > 0.5 ? 'behind' : 'balance'}</span>
+                    <span className={row.behind > 0.5 ? 'font-semibold text-red-600' : 'font-semibold text-ink'}>
+                      {formatBdt(row.behind > 0.5 ? row.behind : row.balance)}
+                    </span>
+                  </p>
+                </div>
+                {row.balance > 0.5 && (
+                  <Button size="sm" variant="outline" className="w-full" onClick={() => setPayFor(row)}>
+                    <CircleDollarSign className="size-4" /> Receive payment
+                  </Button>
+                )}
+              </div>
+            )}
             emptyState={
               <EmptyState
                 icon={CircleDollarSign}
-                title={
-                  status === 'overdue' ? 'Nothing is overdue' : 'No instalment matches these filters'
-                }
+                title={state === 'behind' ? 'Nobody is behind' : 'No booking matches these filters'}
                 description={
-                  status === 'overdue'
-                    ? 'Every buyer is current on their schedule.'
-                    : 'Schedules are drawn up when a booking is confirmed — a booking still on hold has no instalments yet.'
+                  state === 'behind'
+                    ? 'Every buyer has paid what their agreement asks for by today.'
+                    : 'Bookings appear here as soon as they are made.'
                 }
                 action={
                   <Link href="/admin/bookings">
@@ -466,10 +328,8 @@ function CollectionsPage() {
         <RecordPaymentModal
           open
           booking={payFor.booking}
-          defaultAmount={payFor.outstanding}
-          subtitle={`${payFor.customer?.name ?? payFor.booking.code} · ${
-            payFor.installment.label
-          } · ${formatBdt(payFor.outstanding)} outstanding`}
+          defaultAmount={payFor.behind > 0.5 ? payFor.behind : (payFor.next?.amount ?? undefined)}
+          subtitle={`${payFor.customer?.name ?? payFor.booking.code} · balance ${formatBdt(payFor.balance)}`}
           onClose={() => setPayFor(null)}
         />
       )}
@@ -477,8 +337,7 @@ function CollectionsPage() {
   );
 }
 
-/** The finance dashboard links in with ?status= and ?project=. */
-
+/** The dashboard links in with ?state= (or the old ?status=overdue) and ?project=. */
 export default function Page() {
   return (
     <Suspense fallback={<p className="text-sm text-ink-muted">Loading…</p>}>

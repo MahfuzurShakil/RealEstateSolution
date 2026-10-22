@@ -12,7 +12,6 @@ import {
   CalendarClock,
   CheckCircle2,
   ChevronRight,
-  FileSignature,
   HardHat,
   Package,
   Receipt,
@@ -27,13 +26,11 @@ import { ProjectPortfolio } from '@/components/admin/dashboard/ProjectPortfolio'
 import { usePurchaseMode } from '@/lib/settings/use-purchase-mode';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { canView } from '@/lib/domain/access';
-import { discountPct } from '@/lib/domain/booking';
 import { COST_TYPE_META } from '@/lib/domain/construction-cost';
 import { LEAD_PIPELINE_STEPS, LEAD_STATUS_META, followUpState } from '@/lib/domain/lead';
 import { PROJECT_PIPELINE_STEPS, PROJECT_STATUS_META } from '@/lib/domain/project';
 import {
-  bookingRepository,
-  customerRepository,
+  collectionRepository,
   leadRepository,
   materialRequestRepository,
   ownerDashboard,
@@ -136,14 +133,11 @@ export default function AdminDashboardPage() {
     () => (see('crm') ? leadRepository.followUpQueue(today) : Promise.resolve([])),
     [today, role],
   );
-  /** Bookings a manager has to sign off (Section 5.4). */
-  const pendingApprovals = useLiveQuery(
-    () => (see('booking') ? bookingRepository.list({ awaiting_approval: true }) : Promise.resolve([])),
-    [role],
-  );
-  const customerNameById = useLiveQuery(
-    async () => Object.fromEntries((await customerRepository.getAll()).map((c) => [c.id, c.name])),
-    [],
+  /** Buyers behind their agreement (SALES-FLOW-PLAN.md S5) — who to call about money. */
+  const behindBuyers = useLiveQuery(
+    () =>
+      see('booking') ? collectionRepository.list({ state: 'behind' }, today) : Promise.resolve([]),
+    [role, today],
   );
   /** The Procurement inbox (Section 6.5). */
   const pendingRequests = useLiveQuery(
@@ -196,9 +190,9 @@ export default function AdminDashboardPage() {
       attention.push({
         id: 'collections-overdue',
         severity: 'red',
-        title: `${sales.overdue_count} buyer instalment${sales.overdue_count === 1 ? '' : 's'} overdue`,
-        detail: `${formatBdt(sales.overdue_amount)} past its date`,
-        href: '/admin/collections?status=overdue',
+        title: `${sales.overdue_count} buyer${sales.overdue_count === 1 ? '' : 's'} behind on payment`,
+        detail: `${formatBdt(sales.overdue_amount)} less than their agreements ask for by today`,
+        href: '/admin/collections?state=behind',
         icon: Receipt,
       });
     }
@@ -224,16 +218,6 @@ export default function AdminDashboardPage() {
         icon: HardHat,
       });
     }
-  }
-  if (pendingApprovals && pendingApprovals.length > 0) {
-    attention.push({
-      id: 'approvals',
-      severity: 'amber',
-      title: `${pendingApprovals.length} discount approval${pendingApprovals.length === 1 ? '' : 's'} waiting`,
-      detail: 'Bookings held until a manager signs off',
-      href: '/admin/bookings',
-      icon: FileSignature,
-    });
   }
   if (followUps && followUps.length > 0) {
     const overdue = followUps.filter(({ date }) => followUpState(date, today) === 'overdue').length;
@@ -657,7 +641,7 @@ export default function AdminDashboardPage() {
       )}
 
       {/* ---------------- work queues for the team roles ---------------- */}
-      {((followUps && followUps.length > 0) || (pendingApprovals && pendingApprovals.length > 0)) && (
+      {((followUps && followUps.length > 0) || (behindBuyers && behindBuyers.length > 0)) && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {followUps && followUps.length > 0 && (
             <Card>
@@ -690,32 +674,32 @@ export default function AdminDashboardPage() {
               </ul>
             </Card>
           )}
-          {pendingApprovals && pendingApprovals.length > 0 && (
+          {behindBuyers && behindBuyers.length > 0 && (
             <Card>
               <CardHeader
-                title="Discount approvals waiting"
+                title="Buyers behind on payment"
                 action={
-                  <Link href="/admin/bookings" className="text-sm text-admin-700 hover:underline">
-                    All bookings
+                  <Link href="/admin/collections?state=behind" className="text-sm text-admin-700 hover:underline">
+                    Collections
                   </Link>
                 }
               />
               <ul className="space-y-1">
-                {pendingApprovals.slice(0, 6).map((booking) => (
-                  <li key={booking.id}>
+                {behindBuyers.slice(0, 6).map((row) => (
+                  <li key={row.id}>
                     <Link
-                      href={`/admin/bookings/${booking.id}`}
+                      href={`/admin/bookings/${row.booking.id}?tab=payments`}
                       className="flex items-center gap-3 rounded-xl p-2 transition-colors hover:bg-slate-50"
                     >
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-ink">
-                          {customerNameById?.[booking.customer_id] ?? booking.code}
+                          {row.customer?.name ?? row.booking.code}
                         </p>
                         <p className="text-xs text-ink-muted">
-                          {booking.code} · {formatBdt(booking.discount_amount)} off (
-                          {discountPct(booking.base_price, booking.discount_amount).toFixed(1)}%)
+                          {row.booking.code} · {row.unit?.code ?? '—'}
                         </p>
                       </div>
+                      <span className="text-sm font-medium text-red-600">{formatBdt(row.behind)}</span>
                       <ChevronRight className="size-4 text-ink-muted" />
                     </Link>
                   </li>

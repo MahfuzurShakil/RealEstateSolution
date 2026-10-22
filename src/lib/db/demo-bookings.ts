@@ -1,14 +1,14 @@
-import type { PaymentMethod, UserRole } from './types';
+import type { PaymentMethod } from './types';
 
 /**
  * Bangladesh-context demo dataset for Module 4, built so every state in the
  * booking pipeline is visible on a fresh install:
  *
  *   - a confirmed booking with no discount at all
- *   - a confirmed booking whose discount was inside the seller's limit
- *   - one waiting on discount approval (money already in)
- *   - one on hold because the money has not arrived
- *   - one whose discount was rejected and is back on hold
+ *   - confirmed bookings with a discount (nobody approves it since 2026-10-22)
+ *   - one on hold because the booking money has not arrived
+ *   - one confirmed with no agreement recorded yet
+ *   - kisti and full-payment agreements, some buyers behind on them
  *   - a cancelled booking, with the unit released
  *   - a customer with two bookings, and one with none yet
  *
@@ -16,15 +16,6 @@ import type { PaymentMethod, UserRole } from './types';
  * 5.6 (unit reserved/booked/released, lead moved to booked) happen exactly as
  * they would in the app.
  */
-
-/** Section 5.4 — what each role may give away without asking anyone. */
-export const DEMO_DISCOUNT_RULES: Array<{ role: UserRole; max_discount_pct: number }> = [
-  { role: 'sales_executive', max_discount_pct: 2 },
-  { role: 'sales_manager', max_discount_pct: 5 },
-  { role: 'head_of_sales', max_discount_pct: 8 },
-  { role: 'management', max_discount_pct: 15 },
-  { role: 'super_admin', max_discount_pct: 100 },
-];
 
 export interface DemoCustomer {
   key: string;
@@ -182,8 +173,12 @@ export interface DemoBooking {
   other_charges: number;
   discount_amount: number;
   booking_amount: number;
-  /** months the monthly instalments are spread over for this buyer */
-  installment_tenure_months?: number;
+  /**
+   * SALES-FLOW-PLAN.md S3 — the agreement, signed a few days after the booking
+   * money. Six or fewer = the full price by then; more = that many monthly
+   * kisti from the month after booking. Absent = no agreement recorded yet.
+   */
+  kisti_count?: number;
   /** receipts taken against this booking; empty means nothing received yet */
   payments?: Array<{
     amount: number;
@@ -192,12 +187,6 @@ export interface DemoBooking {
     reference_no?: string;
     notes?: string;
   }>;
-  /** applied after creation, so the demo can show approved/rejected outcomes */
-  discount_decision?: {
-    decision: 'approved' | 'rejected';
-    approver_key: string;
-    note: string;
-  };
   cancel?: { reason: string };
   /**
    * v32 — bookings sharing a key were made together in one go and get one
@@ -220,7 +209,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 350000,
     discount_amount: 0,
     booking_amount: 1500000,
-    installment_tenure_months: 24,
+    kisti_count: 24,
     payments: [
       {
         amount: 1500000,
@@ -232,7 +221,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     ],
   },
 
-  // confirmed — 1.7% discount, inside a sales executive's 2% ceiling
+  // confirmed — 1.7% discount, booking money paid in two parts
   {
     customer_key: 'nusrat',
     project_name: 'Nokshi Dhanmondi Court',
@@ -245,7 +234,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 300000,
     discount_amount: 400000,
     booking_amount: 1200000,
-    installment_tenure_months: 30,
+    kisti_count: 30,
     payments: [
       { amount: 700000, days_ago: 2, method: 'cash', notes: 'Cash taken at the sales office' },
       {
@@ -258,7 +247,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     ],
   },
 
-  // pending approval — money is in, but 6.1% is over the manager's 5%
+  // confirmed — a 6.1% discount the owner gave; no agreement recorded yet
   {
     customer_key: 'mahbub',
     project_name: 'Nokshi Dhanmondi Court',
@@ -271,7 +260,6 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 450000,
     discount_amount: 820000,
     booking_amount: 1000000,
-    installment_tenure_months: 36,
     payments: [
       {
         amount: 1000000,
@@ -283,7 +271,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     ],
   },
 
-  // on hold — discount is fine, but the booking money has not arrived
+  // on hold — the booking money has not arrived
   {
     customer_key: 'shahnaz',
     project_name: 'Nokshi Green Residence',
@@ -296,11 +284,11 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 250000,
     discount_amount: 500000,
     booking_amount: 1000000,
-    installment_tenure_months: 24,
+    kisti_count: 24,
     // nothing received yet - this is the booking that stays on hold
   },
 
-  // rejected discount — back on hold, with the manager's note on the record
+  // multi-unit buyer — a big 10% discount, given straight, booking money in
   {
     customer_key: 'zubair',
     project_name: 'Nokshi Agrabad Trade Centre',
@@ -315,7 +303,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 600000,
     discount_amount: 2900000,
     booking_amount: 2500000,
-    installment_tenure_months: 18,
+    kisti_count: 18,
     payments: [
       {
         amount: 2500000,
@@ -324,14 +312,9 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
         reference_no: 'BRAC/TRF/771208',
       },
     ],
-    discount_decision: {
-      decision: 'rejected',
-      approver_key: 'shakib',
-      note: '10% ছাড় Agrabad-এ দেওয়া যাবে না — সর্বোচ্চ 5% পর্যন্ত আলোচনা করুন, তারপর আবার পাঠান।',
-    },
   },
 
-  // second unit of the same go — approved discount, confirmed
+  // second unit of the same go — confirmed
   {
     customer_key: 'zubair',
     project_name: 'Nokshi Agrabad Trade Centre',
@@ -345,7 +328,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 300000,
     discount_amount: 900000,
     booking_amount: 1800000,
-    installment_tenure_months: 18,
+    kisti_count: 18,
     payments: [
       {
         amount: 1800000,
@@ -355,11 +338,6 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
         notes: 'Second unit, same account',
       },
     ],
-    discount_decision: {
-      decision: 'approved',
-      approver_key: 'shakib',
-      note: 'দুইটা ইউনিট একসাথে নিচ্ছেন, তাই 5.2% অনুমোদন করা হলো।',
-    },
   },
 
   /*
@@ -381,7 +359,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 300000,
     discount_amount: 0,
     booking_amount: 1400000,
-    installment_tenure_months: 24,
+    kisti_count: 24,
     payments: [
       {
         amount: 1400000,
@@ -431,7 +409,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 250000,
     discount_amount: 0,
     booking_amount: 1300000,
-    installment_tenure_months: 24,
+    kisti_count: 24,
     payments: [
       {
         amount: 1300000,
@@ -467,7 +445,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 200000,
     discount_amount: 0,
     booking_amount: 1000000,
-    installment_tenure_months: 24,
+    kisti_count: 24,
     // cancelled before any money was taken, so there is nothing to refund
     cancel: {
       reason: 'দ্বিতীয় ইউনিটের সিদ্ধান্ত বাতিল — ব্যবসার টাকা আটকে গেছে বলে জানিয়েছেন।',
@@ -496,7 +474,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 250000,
     discount_amount: 0,
     booking_amount: 1400000,
-    installment_tenure_months: 24,
+    kisti_count: 24,
     payments: [
       {
         amount: 1400000,
@@ -519,7 +497,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 250000,
     discount_amount: 300000,
     booking_amount: 1300000,
-    installment_tenure_months: 30,
+    kisti_count: 30,
     payments: [
       { amount: 800000, days_ago: 39, method: 'cheque', reference_no: 'CHQ 4471290' },
       {
@@ -548,7 +526,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 250000,
     discount_amount: 0,
     booking_amount: 1200000,
-    installment_tenure_months: 24,
+    kisti_count: 24,
     payments: [
       {
         amount: 400000,
@@ -582,7 +560,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 420000,
     discount_amount: 200000,
     booking_amount: 900000,
-    installment_tenure_months: 48,
+    kisti_count: 48,
     payments: [
       {
         amount: 900000,
@@ -620,7 +598,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 60000,
     discount_amount: 0,
     booking_amount: 500000,
-    installment_tenure_months: 6,
+    kisti_count: 6,
     payments: [
       {
         amount: 2_960_000,
@@ -648,7 +626,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 60000,
     discount_amount: 0,
     booking_amount: 500000,
-    installment_tenure_months: 6,
+    kisti_count: 6,
     payments: [
       { amount: 2_960_000, days_ago: 48, method: 'bank', reference_no: 'BEFTN 6620590' },
     ],
@@ -665,7 +643,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 60000,
     discount_amount: 0,
     booking_amount: 500000,
-    installment_tenure_months: 6,
+    kisti_count: 6,
     payments: [
       { amount: 2_960_000, days_ago: 45, method: 'bank', reference_no: 'BEFTN 6620733' },
     ],
@@ -682,7 +660,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 60000,
     discount_amount: 0,
     booking_amount: 500000,
-    installment_tenure_months: 6,
+    kisti_count: 6,
     payments: [
       { amount: 2_960_000, days_ago: 41, method: 'bank', reference_no: 'BEFTN 6620811' },
     ],
@@ -706,7 +684,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 250000,
     discount_amount: 0,
     booking_amount: 400000,
-    installment_tenure_months: 48,
+    kisti_count: 48,
     payments: [
       { amount: 400000, days_ago: 70, method: 'cheque', reference_no: 'CHQ 5530117' },
       {

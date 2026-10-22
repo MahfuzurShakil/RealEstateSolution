@@ -835,6 +835,32 @@ export class AppDatabase extends Dexie {
       fund_receipts: 'id, code, source_type, partner_id, project_id, account_id, receipt_date',
       fund_allocations: 'id, code, project_id, allocation_date',
     });
+
+    /*
+     * v37 — SALES-FLOW-PLAN.md S1 (client 2026-10-22): no discount approval and
+     * no generated instalment schedule for buyers. A booking waiting on approval
+     * is re-derived from its money alone; every discount reads `not_required`
+     * (the column stays, the name is the scope's). Buyer schedules go — the
+     * agreement's terms replace them — and receipts lose the instalment they
+     * were spread onto. Land schedules are untouched.
+     */
+    this.version(37)
+      .stores({})
+      .upgrade(async (tx) => {
+        for (const b of await tx.table('bookings').toArray()) {
+          const status =
+            b.status === 'pending_approval' ? (b.booking_amount_received ? 'confirmed' : 'hold') : b.status;
+          await tx.table('bookings').update(b.id, { status, discount_approval_status: 'not_required' });
+        }
+        const schedules = (await tx.table('payment_schedules').toArray()).filter(
+          (s) => s.entity_type === 'booking',
+        );
+        const ids = new Set(schedules.map((s) => s.id));
+        const lines = (await tx.table('payment_installments').toArray()).filter((l) => ids.has(l.schedule_id));
+        await tx.table('payment_installments').bulkDelete(lines.map((l) => l.id));
+        await tx.table('payment_schedules').bulkDelete([...ids]);
+        await tx.table('payments').toCollection().modify({ installment_id: null });
+      });
   }
 }
 

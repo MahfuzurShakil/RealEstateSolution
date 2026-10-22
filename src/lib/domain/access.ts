@@ -37,7 +37,7 @@ export const USER_ROLE_META: Record<
   sales_manager: {
     label: 'Sales Manager',
     tone: 'blue',
-    description: 'The whole sales pipeline, including discount approval.',
+    description: 'The whole sales pipeline — leads, bookings, agreements and collections.',
   },
   head_of_sales: {
     label: 'Head of Sales',
