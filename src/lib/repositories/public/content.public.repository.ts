@@ -19,6 +19,8 @@ export interface PublicCompanyInfo {
   website: string | null;
   /** `wa.me` link, null when no WhatsApp number is set */
   whatsapp_url: string | null;
+  /** the number as typed — the site shows it anyway, and links with a message need it */
+  whatsapp_number: string | null;
 }
 
 const clean = (value: string | null | undefined) => value?.trim() || null;
@@ -34,6 +36,7 @@ export const publicContentRepository = {
       email: clean(settings?.email),
       website: clean(settings?.website),
       whatsapp_url: whatsapp ? whatsappLink(whatsapp) : null,
+      whatsapp_number: whatsapp,
     };
   },
 };

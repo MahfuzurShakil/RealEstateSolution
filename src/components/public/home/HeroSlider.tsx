@@ -161,7 +161,7 @@ export function HeroSlider({
                 )}
                 <div className="flex flex-wrap gap-3">
                   <Link
-                    href={`/projects?type=${slide.project_type}`}
+                    href={`/projects/${encodeURIComponent(slide.code)}`}
                     className="flex items-center gap-2 rounded-full bg-site-primary px-6 py-3 font-medium text-white shadow-lg shadow-site-primary/30 transition-colors hover:bg-site-primary-dark"
                   >
                     Explore project <ArrowRight className="size-4.5" />

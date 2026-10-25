@@ -1,17 +1,22 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Building2, Mail, MapPin, PhoneCall } from 'lucide-react';
 import { SITE_NAV } from './site-nav';
+import { cn } from '@/lib/utils/cn';
 import { useCompanyInfo } from './useCompanyInfo';
 
 export function SiteFooter() {
   const company = useCompanyInfo();
+  const pathname = usePathname();
+  // room for the call / WhatsApp bar a project page pins to the bottom on phones
+  const barBelow = /^\/projects\/[^/]+/.test(pathname ?? '');
   const year = new Date().getFullYear();
   const tel = company?.phone ? `tel:${company.phone.replace(/[^\d+]/g, '')}` : null;
 
   return (
-    <footer className="mt-24 bg-site-night text-slate-300">
+    <footer className={cn('mt-24 bg-site-night text-slate-300', barBelow && 'max-lg:pb-20')}>
       <div className="mx-auto grid max-w-7xl gap-12 px-4 py-16 sm:px-6 md:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1.2fr]">
         <div className="space-y-5">
           <p className="flex items-center gap-2.5 text-xl font-semibold text-white">
