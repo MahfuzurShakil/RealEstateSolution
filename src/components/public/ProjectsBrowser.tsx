@@ -8,6 +8,7 @@ import { PROJECT_TYPES, type ProjectType } from '@/lib/db/types';
 import { PROJECT_TYPE_LABEL } from '@/lib/domain/project';
 import {
   PUBLIC_PRICE_BANDS,
+  areaOf,
   PUBLIC_STAGE_LABEL,
   type PublicPriceBand,
   type PublicStage,
@@ -38,6 +39,7 @@ function readFilters(params: URLSearchParams): PublicProjectFilters {
     stages: list<PublicStage>('stage', STAGES),
     price_bands: list<PublicPriceBand>('price', PUBLIC_PRICE_BANDS.map((b) => b.key)),
     location: params.get('location') ?? undefined,
+    area: params.get('area') ?? undefined,
     available_only: params.get('available') === '1',
   };
 }
@@ -59,8 +61,8 @@ function Chip({
       className={cn(
         'rounded-full border px-3.5 py-1.5 text-sm transition-colors',
         active
-          ? 'border-site-forest bg-site-forest text-white'
-          : 'border-site-stone bg-white text-site-ink hover:border-site-moss',
+          ? 'border-site-primary bg-site-primary text-white'
+          : 'border-site-line bg-white text-site-ink hover:border-site-primary',
       )}
     >
       {children}
@@ -88,7 +90,7 @@ export function ProjectsBrowser() {
   const cards = useLiveQuery(() => publicProjectRepository.list(readFilters(new URLSearchParams(key))), [key]);
   // the filter options only offer what exists, so no chip ever leads to an empty page on its own
   const all = useLiveQuery(() => publicProjectRepository.list(), []);
-  const locations = [...new Set((all ?? []).map((c) => c.location_summary).filter((l): l is string => !!l))].sort();
+  const areas = [...new Set((all ?? []).map((c) => areaOf(c.location_summary)).filter((a): a is string => !!a))].sort();
   const types = TYPE_ORDER.filter((t) => all?.some((c) => c.project_type === t));
   const stages = STAGES.filter((s) => all?.some((c) => c.stage === s));
 
@@ -112,6 +114,7 @@ export function ProjectsBrowser() {
     (filters.stages?.length ?? 0) +
     (filters.price_bands?.length ?? 0) +
     (filters.location ? 1 : 0) +
+    (filters.area ? 1 : 0) +
     (filters.available_only ? 1 : 0);
 
   const panel = (
@@ -141,34 +144,25 @@ export function ProjectsBrowser() {
           </Chip>
         ))}
       </FilterGroup>
-      {locations.length > 1 && (
-        <div className="space-y-2.5">
-          <label htmlFor="location" className="block text-xs tracking-[0.2em] text-site-muted uppercase">
-            Location
-          </label>
-          <select
-            id="location"
-            value={filters.location ?? ''}
-            onChange={(e) =>
-              update((next) => (e.target.value ? next.set('location', e.target.value) : next.delete('location')))
-            }
-            className="w-full rounded-xl border border-site-stone bg-white px-3 py-2.5 text-sm text-site-ink"
-          >
-            <option value="">Anywhere</option>
-            {locations.map((l) => (
-              <option key={l} value={l}>
-                {l}
-              </option>
-            ))}
-          </select>
-        </div>
+      {areas.length > 1 && (
+        <FilterGroup title="Area">
+          {areas.map((a) => (
+            <Chip
+              key={a}
+              active={filters.area === a}
+              onClick={() => update((next) => (filters.area === a ? next.delete('area') : next.set('area', a)))}
+            >
+              {a}
+            </Chip>
+          ))}
+        </FilterGroup>
       )}
       <label className="flex cursor-pointer items-center gap-2.5 text-sm text-site-ink">
         <input
           type="checkbox"
           checked={!!filters.available_only}
           onChange={(e) => update((next) => (e.target.checked ? next.set('available', '1') : next.delete('available')))}
-          className="size-4 accent-site-forest"
+          className="size-4 accent-site-primary"
         />
         Only projects with something available
       </label>
@@ -176,7 +170,7 @@ export function ProjectsBrowser() {
         <button
           type="button"
           onClick={() => router.replace(pathname, { scroll: false })}
-          className="text-sm text-site-forest underline underline-offset-4"
+          className="text-sm text-site-primary underline underline-offset-4"
         >
           Clear all filters
         </button>
@@ -185,16 +179,16 @@ export function ProjectsBrowser() {
   );
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+    <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6">
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs tracking-[0.3em] text-site-brass uppercase">Our projects</p>
-          <h1 className="mt-2 font-display text-4xl text-site-ink">Find your next home</h1>
+          <p className="text-xs tracking-[0.3em] text-site-primary uppercase">Our projects</p>
+          <h1 className="mt-2 text-4xl text-site-ink">Find your next home</h1>
         </div>
         <button
           type="button"
           onClick={() => setPanelOpen(true)}
-          className="flex items-center gap-2 rounded-full border border-site-stone bg-white px-4 py-2 text-sm text-site-ink lg:hidden"
+          className="flex items-center gap-2 rounded-full border border-site-line bg-white px-4 py-2 text-sm text-site-ink lg:hidden"
         >
           <SlidersHorizontal className="size-4" /> Filters{activeCount > 0 && ` (${activeCount})`}
         </button>
@@ -216,8 +210,8 @@ export function ProjectsBrowser() {
               ))}
             </div>
           ) : cards.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-site-stone bg-white/60 px-6 py-14 text-center">
-              <p className="font-display text-xl text-site-ink">
+            <div className="rounded-2xl border border-dashed border-site-line bg-white/60 px-6 py-14 text-center">
+              <p className="text-xl text-site-ink">
                 {activeCount > 0 ? 'Nothing matches these filters' : 'No projects on sale yet'}
               </p>
               <p className="mt-2 text-sm text-site-muted">
@@ -244,9 +238,9 @@ export function ProjectsBrowser() {
             className="absolute inset-0 bg-black/40"
             onClick={() => setPanelOpen(false)}
           />
-          <div className="absolute inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-3xl bg-site-sand p-6">
+          <div className="absolute inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-3xl bg-site-soft p-6">
             <div className="mb-6 flex items-center justify-between">
-              <p className="font-display text-xl text-site-ink">Filters</p>
+              <p className="text-xl text-site-ink">Filters</p>
               <button
                 type="button"
                 aria-label="Close filters"
@@ -260,7 +254,7 @@ export function ProjectsBrowser() {
             <button
               type="button"
               onClick={() => setPanelOpen(false)}
-              className="mt-8 w-full rounded-full bg-site-forest py-3 text-sm text-white"
+              className="mt-8 w-full rounded-full bg-site-primary py-3 text-sm text-white"
             >
               Show {cards?.length ?? 0} {cards?.length === 1 ? 'project' : 'projects'}
             </button>

@@ -1,30 +1,37 @@
 'use client';
 
 import Link from 'next/link';
-import { Mail, MapPin, Phone } from 'lucide-react';
+import { Building2, Mail, MapPin, PhoneCall } from 'lucide-react';
 import { SITE_NAV } from './site-nav';
 import { useCompanyInfo } from './useCompanyInfo';
 
 export function SiteFooter() {
   const company = useCompanyInfo();
   const year = new Date().getFullYear();
+  const tel = company?.phone ? `tel:${company.phone.replace(/[^\d+]/g, '')}` : null;
 
   return (
-    <footer className="bg-site-forest-deep text-site-stone">
-      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-[1.4fr_1fr_1fr]">
-        <div className="space-y-3">
-          <p className="font-display text-2xl text-white">{company?.company_name}</p>
-          <p className="max-w-sm text-sm leading-relaxed text-site-stone/80">
-            Homes, plots and land shares, built and sold with clear paperwork and honest pricing.
+    <footer className="mt-24 bg-site-night text-slate-300">
+      <div className="mx-auto grid max-w-7xl gap-12 px-4 py-16 sm:px-6 md:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1.2fr]">
+        <div className="space-y-5">
+          <p className="flex items-center gap-2.5 text-xl font-semibold text-white">
+            <span className="grid size-10 place-items-center rounded-xl bg-site-primary text-white">
+              <Building2 className="size-5" />
+            </span>
+            {company?.company_name}
+          </p>
+          <p className="max-w-sm leading-relaxed text-slate-400">
+            Apartments, plots and land shares in and around Dhaka — with clear papers, honest prices and
+            progress you can follow.
           </p>
         </div>
 
         <div>
-          <p className="mb-3 text-xs tracking-[0.2em] text-site-brass-light uppercase">Explore</p>
-          <ul className="space-y-2 text-sm">
+          <p className="mb-5 text-lg font-semibold text-white">Explore</p>
+          <ul className="space-y-3">
             {SITE_NAV.map((item) => (
               <li key={item.href}>
-                <Link href={item.href} className="hover:text-white">
+                <Link href={item.href} className="transition-colors hover:text-site-primary">
                   {item.label}
                 </Link>
               </li>
@@ -33,25 +40,25 @@ export function SiteFooter() {
         </div>
 
         <div>
-          <p className="mb-3 text-xs tracking-[0.2em] text-site-brass-light uppercase">Get in touch</p>
-          <ul className="space-y-3 text-sm">
+          <p className="mb-5 text-lg font-semibold text-white">Contact</p>
+          <ul className="space-y-4">
             {company?.address && (
-              <li className="flex gap-2.5">
-                <MapPin className="mt-0.5 size-4 shrink-0 text-site-brass" />
+              <li className="flex gap-3">
+                <MapPin className="mt-0.5 size-5 shrink-0 text-site-primary" />
                 <span>{company.address}</span>
               </li>
             )}
-            {company?.phone && (
-              <li className="flex gap-2.5">
-                <Phone className="mt-0.5 size-4 shrink-0 text-site-brass" />
-                <a href={`tel:${company.phone.replace(/\D/g, '')}`} className="hover:text-white">
-                  {company.phone}
+            {tel && (
+              <li className="flex gap-3">
+                <PhoneCall className="mt-0.5 size-5 shrink-0 text-site-primary" />
+                <a href={tel} className="hover:text-white">
+                  {company?.phone}
                 </a>
               </li>
             )}
             {company?.email && (
-              <li className="flex gap-2.5">
-                <Mail className="mt-0.5 size-4 shrink-0 text-site-brass" />
+              <li className="flex gap-3">
+                <Mail className="mt-0.5 size-5 shrink-0 text-site-primary" />
                 <a href={`mailto:${company.email}`} className="break-all hover:text-white">
                   {company.email}
                 </a>
@@ -60,9 +67,9 @@ export function SiteFooter() {
           </ul>
         </div>
       </div>
-      <div className="border-t border-white/10">
-        <p className="mx-auto max-w-6xl px-4 py-5 text-xs text-site-stone/60 sm:px-6">
-          © {year} {company?.company_name}. All rights reserved.
+      <div className="border-t border-slate-800">
+        <p className="mx-auto max-w-7xl px-4 py-6 text-sm text-slate-500 sm:px-6">
+          © {year} {company?.company_name?.replace(/\.$/, '')}. All rights reserved.
         </p>
       </div>
     </footer>

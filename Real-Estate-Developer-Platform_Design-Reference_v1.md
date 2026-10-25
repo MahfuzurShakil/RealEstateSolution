@@ -5,6 +5,19 @@
 >
 > **Admin Portal design পুরোপুরি UrbanHub-ভিত্তিক** — client নিজে confirm করেছেন এটাই ভিত্তি হবে, পুরো site Chrome দিয়ে page-by-page ঘুরে verify করা হয়েছে (screenshot সহ)। **Public Portal**-এর জন্য dpremiumhomes.com থেকে শুধু **idea/component-pattern** নেওয়া হচ্ছে — রঙ/theme হুবহু কপি করা client-এর নির্দেশ না, Public Portal-এর নিজস্ব visual identity frontend-design skill দিয়ে বানানো হবে। Public Portal-এ **real project photo ব্যবহার হবে না — free stock image site থেকে ছবি নেওয়া হবে** (demo/prototype purpose)।
 
+### Reference links (client, 2026-10-25)
+
+| Use | Link | Note |
+|---|---|---|
+| Admin Portal theme | https://urbanhub.layoutdrop.com/demo/property-list.html | UrbanHub — Admin is built on this |
+| Public Portal structure (Bangladeshi developer) | https://dpremiumhomes.com/ | Structure is right; the client wants a better-looking site than this |
+| Public Portal theme candidates | https://themeforest.net/search/real%20estate | Client asked for one template to be chosen from here |
+| Candidate A — Hously (Tailwind CSS v4, HTML) | https://shreethemes.in/hously/ · demos https://hously-landing.netlify.app/index | Same CSS stack as this app |
+| Candidate B — Homez (Next.js, Bootstrap) | https://homez-appdir.vercel.app/ | Richer property page (floor plans, nearby, video, EMI calculator) |
+
+PB1/PB2 (2026-10-25) were built with an in-house look and rejected by the
+client as too plain; the Public Portal is to be rebuilt on the chosen template.
+
 ---
 
 ## PART A: ADMIN PORTAL — UrbanHub-ভিত্তিক (verified, Chrome দিয়ে সরাসরি দেখা)

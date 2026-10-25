@@ -118,6 +118,51 @@ export function priceInBand(price: number, band: PublicPriceBand): boolean {
   return !!b && price >= b.min && price < b.max;
 }
 
+/**
+ * The areas buyers search by. `location_summary` is free marketing text
+ * ("Sector 18, Uttara — lake-facing on Lake Drive Road"), so the area is found
+ * by name inside it; a project in none of these keeps its own summary.
+ */
+export const DHAKA_AREAS = [
+  'Uttara',
+  'Bashundhara',
+  'Dhanmondi',
+  'Gulshan',
+  'Banani',
+  'Baridhara',
+  'Mirpur',
+  'Mohammadpur',
+  'Badda',
+  'Aftabnagar',
+  'Banasree',
+  'Khilgaon',
+  'Jolshiri',
+  'Purbachal',
+  'Kanchan',
+  'Rupganj',
+  'Keraniganj',
+  'Savar',
+  'Ashulia',
+  'Birulia',
+  'Narayanganj',
+  'Gazipur',
+] as const;
+
+/**
+ * The area named first in the text: "Kanchan, Rupganj — 2km off the Purbachal
+ * 300ft highway" is in Kanchan, not on the highway it is near.
+ */
+export function areaOf(locationSummary: string | null | undefined): string | null {
+  if (!locationSummary) return null;
+  const text = locationSummary.toLowerCase();
+  let best: { area: string; at: number } | null = null;
+  for (const area of DHAKA_AREAS) {
+    const at = text.indexOf(area.toLowerCase());
+    if (at >= 0 && (!best || at < best.at)) best = { area, at };
+  }
+  return best?.area ?? null;
+}
+
 /** "৳ 1.25 Cr" / "৳ 85 Lakh" — how Bangladeshi buyers read a property price. */
 export function formatPublicPrice(amount: number): string {
   if (amount >= 10_000_000) return `৳ ${trim(amount / 10_000_000)} Cr`;

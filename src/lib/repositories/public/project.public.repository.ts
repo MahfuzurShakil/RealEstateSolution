@@ -4,6 +4,7 @@ import { db } from '../../db/database';
 import type { DocumentRecord, Project, ProjectType, Tower, Unit } from '../../db/types';
 import { PROJECT_TYPE_LABEL, projectSalesStatus, projectShape, unitSizeLabel, type ProjectShape } from '../../domain/project';
 import {
+  areaOf,
   isPubliclyVisible,
   mapLink,
   priceInBand,
@@ -142,6 +143,8 @@ export interface PublicProjectFilters {
   project_types?: ProjectType[];
   stages?: PublicStage[];
   location?: string;
+  /** one of `DHAKA_AREAS`, matched inside `location_summary` */
+  area?: string;
   available_only?: boolean;
   /** any of these: the project has an available item priced inside the band */
   price_bands?: PublicPriceBand[];
@@ -342,6 +345,7 @@ function matches(
   if (filters.project_types?.length && !filters.project_types.includes(card.project_type)) return false;
   if (filters.stages?.length && !filters.stages.includes(card.stage)) return false;
   if (filters.location && card.location_summary !== filters.location) return false;
+  if (filters.area && areaOf(card.location_summary) !== filters.area) return false;
   if (filters.available_only && card.available_count === 0) return false;
   if (
     filters.price_bands?.length &&

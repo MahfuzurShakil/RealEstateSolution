@@ -1,6 +1,6 @@
 'use client';
 
-import { MapPin } from 'lucide-react';
+import { CalendarCheck, KeyRound, MapPin, Ruler } from 'lucide-react';
 import {
   PUBLIC_SALES_BADGE_LABEL,
   PUBLIC_STAGE_LABEL,
@@ -9,19 +9,29 @@ import {
 import type { PublicProjectCard } from '@/lib/repositories/public/project.public.repository';
 import { cn } from '@/lib/utils/cn';
 import { SiteImage } from './SiteImage';
+import { COVER_FALLBACK } from './stock-images';
 
 const BADGE_TONE: Record<PublicProjectCard['sales_badge'], string> = {
-  on_sale: 'bg-emerald-600 text-white',
+  on_sale: 'bg-site-primary text-white',
   paused: 'bg-amber-500 text-white',
-  sold_out: 'bg-stone-600 text-white',
+  sold_out: 'bg-slate-700 text-white',
 };
 
-function completionLabel(date: string | null): string | null {
+/** League Spartan has no ৳, so the sign is drawn in the Bangla face and the figure stays in the UI one. */
+export function Taka({ text }: { text: string }) {
+  if (!text.startsWith('৳')) return <>{text}</>;
+  return (
+    <>
+      <span className="font-taka">৳</span>
+      {text.slice(1)}
+    </>
+  );
+}
+
+function handoverLabel(date: string | null): string | null {
   if (!date) return null;
   const d = new Date(`${date}T00:00:00`);
-  return Number.isNaN(d.getTime())
-    ? null
-    : `Handover ${d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}`;
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
 }
 
 /**
@@ -30,58 +40,71 @@ function completionLabel(date: string | null): string | null {
  * 404 is worse than one that does not open.
  */
 export function ProjectCard({ card }: { card: PublicProjectCard }) {
-  const handover = completionLabel(card.expected_completion_date);
+  const handover = handoverLabel(card.expected_completion_date);
   const itemWord = (n: number) => (n === 1 ? card.item_label_singular : card.item_label);
 
   return (
-    <article className="group flex flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-site-stone/60">
+    <article className="group flex flex-col overflow-hidden rounded-xl bg-white shadow-sm shadow-slate-200 transition-shadow duration-500 hover:shadow-xl">
       <div className="relative overflow-hidden">
         <SiteImage
           image={card.cover}
-          className="aspect-4/3 w-full transition-transform duration-500 group-hover:scale-[1.02]"
+          fallback={COVER_FALLBACK[card.project_type]}
+          alt={card.name}
+          className="aspect-4/3 w-full transition-transform duration-700 group-hover:scale-105"
         />
         <span
           className={cn(
-            'absolute top-3 left-3 rounded-full px-3 py-1 text-xs font-medium',
+            'absolute top-4 left-4 rounded-full px-3 py-1 text-xs font-medium',
             BADGE_TONE[card.sales_badge],
           )}
         >
           {PUBLIC_SALES_BADGE_LABEL[card.sales_badge]}
         </span>
+        <span className="absolute top-4 right-4 rounded-full bg-white/95 px-3 py-1 text-xs font-medium text-site-ink">
+          {card.type_label}
+        </span>
       </div>
-      <div className="flex flex-1 flex-col gap-3 p-5">
-        <div className="flex flex-wrap items-center gap-x-2 text-xs tracking-wide text-site-muted uppercase">
-          <span>{card.type_label}</span>
-          <span aria-hidden>·</span>
-          <span>{PUBLIC_STAGE_LABEL[card.stage]}</span>
-          {handover && (
-            <>
-              <span aria-hidden>·</span>
-              <span className="normal-case">{handover}</span>
-            </>
-          )}
-        </div>
-        <h3 className="font-display text-xl leading-snug text-site-ink">{card.name}</h3>
+
+      <div className="flex flex-1 flex-col p-6">
+        <h3 className="text-xl leading-snug font-medium text-site-ink transition-colors group-hover:text-site-primary">
+          {card.name}
+        </h3>
         {card.location_summary && (
-          <p className="flex items-start gap-1.5 text-sm text-site-muted">
-            <MapPin className="mt-0.5 size-4 shrink-0 text-site-brass" /> {card.location_summary}
+          <p className="mt-2 flex items-start gap-1.5 text-site-muted">
+            <MapPin className="mt-0.5 size-4 shrink-0 text-site-primary" />
+            <span className="line-clamp-1">{card.location_summary}</span>
           </p>
         )}
-        {card.size_range && <p className="text-sm text-site-ink/80">{card.size_range}</p>}
-        <div className="mt-auto flex items-end justify-between gap-3 border-t border-site-stone/60 pt-3">
-          <div>
-            <p className="text-xs text-site-muted">{card.price_from ? 'Starting from' : 'Price'}</p>
-            <p className="font-display text-lg text-site-forest">
-              {card.price_from ? formatPublicPrice(card.price_from) : 'On request'}
-            </p>
-          </div>
-          <p className="text-right text-xs text-site-muted">
+
+        <ul className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 border-y border-site-line py-4 text-[15px]">
+          {card.size_range && (
+            <li className="flex items-center gap-1.5">
+              <Ruler className="size-4 text-site-primary" /> {card.size_range}
+            </li>
+          )}
+          <li className="flex items-center gap-1.5">
+            <KeyRound className="size-4 text-site-primary" />
             {card.total_count === 0
               ? `${card.item_label} coming soon`
-              : card.available_count > 0
-                ? `${card.available_count} of ${card.total_count} ${itemWord(card.total_count)} available`
-                : `All ${card.total_count} ${itemWord(card.total_count)} booked`}
-          </p>
+              : `${card.available_count} ${itemWord(card.available_count)} left`}
+          </li>
+          {handover && (
+            <li className="flex items-center gap-1.5">
+              <CalendarCheck className="size-4 text-site-primary" /> {handover}
+            </li>
+          )}
+        </ul>
+
+        <div className="mt-auto flex items-end justify-between gap-3 pt-4">
+          <div>
+            <span className="text-sm text-site-muted">{card.price_from ? 'Starting from' : 'Price'}</span>
+            <p className="text-xl font-semibold text-site-ink">
+              {card.price_from ? <Taka text={formatPublicPrice(card.price_from)} /> : 'On request'}
+            </p>
+          </div>
+          <span className="rounded-full bg-site-primary-soft px-3 py-1 text-sm font-medium text-site-primary-dark">
+            {PUBLIC_STAGE_LABEL[card.stage]}
+          </span>
         </div>
       </div>
     </article>
@@ -89,5 +112,5 @@ export function ProjectCard({ card }: { card: PublicProjectCard }) {
 }
 
 export function ProjectCardSkeleton() {
-  return <div className="h-[26rem] animate-pulse rounded-2xl bg-site-stone/50" />;
+  return <div className="h-[28rem] animate-pulse rounded-xl bg-site-soft" />;
 }

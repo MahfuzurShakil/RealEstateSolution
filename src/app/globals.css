@@ -32,25 +32,40 @@
 }
 
 /*
- * Public Portal (Design Reference Part B) — its own identity, deliberately not
- * the admin teal: deep forest green and brass on warm sand, with a serif for
- * headlines. Prefixed `site-` so no admin screen picks one up by accident.
+ * Public Portal (Design Reference Part B, Hously-style layout chosen by the
+ * client 2026-10-25): fresh green on white and slate, League Spartan for the
+ * UI and Hind Siliguri for Bangla lines. Distinct from the admin teal.
+ * Prefixed `site-` so no admin screen picks one up by accident.
  */
 @theme {
-  --color-site-forest: #1f3d35;
-  --color-site-forest-deep: #142a24;
-  --color-site-moss: #3f6b5c;
-  --color-site-brass: #b8864b;
-  --color-site-brass-light: #e9d6b8;
-  --color-site-sand: #f7f3ec;
-  --color-site-stone: #e6ded1;
-  --color-site-ink: #1c2321;
-  --color-site-muted: #6b6a63;
+  --color-site-primary: #16a34a;
+  --color-site-primary-dark: #15803d;
+  --color-site-primary-soft: #dcfce7;
+  --color-site-ink: #0f172a;
+  --color-site-muted: #64748b;
+  --color-site-line: #e2e8f0;
+  --color-site-soft: #f8fafc;
+  --color-site-night: #0f172a;
 }
 
-/* inline: the font variable lives on the public layout's wrapper, not :root */
+/* Public hero slider: slow zoom on the showing slide, and the dot's timer bar */
+@keyframes site-kenburns {
+  from { transform: scale(1); }
+  to { transform: scale(1.1); }
+}
+@keyframes site-progress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* inline: the font variables live on the public layout's wrapper, not :root */
 @theme inline {
-  --font-display: var(--font-fraunces), Georgia, 'Times New Roman', serif;
+  --font-site: var(--font-spartan), system-ui, sans-serif;
+  --font-taka: var(--font-hind), var(--font-spartan), sans-serif;
 }
 
 :root {
