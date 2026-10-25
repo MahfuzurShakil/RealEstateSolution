@@ -826,6 +826,8 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
         location_area: demo.location_area,
         road: demo.road ?? null,
         road_access: demo.road_access ?? null,
+        // the first width the description names; projects overwrite it below
+        front_road_width_ft: Number(demo.road_access?.match(/(\d+)\s*ft/)?.[1]) || null,
         land_classification: demo.land_classification ?? null,
         source: demo.source ?? null,
         mouza: demo.mouza ?? null,
@@ -1127,12 +1129,6 @@ async function seedDemoProjects(
         status: demo.status,
         project_manager: null,
         architect: demo.architect ?? null,
-        // v33 — the site's road, from the buildings that used to carry it
-        front_road_width_ft:
-          Math.max(
-            0,
-            ...demo.towers.filter((t) => !t.plot_patterns?.length).map((t) => t.front_road_width_ft ?? 0),
-          ) || null,
         surroundings: demo.surroundings ?? null,
         amenities: demo.amenities,
         cover_image_url: demo.cover_image_url ?? null,
@@ -1165,6 +1161,18 @@ async function seedDemoProjects(
       project.id,
       demo.land_names.map((name) => landIds.get(name)).filter((id): id is string => Boolean(id)),
     );
+
+    // v39 — the site's road lives on the land, from the buildings that used to carry it
+    const siteRoad = Math.max(
+      0,
+      ...demo.towers.filter((t) => !t.plot_patterns?.length).map((t) => t.front_road_width_ft ?? 0),
+    );
+    if (siteRoad > 0) {
+      for (const name of demo.land_names) {
+        const landId = landIds.get(name);
+        if (landId) await db.lands.update(landId, { front_road_width_ft: siteRoad });
+      }
+    }
 
     const unitIdByCode = new Map<string, string>();
 
@@ -1372,21 +1380,10 @@ async function seedDemoProjects(
   return { projectIds, unitIds: allUnitIds };
 }
 
-/**
- * Module 3 demo data — staff first, then the leads assigned to them.
- *
- * Follow-up dates are stored as offsets from the day the demo is loaded, so the
- * overdue / due-today / upcoming states stay true whenever it is opened.
- */
-async function seedDemoLeads(
-  projectIds: Map<string, string>,
-  unitIds: Map<string, string>,
-  createdBy: string | null,
-): Promise<{ userIds: Map<string, string>; leadIdByPhone: Map<string, string> }> {
+/** Staff accounts — basic data, kept by the basic seed too. */
+async function seedDemoUsers(createdBy: string | null): Promise<Map<string, string>> {
   const db = getDb();
-
   const userIds = new Map<string, string>();
-  const leadIdByPhone = new Map<string, string>();
 
   for (const user of DEMO_USERS) {
     const saved = await userRepository.create(
@@ -1412,6 +1409,45 @@ async function seedDemoLeads(
 
     userIds.set(user.key, saved.id);
   }
+
+  return userIds;
+}
+
+/** Vendor master — basic data, kept by the basic seed too. */
+async function seedDemoSuppliers(createdBy: string | null): Promise<Map<string, string>> {
+  const supplierIds = new Map<string, string>();
+  for (const demo of DEMO_SUPPLIERS) {
+    const saved = await supplierRepository.createSupplier(
+      {
+        name: demo.name,
+        type: demo.type,
+        contact_person: demo.contact_person ?? null,
+        phone: demo.phone,
+        address: demo.address ?? null,
+        notes: demo.notes ?? null,
+      },
+      createdBy,
+    );
+    supplierIds.set(demo.key, saved.id);
+  }
+  return supplierIds;
+}
+
+/**
+ * Module 3 demo data — staff first, then the leads assigned to them.
+ *
+ * Follow-up dates are stored as offsets from the day the demo is loaded, so the
+ * overdue / due-today / upcoming states stay true whenever it is opened.
+ */
+async function seedDemoLeads(
+  projectIds: Map<string, string>,
+  unitIds: Map<string, string>,
+  createdBy: string | null,
+): Promise<{ userIds: Map<string, string>; leadIdByPhone: Map<string, string> }> {
+  const db = getDb();
+
+  const userIds = await seedDemoUsers(createdBy);
+  const leadIdByPhone = new Map<string, string>();
 
   for (const demo of DEMO_LEADS) {
     const projectId = demo.project_name ? (projectIds.get(demo.project_name) ?? null) : null;
@@ -2178,21 +2214,7 @@ async function seedDemoProcurement(
 ): Promise<void> {
   const db = getDb();
 
-  const supplierIds = new Map<string, string>();
-  for (const demo of DEMO_SUPPLIERS) {
-    const saved = await supplierRepository.createSupplier(
-      {
-        name: demo.name,
-        type: demo.type,
-        contact_person: demo.contact_person ?? null,
-        phone: demo.phone,
-        address: demo.address ?? null,
-        notes: demo.notes ?? null,
-      },
-      createdBy,
-    );
-    supplierIds.set(demo.key, saved.id);
-  }
+  const supplierIds = await seedDemoSuppliers(createdBy);
 
   /*
    * Orders are seeded oldest first. The order matters: a weighted average is
@@ -2807,4 +2829,16 @@ export async function clearDemoData(): Promise<void> {
 export async function resetDemoData(createdBy: string | null = null): Promise<void> {
   await clearDemoData();
   await seedDemoData(createdBy);
+}
+
+/**
+ * The "clean start" mode: every record goes, and only the basic data comes
+ * back — staff accounts and the supplier list. Projects, land, bank accounts,
+ * partners and money are what the user enters, so none of that is seeded.
+ * The cleared flag stays set, so a reload does not bring the full demo back.
+ */
+export async function resetBasicData(createdBy: string | null = null): Promise<void> {
+  await clearDemoData();
+  await seedDemoUsers(createdBy);
+  await seedDemoSuppliers(createdBy);
 }
