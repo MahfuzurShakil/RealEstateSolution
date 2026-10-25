@@ -131,7 +131,7 @@ export const NAV_GROUPS: NavGroup[] = [
    * accounts hold. The old Finance group stays for procurement companies.
    */
   {
-    label: 'Accounts',
+    label: 'Payments & Fund',
     icon: Wallet,
     items: [
       // client, 2026-10-21: two plain menu items rather than tabs on one page
