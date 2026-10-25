@@ -1,6 +1,7 @@
 'use client';
 
-import { Menu, PanelLeft } from 'lucide-react';
+import Link from 'next/link';
+import { Globe, LayoutGrid, Menu, PanelLeft } from 'lucide-react';
 import { ROLES, useMockSession, type Role } from '@/lib/auth/mock-session';
 import { humanize } from '@/lib/utils/format';
 import { AlertsBell } from './AlertsBell';
@@ -59,6 +60,22 @@ export function AdminTopbar({
         */}
 
       <div className="ml-auto flex items-center gap-3">
+        {/* the two portals are one app; these move between them and back to the chooser */}
+        <Link
+          href="/home"
+          className="flex items-center gap-2 rounded-full border border-admin-200 px-3.5 py-1.5 text-sm font-medium text-admin-700 transition-colors hover:bg-admin-50"
+        >
+          <Globe className="size-4" />
+          <span className="hidden sm:inline">Public Portal</span>
+        </Link>
+        <Link
+          href="/"
+          aria-label="Choose a portal"
+          title="Choose a portal"
+          className="grid size-9 place-items-center rounded-lg text-ink-muted hover:bg-admin-50 hover:text-admin-700"
+        >
+          <LayoutGrid className="size-5" />
+        </Link>
         {/* DIRECT-PURCHASE-PLAN.md B6 — a bell that is live, not decoration */}
         <AlertsBell />
         <div className="flex items-center gap-3">

@@ -208,7 +208,7 @@ export function ProjectDetail({ code }: { code: string }) {
     <>
       <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
         <nav className="flex items-center gap-1.5 text-sm text-site-muted" aria-label="Breadcrumb">
-          <Link href="/" className="hover:text-site-primary">Home</Link>
+          <Link href="/home" className="hover:text-site-primary">Home</Link>
           <ChevronRight className="size-4" />
           <Link href="/projects" className="hover:text-site-primary">Projects</Link>
           <ChevronRight className="size-4" />

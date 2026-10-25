@@ -13,7 +13,8 @@ npm run dev
 ```
 
 - Admin Portal → http://localhost:3000/admin
-- Public Portal → http://localhost:3000
+- Portal chooser → http://localhost:3000 (pick Admin or Public)
+- Public Portal → http://localhost:3000/home
 
 Data lives in the browser only (device/browser-local, lost when site data is
 cleared). No auth — the topbar has a mock "role" switcher.

@@ -73,9 +73,14 @@ export function SiteFooter() {
         </div>
       </div>
       <div className="border-t border-slate-800">
-        <p className="mx-auto max-w-7xl px-4 py-6 text-sm text-slate-500 sm:px-6">
-          © {year} {company?.company_name?.replace(/\.$/, '')}. All rights reserved.
-        </p>
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-6 text-sm text-slate-500 sm:px-6">
+          <p>© {year} {company?.company_name?.replace(/\.$/, '')}. All rights reserved.</p>
+          {/* demo navigation back to the portal chooser and the admin side */}
+          <p className="flex gap-4">
+            <Link href="/admin" className="hover:text-white">Admin Portal</Link>
+            <Link href="/" className="hover:text-white">Choose portal</Link>
+          </p>
+        </div>
       </div>
     </footer>
   );

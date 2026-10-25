@@ -35,7 +35,7 @@ export function SiteHeader() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname?.startsWith(href));
+  const isActive = (href: string) => pathname?.startsWith(href);
 
   return (
     <header
@@ -45,7 +45,7 @@ export function SiteHeader() {
       )}
     >
       <div className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
-        <Link href="/" className="min-w-0" onClick={() => setOpen(false)}>
+        <Link href="/home" className="min-w-0" onClick={() => setOpen(false)}>
           {name ? <Wordmark name={name} /> : <span className="block h-10 w-44" />}
         </Link>
 
