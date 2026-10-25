@@ -1,4 +1,4 @@
-import type { ProjectSalesStatus, ProjectStatus, UnitStatus, ForSaleBy } from '../db/types';
+import type { ForSaleBy, ProjectSalesStatus, ProjectStatus, ProjectType, UnitStatus } from '../db/types';
 import type { ProjectShape } from './project';
 import { projectSalesStatus } from './project';
 
@@ -39,7 +39,20 @@ export function publicSalesBadge(sales: ProjectSalesStatus): PublicSalesBadge {
   return 'on_sale';
 }
 
-export type PublicStage = 'upcoming' | 'ongoing' | 'ready' | 'completed';
+/**
+ * What each type means to a buyer. `PROJECT_TYPE_HINT` is written for the
+ * person filling in the admin form ("nothing is built"), not for someone
+ * deciding what to buy.
+ */
+export const PUBLIC_TYPE_BLURB: Record<ProjectType, string> = {
+  apartment: 'Ready-to-live flats in well-planned buildings.',
+  commercial: 'Shops and office space in busy locations.',
+  mixed: 'Shops below, homes above — one address for both.',
+  plot_development: 'Serviced plots with roads and utilities, ready for your own house.',
+  land_share: 'Own a registered share of a plot, at a fraction of the whole price.',
+};
+
+export type PublicStage ='upcoming' | 'ongoing' | 'ready' | 'completed';
 
 export const PUBLIC_STAGE_LABEL: Record<PublicStage, string> = {
   upcoming: 'Upcoming',
@@ -82,6 +95,27 @@ export function publicUnitStatus(unit: { status: UnitStatus; for_sale_by: ForSal
   if (unit.status === 'available') return 'available';
   if (unit.status === 'sold' || unit.status === 'handed_over') return 'sold';
   return 'booked';
+}
+
+/**
+ * v2.0 §3.4 — the listing's price filter, in the same bands as the lead
+ * form's `BUDGET_RANGE_OPTIONS`, so a buyer who picks "50 Lakh – 1 Crore" here
+ * reads the same words a salesperson sees on their lead. Lower bound
+ * inclusive, upper bound exclusive.
+ */
+export const PUBLIC_PRICE_BANDS = [
+  { key: 'under_50l', label: 'Under 50 Lakh', min: 0, max: 5_000_000 },
+  { key: '50l_1cr', label: '50 Lakh – 1 Crore', min: 5_000_000, max: 10_000_000 },
+  { key: '1_1_5cr', label: '1 – 1.5 Crore', min: 10_000_000, max: 15_000_000 },
+  { key: '1_5_2cr', label: '1.5 – 2 Crore', min: 15_000_000, max: 20_000_000 },
+  { key: '2_3cr', label: '2 – 3 Crore', min: 20_000_000, max: 30_000_000 },
+  { key: 'above_3cr', label: 'Above 3 Crore', min: 30_000_000, max: Infinity },
+] as const;
+export type PublicPriceBand = (typeof PUBLIC_PRICE_BANDS)[number]['key'];
+
+export function priceInBand(price: number, band: PublicPriceBand): boolean {
+  const b = PUBLIC_PRICE_BANDS.find((x) => x.key === band);
+  return !!b && price >= b.min && price < b.max;
 }
 
 /** "৳ 1.25 Cr" / "৳ 85 Lakh" — how Bangladeshi buyers read a property price. */

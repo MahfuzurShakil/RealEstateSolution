@@ -304,7 +304,7 @@ Phase A: honeypot field only. Phase B: rate limit per phone/IP.
 | Batch | Scope | Done when |
 |---|---|---|
 | **PB1** Foundation | Public layout (header, footer, WhatsApp float), palette and type per Design Reference Part B, `publicProjectRepository` (gate, card, detail per shape), `publicContentRepository` (company info), drawn image placeholder | Repository returns correct shapes for the 7 demo projects; non-public and `not_open` projects return nothing — **done 2026-10-25** |
-| **PB2** Listing + Home | `/`, `/projects` with filters, cards, empty states | Publish/unpublish in Admin changes the site on reload |
+| **PB2** Listing + Home | `/`, `/projects` with filters, cards, empty states | Publish/unpublish in Admin changes the site on reload — **done 2026-10-25** (cards link to detail in PB3) |
 | **PB3** Project detail | Gallery, specs, unit-type cards, floor grid / plot table / share register, brochure and floor-plan downloads, map link | Each of the three shapes renders with real demo data; no internal field in the page |
 | **PB4** Progress | Tower bars + photo timeline; plot stepper | Ticking a photo public in Site Progress shows it on the project page |
 | **PB5** Inquiry | Popup + contact form, WhatsApp links, lead note fix | A website inquiry appears in Admin → Leads as `website_form`; repeat phone adds an activity naming the project |

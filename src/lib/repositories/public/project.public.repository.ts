@@ -6,6 +6,8 @@ import { PROJECT_TYPE_LABEL, projectSalesStatus, projectShape, unitSizeLabel, ty
 import {
   isPubliclyVisible,
   mapLink,
+  priceInBand,
+  type PublicPriceBand,
   publicSalesBadge,
   publicStage,
   publicUnitStatus,
@@ -141,6 +143,8 @@ export interface PublicProjectFilters {
   stages?: PublicStage[];
   location?: string;
   available_only?: boolean;
+  /** any of these: the project has an available item priced inside the band */
+  price_bands?: PublicPriceBand[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -325,11 +329,25 @@ async function visibleProjects(): Promise<Project[]> {
   return (await db.projects.toArray()).filter(isPubliclyVisible);
 }
 
-function matches(card: PublicProjectCard, filters: PublicProjectFilters): boolean {
+/**
+ * The price band asks about every available item, not the card's "from"
+ * price: a project whose cheapest flat is 1.1 Cr but which also has 2.4 Cr
+ * penthouses belongs in "2 – 3 Crore" too.
+ */
+function matches(
+  card: PublicProjectCard,
+  availablePrices: number[],
+  filters: PublicProjectFilters,
+): boolean {
   if (filters.project_types?.length && !filters.project_types.includes(card.project_type)) return false;
   if (filters.stages?.length && !filters.stages.includes(card.stage)) return false;
   if (filters.location && card.location_summary !== filters.location) return false;
   if (filters.available_only && card.available_count === 0) return false;
+  if (
+    filters.price_bands?.length &&
+    !availablePrices.some((p) => filters.price_bands!.some((band) => priceInBand(p, band)))
+  )
+    return false;
   return true;
 }
 
@@ -343,8 +361,14 @@ export const publicProjectRepository = {
         (a, b) =>
           Number(b.is_featured) - Number(a.is_featured) || b.created_at.localeCompare(a.created_at),
       )
-      .map((p) => toCard(p, loaded))
-      .filter((c) => matches(c, filters));
+      .filter((p) =>
+        matches(
+          toCard(p, loaded),
+          shownUnits(p, loaded).filter(isCompanyAvailable).map((u) => u.base_price),
+          filters,
+        ),
+      )
+      .map((p) => toCard(p, loaded));
   },
 
   /** Home page — featured first, topped up with the newest (the listing's own order). */
