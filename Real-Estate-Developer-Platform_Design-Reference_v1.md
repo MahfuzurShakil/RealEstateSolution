@@ -112,6 +112,9 @@ Lucide icon set (outline style) — search icon, bell, chat bubble, calendar, mo
 
 ## PART B: PUBLIC PORTAL — শুধু Idea/Component-pattern (রঙ কপি না)
 
+> **2026-10-25: Public site-এর final design system (colour tokens, typography, motion, page
+> blueprints) এখন `PUBLIC-WEBSITE-MASTER-PLAN.md`-এ।** নিচের B.1–B.3 history হিসেবে রাখা হলো।
+
 > dpremiumhomes.com Chrome দিয়ে দেখা হয়েছিল শুধু **component-level idea নেওয়ার জন্য** (কোন ধরনের section থাকে, কী তথ্য দেখানো হয়) — client explicitly বলেছেন রঙ/theme হুবহু ওরকম হতে হবে এটা বলেননি। তাই Public Portal-এর নিজস্ব color palette ও visual identity frontend-design skill দিয়ে আলাদাভাবে বানানো হবে (Admin-এর teal থেকে আলাদা রাখা ভালো, যাতে দুইটা আলাদা "product" মনে হয়)।
 
 ### B.1 কী ধরনের Component/Section Idea নেওয়া হচ্ছে (dpremiumhomes.com থেকে দেখা pattern, না রঙ)

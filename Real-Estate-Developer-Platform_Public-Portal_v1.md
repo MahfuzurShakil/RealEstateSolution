@@ -301,6 +301,9 @@ Phase A: honeypot field only. Phase B: rate limit per phone/IP.
 
 ## 7. Build order (each batch browser-verified, seeded, pushed)
 
+> Superseded for PB3 onward by the W0–W10 roadmap in `PUBLIC-WEBSITE-MASTER-PLAN.md` §12
+> (2026-10-25). The data rules in §1–§6 of this document still apply.
+
 | Batch | Scope | Done when |
 |---|---|---|
 | **PB1** Foundation | Public layout (header, footer, WhatsApp float), palette and type per Design Reference Part B, `publicProjectRepository` (gate, card, detail per shape), `publicContentRepository` (company info), drawn image placeholder | Repository returns correct shapes for the 7 demo projects; non-public and `not_open` projects return nothing — **done 2026-10-25** |
