@@ -1,235 +1,350 @@
 # Real Estate Developer Management Platform — Public Portal
-## v1.0 — Living Document (module-wise confirmed scope, for direct implementation)
+## v2.0 — Final scope after the Admin rework (2026-10-25)
 
-> এই ডকুমেন্ট **Admin Portal ডকুমেন্ট** (`Real-Estate-Developer-Platform_Scope-Document_v3.md`)-এর companion — Public-facing website-এর জন্য। একই living-document নিয়ম প্রযোজ্য: শুধু freeze হওয়া module থাকবে, field-level detail সহ। Admin-এর কোনো table reference করলে সেটা v3.md-এর schema, এখানে আবার পুরোটা লেখা হয় না — শুধু যা নতুন বা public-portal-specific সেটাই।
+> Companion to the Admin scope (`Real-Estate-Developer-Platform_Scope-Document_v3.md`).
+> v1.0 froze P1–P4 on 2026-09-01, before Module 2's project types, the
+> PLATFORM-REPLAN pipeline, the direct-purchase rework and the sales
+> simplification. v2.0 re-checks every v1 rule against the code as it stands at
+> `d7d71a6` and is the version to build from. The filename keeps `_v1` so the
+> references in AGENTS.md and the code comments still resolve.
+>
+> Admin tables are referenced, not repeated. Field names are the ones in
+> `src/lib/db/types.ts`.
 
 ---
 
-## 0. Architecture Decision (v3.md-এর সাথে shared)
+## 0. What changed in Admin since v1, and what it does to the public site
 
-- **একই app, আলাদা route:** Admin (`/admin/*`) ও Public Portal (বাকি সব route) একই Next.js app-এর অংশ — একই IndexedDB (Phase A) share করবে, তাই demo-তে Admin-এ data দিলে Public site-এ সাথে সাথে reflect হবে
-- Public route থেকে Admin-এর table **read করা যাবে, কিন্তু শুধু নির্দিষ্ট public-safe field** — internal/financial field (booking discount, cost, landowner info) কখনো public route-এ expose হবে না, এটা service-layer-এই enforce হবে (repository ভিন্ন — `publicProjectRepository` শুধু whitelisted field রিটার্ন করবে)
-- Public থেকে Admin-এর কোনো table-এ **write** শুধু একটা জায়গায়: `leads` (Module 3, v3.md) — নতুন inquiry submit হলে
-
----
-
-## 1. MODULE P1: Core Pages ✅ FROZEN
-
-### 1.1 Purpose
-Home, About, Contact, Blog — site-এর ভিত্তি pages। বেশিরভাগ static content, কিছু jaygay admin data থেকে dynamic pull।
-
-### 1.2 Pages ও Data Source
-
-| Page | Content | Data Source |
+| Admin change (where) | v1 assumed | v2 rule |
 |---|---|---|
-| **Home** | Hero banner, trust indicators (static text/copy), "Active Projects" count, Featured Projects (কার্ড, ৩-৪টা) | `projects` (v3.md) WHERE `is_public = true` — count ও `is_featured = true` filter |
-| **About** | Company story, mission — mostly static content | `company_settings` (v3.md, Section 1.3) থেকে company_name; বাকি static copy (hardcoded, DB লাগবে না) |
-| **Contact** | Address, phone, email, map, office hours, general inquiry form | Info: `company_settings`। Form submit → Module P4 (Lead Capture)-এর একই mechanism ব্যবহার করবে (`leads` table-এ, `interested_project_id = null`, general inquiry হিসেবে) — logic detail P4-তে, এখানে শুধু page বলা হলো |
-| **Blog listing** | সব published blog post-এর card (cover, title, excerpt, date) | `blog_posts` table (নিচে) WHERE `status = 'published'` |
-| **Blog detail** | একটা post-এর পুরো content | `blog_posts` by slug |
+| **Five project types** with shapes (`PROJECT_TYPES`, `PROJECT_SHAPE`, Dexie v25–27) | Every project is towers of flats | Listing filters on type; the detail page renders per shape: towers of flats/spaces, blocks of plots, or a share register (§3.4) |
+| **`sales_status`** `not_open / open / paused / sold_out` (v29) | Badge from build status only | A project is public only when `is_public = true` **and** `sales_status ≠ not_open`. The badge reads sales status first (§3.2) |
+| **Publish switch moved to the Sales card** (`ProjectSalesCard`), disabled until sales open | Toggle on the project edit form | No change needed; the public repository repeats the same gate so old rows can't slip through |
+| **Shape-aware status labels** (`projectStatusLabel`, `pipelineSteps`) | One mapping for all | Stage label mapping per shape (§3.3) |
+| **Unit status `draft`** (v33, bulk generation with missing details) | Not in the enum | `draft` units never reach the public site, not even in the grid |
+| **Unit booking flow**: hold → `reserved`, confirmed → `booked`; manual `hold` (S1, `applySideEffects`) | hold / reserved / booked all exist | Same mapping, all three show "Booked" |
+| **Plots and shares on `units`**: `land_size`, `land_size_unit`, `share_pct`, `road_width_ft`, `is_corner`; `floor`/`size_sqft` nullable (v26) | Every unit has floor and sqft | Card fields come from `shapeUses()` / `unitSizeLabel()`, never hard-coded sqft |
+| **Front road width moved to `lands`** (v33 → v39); plot blocks keep `towers.front_road_width_ft` | Tower specification row | "Front road" reads the linked land's `front_road_width_ft` (only that field crosses over) |
+| **Tower size facts**: `basement_count`, `floor_area_sqft`, `staircase_count`; project `design_*` fields (2026-10-21) | Building type, units/floor, lift, backup | Specification block adds basements and typical floor area |
+| **Uploaded cover image** `cover_image_document_id` (Blob in IndexedDB) | `cover_image_url` | Cover = that document if set, else `cover_image_url`, else a stock placeholder |
+| **Site GPS only on `lands`** (`gps_lat`, `gps_lng`) | "See on map" from project GPS | Map link from the first linked land's coordinates; no project GPS field is added |
+| **Progress per shape**: towers have WBS %; plots progress through land development; shares have none | Tower % for everyone | P3 shows tower % for built shapes only (§4) |
+| **`progress.public.repository.ts`** already exists, returns latest photo per tower | Planned | Kept; gains a photo-feed method in batch PB4 |
+| **`leadRepository.captureInquiry`** with phone dedup, `source` parameter | Planned | P4 calls it through a public wrapper; one gap to fix (§5.3) |
+| **Lead → booking in one step, stage records** (d0c5d94) | — | Nothing to change: website leads enter at `new` like any other |
+| **`blog_posts`** | New table | Still not built (only `EntityType 'blog_post'` exists). Needs a new Dexie version block (§2.3) |
+| **Demo "clean start" mode** (969af30) | — | Every public page needs a real empty state ("No projects on sale yet") |
 
-### 1.3 `blog_posts` table (নতুন — content marketing-এর জন্য, Admin থেকে manage হবে)
+Nothing in the cost, procurement, direct-purchase, fund or partner modules
+touches the public site, and none of it may: those tables never get a public
+repository.
+
+---
+
+## 1. Architecture
+
+- **One app, two portals.** Public routes live in `src/app/(public)/*`, with
+  their own layout and visual identity (Design Reference Part B). They read the
+  same Dexie database as Admin, so a project published in Admin shows on the
+  site at once.
+- **Public repositories only.** Public pages import from
+  `src/lib/repositories/public/*` and nothing else. Each method returns a
+  hand-built `Public*` object, never a spread of the Dexie row, so a new admin
+  field can never leak by default.
+- **Never public:** `base_price` of non-available units, discounts, bookings,
+  customers, payments, any cost/budget/expense/fund/partner row, landowner
+  identity or share, `allocation_type`, `allocated_to_owner_id`,
+  `for_sale_by` (the value itself), WBS planned dates/weights/delay, land
+  price, deed/khatian/DD data, lead data of other people.
+- **One write:** the inquiry form, into `leads` / `lead_activities`, through
+  `leadRepository.captureInquiry` with `source = 'website_form'` forced by the
+  wrapper.
+- **Phase A rendering:** pages are client components (IndexedDB is in the
+  browser). Images stored as Blobs are shown through the shared `useBlobUrl`
+  data-URL hook, as in Admin. A project with no picture gets a drawn
+  placeholder, not a stock photo (a stranger's building on a real project's
+  card would be a claim). Phase B moves these pages to server rendering for SEO; the
+  repository signatures stay.
+- **URLs:** `/projects/[code]` using `projects.code` (stable, already unique).
+  No slug field is added for projects. Blog uses `blog_posts.slug`.
+
+---
+
+## 2. MODULE P1 — Core pages
+
+### 2.1 Pages
+
+| Route | Content | Source |
+|---|---|---|
+| `/` Home | Hero, trust strip, counts (projects on sale, completed projects), featured projects (3–4), "browse by type" tiles for the types that have public projects, latest 3 blog posts, contact CTA | `publicProjectRepository.featured()`, `.stats()`; `publicContentRepository` |
+| `/about` | Company story, mission, completed-project count | `company_settings` website fields (§2.2) |
+| `/contact` | Address, phone, email, WhatsApp, office hours, map link, general inquiry form | `company_settings`; form → P4 with no project |
+| `/blog`, `/blog/[slug]` | Published posts | `blog_posts` (§2.3) |
+
+### 2.2 `company_settings` addendum (unindexed, no version block — same precedent as `whatsapp_number`)
+
+```
+website_tagline     VARCHAR, nullable   -- hero line
+about_text          TEXT, nullable      -- About page body (plain text / paragraphs)
+office_hours        VARCHAR, nullable   -- e.g. "Sat–Thu, 10am–7pm"
+facebook_url        VARCHAR, nullable
+office_map_url      VARCHAR, nullable   -- Google Maps link for the head office
+```
+
+Edited in Admin → Settings → Company, in a new "Website" card. Empty fields
+hide their section; the site never shows a blank label.
+
+### 2.3 `blog_posts` (new table, new Dexie `version(n)` block)
 
 ```
 blog_posts
- - id             UUID, PK
- - slug           VARCHAR, UNIQUE   -- URL-friendly, e.g. "real-estate-investment-bd-2026"
+ - id, created_at, updated_at, created_by      (BaseEntity)
+ - slug           VARCHAR, UNIQUE, indexed
  - title          VARCHAR
- - excerpt         VARCHAR   -- listing card-এ short summary
- - content           TEXT      -- markdown/rich text
- - author_id           UUID → users.id, nullable
- - status               ENUM: draft | published
- - published_at           DATE, nullable
- - created_at              TIMESTAMP
+ - excerpt        VARCHAR
+ - content        TEXT        -- plain text with paragraphs in Phase A
+ - author_id      UUID → users.id, nullable
+ - status         ENUM: draft | published, indexed
+ - published_at   DATE, nullable
 ```
 
-### 1.4 Document types for `entity_type = 'blog_post'`
-`cover_image`, `content_image`, `other`
-
-### 1.5 Admin-side management (এই module-এর জন্য যা Admin Portal-এ যোগ হবে)
-- Admin Portal-এ একটা simple "Blog" section — `blog_posts` create/edit/publish। কোনো নতুন role লাগবে না, `super_admin`/`management`-এর permission-এই যথেষ্ট (v3.md Module 8 permission matrix-এ ছোট addition হিসেবে ধরা হবে যখন Admin-side UI বানানো হবে)
-- Project-এর `is_public`/`is_featured` toggle — Project edit page-এই থাকবে (নতুন page লাগবে না)
-
-### 1.6 Open / deferred
-- Contact form-এর general inquiry ঠিক কোন lead source ধরা হবে (`source = website_form` ধরেই রাখছি, P4-তে confirm হবে) — blocking না, P4-তে চূড়ান্ত হবে
+Documents: `entity_type = 'blog_post'`, types `cover_image`, `content_image`,
+`other` (lookup_values seed). Admin: a "Blog" page under a new **Website**
+sidebar group, list + popup form + publish/unpublish (POPUP-SYSTEM.md rules),
+roles `super_admin` and `management`.
 
 ---
 
-## 2. MODULE P2: Project & Unit Listing ✅ FROZEN
+## 3. MODULE P2 — Project listing and detail
 
-### 2.1 Purpose
-Project listing page + Project detail page (gallery, floor-wise unit availability) — Admin-এর `projects`/`towers`/`units` (v3.md) থেকে read-only, শুধু public-safe field।
-
-### 2.2 Public Project Card (listing page) — whitelisted shape
+### 3.1 Visibility gate (in the repository, every method)
 
 ```
-PublicProjectCard (computed/read view, no new table)
- - code, name, project_type
- - location_summary        -- addendum, v3.md
- - cover_image_url
- - status_label             -- মাপা (নিচে mapping)
- - is_featured
- - price_range               -- MIN/MAX(units.base_price) WHERE unit.status='available' AND unit.for_sale_by='company'
- - available_unit_count       -- COUNT(units) WHERE status='available' AND for_sale_by='company'
+public(project) = project.is_public === true
+               && projectSalesStatus(project) !== 'not_open'
 ```
 
-Query: `projects` WHERE `is_public = true`, project ID দিয়ে join করে উপরের aggregate বের হবে।
+`is_featured` counts only when `public(project)` holds.
 
-### 2.3 Status Label Mapping (presentation-layer, নতুন DB field না — শুধু display mapping)
+### 3.2 Sales badge (from `sales_status`)
 
-| Admin `projects.status` | Public label |
+| `sales_status` | Badge | Inquiry form |
+|---|---|---|
+| `open` | **On Sale** (green) | Yes |
+| `paused` | **Bookings Paused** (amber) | Yes, message says sales will reopen |
+| `sold_out` | **Sold Out** (gray) | Yes, framed as "register interest in our next project" |
+
+### 3.3 Stage label (from `status` + shape)
+
+| Shape | Upcoming | Ongoing | Ready / Completed |
+|---|---|---|---|
+| Tower (apartment, commercial, mixed) | planning, design, approval | under_construction, nearly_complete | handover_ongoing → "Ready", closed → "Completed" |
+| Plot | planning, design, approval | under_construction ("Under Development") | handover_ongoing ("Possession"), closed → "Completed" |
+| Share | — | planning ("Register Open") | nearly_complete and later → "Completed" |
+
+`closed` projects stay public only if the admin leaves them published; they
+appear under a "Completed projects" section as portfolio, without units.
+
+### 3.4 Listing card — `PublicProjectCard`
+
+```
+code, name, project_type, type_label (PROJECT_TYPE_LABEL)
+location_summary
+cover            { kind: 'blob' | 'url' | 'placeholder', ... }
+sales_badge, stage_label, is_featured
+item_label       -- "Flats" / "Spaces" / "Plots" / "Shares" (shape labels)
+price_from       -- MIN(base_price) of company-sold available units; null if none
+available_count  -- COUNT of company-sold available units
+size_range       -- "1,250–1,650 sqft" / "3–5 katha" / "5% per share" via unitSizeLabel
+expected_completion_date  -- built shapes only, month + year
+```
+
+Company-sold = `for_sale_by = 'company'`. `draft` units are excluded from
+everything.
+
+**Filters** (`/projects`): type (multi), stage (Upcoming/Ongoing/Ready),
+location (distinct `location_summary` values), price bucket
+(`BUDGET_RANGE_OPTIONS`, matched against `price_from`), "available now" toggle.
+Sort: featured first, then newest.
+
+### 3.5 Detail page — `PublicProjectDetail` (per shape)
+
+Common to every shape:
+
+```
+card fields +
+surroundings (text, shown as bullets split on newlines)
+amenities[]
+gallery[]        -- documents: entity_type='project', document_type='gallery_image', is_public
+brochure         -- latest public 'brochure' document → "Download Brochure"
+floor_plans[]    -- public 'layout_floor_plan' / 'layout_plan' documents
+map_link         -- first linked land's gps_lat/gps_lng → Google Maps URL; else none
+front_road_ft    -- first linked land's front_road_width_ft
+```
+
+**Tower shapes** (apartment, commercial, mixed):
+
+```
+specification: building_type, floor_count, basement_count, unit_per_floor,
+               lift_count, staircase_count, electricity_backup, floor_area_sqft
+towers[]: { name, stage, progress_pct }               -- P3
+unit_types[]: grouped by unit_type: { unit_type, size range, bedrooms,
+               bathrooms, balconies, price_from, available_count }
+grid[tower][floor] → { code, unit_type, size, facing, public_status,
+               price (available only) }
+```
+
+Commercial hides bedroom/bathroom/balcony (shape fields). Mixed shows both.
+
+**Plot shape** (`plot_development`): blocks instead of towers; a plot table/grid
+per block with `land_size` + unit, `road_width_ft`, `is_corner`, `facing`,
+`public_status`, price when available. Block-level road width from
+`towers.front_road_width_ft`. No specification block.
+
+**Share shape** (`land_share`): no grid. A register summary: total shares,
+shares available, holding per share (`share_pct` and `land_size`), price per
+share, and the plot's total land area (`projects.total_land_area`). The
+`construction_after_sale = planned` case shows one line: "A building on this
+land is planned after the shares sell."
+
+### 3.6 Unit public status
+
+| Admin `units.status` | Public |
 |---|---|
-| planning, design, approval | Upcoming |
-| under_construction, nearly_complete | Ongoing |
-| handover_ongoing, closed | Ready |
+| `draft` | not shown |
+| `available` (company) | **Available** — price shown, click opens unit inquiry |
+| `hold`, `reserved`, `booked` | **Booked** |
+| `sold`, `handed_over` | **Sold** |
+| any status, `for_sale_by = 'owner_direct'` | **Sold** — so the building is complete on screen without saying who sells it |
 
-### 2.4 Public Project Detail — whitelisted shape
+### 3.7 Pricing
 
-```
-PublicProjectDetail (computed/read view)
- - সব PublicProjectCard field +
- - surroundings, amenities (full text/list)
- - towers[]: { name, status, current_progress_pct }   -- current_progress_pct আসবে P3 থেকে (towers.current_progress_pct, v3.md Module 5)
- - floors[] → units[]: { code, floor, unit_type, bedroom_count, bathroom_count, balcony_count, size_sqft, facing, base_price, public_status }
- - gallery: documents WHERE entity_type='project', entity_id=X, is_public=true
- - brochure_url: documents WHERE entity_type='project', entity_id=X, document_type='brochure', is_public=true (latest one — prominent "Download Brochure" button/CTA, generic list-এ merge না করে আলাদা রাখা হলো)
- - downloadable_docs: documents WHERE entity_type IN ('project','unit'), is_public=true, document_type IN ('layout_floor_plan')
-```
+`base_price` is shown for available company units ("From ৳ X" on cards).
+Premiums, other charges and discounts are never shown; the inquiry is where a
+final price is quoted. A company setting `public_show_prices` (unindexed,
+default true) switches every price to "Call for price".
 
-### 2.5 Unit Public Status Mapping (presentation-layer)
+---
 
-| Admin `units.status` | Public `public_status` |
+## 4. MODULE P3 — Construction progress
+
+| Shape | What the visitor sees |
 |---|---|
-| available | Available |
-| hold, reserved, booked | Booked |
-| sold, handed_over | Sold |
+| Tower | Per tower: stage + rounded `current_progress_pct` bar; overall % = average; photo timeline (newest first) of `progress_photo` documents with `is_public = true`, each with date, tower name and caption |
+| Plot | Stage stepper only (Planning → Layout Design → Subdivision Approval → Under Development → Possession). Land-development % stays internal in v2 |
+| Share | No progress section |
 
-> Internal nuance (hold vs reserved vs booked) কেন public-এ দেখানো হচ্ছে না — customer-এর জন্য এই পার্থক্য অর্থহীন, শুধু "available কিনা" জানা দরকার।
+Caption = `site_progress_updates.remarks` of the update the photo belongs to.
+No work-item names, planned dates, weights or delay figures cross over
+(`progress.public.repository.ts` already enforces this; it gains
+`photoFeedForProject(projectId, limit)`).
 
-### 2.6 Owner-direct Units
-`for_sale_by = 'owner_direct'` unit-গুলো `price_range`/`available_unit_count` calculation থেকে **বাদ** — কারণ এগুলো company-র sale না। তবে floor-plan grid-এ unit হিসেবে দেখানো হবে (visitor পুরো building দেখতে চায়), status শুধু "Sold"/"Booked" হিসেবে দেখাবে (owner নিজে বিক্রি করছে এই detail public-এ প্রকাশের দরকার নাই) — booking না থাকলেও visually "not available for company booking" বোঝানো এভাবেই possible।
-
-### 2.7 Floor-wise Availability Grid (UI concept, no new schema)
-Project detail page-এ Tower select করলে সেই Tower-এর floor-by-floor grid — প্রতিটা floor-এ unit code + `public_status` রঙ দিয়ে (Available=green, Booked=amber, Sold=gray)। ডেটা সরাসরি ২.৪-এর `floors[]` থেকে।
-
-### 2.8 Document types used (v3.md Module 2/3-এ যোগ, public visibility flag `is_public` দিয়ে নিয়ন্ত্রিত)
-`layout_floor_plan`, `brochure` (নতুন type — v3.md-এর project document type list-এ যোগ), `gallery_image` (নতুন type)
-
-### 2.9 Open / deferred
-- Price hidden করে শুধু "Call for price" দেখানোর option — এখন price range দেখানো হচ্ছে (reference site-এর "Transparent pricing" trust-indicator অনুযায়ী), client চাইলে পরে toggle করা যাবে
-
-### 2.10 Live Site Verification (dpremiumhomes.com, Chrome দিয়ে সরাসরি দেখা হয়েছে)
-আগের text-only review ভুল ছিল (সেটা ভুলভাবে stale/demo বলে মনে হয়েছিল) — সংশোধন করে সঠিক তথ্য: এটা একটা সম্পূর্ণ professional, well-built real site। যা confirm হলো, আমাদের design-এর সাথে মিলিয়ে:
-
-- **Sticky "Interested in this property?" bar** — Project detail scroll করলে top-এ sticky হয়ে থাকে, "Login to Save Property" (Wishlist — Phase 2 customer feature) + "Contact Agent" button — আমাদের P4 inquiry CTA এভাবেই sticky রাখা উচিত
-- **"Available Units" card section** — Unit A, Unit B ইত্যাদি card আকারে Size/Bedrooms/Bathrooms/Balcony দেখায় (এখন `bedroom_count`/`bathroom_count`/`balcony_count` addendum দিয়ে সাপোর্টেড, v3.md-এ যোগ হয়েছে)
-- **"Specification" section** — Building Type, Total Unit, Unit Per Floor, Front Road, Passenger Lift, Electricity Backup (এখন `towers` addendum দিয়ে সাপোর্টেড)
-- **"Nearby Landmarks" gallery** — শুধু text bullet না, প্রতিটা landmark-এর ছবি+নাম card আকারে (Jamuna Future Park, Bashundhara City ইত্যাদি) — আমাদের `surroundings` field (এখন plain TEXT) থেকে এই richer presentation বানানো UI-layer-এর কাজ, তবে চাইলে ভবিষ্যতে `surroundings` structured (list of {name, image}) করা যায় — **এখন TEXT-ই রাখছি, over-engineering এড়াতে**
-- **"Location" section** — map image + "SEE ON MAP" button (Google Maps link, `gps_lat`/`gps_lng` দিয়ে তৈরি হবে)
-- **Inquiry form fields** — হুবহু মিলেছে: Full Name, Phone Number, Email, Message (Optional) — P4 design সঠিক ছিল
-- **Filters (Project listing)** — Communities (checkbox multi-select), Price Range (checkbox বাকেট), এবং "Under Construction" (status checkbox) — আমাদের filter design এটার সাথে সামঞ্জস্যপূর্ণ
-- **Project card badge** — "On Sale" (সবুজ) / "Sold Out" (লাল) কোণায় — আমাদের status_label mapping-এর সাথে মিলে যায়
+Publishing a photo stays the existing `is_public` tick on the photo
+(`ProgressPhotoGallery`, `PublicProgressPreview`). No separate workflow.
 
 ---
 
-## 3. MODULE P3: Construction Progress Showcase ✅ FROZEN
+## 5. MODULE P4 — Inquiry and WhatsApp
 
-### 3.1 Purpose
-Project detail page-এ Tower-wise progress % ও public-marked site photo/timeline দেখানো — Admin-এর Site Progress module (v3.md Module 5) থেকে read-only, কোনো নতুন table ছাড়াই।
+### 5.1 Form
 
-### 3.2 Data Source (নতুন table না, existing schema-ই যথেষ্ট)
-- Tower-level % ইতিমধ্যে P2-এর `PublicProjectDetail.towers[]`-এ আছে (`towers.current_progress_pct`)
-- Project overall % = towers-এর average (v3.md-এর মতোই)
-- Progress photo/timeline: `site_progress_updates` (v3.md, `tower_work_items.tower_id → towers.project_id`) join `documents` (entity_type='site_progress_update', `is_public=true`)
+`name` (required), `phone` (required, BD mobile check via `normalizePhone`),
+`email`, `message`, `budget_range` (`BUDGET_RANGE_OPTIONS`), plus hidden
+`interested_project_id` / `interested_unit_id` from the page it was opened on.
 
-### 3.3 Public Progress Update Feed — whitelisted shape
+### 5.2 Where it appears
 
-```
-PublicProgressUpdate (computed/read view, no new table)
- - update_date
- - tower_name
- - photo_url        -- documents.file_url যেখানে is_public=true
- - caption            -- site_progress_updates.remarks (admin publish করার আগে edit/trim করে নেবেন)
-```
+- Project detail: sticky "Interested in this project?" bar → popup form
+- Unit/plot cell (Available only) → same popup with the unit pre-filled
+- Share register → "Ask about a share"
+- Contact page → inline, no project
+- Every page: floating WhatsApp button
 
-Query: `site_progress_updates` join `documents` WHERE `documents.is_public = true`, project অনুযায়ী filter, `update_date DESC` করে সাজানো — সবচেয়ে সাম্প্রতিক update উপরে।
+### 5.3 Submission
 
-### 3.4 Granularity সিদ্ধান্ত
-Admin-side WBS (Foundation/Electrical/Plumbing আলাদা %) public-এ **দেখানো হবে না** — শুধু Tower-এর overall % + photo timeline। কারণ: এত granular operational detail visitor-এর কাজে লাগে না, বরং confusion তৈরি করতে পারে (Unit status simplification-এর মতোই একই নীতি)।
+`publicInquiryRepository.submit(input)` → `leadRepository.captureInquiry({...,
+source: 'website_form'})`.
 
-### 3.5 Publishing Control
-Site engineer/Admin প্রতিটা `site_progress_updates`-এর সাথে upload করা photo-কে `documents.is_public = true` করলেই সেটা website-এ চলে যাবে — আলাদা কোনো "publish" button/workflow লাগবে না, existing flag-ই যথেষ্ট (v3.md addendum, P2-তে যোগ করা হয়েছিল)।
+- New phone → new lead at `new`, unassigned; it lands in the Leads list where
+  bulk assign already handles "this morning's website enquiries".
+- Known phone → no new lead, a `lead_activities` row on the existing one.
+  **Gap to fix:** today that note does not say which project or unit was asked
+  about. The merged note must name them (`"… asked about PRJ-2026-003 · A-5B"`).
+- Success message on the form, no redirect.
 
-### 3.6 Open / deferred
-- Public-এ "Planned vs Actual delay %" দেখানো হবে না (admin dashboard-only থাকবে) — visitor-কে delay নিয়ে confuse/worried করার দরকার নাই
+### 5.4 WhatsApp
 
----
+`https://wa.me/{whatsapp_number digits}?text=Hi, I'm interested in {project name}{ - unit code}`.
+No lead is created automatically (needs WhatsApp Business API, Phase 2). Hidden
+when `whatsapp_number` is empty.
 
-## 4. MODULE P4: Lead Capture & Inquiry ✅ FROZEN
+### 5.5 Spam
 
-### 4.1 Purpose
-Project/Unit-context inquiry form + WhatsApp click-to-chat — Public থেকে Admin-এর `leads` table (v3.md Module 3)-এ একমাত্র সত্যিকারের write connection।
-
-### 4.2 Inquiry Form Fields
-
-```
-InquiryFormInput (submission payload, লেখা হবে leads table-এ)
- - name              (required)
- - phone              (required)
- - email                (optional)
- - message                (optional)
- - interested_project_id   (auto-filled, যদি project detail page থেকে submit হয়)
- - interested_unit_id       (optional, unit-specific inquiry হলে)
- - budget_range               (optional dropdown)
-```
-
-### 4.3 Submission Behavior (v3.md Module 3-এর dedup rule অনুসরণ করে, নতুন logic না)
-- `phone` দিয়ে existing lead lookup
-- **Match পেলে** → নতুন lead তৈরি হবে না, existing lead-এ একটা `lead_activities` entry যোগ হবে (`activity_type = other`, notes-এ নতুন message)
-- **Match না পেলে** → নতুন `leads` record (`source = 'website_form'`, `status = 'new'`)
-- Submit-এর পর UI-তে confirmation message ("ধন্যবাদ, আমরা শীঘ্রই যোগাযোগ করবো") — কোনো page redirect লাগবে না
-
-### 4.4 WhatsApp Click-to-Chat
-
-```
-WhatsApp link = https://wa.me/{company_settings.whatsapp_number}?text={prefilled message}
-prefilled message উদাহরণ: "Hi, I'm interested in [Project Name] - [Unit Code, if applicable]"
-```
-
-> WhatsApp-এ পাঠানো message সরাসরি company-র WhatsApp account-এ যায়, আমাদের `leads` table-এ automatic entry হয় না (WhatsApp Business API integration ছাড়া সম্ভব না) — v3.md Module 3-তেই আগে এই সিদ্ধান্ত নেওয়া হয়েছিল, Phase 2-তে automate করা যাবে। এই ক্ষেত্রে sales team manually lead entry করবেন।
-
-### 4.5 Where the form appears
-- Project detail page (P2) — floating/inline CTA, `interested_project_id` auto-fill
-- Unit-specific (floor grid-এ কোনো Available unit click করলে) — `interested_unit_id`-ও auto-fill
-- Contact page (P1) — কোনো project/unit context ছাড়া general inquiry
-
-### 4.6 Spam Prevention (Phase B note)
-Phase A (demo)-তে দরকার নাই। Phase B-তে honeypot field বা simple rate-limiting (same phone/IP থেকে ঘন ঘন submit ঠেকানো) যোগ করা হবে — blocking না, শুধু note করে রাখা হলো।
-
-### 4.7 Open / deferred
-কিছু নেই — এই module সম্পূর্ণরূপে v3.md Module 3-এর existing rule reuse করে।
+Phase A: honeypot field only. Phase B: rate limit per phone/IP.
 
 ---
 
-## 5. Roadmap
-Public Portal-এর পরিকল্পিত সব module (P1–P4) এখন frozen। Phase 2 বিবেচনা (এখনই না):
-- Customer login/self-service portal (payment history দেখা) — v3.md-এ আগেও Phase 2 হিসেবে চিহ্নিত ছিল
-- WhatsApp Business API integration (automatic lead capture)
-- Multi-language (বাংলা/English toggle)
+## 6. Admin-side work this needs
+
+1. Settings → Company: "Website" card (§2.2 fields + `public_show_prices`).
+2. Sidebar group **Website**: Blog posts (§2.3) and a link "View public site".
+3. Project page, Sales card: under the publish switch, a **"Ready for the website"
+   checklist** — cover image, location summary, at least one public gallery
+   image, at least one available unit with a price, brochure (optional).
+   Warnings only, never a block.
+4. Lead activity note fix (§5.3).
+5. Demo seed: 3–4 published projects across apartment, plot and share, with
+   public gallery images, a brochure, public progress photos, and website-form
+   leads. Clean-start mode keeps none of them.
 
 ---
 
-## 6. Decision Log
+## 7. Build order (each batch browser-verified, seeded, pushed)
 
-- Contact form ও P4-এর project-inquiry form একই `leads` mechanism ব্যবহার করে — আলাদা `contact_messages` table বানানো হয়নি, duplication এড়ানোর জন্য
-- Blog-এর জন্য নতুন `blog_posts` table — About/Home static রাখা হয়েছে (DB লাগেনি) কারণ সেগুলো ঘন ঘন বদলায় না, কিন্তু Blog নিয়মিত নতুন post পাবে বলে content-managed
-- `projects.is_public`/`is_featured` — admin doc-এ addendum হিসেবে যোগ হয়েছে (v3.md Decision Log-এও note করা আছে)
-- `projects.location_summary` ও `documents.is_public` — admin doc addendum, marketing address ও document public-visibility control-এর জন্য
-- Unit-এর internal status nuance (hold/reserved/booked) public-এ simplify করে "Booked" — customer-এর জন্য অপ্রয়োজনীয় detail লুকানো হলো
-- `for_sale_by = 'owner_direct'` unit company revenue/availability count-এ বাদ, কিন্তু floor-grid-এ visually দেখাবে (building সম্পূর্ণ দেখানোর জন্য)
-- Brochure download আলাদা prominent CTA (`brochure_url`) — generic `downloadable_docs` list-এ merge না করে, কারণ এটা sales-এর জন্য গুরুত্বপূর্ণ button
-- Construction Progress Showcase কোনো নতুন table লাগেনি — সম্পূর্ণ existing admin schema (towers, site_progress_updates, documents) পুনর্ব্যবহার, শুধু WBS granularity বাদ দিয়ে simplify
-- `company_settings.whatsapp_number` — admin doc addendum, click-to-chat-এর জন্য
-- Lead Capture (P4) v3.md Module 3-এর dedup/assignment rule হুবহু reuse করে — নতুন কোনো business logic তৈরি হয়নি
-- **Correction:** dpremiumhomes.com সম্পর্কে আগের assessment ("demo/unconfigured WordPress theme") ভুল ছিল — Chrome দিয়ে সরাসরি দেখার পর confirm হলো এটা একটা সম্পূর্ণ, professional real site। P2 এখন এই verified তথ্য অনুযায়ী updated (Section 2.10)
-- Unit bedroom/bathroom/balcony count এবং tower building specification — verified real site থেকে confirm হয়ে admin doc addendum হিসেবে যোগ হলো
+| Batch | Scope | Done when |
+|---|---|---|
+| **PB1** Foundation | Public layout (header, footer, WhatsApp float), palette and type per Design Reference Part B, `publicProjectRepository` (gate, card, detail per shape), `publicContentRepository` (company info), drawn image placeholder | Repository returns correct shapes for the 7 demo projects; non-public and `not_open` projects return nothing — **done 2026-10-25** |
+| **PB2** Listing + Home | `/`, `/projects` with filters, cards, empty states | Publish/unpublish in Admin changes the site on reload |
+| **PB3** Project detail | Gallery, specs, unit-type cards, floor grid / plot table / share register, brochure and floor-plan downloads, map link | Each of the three shapes renders with real demo data; no internal field in the page |
+| **PB4** Progress | Tower bars + photo timeline; plot stepper | Ticking a photo public in Site Progress shows it on the project page |
+| **PB5** Inquiry | Popup + contact form, WhatsApp links, lead note fix | A website inquiry appears in Admin → Leads as `website_form`; repeat phone adds an activity naming the project |
+| **PB6** About, Contact, Website settings, readiness checklist | §2.1, §2.2, §6.1, §6.3 | Settings edits show on the site |
+| **PB7** Blog | Dexie version block, admin Blog page, `/blog`, `/blog/[slug]`, home "latest posts" | A published post shows; a draft does not |
+
+PB1–PB5 are the demo-able site. PB6–PB7 can follow.
+
+---
+
+## 8. Deferred (Phase 2)
+
+- Customer login (own booking and payment history), wishlist
+- WhatsApp Business API lead capture
+- Bangla/English toggle
+- Plot land-development % on the public page
+- Structured `surroundings` (name + photo per landmark)
+- Server rendering and SEO metadata per project (Phase B)
+
+---
+
+## 9. Decision log
+
+- v2.0 (2026-10-25): public = `is_public` **and** sales open/paused/sold out,
+  enforced in the public repository as well as the admin switch.
+- v2.0: the detail page is per shape; plots and shares are first-class, not
+  flats with missing fields.
+- v2.0: `draft` units are invisible; owner-direct units show as Sold.
+- v2.0: map and front road come from the linked land; only those two land
+  facts are public.
+- v2.0: company website text lives on `company_settings` (no new table); blog is
+  the only new table.
+- v2.0: prices on by default with a `public_show_prices` switch (was "open
+  question" in v1 §2.9).
+- v2.0: sold-out and paused projects stay listed with their badge; inquiries are
+  still taken.
+- Kept from v1: contact and project inquiries share `leads`; no
+  `contact_messages` table. Unit nuance (hold/reserved/booked) collapses to
+  "Booked". Brochure is its own CTA. No WBS detail or delay in public. WhatsApp
+  is not auto-captured.
+- v1 note kept for history: dpremiumhomes.com was checked live in Chrome and is
+  the source of component ideas only (sticky inquiry bar, unit cards,
+  specification block, landmarks, map, card badges), not of colours.

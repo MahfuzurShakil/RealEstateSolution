@@ -31,6 +31,28 @@
   --color-hairline: #e6ecea;
 }
 
+/*
+ * Public Portal (Design Reference Part B) — its own identity, deliberately not
+ * the admin teal: deep forest green and brass on warm sand, with a serif for
+ * headlines. Prefixed `site-` so no admin screen picks one up by accident.
+ */
+@theme {
+  --color-site-forest: #1f3d35;
+  --color-site-forest-deep: #142a24;
+  --color-site-moss: #3f6b5c;
+  --color-site-brass: #b8864b;
+  --color-site-brass-light: #e9d6b8;
+  --color-site-sand: #f7f3ec;
+  --color-site-stone: #e6ded1;
+  --color-site-ink: #1c2321;
+  --color-site-muted: #6b6a63;
+}
+
+/* inline: the font variable lives on the public layout's wrapper, not :root */
+@theme inline {
+  --font-display: var(--font-fraunces), Georgia, 'Times New Roman', serif;
+}
+
 :root {
   --background: #ffffff;
   --foreground: var(--color-ink);
