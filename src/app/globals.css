@@ -113,6 +113,10 @@
   from { transform: scaleX(0); }
   to { transform: scaleX(1); }
 }
+@keyframes site-sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
 @keyframes site-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -204,3 +208,46 @@ body {
     print-color-adjust: exact;
   }
 }
+
+/* Public listing map pins and popups (ProjectsMap): brand tokens, not Leaflet defaults */
+.site-pin {
+  position: relative;
+  display: inline-block;
+  transform: translate(-50%, -100%);
+  white-space: nowrap;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  background: var(--color-site-primary);
+  color: #fff;
+  font: 600 13px/1 var(--font-jakarta), system-ui, sans-serif;
+  box-shadow: var(--shadow-site-2);
+  transition: transform 0.2s var(--ease-site-out), background-color 0.2s;
+}
+.site-pin::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  background: inherit;
+  transform: translateX(-50%) rotate(45deg);
+  z-index: -1;
+}
+.site-pin.is-active,
+.leaflet-marker-icon:hover .site-pin {
+  background: var(--color-site-night);
+  transform: translate(-50%, -100%) scale(1.08);
+}
+.site-pop {
+  display: grid;
+  gap: 4px;
+  min-width: 200px;
+  color: var(--color-site-ink) !important;
+  text-decoration: none;
+  font-family: var(--font-jakarta), system-ui, sans-serif;
+}
+.site-pop strong { font-size: 15px; }
+.site-pop span { color: var(--color-site-muted); font-size: 13px; }
+.site-pop em { font-style: normal; font-weight: 600; color: var(--color-site-primary-dark); font-size: 13px; }
+.leaflet-popup-content-wrapper { border-radius: 16px; }

@@ -66,6 +66,8 @@ export interface PublicProjectCard {
   size_range: string | null;
   /** built shapes only */
   expected_completion_date: string | null;
+  /** map pin for the listing's map view; null when no linked land has GPS */
+  point: { lat: number; lng: number } | null;
 }
 
 export interface PublicUnit {
@@ -228,6 +230,8 @@ interface Loaded {
   towersByProject: Map<string, Tower[]>;
   unitsByTower: Map<string, Unit[]>;
   docsByProject: Map<string, DocumentRecord[]>;
+  /** first linked land with GPS — the only land fact the listing map needs */
+  pointByProject: Map<string, { lat: number; lng: number }>;
 }
 
 /** One read of the three tables, shared by every card on the listing. */
@@ -249,7 +253,16 @@ async function loadFor(projectIds: string[]): Promise<Loaded> {
     if (!ids.has(d.entity_id)) continue;
     docsByProject.set(d.entity_id, [...(docsByProject.get(d.entity_id) ?? []), d]);
   }
-  return { towersByProject, unitsByTower, docsByProject };
+  const pointByProject = new Map<string, { lat: number; lng: number }>();
+  const mappings = (await db.land_project_mapping.toArray()).filter((m) => ids.has(m.project_id));
+  const lands = new Map((await db.lands.bulkGet([...new Set(mappings.map((m) => m.land_id))])).filter((l) => !!l).map((l) => [l!.id, l!]));
+  for (const m of mappings) {
+    const land = lands.get(m.land_id);
+    if (!pointByProject.has(m.project_id) && land?.gps_lat != null && land.gps_lng != null) {
+      pointByProject.set(m.project_id, { lat: land.gps_lat, lng: land.gps_lng });
+    }
+  }
+  return { towersByProject, unitsByTower, docsByProject, pointByProject };
 }
 
 function shownUnits(project: Project, loaded: Loaded): Unit[] {
@@ -280,6 +293,7 @@ function toCard(project: Project, loaded: Loaded): PublicProjectCard {
     total_count: units.length,
     size_range: sizeRange(units, shape),
     expected_completion_date: built ? (project.expected_completion_date ?? null) : null,
+    point: loaded.pointByProject.get(project.id) ?? null,
   };
 }
 
