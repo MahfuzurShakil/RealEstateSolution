@@ -114,7 +114,7 @@ export const progressPublicRepository = {
    * Only the date, tower name and rounded % cross over — never the engineer's
    * remarks, which can carry internal delay notes (master plan §10.2).
    */
-  async photoFeed(limit = 8): Promise<PublicSitePhoto[]> {
+  async photoFeed(limit = 8, projectCode?: string): Promise<PublicSitePhoto[]> {
     const [projects, towers, workItems, updates, docs] = await Promise.all([
       db.projects.toArray(),
       db.towers.toArray(),
@@ -139,7 +139,7 @@ export const progressPublicRepository = {
       const item = update ? itemById.get(update.work_item_id) : undefined;
       const tower = item ? towerById.get(item.tower_id) : undefined;
       const project = tower ? visible.get(tower.project_id) : undefined;
-      if (!project) continue;
+      if (!project || (projectCode && project.code !== projectCode)) continue;
       const image = photoImage(doc, `${project.name}${tower ? ` — ${tower.name}` : ''}, site photo`);
       if (!image) continue;
       out.push({

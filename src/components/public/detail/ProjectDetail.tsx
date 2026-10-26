@@ -9,7 +9,6 @@ import {
   Bath,
   Building,
   CalendarCheck,
-  CheckCircle2,
   ChevronRight,
   Download,
   FileText,
@@ -42,8 +41,18 @@ import { Reveal } from '../motion';
 import { ProjectCard, Taka } from '../ProjectCard';
 import { COVER_FALLBACK } from '../stock-images';
 import { useCompanyInfo } from '../useCompanyInfo';
+import dynamic from 'next/dynamic';
+import { useState } from 'react';
+import { Share2 } from 'lucide-react';
+import { areaOf } from '@/lib/domain/public-portal';
+import { progressPublicRepository } from '@/lib/repositories/public/progress.public.repository';
+import { en } from '../i18n/en';
 import { Availability } from './Availability';
+import { Amenities, Nearby, Papers, PaymentPlan, SectionNav, SitePhotos } from './DetailParts';
 import { ProjectGallery } from './ProjectGallery';
+
+const ProjectsMap = dynamic(() => import('../ProjectsMap'), { ssr: false, loading: () => <div className="size-full animate-pulse bg-site-soft" /> });
+const td = en.detail;
 
 /*
  * Project detail (Public Portal v2.0 §3.5). Sections follow what a Dhaka buyer
@@ -160,7 +169,9 @@ function NotFound() {
 export function ProjectDetail({ code }: { code: string }) {
   const project = useLiveQuery(() => publicProjectRepository.detail(code), [code]);
   const others = useLiveQuery(() => publicProjectRepository.list(), []);
+  const photos = useLiveQuery(() => progressPublicRepository.photoFeed(6, code), [code]);
   const company = useCompanyInfo();
+  const [copied, setCopied] = useState(false);
 
   if (project === undefined) {
     return (
@@ -174,12 +185,35 @@ export function ProjectDetail({ code }: { code: string }) {
 
   const tel = company?.phone ? `tel:${company.phone.replace(/[^\d+]/g, '')}` : null;
   const wa = (message: string) => (company?.whatsapp_number ? whatsappLink(company.whatsapp_number, message) : null);
+  const share = async () => {
+    const data = { title: project.name, text: td.shareText(project.name), url: window.location.href.split('?')[0] };
+    if (navigator.share) {
+      await navigator.share(data).catch(() => {});
+    } else {
+      await navigator.clipboard?.writeText(data.url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
   const projectMessage = `Hi, I'm interested in ${project.name} (${project.code}). Please share the details.`;
   const built = project.container_kind === 'tower';
   const land = project.container_kind !== 'tower';
   const handoverText = handover(project.expected_completion_date);
   const towers = project.containers.filter((c) => c.floor_count != null);
-  const similar = (others ?? []).filter((c) => c.code !== project.code && c.stage !== 'completed').slice(0, 3);
+  // same type first, then same area, then the rest
+  const myArea = areaOf(project.location_summary);
+  const similar = (others ?? [])
+    .filter((c) => c.code !== project.code && c.stage !== 'completed')
+    .map((c) => ({ c, score: (c.project_type === project.project_type ? 2 : 0) + (myArea && areaOf(c.location_summary) === myArea ? 1 : 0) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map((x) => x.c);
+  const typesTitle =
+    project.container_kind === 'tower'
+      ? project.project_type === 'commercial'
+        ? td.typesTitle.commercial
+        : td.typesTitle.tower
+      : td.typesTitle[project.container_kind];
   const downloads = [...(project.brochure ? [{ ...project.brochure, title: 'Project brochure' }] : []), ...project.floor_plans];
 
   const facts: { icon: LucideIcon; label: string; value: string }[] = [
@@ -202,6 +236,7 @@ export function ProjectDetail({ code }: { code: string }) {
     ...(built && project.progress_pct != null ? [{ id: 'progress', label: 'Progress' }] : []),
     { id: 'location', label: 'Location' },
     ...(project.price_from ? [{ id: 'payment', label: 'Payment plan' }] : []),
+    { id: 'papers', label: 'Papers' },
   ];
 
   return (
@@ -230,36 +265,43 @@ export function ProjectDetail({ code }: { code: string }) {
               </p>
             )}
           </div>
-          {project.price_from && (
-            <div className="text-right">
-              <p className="text-site-muted">Starting from</p>
-              <p className="text-3xl font-bold text-site-primary md:text-4xl">
-                <Taka text={formatPublicPrice(project.price_from)} />
-              </p>
-              {project.size_range && <p className="text-site-muted">{project.size_range}</p>}
+          <div className="flex flex-col gap-4 sm:items-end">
+            {project.price_from && (
+              <div className="sm:text-right">
+                <p className="text-sm text-site-muted">Starting from</p>
+                <p className="tabular text-3xl font-bold text-site-primary-dark md:text-4xl">
+                  <Taka text={formatPublicPrice(project.price_from)} />
+                </p>
+                {project.size_range && <p className="text-site-muted">{project.size_range}</p>}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={share}
+                className="flex h-10 items-center gap-2 rounded-full border border-site-line bg-white px-4 text-sm font-semibold transition-colors hover:border-site-primary hover:text-site-primary"
+              >
+                <Share2 className="size-4" aria-hidden /> {copied ? td.copied : td.share}
+              </button>
+              {project.brochure && (
+                <button
+                  type="button"
+                  onClick={() => download(project.brochure!)}
+                  className="flex h-10 items-center gap-2 rounded-full border border-site-line bg-white px-4 text-sm font-semibold transition-colors hover:border-site-primary hover:text-site-primary"
+                >
+                  <Download className="size-4" aria-hidden /> {td.brochure}
+                </button>
+              )}
             </div>
-          )}
+          </div>
         </header>
 
         <div className="mt-8">
-          <ProjectGallery images={galleryOf(project)} fallback={COVER_FALLBACK[project.project_type]} name={project.name} />
+          <ProjectGallery images={galleryOf(project)} fallback={COVER_FALLBACK[project.project_type]} name={project.name} code={project.code} />
         </div>
       </div>
 
-      {/* section nav, pinned under the header while scrolling */}
-      <div className="sticky top-20 z-30 mt-8 border-y border-site-line bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 sm:px-6">
-          {nav.map((n) => (
-            <a
-              key={n.id}
-              href={`#${n.id}`}
-              className="shrink-0 border-b-2 border-transparent px-4 py-4 text-[15px] font-medium text-site-muted transition-colors hover:border-site-primary hover:text-site-ink"
-            >
-              {n.label}
-            </a>
-          ))}
-        </div>
-      </div>
+      <SectionNav items={nav} />
 
       <div className="mx-auto grid max-w-7xl gap-12 px-4 pt-12 sm:px-6 lg:grid-cols-[1fr_340px]">
         <div className="min-w-0 space-y-20">
@@ -272,10 +314,10 @@ export function ProjectDetail({ code }: { code: string }) {
 
             {project.unit_types.length > 0 && (
               <div className="mt-10">
-                <h3 className="text-xl font-semibold">Apartment types</h3>
+                <h3 className="text-xl font-semibold">{typesTitle}</h3>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   {project.unit_types.map((t) => (
-                    <div key={t.unit_type} className="rounded-2xl border border-site-line p-5 transition-shadow hover:shadow-lg">
+                    <div key={t.unit_type} className="rounded-[20px] border border-site-line bg-white p-5 transition-[box-shadow,transform] duration-300 hover:-translate-y-0.5 hover:shadow-site-2">
                       <div className="flex items-start justify-between gap-3">
                         <p className="text-lg font-semibold">{t.unit_type}</p>
                         <span
@@ -320,34 +362,12 @@ export function ProjectDetail({ code }: { code: string }) {
               </p>
             )}
 
-            {(project.amenities.length > 0 || project.surroundings.length > 0) && (
-              <div className="mt-10 grid gap-8 md:grid-cols-2">
-                {project.amenities.length > 0 && (
-                  <div>
-                    <h3 className="text-xl font-semibold">Facilities</h3>
-                    <ul className="mt-4 grid grid-cols-2 gap-3">
-                      {project.amenities.map((a) => (
-                        <li key={a} className="flex items-center gap-2">
-                          <CheckCircle2 className="size-5 text-site-primary" /> {a}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {project.surroundings.length > 0 && (
-                  <div>
-                    <h3 className="text-xl font-semibold">What&apos;s nearby</h3>
-                    <ul className="mt-4 space-y-3">
-                      {project.surroundings
-                        .flatMap((s) => s.split(/,\s*/))
-                        .map((s) => (
-                          <li key={s} className="flex items-start gap-2">
-                            <Navigation className="mt-0.5 size-4.5 shrink-0 text-site-primary" /> {s}
-                          </li>
-                        ))}
-                    </ul>
-                  </div>
-                )}
+            {project.amenities.length > 0 && (
+              <div className="mt-10">
+                <h3 className="text-xl font-semibold">{td.amenities}</h3>
+                <div className="mt-4">
+                  <Amenities items={project.amenities} />
+                </div>
               </div>
             )}
           </Section>
@@ -377,10 +397,10 @@ export function ProjectDetail({ code }: { code: string }) {
                     ['Passenger lifts', t.lift_count != null ? String(t.lift_count) : null],
                     ['Staircases', t.staircase_count != null ? String(t.staircase_count) : null],
                     ['Typical floor area', t.floor_area_sqft ? `${t.floor_area_sqft.toLocaleString('en-US')} sqft` : null],
-                    ['Generator backup', t.electricity_backup == null ? null : t.electricity_backup ? 'Yes, full load' : 'No'],
+                    ['Generator backup', t.electricity_backup == null ? null : t.electricity_backup ? 'Yes' : 'No'],
                   ];
                   return (
-                    <div key={t.name} className="overflow-hidden rounded-2xl border border-site-line">
+                    <div key={t.name} className="overflow-hidden rounded-[20px] border border-site-line bg-white">
                       <p className="bg-site-soft px-5 py-3.5 font-semibold">{t.name}</p>
                       <dl className="divide-y divide-site-line">
                         {rows
@@ -401,7 +421,7 @@ export function ProjectDetail({ code }: { code: string }) {
 
           {built && project.progress_pct != null && (
             <Section id="progress" title="Construction progress">
-              <div className="flex flex-col gap-8 rounded-2xl border border-site-line p-6 sm:flex-row sm:items-center">
+              <div className="flex flex-col gap-8 rounded-[20px] border border-site-line bg-white p-6 sm:flex-row sm:items-center">
                 <ProgressRing pct={project.progress_pct} />
                 <div className="flex-1 space-y-5">
                   {towers.map((t) => (
@@ -418,9 +438,14 @@ export function ProjectDetail({ code }: { code: string }) {
                       </div>
                     </div>
                   ))}
-                  <p className="text-sm text-site-muted">Updated from the site log. Site photos are added as work goes on.</p>
+                  <p className="text-sm text-site-muted">{td.progressNote}</p>
                 </div>
               </div>
+              {photos && photos.length > 0 && (
+                <div className="mt-6">
+                  <SitePhotos photos={photos} />
+                </div>
+              )}
             </Section>
           )}
 
@@ -451,47 +476,70 @@ export function ProjectDetail({ code }: { code: string }) {
           )}
 
           <Section id="location" title="Location">
-            <div className="flex flex-col gap-5 rounded-2xl bg-site-night p-6 text-white md:flex-row md:items-center md:justify-between">
-              <div className="flex items-start gap-4">
-                <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-site-primary text-white">
-                  <MapPin className="size-6" />
-                </span>
-                <div>
-                  <p className="text-lg font-semibold">{project.location_summary ?? project.name}</p>
-                  {project.front_road_ft && <p className="text-white/70">Fronts a {project.front_road_ft} ft road</p>}
+            <div className="grid gap-5 lg:grid-cols-[1.3fr_1fr]">
+              <div className="overflow-hidden rounded-[20px] border border-site-line bg-site-soft">
+                {project.point ? (
+                  <div className="h-[320px]">
+                    <ProjectsMap cards={[project]} />
+                  </div>
+                ) : (
+                  <div className="grid h-[320px] place-items-center p-6 text-center">
+                    <span>
+                      <MapPin className="mx-auto size-8 text-site-primary" aria-hidden />
+                      <span className="mt-2 block font-medium">{project.location_summary ?? project.name}</span>
+                    </span>
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-site-line bg-white p-4">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold">{project.location_summary ?? project.name}</p>
+                    {project.front_road_ft && <p className="text-sm text-site-muted">Fronts a {project.front_road_ft} ft road</p>}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {project.map_url && (
+                      <a
+                        href={project.map_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex h-10 items-center gap-2 rounded-full bg-site-primary px-4 text-sm font-semibold text-white hover:bg-site-primary-dark"
+                      >
+                        <Navigation className="size-4" aria-hidden /> {td.directions}
+                      </a>
+                    )}
+                    {tel && (
+                      <a href={tel} className="flex h-10 items-center gap-2 rounded-full border border-site-line px-4 text-sm font-semibold hover:border-site-primary">
+                        <PhoneCall className="size-4" aria-hidden /> Book a site visit
+                      </a>
+                    )}
+                  </div>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-3">
-                {project.map_url && (
-                  <a
-                    href={project.map_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 rounded-full bg-white px-5 py-2.5 font-medium text-site-ink"
-                  >
-                    <Navigation className="size-4.5" /> See on map
-                  </a>
-                )}
-                {tel && (
-                  <a href={tel} className="flex items-center gap-2 rounded-full border border-white/30 px-5 py-2.5 font-medium">
-                    <PhoneCall className="size-4.5" /> Book a site visit
-                  </a>
-                )}
-              </div>
+              {project.surroundings.length > 0 && (
+                <div>
+                  <h3 className="mb-3 font-semibold">{td.nearby}</h3>
+                  <Nearby lines={project.surroundings} />
+                </div>
+              )}
             </div>
           </Section>
 
           {project.price_from && (
             <Section id="payment" title="Plan your payments">
+              {project.payment_plan.length > 0 && <PaymentPlan steps={project.payment_plan} price={project.price_from} />}
+              <p className="mt-8 mb-4 font-semibold">{td.plan.calculator}</p>
               <InstalmentPlanner startingPrice={project.price_from} />
             </Section>
           )}
+
+          <Section id="papers" title={td.papers.title}>
+            <Papers kind={project.container_kind} />
+          </Section>
         </div>
 
         {/* contact card */}
         <aside className="hidden lg:block">
           <div className="sticky top-40 space-y-4">
-            <div className="rounded-2xl border border-site-line p-6 shadow-lg shadow-slate-200/60">
+            <div className="rounded-[20px] border border-site-line bg-white p-6 shadow-site-2">
               <p className="text-sm text-site-muted">Interested in this project?</p>
               <p className="mt-1 text-xl font-semibold">{project.name}</p>
               {project.price_from && (
@@ -533,7 +581,7 @@ export function ProjectDetail({ code }: { code: string }) {
       {similar.length > 0 && (
         <section className="mx-auto mt-24 max-w-7xl px-4 sm:px-6">
           <Reveal>
-            <h2 className="text-2xl font-semibold md:text-[28px]">More projects on sale</h2>
+            <h2 className="text-2xl font-semibold md:text-[28px]">{td.similar}</h2>
           </Reveal>
           <div className="mt-8 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
             {similar.map((c, i) => (

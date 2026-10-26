@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { BedDouble, Bath, Compass, CornerDownRight, MessageCircle, PhoneCall, Ruler, Signpost, Sun } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { BedDouble, Bath, Check, Clock3, Compass, CornerDownRight, Link2, MessageCircle, PhoneCall, Ruler, Signpost, Sun, X } from 'lucide-react';
 import { PUBLIC_UNIT_STATUS_LABEL, formatPublicPrice, type PublicUnitStatus } from '@/lib/domain/public-portal';
 import type { PublicContainer, PublicProjectDetail, PublicUnit } from '@/lib/repositories/public/project.public.repository';
 import { cn } from '@/lib/utils/cn';
@@ -14,16 +14,18 @@ import { Taka } from '../ProjectCard';
  * details with a call and a WhatsApp message that already names it.
  */
 
+// status is never colour alone (master plan §5.1): booked carries a clock, sold is struck through
 const TONE: Record<PublicUnitStatus, string> = {
   available: 'border-site-primary/40 bg-site-primary-soft text-site-primary-dark hover:bg-site-primary hover:text-white',
-  booked: 'border-amber-200 bg-amber-50 text-amber-700',
-  sold: 'border-slate-200 bg-slate-100 text-slate-400',
+  booked: 'border-site-booked/30 bg-site-booked-soft text-site-booked',
+  sold: 'border-site-line bg-site-sold-soft text-site-sold line-through decoration-1',
 };
 
+const ICON: Record<PublicUnitStatus, typeof Check> = { available: Check, booked: Clock3, sold: X };
 const DOT: Record<PublicUnitStatus, string> = {
-  available: 'bg-site-primary',
-  booked: 'bg-amber-400',
-  sold: 'bg-slate-300',
+  available: 'bg-site-primary text-white',
+  booked: 'bg-site-booked-soft text-site-booked',
+  sold: 'bg-site-sold-soft text-site-sold',
 };
 
 function floorName(floor: number): string {
@@ -40,12 +42,15 @@ function UnitChip({ unit, active, onPick }: { unit: PublicUnit; active: boolean;
       disabled={!open}
       onClick={onPick}
       title={`${unit.code} · ${PUBLIC_UNIT_STATUS_LABEL[unit.public_status]}`}
+      aria-label={`${unit.code}, ${PUBLIC_UNIT_STATUS_LABEL[unit.public_status]}`}
+      aria-pressed={open ? active : undefined}
       className={cn(
-        'min-w-[4.5rem] rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:cursor-default',
+        'tabular inline-flex min-w-[4.5rem] items-center justify-center gap-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors duration-200 disabled:cursor-default',
         TONE[unit.public_status],
         active && 'bg-site-primary text-white ring-2 ring-site-primary ring-offset-2',
       )}
     >
+      {unit.public_status === 'booked' && <Clock3 className="size-3.5" aria-hidden />}
       {unit.code}
     </button>
   );
@@ -57,7 +62,15 @@ function Legend({ units }: { units: PublicUnit[] }) {
     <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
       {(['available', 'booked', 'sold'] as const).map((s) => (
         <span key={s} className="flex items-center gap-2">
-          <span className={cn('size-3 rounded-full', DOT[s])} /> {PUBLIC_UNIT_STATUS_LABEL[s]}
+          {(() => {
+            const Icon = ICON[s];
+            return (
+              <span className={cn('grid size-5 place-items-center rounded-full', DOT[s])} aria-hidden>
+                <Icon className="size-3" />
+              </span>
+            );
+          })()}{' '}
+          {PUBLIC_UNIT_STATUS_LABEL[s]}
           <span className="text-site-muted">({count(s)})</span>
         </span>
       ))}
@@ -100,23 +113,34 @@ function UnitDetails({
   const wa = whatsapp(message);
 
   return (
-    <div className="rounded-2xl bg-site-night p-6 text-white">
+    <div className="rounded-[20px] bg-site-night p-6 text-white motion-safe:animate-[fade-up_.4s_var(--ease-site-out)]">
       <p className="text-sm text-white/60">
         {itemLabel} {unit.floor != null ? `· ${floorName(unit.floor)}` : ''}
       </p>
-      <p className="mt-1 text-3xl font-bold">{unit.code}</p>
+      <div className="mt-1 flex items-center justify-between gap-3">
+        <p className="tabular text-3xl font-bold">{unit.code}</p>
+        <button
+          type="button"
+          onClick={() => navigator.clipboard?.writeText(window.location.href)}
+          title="Copy a link to this unit"
+          aria-label={`Copy a link to ${unit.code}`}
+          className="grid size-9 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20"
+        >
+          <Link2 className="size-4" />
+        </button>
+      </div>
       {unit.unit_type && <p className="text-white/70">{unit.unit_type}</p>}
       <ul className="mt-5 grid grid-cols-2 gap-3">
         {facts.map(({ icon: Icon, label }) => (
           <li key={label} className="flex items-center gap-2 text-white/85">
-            <Icon className="size-4.5 text-site-primary" /> {label}
+            <Icon className="size-4.5 text-site-brass" aria-hidden /> {label}
           </li>
         ))}
       </ul>
       {unit.price != null && (
         <div className="mt-6 border-t border-white/10 pt-5">
           <p className="text-sm text-white/60">Price</p>
-          <p className="text-3xl font-bold text-site-primary">
+          <p className="tabular text-3xl font-bold text-white">
             <Taka text={formatPublicPrice(unit.price)} />
           </p>
           <p className="mt-1 text-xs text-white/50">
@@ -199,8 +223,26 @@ export function Availability({
   tel: string | null;
 }) {
   const containers = project.containers.filter((c) => c.units.length > 0);
-  const [tab, setTab] = useState(0);
-  const [picked, setPicked] = useState<PublicUnit | null>(null);
+  // `?unit=A-5B` opens that unit (master plan §7.3): a buyer can send one flat to family
+  const fromUrl = () => {
+    const code = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('unit');
+    const ci = containers.findIndex((c) => c.units.some((u) => u.code === code && u.public_status === 'available'));
+    return ci < 0 ? null : { tab: ci, unit: containers[ci].units.find((u) => u.code === code)! };
+  };
+  const [tab, setTab] = useState(() => fromUrl()?.tab ?? 0);
+  const [picked, setPickedState] = useState<PublicUnit | null>(() => fromUrl()?.unit ?? null);
+  const details = useRef<HTMLDivElement>(null);
+  const setPicked = (u: PublicUnit | null) => {
+    setPickedState(u);
+    const url = new URL(window.location.href);
+    if (u) url.searchParams.set('unit', u.code);
+    else url.searchParams.delete('unit');
+    window.history.replaceState(window.history.state, '', url);
+    // on phones the details sit under the grid: bring them into view
+    if (u && window.matchMedia('(max-width: 1023px)').matches) {
+      requestAnimationFrame(() => details.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    }
+  };
   if (containers.length === 0) return null;
 
   const container = containers[Math.min(tab, containers.length - 1)];
@@ -209,7 +251,7 @@ export function Availability({
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-      <div className="rounded-2xl border border-site-line bg-white p-5 md:p-6">
+      <div className="rounded-[20px] border border-site-line bg-white p-5 md:p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           {containers.length > 1 && project.container_kind !== 'none' ? (
             <div className="flex flex-wrap gap-2">
@@ -239,8 +281,9 @@ export function Availability({
           <ContainerGrid container={container} picked={picked?.code ?? null} onPick={setPicked} byFloor={byFloor} />
         </div>
       </div>
-      <div className="lg:sticky lg:top-28 lg:self-start">
+      <div ref={details} className="scroll-mt-40 lg:sticky lg:top-40 lg:self-start">
         <UnitDetails
+          key={picked?.code ?? "none"}
           unit={picked}
           project={project}
           itemLabel={project.item_label_singular}

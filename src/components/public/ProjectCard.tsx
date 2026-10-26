@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { ViewTransition } from 'react';
 import { ArrowUpRight, CalendarCheck, Flame, KeyRound, MapPin, Ruler } from 'lucide-react';
 import { PUBLIC_STAGE_LABEL, formatMonthYear, formatPublicPrice } from '@/lib/domain/public-portal';
 import type { PublicProjectCard } from '@/lib/repositories/public/project.public.repository';
@@ -43,12 +44,15 @@ export function ProjectCard({ card, layout = 'grid' }: { card: PublicProjectCard
       )}
     >
       <div className={cn('relative shrink-0 overflow-hidden', list && 'sm:w-[42%]')}>
-        <SiteImage
-          image={card.cover}
-          fallback={COVER_FALLBACK[card.project_type]}
-          alt={card.name}
-          className={cn('w-full transition-transform duration-700 ease-site-out group-hover:scale-105', list ? 'aspect-4/3 sm:h-full sm:aspect-auto' : 'aspect-4/3')}
-        />
+        {/* shares its name with the detail page's first photo: opening the project morphs one into the other */}
+        <ViewTransition name={`cover-${card.code}`} share="morph" default="none">
+          <SiteImage
+            image={card.cover}
+            fallback={COVER_FALLBACK[card.project_type]}
+            alt={card.name}
+            className={cn('w-full transition-transform duration-700 ease-site-out group-hover:scale-105', list ? 'aspect-4/3 sm:h-full sm:aspect-auto' : 'aspect-4/3')}
+          />
+        </ViewTransition>
         <SalesBadge badge={card.sales_badge} className="absolute top-4 left-4" />
         <Badge tone="light" className="absolute top-4 right-4">
           {card.type_label}

@@ -128,10 +128,20 @@ export interface PublicProjectDetail extends PublicProjectCard {
   containers: PublicContainer[];
   unit_types: PublicUnitTypeSummary[];
   gallery: PublicImage[];
+  /** standard payment plan; empty when Admin has none for this project */
+  payment_plan: PublicPaymentStep[];
   brochure: PublicDownload | null;
   floor_plans: PublicDownload[];
   /** average of the towers, built shapes only */
   progress_pct: number | null;
+}
+
+/** One step of the project's standard payment plan (Admin's instalment template); percentages only. */
+export interface PublicPaymentStep {
+  label: string;
+  percentage: number;
+  schedule: 'on_booking' | 'monthly' | 'on_handover' | 'manual';
+  month_count: number | null;
 }
 
 export interface PublicSiteStats {
@@ -496,6 +506,10 @@ export const publicProjectRepository = {
       floor_plans: docs
         .filter((d) => d.document_type === 'layout_floor_plan' || d.document_type === 'layout_plan')
         .map(toDownload),
+      payment_plan: (await db.installment_plan_templates.where('project_id').equals(project.id).toArray())
+        .sort((a, b) => a.sequence_no - b.sequence_no)
+        .filter((s) => s.percentage > 0)
+        .map((s) => ({ label: s.label, percentage: s.percentage, schedule: s.schedule_type, month_count: s.month_count ?? null })),
       // an Upcoming project has not started, so a 0% section would only look like a stall
       progress_pct: built && progressValues.length && publicStage(project.status, shape) !== 'upcoming'
         ? Math.round(progressValues.reduce((s, n) => s + n, 0) / progressValues.length)
