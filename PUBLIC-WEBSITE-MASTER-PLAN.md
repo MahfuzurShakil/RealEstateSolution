@@ -12,6 +12,9 @@ contradicts — `Real-Estate-Developer-Platform_Public-Portal_v1.md` (v2.0 scope
 whitelisted public repositories, unit public status, pricing rules), which stays the data-rules
 source. Where this plan's build order differs from v2 §7, this plan wins.
 
+**Status: final (2026-10-26).** Includes the live review of the current site and a full code and
+data audit (§0, §10.1–10.3). Next step: build W0.
+
 ### Decisions confirmed with the client (2026-10-25)
 - Look: **Evolved Hously** (§5). Motion: **Balanced** (§6).
 - Bangla: **Phase 2, but ready from the start** — all public copy goes through one text
@@ -36,6 +39,24 @@ source. Where this plan's build order differs from v2 §7, this plan wins.
   WCAG AA (≈3.3:1); thin header nav (only Home/Projects); no About/Contact/Progress/Blog pages;
   mobile hero very tall with text over busy image; price block alignment odd on mobile; no gallery
   lightbox / floor-plan viewer / map; no route transitions.
+- Code audit (2026-10-26) adds:
+  - `/projects` never got the Hously restyle (only colours swapped); its filter column isn't sticky.
+  - No visible focus styles anywhere; filter sheet, mobile menu and lightbox don't trap focus or
+    close on Esc.
+  - Hero slider: no pause button, no swipe, keeps rotating under reduced motion.
+  - Availability shows status by colour + hover tooltip only.
+  - "Every taka" badge overflows its image on tablets, so the page scrolls sideways.
+  - Unit details panel (`top-28`) hides under the section nav (~138px).
+  - Area bento leaves holes with 2/4/5 tiles; zero stats hide and leave a gap in a 4-col row.
+  - "Bookings Paused" white-on-amber is ≈2.1:1; sales badge is always green in hero/detail header.
+  - No shared Button/Badge/SectionHeader; date/phone formatting copied 3–4 times.
+  - `featured()`, `stats()`, `locations()` exist in the repository but are unused (pages
+    recompute in the browser).
+  - No `not-found`, `error`, `loading`, sitemap or OG files; tab titles are static.
+  - "Book a site visit" is only a `tel:` link; there is no enquiry form anywhere.
+  - Hard-coded copy: why-us bullets, NRB cards, buying steps, FAQ, footer blurb, planner defaults
+    (10/20/10%, 24 months, ৳30 L–5 Cr range, which breaks cheaper plots/shares), area list (22
+    Dhaka areas only).
 
 ---
 
@@ -367,6 +388,37 @@ whitelists fields):
 | Land offers | Lands → Prospects inbox | new table, one public write |
 | "Ready for the website" checklist | Project Sales card | v2 §6.3 |
 
+### 10.1 Data that already exists but isn't used yet
+- **RAJUK/CDA permit no.** — on the `project_status_history` event that completes Approval
+  (`reference_no`, `details.permit_no`, `details.authority`; plot: `approval_no`), and the
+  **occupancy certificate no.** on the Finishing event. Expose through a public reader, never
+  `remarks`.
+- **Standard payment plans** — `installment_plan_templates` are still seeded per shape (flat 10/60
+  over 24 months/20/10; plot 10/20/55 over 48 months/15; share 20/40 over 6 months/40). The
+  calculator reads these instead of hard-coded numbers; small editor on the project page.
+- `company_settings.trade_license_no` (footer trust line), `logo_url` (header logo).
+- `projects.architect` (often advertised), `actual_start_date` ("construction started").
+
+### 10.2 Admin gaps to close before the matching batch
+| Gap | Fix | Batch |
+|---|---|---|
+| `is_public` can't be changed after upload; progress photos from the update dialog are always internal | "Show on website" toggle on every document/photo row + in the progress dialog | W0 |
+| Progress captions would come from engineer remarks (contain delay notes) | unindexed `documents.public_caption`; empty → date + tower only | W4 |
+| No project description/tagline/highlights field | unindexed `projects.description`, `tagline`, `highlights[]` | W3 |
+| Floor plans are per project, not per unit type | new `project_unit_types` table (type, description, plan document, render) | W3 |
+| Repeat-phone enquiry returns another person's lead and its note omits project/unit | public wrapper returns only `{ ok }`; merged note names project + unit | W5 |
+| Progress repository gate checks only `is_public`, not sales status | reuse the project visibility rule | W4 |
+| No advisor data on users (photo, title, WhatsApp, show-on-website) | defer; enquiry card shows company hotline | Phase 2 |
+| Amenity lookup has no icon | unindexed `lookup_values.icon` | W3 |
+| Lead attribution | unindexed `leads.page_url`, `utm_*` | W5 |
+
+### 10.3 Demo data fixes (W0)
+Replace the teal "Sample document" PNGs used as covers/gallery with curated stock renders; give
+every public project 4–6 gallery images, a floor plan and public progress photos; move Lakeview's
+land GPS (it duplicates Uttara Heights); hide the 0% progress section on Upcoming projects; seed
+"Residential Plot"/"Land Share" unit types; remove leftover "Nokshi Agrabad Trade Centre"
+references in demo-site-progress, demo-bookings and demo-leads.
+
 ## 11. Technical structure
 - Routes under `src/app/(public)/*`; public home moves to `/`, chooser to `/portal`.
 - `src/components/public/{ui,layout,sections,project,forms,motion}`; tokens in a public-scoped
@@ -380,7 +432,7 @@ whitelists fields):
 ## 12. Build roadmap (each batch browser-verified desktop + mobile, demo seeded, pushed)
 | Batch | Scope |
 |---|---|
-| W0 Foundation | tokens, fonts, UI primitives, motion utilities, new header (mega menu) + footer, `/` vs `/portal`, demo seed with proper stock renders |
+| W0 Foundation | tokens, fonts, UI primitives (Button, Badge, SectionHeader, focus ring), motion utilities, new header (mega menu) + footer, `/` vs `/portal`, `not-found`/`error`/`loading`, shared formatters, document "show on website" toggle, demo data fixes (§10.3) |
 | W1 Home | all §7.1 sections that have data today; hero/search/stats fixes |
 | W2 Listing | filter bar + bottom sheet, sort, list + map views, URL sync |
 | W3 Detail v2 | gallery + lightbox, sub-nav, unit drawer + deep link, floor-plan viewer, map + landmarks, view-transition morph |
