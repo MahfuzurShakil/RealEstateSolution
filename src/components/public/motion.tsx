@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils/cn';
 
 /** True once the element has scrolled into view (and stays true). */
-function useInView<T extends Element>(): [React.RefObject<T | null>, boolean] {
+export function useInView<T extends Element>(): [React.RefObject<T | null>, boolean] {
   const ref = useRef<T>(null);
   const [seen, setSeen] = useState(false);
 
@@ -76,5 +76,13 @@ export function CountUp({ value, duration = 1200 }: { value: number; duration?: 
     return () => cancelAnimationFrame(frame);
   }, [seen, value, duration]);
 
-  return <span ref={ref}>{shown.toLocaleString('en-IN')}</span>;
+  // screen readers get the final number straight away, never a value mid-count
+  return (
+    <>
+      <span ref={ref} aria-hidden className="tabular">
+        {shown.toLocaleString('en-IN')}
+      </span>
+      <span className="sr-only">{value.toLocaleString('en-IN')}</span>
+    </>
+  );
 }

@@ -20,7 +20,8 @@ function Thumb({
   doc: DocumentRecord;
   onOpen: () => void;
 }) {
-  const url = useBlobUrl(doc.file_data);
+  // a photo can also be linked by URL (the demo's stock photos)
+  const url = useBlobUrl(doc.file_data) ?? (/^https?:\/\//.test(doc.file_url) ? doc.file_url : null);
 
   return (
     <button
@@ -61,7 +62,8 @@ function Viewer({
   entry: { document: DocumentRecord; update?: { id: string; update_date: string; remarks?: string | null }; label: string };
   onClose: () => void;
 }) {
-  const url = useBlobUrl(entry.document.file_data);
+  const url =
+    useBlobUrl(entry.document.file_data) ?? (/^https?:\/\//.test(entry.document.file_url) ? entry.document.file_url : null);
 
   return (
     <Modal

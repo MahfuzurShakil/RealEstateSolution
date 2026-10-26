@@ -84,3 +84,34 @@ export async function ensureDemoWebsitePictures(): Promise<void> {
     await db.projects.update(project.id, { cover_image_url: u(photos[0]), cover_image_document_id: null });
   }
 }
+
+const SITE_PHOTOS = [
+  'photo-1541888946425-d81bb19240f5', // site from above, crew on the slab
+  'photo-1504307651254-35680f356dfd', // rod binding
+  'photo-1621905251189-08b45d6a269e', // finishing work
+];
+
+/**
+ * The demo's site photos are generated PNGs too. Swap each one for a stock
+ * construction photo (linked by URL), keeping its date, tower and public flag.
+ * Matched by the demo seed's own file names (`progress-…d.png`), so a photo an
+ * engineer uploaded is never touched; a no-op once swapped.
+ */
+export async function ensureDemoSitePhotos(): Promise<void> {
+  const docs = await db.documents.where('document_type').equals('progress_photo').toArray();
+  const generated = docs
+    .filter((d) => d.file_data && d.mime_type === 'image/png' && /^progress-.+-\d+d\.png$/.test(d.file_name ?? ''))
+    .sort((a, b) => a.uploaded_at.localeCompare(b.uploaded_at));
+  for (const [i, d] of generated.entries()) {
+    const finishing = /finish/i.test(d.file_name ?? '');
+    const id = finishing ? SITE_PHOTOS[2] : SITE_PHOTOS[i % 2];
+    await db.documents.update(d.id, {
+      file_data: null,
+      file_url: u(id),
+      file_name: (d.file_name ?? 'site-photo').replace(/\.png$/, '.jpg'),
+      mime_type: 'image/jpeg',
+      file_size: null,
+      notes: d.notes ? `${d.notes} · ${STOCK_NOTE}` : STOCK_NOTE,
+    });
+  }
+}

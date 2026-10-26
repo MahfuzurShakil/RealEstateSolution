@@ -1,63 +1,36 @@
 'use client';
 
-import Link from 'next/link';
-import { useState } from 'react';
+import { useState, ViewTransition } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import {
-  ArrowRight,
-  CircleCheck,
-  Globe2,
-  MessageCircle,
-  PhoneCall,
-  Video,
-  FileText,
-  Banknote,
-} from 'lucide-react';
+import { ArrowRight, Banknote, CircleCheck, FileText, Globe2, MessageCircle, PhoneCall, Video, type LucideIcon } from 'lucide-react';
+import { en } from '@/components/public/i18n/en';
 import { ProjectCard, ProjectCardSkeleton } from '@/components/public/ProjectCard';
 import { HERO_IMAGE, INTERIOR_IMAGE } from '@/components/public/stock-images';
 import { useCompanyInfo } from '@/components/public/useCompanyInfo';
-import { AreaGrid } from '@/components/public/home/AreaGrid';
+import { AreaGrid, areaTiles } from '@/components/public/home/AreaGrid';
 import { BuyerFaq } from '@/components/public/home/BuyerFaq';
 import { BuyingProcess } from '@/components/public/home/BuyingProcess';
 import { HeroSearch, BUYER_KINDS } from '@/components/public/home/HeroSearch';
 import { HeroSlider } from '@/components/public/home/HeroSlider';
 import { InstalmentPlanner } from '@/components/public/home/InstalmentPlanner';
+import { SiteStrip } from '@/components/public/home/SiteStrip';
 import { CountUp, Reveal } from '@/components/public/motion';
+import { ButtonLink } from '@/components/public/ui/Button';
+import { Container, SectionHeader } from '@/components/public/ui/SectionHeader';
+import { telLink, whatsappLink } from '@/lib/domain/public-portal';
 import { publicProjectRepository } from '@/lib/repositories/public/project.public.repository';
 import { cn } from '@/lib/utils/cn';
 
 /*
- * Home (Public Portal v2.0 §2.1). Layout ideas from the Hously template the
- * client picked, written here from scratch; the content follows how property
- * is bought from a developer in Bangladesh — by area, in Lakh and Crore, with
- * booking money, a sale agreement and instalments, then handover, deed and
- * mutation — including for buyers living abroad.
+ * Home (PUBLIC-WEBSITE-MASTER-PLAN.md §7.1). Section order: hero → search →
+ * trust numbers → projects on sale → areas → live site photos → why us →
+ * buying steps → payment planner → buyers abroad → landowners → FAQ.
+ * Every project fact comes from the public repositories; every word from
+ * i18n/en.ts. Sections with no data hide themselves.
  */
 
-function SectionTitle({ eyebrow, title, body, align = 'center' }: { eyebrow: string; title: string; body?: string; align?: 'center' | 'left' }) {
-  return (
-    <div className={cn('max-w-2xl', align === 'center' && 'mx-auto text-center')}>
-      <p className="text-sm font-semibold tracking-[0.2em] text-site-primary uppercase">{eyebrow}</p>
-      <h2 className="mt-3 text-3xl leading-tight font-semibold md:text-[42px]">{title}</h2>
-      {body && <p className="mt-4 text-lg leading-relaxed text-site-muted">{body}</p>}
-    </div>
-  );
-}
-
-const WHY = [
-  'Building plan approved before construction starts',
-  'Land papers shown at the site office before you book',
-  'Starting price and live availability on every project',
-  'Construction photos published as the work goes on',
-  'Every payment against a money receipt and a written agreement',
-];
-
-const NRB = [
-  { icon: Video, title: 'Video walkthrough', body: 'See the site, the flat and the papers on a live video call.' },
-  { icon: FileText, title: 'Documents by email', body: 'Agreement, receipts and progress reports sent to you.' },
-  { icon: Banknote, title: 'Pay from abroad', body: 'Bank transfer from wherever you are, with a receipt each time.' },
-  { icon: Globe2, title: 'Power of attorney', body: 'A family member can sign and register on your behalf.' },
-];
+const h = en.home;
+const NRB_ICONS: LucideIcon[] = [Video, FileText, Banknote, Globe2];
 
 export default function HomePage() {
   const company = useCompanyInfo();
@@ -66,260 +39,253 @@ export default function HomePage() {
 
   const live = (cards ?? []).filter((c) => c.stage !== 'completed');
   const kinds = BUYER_KINDS.filter((k) => live.some((c) => k.types.includes(c.project_type)));
-  const shown = live
-    .filter((c) => tab === 'all' || BUYER_KINDS.find((k) => k.key === tab)?.types.includes(c.project_type))
-    .slice(0, 6);
+  const shown = live.filter((c) => tab === 'all' || BUYER_KINDS.find((k) => k.key === tab)?.types.includes(c.project_type)).slice(0, 6);
 
-  const isLand = (t: string) => t === 'plot_development' || t === 'land_share';
+  const isLand = (ty: string) => ty === 'plot_development' || ty === 'land_share';
   const stats = [
-    { value: live.filter((c) => c.sales_badge === 'on_sale').length, label: 'Projects on sale' },
-    { value: live.filter((c) => !isLand(c.project_type)).reduce((s, c) => s + c.available_count, 0), label: 'Flats & spaces available' },
-    { value: live.filter((c) => isLand(c.project_type)).reduce((s, c) => s + c.available_count, 0), label: 'Plots & shares available' },
-    { value: (cards ?? []).filter((c) => c.stage === 'completed').length, label: 'Projects completed' },
+    { value: live.filter((c) => c.sales_badge === 'on_sale').length, label: h.stats.onSale },
+    { value: live.filter((c) => !isLand(c.project_type)).reduce((s, c) => s + c.available_count, 0), label: h.stats.homes },
+    { value: live.filter((c) => isLand(c.project_type)).reduce((s, c) => s + c.available_count, 0), label: h.stats.land },
+    { value: (cards ?? []).filter((c) => c.stage === 'completed').length, label: h.stats.completed },
   ].filter((s) => s.value > 0);
 
   const flatPrices = live.filter((c) => !isLand(c.project_type) && c.price_from).map((c) => c.price_from!);
-  const tel = company?.phone ? `tel:${company.phone.replace(/[^\d+]/g, '')}` : null;
+  const tel = telLink(company?.phone);
+  const wa = (text: string) => (company?.whatsapp_number ? whatsappLink(company.whatsapp_number, text) : null);
 
   return (
     <>
       {cards === undefined ? (
         <section className="px-2 pt-2 md:px-4">
-          <div className="min-h-[620px] animate-pulse rounded-3xl bg-site-night md:min-h-[700px]" />
+          <div className="min-h-[640px] animate-pulse rounded-[28px] bg-site-night md:min-h-[700px]" />
         </section>
       ) : (
-        <HeroSlider cards={live} companyName={company?.company_name ?? ''} tel={tel} />
+        <HeroSlider cards={live} tel={tel} />
       )}
 
-      <section className="relative z-10 -mt-32 px-4 sm:px-6">
-        {cards === undefined ? (
-          <div className="mx-auto h-40 max-w-5xl animate-pulse rounded-2xl bg-white shadow-xl" />
-        ) : (
-          <HeroSearch cards={live} />
-        )}
+      <section className="relative z-10 -mt-44 px-4 sm:px-6 md:-mt-32">
+        {cards === undefined ? <div className="mx-auto h-40 max-w-5xl animate-pulse rounded-2xl bg-white shadow-site-3" /> : <HeroSearch cards={live} />}
       </section>
 
+      {/* trust numbers — columns follow how many there are, so no gap is left */}
       {stats.length > 0 && (
-        <section className="mx-auto mt-16 max-w-6xl px-4 sm:px-6">
-          <dl className="grid grid-cols-2 gap-y-8 md:grid-cols-4 md:divide-x md:divide-site-line">
+        <Container className="mt-16">
+          <dl
+            className={cn(
+              'grid grid-cols-2 gap-y-8 rounded-[20px] border border-site-line bg-white px-4 py-8 shadow-site-1 md:divide-x md:divide-site-line md:py-10',
+              stats.length === 3 && 'md:grid-cols-3',
+              stats.length === 4 && 'md:grid-cols-4',
+            )}
+          >
             {stats.map((s) => (
-              <div key={s.label} className="text-center">
-                <dd className="text-4xl font-bold text-site-ink md:text-5xl">
+              <div key={s.label} className="flex flex-col-reverse items-center text-center">
+                <dt className="mt-1.5 text-sm text-site-muted md:text-base">{s.label}</dt>
+                <dd className="font-display text-4xl font-semibold text-site-ink md:text-5xl">
                   <CountUp value={s.value} />
                 </dd>
-                <dt className="mt-1.5 text-site-muted">{s.label}</dt>
               </div>
             ))}
           </dl>
-        </section>
+        </Container>
       )}
 
       {/* projects on sale */}
-      <section className="mx-auto mt-28 max-w-7xl px-4 sm:px-6">
+      <Container className="mt-24 md:mt-28">
         <Reveal>
-          <div className="flex flex-wrap items-end justify-between gap-6">
-            <SectionTitle
-              align="left"
-              eyebrow="Projects on sale"
-              title="Homes and land you can book today"
-              body="Availability comes straight from our sales desk — what you see here is still open."
-            />
-            {kinds.length > 1 && (
-              <div className="flex flex-wrap gap-2">
-                {[{ key: 'all', label: 'All' }, ...kinds].map((k) => (
-                  <button
-                    key={k.key}
-                    type="button"
-                    onClick={() => setTab(k.key)}
-                    className={cn(
-                      'rounded-full px-5 py-2 text-[15px] font-medium transition-colors',
-                      tab === k.key ? 'bg-site-primary text-white' : 'bg-site-soft text-site-ink hover:text-site-primary',
-                    )}
-                  >
-                    {k.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <SectionHeader
+            eyebrow={h.projects.eyebrow}
+            title={h.projects.title}
+            accent={h.projects.accent}
+            lead={h.projects.lead}
+            action={
+              kinds.length > 1 && (
+                <div role="tablist" aria-label="Filter projects" className="flex flex-wrap gap-2">
+                  {[{ key: 'all', label: h.projects.all }, ...kinds].map((k) => (
+                    <button
+                      key={k.key}
+                      type="button"
+                      role="tab"
+                      aria-selected={tab === k.key}
+                      onClick={() => setTab(k.key)}
+                      className={cn(
+                        'rounded-full px-5 py-2 text-sm font-semibold transition-colors duration-200',
+                        tab === k.key ? 'bg-site-primary text-white' : 'border border-site-line bg-white hover:border-site-primary hover:text-site-primary',
+                      )}
+                    >
+                      {k.label}
+                    </button>
+                  ))}
+                </div>
+              )
+            }
+          />
         </Reveal>
 
-        <div className="mt-12">
+        <div className="mt-10 md:mt-12">
           {cards === undefined ? (
-            <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8">
               {[0, 1, 2].map((i) => (
                 <ProjectCardSkeleton key={i} />
               ))}
             </div>
           ) : shown.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-site-line px-6 py-14 text-center">
-              <p className="text-xl font-medium">No projects on sale yet</p>
-              <p className="mt-2 text-site-muted">New projects appear here as soon as they open for booking.</p>
+            <div className="rounded-[20px] border border-dashed border-site-line px-6 py-14 text-center">
+              <p className="text-xl font-semibold">{h.projects.emptyTitle}</p>
+              <p className="mt-2 text-site-muted">{h.projects.emptyBody}</p>
             </div>
           ) : (
-            <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-              {shown.map((card, i) => (
-                <Reveal key={card.code} delay={(i % 3) * 100}>
-                  <ProjectCard card={card} />
-                </Reveal>
-              ))}
-            </div>
+            // same place, different content: the grid crossfades when the tab changes
+            <ViewTransition key={tab} enter="auto" exit="auto" default="none">
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8">
+                {shown.map((card, i) => (
+                  <Reveal key={card.code} delay={(i % 3) * 80}>
+                    <ProjectCard card={card} />
+                  </Reveal>
+                ))}
+              </div>
+            </ViewTransition>
           )}
         </div>
         {live.length > shown.length && (
           <div className="mt-12 text-center">
-            <Link
-              href="/projects"
-              className="inline-flex items-center gap-2 rounded-full border border-site-primary px-7 py-3 font-medium text-site-primary transition-colors hover:bg-site-primary hover:text-white"
-            >
-              See all {live.length} projects <ArrowRight className="size-4" />
-            </Link>
+            <ButtonLink href="/projects" variant="outline" size="lg" iconRight={<ArrowRight className="size-4" />}>
+              {h.projects.seeAll(live.length)}
+            </ButtonLink>
           </div>
         )}
-      </section>
+      </Container>
 
       {/* by area */}
-      {live.length > 1 && (
-        <section className="mx-auto mt-28 max-w-7xl px-4 sm:px-6">
+      {areaTiles(live).length > 1 && (
+        <Container className="mt-24 md:mt-28">
           <Reveal>
-            <SectionTitle
-              eyebrow="Explore by area"
-              title="Find a home where you want to live"
-              body="Pick the area first, then the project — every tile shows how many are open and where prices start."
-            />
+            <SectionHeader eyebrow={h.areas.eyebrow} title={h.areas.title} accent={h.areas.accent} lead={h.areas.lead} />
           </Reveal>
           <AreaGrid cards={live} />
-        </section>
+        </Container>
       )}
 
-      {/* how buying works */}
-      <section className="mt-28 bg-site-soft py-24">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <Reveal>
-            <SectionTitle
-              eyebrow="How buying works"
-              title="From site visit to registration"
-              body="The same steps for a flat, a plot or a land share — and our team is with you at each one."
-            />
-          </Reveal>
-          <BuyingProcess />
-        </div>
-      </section>
-
-      {/* payment planner */}
-      <section className="mx-auto mt-28 max-w-7xl px-4 sm:px-6">
-        <Reveal>
-          <SectionTitle
-            eyebrow="Plan your payments"
-            title="What would a month cost?"
-            body="Move the sliders to see booking money, down payment and monthly instalments for a flat."
-          />
-        </Reveal>
-        <Reveal className="mt-12">
-          <InstalmentPlanner startingPrice={flatPrices.length ? Math.min(...flatPrices) : null} />
-        </Reveal>
-      </section>
+      {/* live site photos */}
+      <SiteStrip />
 
       {/* why us */}
-      <section className="mx-auto mt-28 grid max-w-7xl items-center gap-14 px-4 sm:px-6 lg:grid-cols-2">
-        <Reveal className="relative">
+      <Container className="mt-24 grid items-center gap-14 md:mt-28 lg:grid-cols-2">
+        <Reveal className="relative pb-8 lg:pb-0">
           {/* eslint-disable-next-line @next/next/no-img-element -- remote stock photo */}
-          <img src={INTERIOR_IMAGE} alt="A finished living room" className="aspect-4/3 w-full rounded-3xl object-cover shadow-xl" />
-          <div className="absolute -bottom-8 left-6 flex items-center gap-4 rounded-2xl bg-white px-6 py-5 shadow-xl md:-right-8 md:left-auto">
+          <img src={INTERIOR_IMAGE} alt={h.why.imageAlt} className="aspect-4/3 w-full rounded-[28px] object-cover shadow-site-2" />
+          {/* stays inside the column on every width (it used to push the page sideways on tablets) */}
+          <div className="absolute bottom-0 left-4 flex items-center gap-4 rounded-2xl bg-white px-5 py-4 shadow-site-3 sm:left-6 lg:-bottom-6 lg:left-auto lg:right-6">
             <span className="grid size-12 place-items-center rounded-full bg-site-primary-soft text-site-primary">
-              <CircleCheck className="size-6" />
+              <CircleCheck className="size-6" aria-hidden />
             </span>
             <span>
-              <span className="block text-sm text-site-muted">Every taka</span>
-              <span className="block text-lg font-semibold">against a receipt</span>
+              <span className="block text-sm text-site-muted">{h.why.badgeTop}</span>
+              <span className="block text-lg font-semibold">{h.why.badgeBottom}</span>
             </span>
           </div>
         </Reveal>
         <Reveal delay={120}>
-          <SectionTitle
-            align="left"
-            eyebrow="Why buy with us"
-            title="Clear papers. Honest prices. Peace of mind."
-            body="A home is the biggest payment most families make. We keep every step on paper and in the open, so you always know where your money and your home stand."
-          />
+          <SectionHeader eyebrow={h.why.eyebrow} title={h.why.title} accent={h.why.accent} lead={h.why.lead} />
           <ul className="mt-8 space-y-4">
-            {WHY.map((line) => (
+            {h.why.points.map((line) => (
               <li key={line} className="flex items-start gap-3 text-[17px]">
-                <CircleCheck className="mt-0.5 size-5.5 shrink-0 text-site-primary" /> {line}
+                <CircleCheck className="mt-0.5 size-5.5 shrink-0 text-site-primary" aria-hidden /> {line}
               </li>
             ))}
           </ul>
         </Reveal>
+      </Container>
+
+      {/* how buying works */}
+      <section className="mt-24 bg-site-soft py-20 md:mt-28 md:py-24">
+        <Container>
+          <Reveal>
+            <SectionHeader eyebrow={h.steps.eyebrow} title={h.steps.title} accent={h.steps.accent} lead={h.steps.lead} align="center" />
+          </Reveal>
+          <BuyingProcess />
+        </Container>
       </section>
 
-      {/* NRB */}
-      <section className="mx-auto mt-32 max-w-7xl px-4 sm:px-6">
-        <div className="relative overflow-hidden rounded-3xl bg-site-night px-6 py-14 md:px-14">
-          <div
-            aria-hidden
-            className="absolute inset-0 bg-cover bg-center opacity-15"
-            style={{ backgroundImage: `url(${HERO_IMAGE})` }}
-          />
+      {/* payment planner */}
+      <Container className="mt-24 md:mt-28">
+        <Reveal>
+          <SectionHeader eyebrow={h.planner.eyebrow} title={h.planner.title} accent={h.planner.accent} lead={h.planner.lead} align="center" />
+        </Reveal>
+        <Reveal className="mt-12">
+          <InstalmentPlanner startingPrice={flatPrices.length ? Math.min(...flatPrices) : null} />
+        </Reveal>
+      </Container>
+
+      {/* buyers abroad */}
+      <Container className="mt-24 md:mt-32">
+        <div className="relative overflow-hidden rounded-[28px] bg-site-night px-6 py-14 md:px-14">
+          <div aria-hidden className="absolute inset-0 bg-cover bg-center opacity-15" style={{ backgroundImage: `url(${HERO_IMAGE})` }} />
           <div className="relative grid gap-12 lg:grid-cols-[1fr_1.4fr] lg:items-center">
             <Reveal>
-              <p className="text-sm font-semibold tracking-[0.2em] text-site-primary uppercase">For buyers abroad</p>
-              <h2 className="mt-3 text-3xl leading-tight font-semibold text-white md:text-[42px]">
-                Living abroad? Buy a home back home.
-              </h2>
-              <p className="mt-4 text-lg leading-relaxed text-white/70">
-                Many of our buyers live in the Middle East, Europe and North America. You can choose, book and pay
-                without flying in.
-              </p>
+              <SectionHeader tone="dark" eyebrow={h.nrb.eyebrow} title={h.nrb.title} accent={h.nrb.accent} lead={h.nrb.lead} />
+              {wa(h.nrb.whatsappText) && (
+                <ButtonLink href={wa(h.nrb.whatsappText)!} variant="light" className="mt-8" icon={<Video className="size-4.5" />}>
+                  {h.nrb.cta}
+                </ButtonLink>
+              )}
             </Reveal>
             <div className="grid gap-4 sm:grid-cols-2">
-              {NRB.map(({ icon: Icon, title, body }, i) => (
-                <Reveal key={title} delay={i * 90}>
-                  <div className="h-full rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur">
-                    <Icon className="size-7 text-site-primary" strokeWidth={1.6} />
-                    <p className="mt-4 text-lg font-medium text-white">{title}</p>
-                    <p className="mt-1.5 text-white/65">{body}</p>
-                  </div>
-                </Reveal>
-              ))}
+              {h.nrb.items.map(({ title, body }, i) => {
+                const Icon = NRB_ICONS[i];
+                return (
+                  <Reveal key={title} delay={i * 90}>
+                    <div className="h-full rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur transition-colors duration-300 hover:bg-white/10">
+                      <Icon className="size-7 text-site-brass" strokeWidth={1.6} aria-hidden />
+                      <p className="mt-4 text-lg font-semibold text-white">{title}</p>
+                      <p className="mt-1.5 text-white/70">{body}</p>
+                    </div>
+                  </Reveal>
+                );
+              })}
             </div>
           </div>
         </div>
-      </section>
+      </Container>
+
+      {/* landowners — talks to the sales team until the /landowners page is built (W8) */}
+      {(wa(h.landowner.whatsappText) || tel) && (
+        <Container className="mt-24 md:mt-28">
+          <Reveal>
+            <div className="flex flex-col items-start justify-between gap-8 rounded-[28px] border border-site-line bg-white p-8 shadow-site-1 md:flex-row md:items-center md:p-12">
+              <SectionHeader eyebrow={h.landowner.eyebrow} title={h.landowner.title} accent={h.landowner.accent} lead={h.landowner.lead} />
+              <ButtonLink
+                href={wa(h.landowner.whatsappText) ?? tel!}
+                size="lg"
+                icon={wa(h.landowner.whatsappText) ? <MessageCircle className="size-4.5" /> : <PhoneCall className="size-4.5" />}
+              >
+                {h.landowner.cta}
+              </ButtonLink>
+            </div>
+          </Reveal>
+        </Container>
+      )}
 
       {/* FAQ + contact */}
-      <section className="mx-auto mt-28 grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[1fr_1.5fr]">
+      <Container className="mt-24 grid gap-12 md:mt-28 lg:grid-cols-[1fr_1.5fr]">
         <Reveal>
-          <SectionTitle
-            align="left"
-            eyebrow="Questions buyers ask"
-            title="Before you book"
-            body="Still unsure about something? Call us or send a WhatsApp message — we reply the same day."
-          />
+          <SectionHeader eyebrow={h.faq.eyebrow} title={h.faq.title} accent={h.faq.accent} lead={h.faq.lead} />
           <div className="mt-8 flex flex-wrap gap-3">
             {tel && (
-              <a
-                href={tel}
-                className="flex items-center gap-2 rounded-full bg-site-primary px-6 py-3 font-medium text-white transition-colors hover:bg-site-primary-dark"
-              >
-                <PhoneCall className="size-4.5" /> {company?.phone}
-              </a>
+              <ButtonLink href={tel} icon={<PhoneCall className="size-4.5" />}>
+                <span className="tabular">{company?.phone}</span>
+              </ButtonLink>
             )}
             {company?.whatsapp_url && (
-              <a
-                href={company.whatsapp_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 rounded-full border border-site-line px-6 py-3 font-medium transition-colors hover:border-site-primary hover:text-site-primary"
-              >
-                <MessageCircle className="size-4.5" /> WhatsApp
-              </a>
+              <ButtonLink href={company.whatsapp_url} variant="outline" icon={<MessageCircle className="size-4.5" />}>
+                {en.nav.whatsapp}
+              </ButtonLink>
             )}
           </div>
         </Reveal>
         <Reveal delay={120}>
           <BuyerFaq />
         </Reveal>
-      </section>
+      </Container>
     </>
   );
 }

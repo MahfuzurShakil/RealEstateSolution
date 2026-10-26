@@ -64,7 +64,7 @@ export function SectionHeader({
           <p className={cn('mt-4 text-base leading-relaxed md:text-lg', tone === 'dark' ? 'text-white/70' : 'text-site-muted')}>{lead}</p>
         )}
       </div>
-      {action && !center && <div className="shrink-0">{action}</div>}
+      {action && !center && <div className="max-w-full min-w-0">{action}</div>}
     </div>
   );
 }

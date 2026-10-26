@@ -1,62 +1,58 @@
+'use client';
+
 import { FileSearch, FileSignature, HandCoins, KeyRound, Landmark, MapPinned, type LucideIcon } from 'lucide-react';
-import { Reveal } from '../motion';
+import { cn } from '@/lib/utils/cn';
+import { en } from '../i18n/en';
+import { useInView } from '../motion';
 
 /*
  * How a flat, plot or share is actually bought from a developer in Bangladesh,
- * in the order it happens. The same words the sales team and the Admin booking
- * flow use: booking money confirms the booking, the sale agreement fixes the
- * price and payment terms, and the deed is registered once the price is paid.
+ * in the order it happens (copy in i18n/en.ts). On wide screens the six steps
+ * sit on one line that draws itself left to right as it scrolls into view
+ * (master plan §6.2); on phones it is a vertical timeline.
  */
-const STEPS: { icon: LucideIcon; title: string; body: string }[] = [
-  {
-    icon: MapPinned,
-    title: 'Site visit',
-    body: 'Visit the project with our team. We can pick you up from the office or meet you on site.',
-  },
-  {
-    icon: FileSearch,
-    title: 'Check the papers',
-    body: 'See the land deed, khatian, mutation, land tax receipt and the approved building plan.',
-  },
-  {
-    icon: HandCoins,
-    title: 'Pay booking money',
-    body: 'Your flat, plot or share is held for you, and a money receipt is issued the same day.',
-  },
-  {
-    icon: FileSignature,
-    title: 'Sign the sale agreement',
-    body: 'Final price, payment schedule and handover date are written down — full payment or instalments.',
-  },
-  {
-    icon: KeyRound,
-    title: 'Handover',
-    body: 'Keys for a flat, possession for a plot, a share certificate for a land share.',
-  },
-  {
-    icon: Landmark,
-    title: 'Registration & mutation',
-    body: 'The deed is registered in your name at the sub-registry office, then mutation (namjari).',
-  },
-];
+const ICONS: LucideIcon[] = [MapPinned, FileSearch, HandCoins, FileSignature, KeyRound, Landmark];
 
 export function BuyingProcess() {
+  const [ref, seen] = useInView<HTMLOListElement>();
+  const steps = en.home.steps.items;
+
   return (
-    <div className="relative mt-14 grid gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
-      {STEPS.map(({ icon: Icon, title, body }, i) => (
-        <Reveal key={title} delay={(i % 3) * 120}>
-          <div className="group relative h-full rounded-2xl border border-site-line bg-white p-7 transition-all duration-500 hover:-translate-y-1 hover:border-transparent hover:shadow-xl">
-            <span className="absolute top-6 right-7 text-5xl font-bold text-site-soft transition-colors group-hover:text-site-primary-soft">
-              {String(i + 1).padStart(2, '0')}
+    <ol ref={ref} className="relative mt-14 grid gap-8 lg:grid-cols-6 lg:gap-5">
+      {/* the connecting line: vertical on phones, horizontal from lg */}
+      <span aria-hidden className="absolute top-2 bottom-2 left-7 w-px bg-site-line lg:top-7 lg:right-[8%] lg:bottom-auto lg:left-[8%] lg:h-px lg:w-auto" />
+      <span
+        aria-hidden
+        className={cn(
+          'absolute top-2 left-7 w-px origin-top bg-site-primary transition-transform duration-[1600ms] ease-site-out lg:top-7 lg:right-[8%] lg:left-[8%] lg:h-px lg:w-auto lg:origin-left',
+          'bottom-2 lg:bottom-auto',
+          seen ? 'scale-y-100 lg:scale-x-100' : 'scale-y-0 lg:scale-x-0 lg:scale-y-100',
+        )}
+      />
+      {steps.map(({ title, body }, i) => {
+        const Icon = ICONS[i];
+        return (
+          <li
+            key={title}
+            style={{ transitionDelay: seen ? `${200 + i * 180}ms` : '0ms' }}
+            className={cn(
+              'relative flex gap-5 transition-[opacity,translate] duration-500 ease-site-out lg:flex-col lg:gap-0 lg:text-center',
+              seen ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0',
+            )}
+          >
+            <span className="relative z-10 grid size-14 shrink-0 place-items-center rounded-full border-4 border-site-soft bg-white text-site-primary shadow-site-1 lg:mx-auto">
+              <Icon className="size-6" strokeWidth={1.7} aria-hidden />
             </span>
-            <span className="relative grid size-14 place-items-center rounded-xl bg-site-primary-soft text-site-primary transition-colors group-hover:bg-site-primary group-hover:text-white">
-              <Icon className="size-7" strokeWidth={1.6} />
-            </span>
-            <h3 className="relative mt-6 text-xl font-semibold">{title}</h3>
-            <p className="relative mt-2.5 leading-relaxed text-site-muted">{body}</p>
-          </div>
-        </Reveal>
-      ))}
-    </div>
+            <div className="lg:mt-5">
+              <p className="tabular text-xs font-semibold tracking-[0.16em] text-site-brass-dark uppercase">
+                Step {String(i + 1).padStart(2, '0')}
+              </p>
+              <h3 className="mt-1 text-lg font-semibold">{title}</h3>
+              <p className="mt-1.5 text-[15px] leading-relaxed text-site-muted">{body}</p>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
   );
 }

@@ -25,6 +25,7 @@ export const metadata: Metadata = {
 export default function PublicLayout({ children }: { children: React.ReactNode }) {
   return (
     <div
+      id="site-root"
       lang="en"
       className={`${spartan.variable} ${jakarta.variable} ${instrument.variable} ${hind.variable} site flex min-h-screen flex-col bg-site-ivory font-site text-site-ink antialiased`}
     >

@@ -81,7 +81,8 @@
 .site h2,
 .site h3,
 .site .font-display {
-  font-family: var(--font-display);
+  /* the font variables themselves: `@theme inline` tokens are not emitted as CSS variables */
+  font-family: var(--font-spartan), var(--font-jakarta), system-ui, sans-serif;
   letter-spacing: -0.02em;
 }
 .site :focus-visible {
@@ -111,6 +112,10 @@
 @keyframes site-progress {
   from { transform: scaleX(0); }
   to { transform: scaleX(1); }
+}
+@keyframes site-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 @keyframes fade-up {
   from { opacity: 0; transform: translateY(16px); }

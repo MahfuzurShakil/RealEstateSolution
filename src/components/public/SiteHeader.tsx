@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowRight, ChevronDown, MapPin, Menu, MessageCircle, PhoneCall, X } from 'lucide-react';
 import { formatPublicPrice, telLink } from '@/lib/domain/public-portal';
 import { cn } from '@/lib/utils/cn';
@@ -240,14 +241,19 @@ export function SiteHeader() {
         </div>
       </div>
 
-      {/* Mobile: full-screen sheet with big links and contact buttons at the bottom */}
+      {/*
+        Mobile: full-screen sheet with big links and contact buttons at the bottom.
+        Rendered into the public shell (not the header) and only while open: inside the header, the header's
+        scroll blur made it the sheet's containing block (squashing it), and a
+        hidden sheet still widened the page.
+      */}
+      {open && createPortal(
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Menu"
         className={cn(
-          'fixed inset-0 z-50 flex flex-col bg-site-ivory transition-[opacity,visibility] duration-300 ease-site-out lg:hidden',
-          open ? 'visible opacity-100' : 'invisible opacity-0',
+          'site fixed inset-0 z-[60] flex flex-col bg-site-ivory font-site text-site-ink motion-safe:animate-[site-fade-in_.25s_ease-out] lg:hidden',
         )}
       >
         <div className="flex h-18 items-center justify-between px-4 sm:px-6">
@@ -268,10 +274,9 @@ export function SiteHeader() {
               key={item.href}
               href={item.href}
               onClick={() => setOpen(false)}
-              style={{ transitionDelay: open ? `${80 + i * 50}ms` : '0ms' }}
+              style={{ animationDelay: `${80 + i * 60}ms` }}
               className={cn(
-                'font-display flex items-center justify-between border-b border-site-line py-4 text-3xl font-semibold transition-[opacity,translate] duration-500 ease-site-out',
-                open ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0',
+                'font-display flex items-center justify-between border-b border-site-line py-4 text-3xl font-semibold motion-safe:animate-[fade-up_.5s_var(--ease-site-out)_both]',
                 isActive(item.href) && 'text-site-primary',
               )}
             >
@@ -309,7 +314,10 @@ export function SiteHeader() {
             </ButtonLink>
           )}
         </div>
-      </div>
+      </div>,
+      // the public shell carries the font variables, so the sheet keeps the brand type
+      document.getElementById('site-root') ?? document.body,
+      )}
     </header>
   );
 }
