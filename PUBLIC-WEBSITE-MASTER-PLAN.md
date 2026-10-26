@@ -500,7 +500,7 @@ references in demo-site-progress, demo-bookings and demo-leads.
 | W1 Home ✅ (2026-10-26) | all §7.1 sections that have data today; hero/search/stats fixes |
 | W2 Listing ✅ (2026-10-26) | filter bar + bottom sheet, sort, list + map views, URL sync |
 | W3 Detail v2 ✅ (2026-10-26) | gallery + lightbox, sub-nav, unit drawer + deep link, floor-plan viewer, map + landmarks, view-transition morph |
-| W4 Progress | detail progress polish (ring, bars, dated photo timeline, lightbox) + home "Live from our sites" strip |
+| W4 Progress ✅ (2026-10-26) | detail progress polish (ring, bars, dated photo timeline, lightbox) + home "Live from our sites" strip |
 | W5 Enquiries | enquiry modal, site-visit booking, callback, WhatsApp templates, lead note fix |
 | W6 Company pages + Website settings | About, Contact, Buyer's guide, NRB, legal, Website card, readiness checklist |
 | W7 Trust content | testimonials, team, awards, FAQ tables + admin screens + home sections |

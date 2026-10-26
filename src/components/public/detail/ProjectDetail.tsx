@@ -37,7 +37,7 @@ import {
 } from '@/lib/repositories/public/project.public.repository';
 import { cn } from '@/lib/utils/cn';
 import { InstalmentPlanner } from '../home/InstalmentPlanner';
-import { Reveal } from '../motion';
+import { Reveal, useInView } from '../motion';
 import { ProjectCard, Taka } from '../ProjectCard';
 import { COVER_FALLBACK } from '../stock-images';
 import { useCompanyInfo } from '../useCompanyInfo';
@@ -48,7 +48,7 @@ import { areaOf } from '@/lib/domain/public-portal';
 import { progressPublicRepository } from '@/lib/repositories/public/progress.public.repository';
 import { en } from '../i18n/en';
 import { Availability } from './Availability';
-import { Amenities, Nearby, Papers, PaymentPlan, SectionNav, SitePhotos } from './DetailParts';
+import { Amenities, Nearby, Papers, PaymentPlan, PlotStepper, ProgressBar, SectionNav, SitePhotos } from './DetailParts';
 import { ProjectGallery } from './ProjectGallery';
 
 const ProjectsMap = dynamic(() => import('../ProjectsMap'), { ssr: false, loading: () => <div className="size-full animate-pulse bg-site-soft" /> });
@@ -120,11 +120,13 @@ function galleryOf(p: PublicProjectDetail): PublicImage[] {
   return out;
 }
 
+/** Fills from 0 when it scrolls into view (master plan §6.2); the number is right from the start. */
 function ProgressRing({ pct }: { pct: number }) {
+  const [ref, seen] = useInView<HTMLDivElement>();
   const r = 52;
   const c = 2 * Math.PI * r;
   return (
-    <div className="relative size-36 shrink-0">
+    <div ref={ref} className="relative size-36 shrink-0" role="img" aria-label={`${pct}% complete`}>
       <svg viewBox="0 0 120 120" className="size-full -rotate-90">
         <circle cx="60" cy="60" r={r} fill="none" stroke="var(--color-site-line)" strokeWidth="10" />
         <circle
@@ -136,13 +138,13 @@ function ProgressRing({ pct }: { pct: number }) {
           strokeWidth="10"
           strokeLinecap="round"
           strokeDasharray={c}
-          strokeDashoffset={c * (1 - pct / 100)}
-          className="transition-[stroke-dashoffset] duration-1000"
+          strokeDashoffset={seen ? c * (1 - pct / 100) : c}
+          className="transition-[stroke-dashoffset] duration-[1200ms] ease-site-out"
         />
       </svg>
       <span className="absolute inset-0 grid place-items-center text-center">
         <span>
-          <span className="block text-3xl font-bold">{pct}%</span>
+          <span className="font-display tabular block text-3xl font-bold">{pct}%</span>
           <span className="block text-xs text-site-muted">complete</span>
         </span>
       </span>
@@ -233,7 +235,7 @@ export function ProjectDetail({ code }: { code: string }) {
     { id: 'overview', label: 'Overview' },
     { id: 'availability', label: 'Availability' },
     ...(towers.length ? [{ id: 'specification', label: 'Specification' }] : []),
-    ...(built && project.progress_pct != null ? [{ id: 'progress', label: 'Progress' }] : []),
+    ...((built && project.progress_pct != null) || project.container_kind === 'block' ? [{ id: 'progress', label: 'Progress' }] : []),
     { id: 'location', label: 'Location' },
     ...(project.price_from ? [{ id: 'payment', label: 'Payment plan' }] : []),
     { id: 'papers', label: 'Papers' },
@@ -419,22 +421,25 @@ export function ProjectDetail({ code }: { code: string }) {
             </Section>
           )}
 
+          {project.container_kind === 'block' && (
+            <Section id="progress" title="Development progress">
+              <PlotStepper stage={project.stage} />
+            </Section>
+          )}
+
           {built && project.progress_pct != null && (
             <Section id="progress" title="Construction progress">
               <div className="flex flex-col gap-8 rounded-[20px] border border-site-line bg-white p-6 sm:flex-row sm:items-center">
                 <ProgressRing pct={project.progress_pct} />
                 <div className="flex-1 space-y-5">
-                  {towers.map((t) => (
+                  {towers.map((t, i) => (
                     <div key={t.name}>
                       <div className="flex justify-between text-[15px]">
                         <span className="font-medium">{t.name}</span>
                         <span className="text-site-muted">{t.progress_pct ?? 0}%</span>
                       </div>
                       <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-site-line">
-                        <div
-                          className="h-full rounded-full bg-site-primary transition-[width] duration-1000"
-                          style={{ width: `${t.progress_pct ?? 0}%` }}
-                        />
+                        <ProgressBar pct={t.progress_pct ?? 0} delay={i * 150} />
                       </div>
                     </div>
                   ))}
