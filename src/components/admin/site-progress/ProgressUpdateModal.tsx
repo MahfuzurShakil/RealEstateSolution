@@ -62,6 +62,8 @@ export function ProgressUpdateModal({
   const [busy, setBusy] = useState(false);
   /** photos taken on site, saved with the reading (Construction review 2026-10-11) */
   const [photos, setPhotos] = useState<File[]>([]);
+  /** photos stay internal unless the engineer ticks this (master plan §10.2) */
+  const [photosPublic, setPhotosPublic] = useState(false);
   /** shown after "Save & log another", so the engineer sees it went in */
   const [savedNote, setSavedNote] = useState('');
 
@@ -156,7 +158,7 @@ export function ProgressUpdateModal({
             file_name: file.name,
             file_size: file.size,
             mime_type: file.type,
-            is_public: false,
+            is_public: photosPublic,
             uploaded_by: userId,
             uploaded_at: new Date().toISOString(),
             notes: null,
@@ -371,6 +373,17 @@ export function ProgressUpdateModal({
                 </li>
               ))}
             </ul>
+          )}
+          {photos.length > 0 && (
+            <label className="mt-2 flex items-center gap-2 text-sm text-ink">
+              <input
+                type="checkbox"
+                className="size-4 accent-admin-600"
+                checked={photosPublic}
+                onChange={(e) => setPhotosPublic(e.target.checked)}
+              />
+              Show these photos on the public website
+            </label>
           )}
         </div>
 

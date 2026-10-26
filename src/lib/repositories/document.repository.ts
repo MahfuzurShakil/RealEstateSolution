@@ -19,6 +19,11 @@ class DocumentRepository extends BaseRepository<DocumentRecord> {
     return all.filter((d) => d.is_public);
   }
 
+  /** Show a file on the public website or take it off (master plan §10.2). */
+  async setPublic(id: string, isPublic: boolean): Promise<void> {
+    await this.update(id, { is_public: isPublic });
+  }
+
   async removeForEntity(entityType: EntityType, entityId: string): Promise<void> {
     const docs = await this.listForEntity(entityType, entityId);
     await db.documents.bulkDelete(docs.map((d) => d.id));

@@ -119,7 +119,7 @@ export const DEMO_USERS: DemoUser[] = [
     projects: [
       'Nokshi Green Residence',
       'Nokshi Dhanmondi Court',
-      'Nokshi Agrabad Trade Centre',
+      'Nokshi Tongi Logistics Park',
       'Nokshi Uttara Heights',
     ],
   },
@@ -160,7 +160,7 @@ export const DEMO_USERS: DemoUser[] = [
     email: 'monir@nokshiproperties.com.bd',
     role: 'procurement',
     status: 'active',
-    projects: ['Nokshi Green Residence', 'Nokshi Dhanmondi Court', 'Nokshi Agrabad Trade Centre'],
+    projects: ['Nokshi Green Residence', 'Nokshi Dhanmondi Court', 'Nokshi Tongi Logistics Park'],
   },
 ];
 
@@ -309,8 +309,8 @@ export const DEMO_LEADS: DemoLead[] = [
     phone: '01844 778899',
     email: 'sabbir.khan@outlook.com',
     source: 'walk_in',
-    inquiry_message: 'অফিসে এসেছিলেন, Agrabad-এর commercial space নিয়ে জানতে চেয়েছেন।',
-    project_name: 'Nokshi Agrabad Trade Centre',
+    inquiry_message: 'অফিসে এসেছিলেন, Tongi-র warehouse space নিয়ে জানতে চেয়েছেন।',
+    project_name: 'Nokshi Tongi Logistics Park',
     budget_range: 'Above 3 Crore',
     assigned_key: 'rakib',
     status: 'contacted',
@@ -465,14 +465,14 @@ export const DEMO_LEADS: DemoLead[] = [
     phone: '01899 223344',
     email: 'anis.rahman@gmail.com',
     source: 'facebook_ad',
-    inquiry_message: 'Agrabad-এর অফিস স্পেস নিয়ে জানতে চাই।',
-    project_name: 'Nokshi Agrabad Trade Centre',
+    inquiry_message: 'Tongi-তে warehouse ও অফিস স্পেস নিয়ে জানতে চাই।',
+    project_name: 'Nokshi Tongi Logistics Park',
     budget_range: '2 – 3 Crore',
     assigned_key: 'rakib',
     status: 'contacted',
     created_days_ago: 28,
     activities: [
-      { activity_type: 'call', days_ago: 27, notes: 'Facebook ad থেকে। Agrabad-এ অফিস খুঁজছেন।' },
+      { activity_type: 'call', days_ago: 27, notes: 'Facebook ad থেকে। Tongi-তে warehouse খুঁজছেন।' },
       {
         activity_type: 'other',
         days_ago: 9,

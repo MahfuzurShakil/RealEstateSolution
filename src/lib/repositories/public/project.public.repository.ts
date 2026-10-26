@@ -184,8 +184,18 @@ function minPrice(units: Unit[]): number | null {
   return prices.length ? Math.min(...prices) : null;
 }
 
+const HOSTED = /^https?:\/\//;
+
+/** An uploaded image, or an image hosted elsewhere and linked by URL (no file stored). */
 function isPicture(doc: DocumentRecord): boolean {
-  return !!doc.file_data && (doc.mime_type ?? '').startsWith('image/');
+  if (doc.file_data) return (doc.mime_type ?? '').startsWith('image/');
+  return HOSTED.test(doc.file_url) && (doc.mime_type ?? 'image/').startsWith('image/');
+}
+
+function pictureOf(doc: DocumentRecord, alt: string): PublicImage {
+  return doc.file_data
+    ? { kind: 'blob', id: doc.id, blob: doc.file_data, alt }
+    : { kind: 'url', url: doc.file_url, alt };
 }
 
 /**
@@ -197,10 +207,10 @@ function coverFor(project: Project, docs: DocumentRecord[]): PublicImage | null 
   const chosen = project.cover_image_document_id
     ? docs.find((d) => d.id === project.cover_image_document_id && d.is_public && isPicture(d))
     : undefined;
-  if (chosen?.file_data) return { kind: 'blob', id: chosen.id, blob: chosen.file_data, alt: project.name };
+  if (chosen) return pictureOf(chosen, project.name);
   if (project.cover_image_url) return { kind: 'url', url: project.cover_image_url, alt: project.name };
   const first = docs.find((d) => d.is_public && d.document_type === 'gallery_image' && isPicture(d));
-  return first?.file_data ? { kind: 'blob', id: first.id, blob: first.file_data, alt: project.name } : null;
+  return first ? pictureOf(first, project.name) : null;
 }
 
 /** `notes` is the admin's own remark about the file, so it never becomes the title. */
@@ -466,12 +476,14 @@ export const publicProjectRepository = {
       unit_types: unitTypeSummaries(shownUnits(project, loaded), shape),
       gallery: docs
         .filter((d) => d.document_type === 'gallery_image' && isPicture(d))
-        .map((d) => ({ kind: 'blob' as const, id: d.id, blob: d.file_data!, alt: d.file_name ?? project.name })),
+        // a file name ("render-03.png") is not a description; the project name is
+        .map((d, i) => pictureOf(d, `${project.name} — photo ${i + 1}`)),
       brochure: brochure ? toDownload(brochure) : null,
       floor_plans: docs
         .filter((d) => d.document_type === 'layout_floor_plan' || d.document_type === 'layout_plan')
         .map(toDownload),
-      progress_pct: built && progressValues.length
+      // an Upcoming project has not started, so a 0% section would only look like a stall
+      progress_pct: built && progressValues.length && publicStage(project.status, shape) !== 'upcoming'
         ? Math.round(progressValues.reduce((s, n) => s + n, 0) / progressValues.length)
         : null,
     };

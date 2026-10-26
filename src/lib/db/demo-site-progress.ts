@@ -326,30 +326,6 @@ export const DEMO_TOWER_PROGRESS: DemoTowerProgress[] = [
       { name: 'External Works', weight_pct: 5, planned_start_in_days: 860, planned_end_in_days: 950 },
     ],
   },
-  /* ---------------------------------------------------------------- *
-   * Nokshi Agrabad Trade Centre — still at Approval, so the work plan is
-   * laid out but nothing is reported: a site log only starts once
-   * construction does (QA audit 2026-10-11, C-02).
-   * ---------------------------------------------------------------- */
-  {
-    project_name: 'Nokshi Agrabad Trade Centre',
-    tower_name: 'Block 1',
-    items: [
-      {
-        name: 'Foundation',
-        weight_pct: 15,
-        planned_start_in_days: -20,
-        planned_end_in_days: 150,
-      },
-      { name: 'Ground Floor', weight_pct: 8, planned_start_in_days: 150, planned_end_in_days: 210 },
-      { name: 'Superstructure', weight_pct: 32, planned_start_in_days: 210, planned_end_in_days: 560 },
-      { name: 'Roof', weight_pct: 5, planned_start_in_days: 560, planned_end_in_days: 600 },
-      { name: 'Electrical', weight_pct: 10, planned_start_in_days: 580, planned_end_in_days: 720 },
-      { name: 'Plumbing', weight_pct: 10, planned_start_in_days: 580, planned_end_in_days: 720 },
-      { name: 'Finishing', weight_pct: 15, planned_start_in_days: 700, planned_end_in_days: 820 },
-      { name: 'External Works', weight_pct: 5, planned_start_in_days: 800, planned_end_in_days: 860 },
-    ],
-  },
 ];
 
 /* ------------------------------------------------------------------ *

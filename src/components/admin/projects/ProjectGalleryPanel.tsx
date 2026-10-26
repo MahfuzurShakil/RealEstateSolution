@@ -1,7 +1,8 @@
 'use client';
 
+import { WebsiteToggle } from '@/components/admin/documents/WebsiteToggle';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Globe, ImageIcon, Star } from 'lucide-react';
+import { ImageIcon, Star } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -93,7 +94,9 @@ function PictureTile({
   isDisplay: boolean;
   onUseAsDisplay: () => void;
 }) {
-  const url = useBlobUrl(picture.file_data);
+  const blobUrl = useBlobUrl(picture.file_data);
+  // a picture can also be a hosted image linked by URL (the demo's stock photos)
+  const url = blobUrl ?? (/^https?:\/\//.test(picture.file_url) ? picture.file_url : null);
 
   return (
     <figure
@@ -130,13 +133,7 @@ function PictureTile({
               Use as display
             </Button>
           )}
-          {picture.is_public ? (
-            <Badge tone="green">
-              <Globe className="size-3.5" /> Public
-            </Badge>
-          ) : (
-            <Badge tone="neutral">Internal</Badge>
-          )}
+          <WebsiteToggle id={picture.id} isPublic={picture.is_public} />
         </div>
       </figcaption>
     </figure>

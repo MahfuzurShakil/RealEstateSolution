@@ -288,58 +288,6 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     // nothing received yet - this is the booking that stays on hold
   },
 
-  // multi-unit buyer — a big 10% discount, given straight, booking money in
-  {
-    customer_key: 'zubair',
-    project_name: 'Nokshi Agrabad Trade Centre',
-    unit_code: 'AG-5A',
-    booked_by_key: 'rakib',
-    days_ago: 12,
-    // v32 — the multi-unit buyer: AG-5A and AG-6B taken together
-    group_key: 'zubair-agrabad',
-    floor_premium: 0,
-    facing_premium: 400000,
-    parking_charge: 1000000,
-    other_charges: 600000,
-    discount_amount: 2900000,
-    booking_amount: 2500000,
-    kisti_count: 18,
-    payments: [
-      {
-        amount: 2500000,
-        days_ago: 12,
-        method: 'bank',
-        reference_no: 'BRAC/TRF/771208',
-      },
-    ],
-  },
-
-  // second unit of the same go — confirmed
-  {
-    customer_key: 'zubair',
-    project_name: 'Nokshi Agrabad Trade Centre',
-    unit_code: 'AG-6B',
-    booked_by_key: 'rakib',
-    days_ago: 12,
-    group_key: 'zubair-agrabad',
-    floor_premium: 0,
-    facing_premium: 200000,
-    parking_charge: 500000,
-    other_charges: 300000,
-    discount_amount: 900000,
-    booking_amount: 1800000,
-    kisti_count: 18,
-    payments: [
-      {
-        amount: 1800000,
-        days_ago: 12,
-        method: 'bank',
-        reference_no: 'BRAC/TRF/778430',
-        notes: 'Second unit, same account',
-      },
-    ],
-  },
-
   /*
    * An old confirmed booking, deliberately far enough back that its monthly
    * instalments have started falling due — without one of these the

@@ -1,5 +1,6 @@
 'use client';
 
+import { WebsiteToggle } from '@/components/admin/documents/WebsiteToggle';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -85,6 +86,11 @@ function Viewer({
       ) : (
         <p className="text-sm text-ink-muted">Loading photo…</p>
       )}
+
+      <div className="mt-4 flex items-center gap-2 text-sm text-ink-muted">
+        <WebsiteToggle id={entry.document.id} isPublic={entry.document.is_public} />
+        <span>{entry.document.is_public ? 'Buyers see this photo on the project page.' : 'Only the team sees this photo.'}</span>
+      </div>
 
       {entry.update && (
         <Link

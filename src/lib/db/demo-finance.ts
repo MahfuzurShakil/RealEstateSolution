@@ -236,9 +236,9 @@ export const DEMO_EXPENSES: DemoExpense[] = [
     notes: 'Two days of work stopped; repaired on site rather than replaced.',
   },
   {
-    project_name: 'Nokshi Agrabad Trade Centre',
+    project_name: 'Nokshi Tongi Logistics Park',
     cost_category: 'other',
-    cost_reason: 'Legal consultancy — CDA approval objection hearing',
+    cost_reason: 'Legal consultancy — industrial land-use clearance',
     amount: 275000,
     days_ago: 64,
     paid_to: 'Adv. Shahidul Haque',

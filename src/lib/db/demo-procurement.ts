@@ -512,7 +512,7 @@ export const DEMO_PURCHASE_ORDERS: DemoPurchaseOrder[] = [
   {
     key: 'agrabad-draft',
     supplier_key: 'bsrm',
-    project_name: 'Nokshi Agrabad Trade Centre',
+    project_name: 'Nokshi Tongi Logistics Park',
     days_ago: 3,
     status: 'draft',
     notes: 'Priced against the current mill list. Waiting on the piling schedule before placing it.',

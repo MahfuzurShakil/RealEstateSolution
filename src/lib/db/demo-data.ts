@@ -1302,8 +1302,9 @@ export const DEMO_LANDS: DemoLand[] = [
     land_size_unit: 'katha',
     asking_price: 215_000_000,
     final_agreed_amount: 18_000_000,
-    gps_lat: 23.8759,
-    gps_lng: 90.3795,
+    // Sector 18 sits west of Sector 13 (Uttara Heights' land); distinct pins on the map
+    gps_lat: 23.8668,
+    gps_lng: 90.3552,
     nearby_facilities:
       'Uttara Lake frontage, Diabari bridge 1.2km, Metro Rail Diabari station 2km, Uttara Town College 900m, Shin-Shin Japan Hospital 1.5km, Sector 18 kitchen market 600m',
     acquisition_type: 'joint_venture',

@@ -7,6 +7,7 @@ import {
   lookupRepository,
 } from '../repositories';
 import { demoDataWasCleared, seedDemoData } from './demo-seed';
+import { ensureDemoWebsitePictures } from './demo-website';
 import {
   AMENITY_OPTIONS,
   BOOKING_DOCUMENT_TYPES,
@@ -96,6 +97,8 @@ async function runSeed(): Promise<void> {
   if ((await landRepository.count()) === 0 && !demoDataWasCleared()) {
     await seedDemoData();
   }
+  // public-website demo pictures; a no-op once each demo project has them
+  if (!demoDataWasCleared()) await ensureDemoWebsitePictures();
 
   if ((await companySettingsRepository.count()) === 0) {
     await companySettingsRepository.create({

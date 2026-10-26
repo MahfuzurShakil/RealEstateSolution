@@ -11,12 +11,12 @@ import {
   Upload,
   UploadCloud,
 } from 'lucide-react';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Checkbox, Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
+import { WEBSITE_ENTITIES, WebsiteToggle } from './WebsiteToggle';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { DocumentRecord, EntityType } from '@/lib/db/types';
 import { documentRepository, lookupRepository } from '@/lib/repositories';
@@ -150,7 +150,7 @@ export function DocumentsPanel({
               {/* full width on a phone, so it wraps under the name instead of
                   squeezing it down to a few characters */}
               <div className="flex w-full items-center justify-end gap-1 sm:w-auto">
-                {doc.is_public && <Badge tone="green">Public</Badge>}
+                {WEBSITE_ENTITIES.includes(entityType) && <WebsiteToggle id={doc.id} isPublic={doc.is_public} />}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -363,11 +363,13 @@ function UploadDialog({
           />
         </div>
 
-        <Checkbox
-          label="Visible on the public website"
-          checked={isPublic}
-          onChange={(e) => setIsPublic(e.target.checked)}
-        />
+        {WEBSITE_ENTITIES.includes(entityType) && (
+          <Checkbox
+            label="Visible on the public website"
+            checked={isPublic}
+            onChange={(e) => setIsPublic(e.target.checked)}
+          />
+        )}
 
         <Field label="Notes">
           <TextArea

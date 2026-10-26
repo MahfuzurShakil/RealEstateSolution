@@ -496,7 +496,7 @@ references in demo-site-progress, demo-bookings and demo-leads.
 ## 12. Build roadmap (each batch browser-verified desktop + mobile, demo seeded, pushed)
 | Batch | Scope |
 |---|---|
-| W0 Foundation | tokens, fonts, UI primitives (Button, Badge, SectionHeader, focus ring), motion utilities, new header (mega menu) + footer, `/` vs `/portal`, `not-found`/`error`/`loading`, shared formatters, document "show on website" toggle, demo data fixes (§10.3) |
+| W0 Foundation ✅ (2026-10-26) | tokens, fonts, UI primitives (Button, Badge, SectionHeader, focus ring), motion utilities, new header (mega menu) + footer, `/` vs `/portal`, `not-found`/`error`/`loading`, shared formatters, document "show on website" toggle, demo data fixes (§10.3) |
 | W1 Home | all §7.1 sections that have data today; hero/search/stats fixes |
 | W2 Listing | filter bar + bottom sheet, sort, list + map views, URL sync |
 | W3 Detail v2 | gallery + lightbox, sub-nav, unit drawer + deep link, floor-plan viewer, map + landmarks, view-transition morph |
