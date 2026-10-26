@@ -83,10 +83,43 @@ data audit (§0, §10.1–10.3). Next step: build W0.
 | Existing buyer | progress photos, (Phase 2) own payments | progress pages, customer portal later |
 
 ## 3. Market analysis → ideas adopted
-(Research summary filled from the competitor scan — BD: Shanta, bti, Assure, Navana, Sheltech,
-Rancon, Edison, Anwar Landmark, JCX, dpremiumhomes; global: Emaar, Sobha, DAMAC, Godrej, Lodha,
-Prestige, Aldar, Ellington, Omniyat; portals: Zillow, Rightmove, Property Finder, Bayut,
-Bproperty; Awwwards real-estate winners.) See §3.1–3.3.
+Competitor scan, Oct 2026. Sites covered:
+- BD developers: Shanta, bti, Assure, Navana, Sheltech, Rancon, Edison, Anwar Landmark, JCX,
+  dpremiumhomes (TPHL), AMLDL.
+- Global developers: Emaar, Sobha, DAMAC, Godrej, Lodha, Prestige, Aldar, Ellington, Omniyat.
+- Portals: Property Finder, Rightmove, Bayut, Zillow, Bproperty.
+- Awwwards 2026 real-estate winners: Sobha Privy, Hubtown, ERA Residence, Belgrade Arbor, LIKOVA.
+
+### 3.0 Key findings
+- **No BD developer shows an interactive stacking plan or a plot layout map.** Both are our clear
+  point of difference (AMLDL sells plots with no map, no price per katha, no availability).
+- **Edison has the best BD progress pattern:** overall % plus trade-level counts ("floor tiles
+  49/66 flats"). TPHL adds live site cameras. Late handover is buyers' main fear.
+- **Local buyers compare on the "At a Glance" block:** RAJUK no., katha, front road, facing,
+  storeys/basements, units, parking, handover. Shanta and Sheltech also name the architect and
+  the structural and MEP consultants.
+- **Prices are often missing.** Shanta, bti, Navana and Godrej show neither price nor payment
+  terms. Showing "from ৳" plus a payment plan as % and ৳ (Property Finder 10/50/40, Belgrade
+  Arbor's milestone plan) builds trust.
+- **NRB best practice:**
+  - bti's NRB hub: 3-step "buying from abroad", "someone can visit for you", NRB advisor;
+    WhatsApp is a required form field.
+  - Sobha: callback or **video call** with time-zone slots; prices in several currencies.
+  - Godrej: NRI loans and legal FAQ.
+- **Conversion is WhatsApp + phone, not forms.** Sticky mobile bar (Sobha, bti, JCX). Visit slots
+  Morning/Afternoon/Evening (TPHL). Two-step qualifier: when buying, own use or investment, best
+  time (bti, TPHL).
+- **Transparency pages:** booking, refund (after booking / after registration) and service-charge
+  policies, bilingual (TPHL). Prestige shows a fraud-alert notice about official payment channels.
+- **Award winners score high on motion but only 6.6–7.2 on accessibility** (preloaders, WebGL,
+  smooth scroll). Our Balanced motion choice deliberately avoids those traps.
+- **Market specifics:**
+  - Office week is Sun–Thu, Friday closed.
+  - Android is about 92% of phones.
+  - Messenger reaches as many people as WhatsApp, so show both.
+  - Prices use lakh/crore grouping and per-sft rates.
+  - Hously and Homez are agent-portal templates. Use their components; replace their US-agent
+    voice.
 
 ### 3.1 Patterns the best sites converge on (adopt)
 - Image-led hero with one strong statement + search directly below (Emaar, Hously, Bayut).
@@ -111,6 +144,22 @@ Splash/intro loaders (Shanta's typed intro delays content); scroll-jacking; auto
 sound; popups on entry; gated brochures before seeing anything; "price on request" everywhere;
 tiny grey text on photos; carousels hiding key content; heavy 3D on mobile; stock photos
 presented as the real project.
+
+### 3.3a Additions to the blueprints from the scan
+| Idea | Where it goes | Batch |
+|---|---|---|
+| Plot projects: clickable **layout-plan map** (plots coloured by status) when a layout image exists; table stays as the mobile and fallback view | §7.3 Availability (plot) | W3 |
+| "At a Glance" adds RAJUK/permit no., facing, parking, architect, consultants | §7.3 Overview | W3 |
+| Progress shows overall %, per-tower bars, then **"what's done" lines** (e.g. "Floor slabs 9/10") from stage completion | §7.3 Progress | W4 |
+| NRB: price shown in USD/GBP/AED/EUR as an approximate conversion (rate set in Website settings, labelled "approx."); video-call slot option; WhatsApp required on NRB form | §7.4 /nrb, enquiry modal | W5–W6 |
+| Visit booking slots Morning/Afternoon/Evening; Friday greyed out; NRB slots in visitor's time zone | §7.4 site-visit booking | W5 |
+| Enquiry form step 2 (optional): when buying, own use / investment, best time to call | §8 | W5 |
+| Messenger link beside WhatsApp (Website settings `messenger_url`) | header, contact, footer | W6 |
+| Policies page: booking, cancellation/refund, service charge; footer **fraud notice** "Pay only to the company accounts listed on your receipt" | `/policies`, footer | W6 |
+| Land-share explainer ("what you own: an undivided share of the land") | share detail + buyer's guide | W3/W6 |
+| Partner banks for home loans (logos + NRB loan note) | buyer's guide, payment section | W7 |
+| Brochure never gated; optional "send to my WhatsApp" | §7.3 | W3 |
+| Deferred to Phase 2: live site cameras, customer app/portal with receipts, referral programme, currency switcher on every price, compare, day/night render toggle | — | Phase 2 |
 
 ### 3.3 Where we beat them
 Live availability straight from the sales desk, honest prices, published progress photos, plots
