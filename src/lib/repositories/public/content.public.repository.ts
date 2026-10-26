@@ -7,8 +7,8 @@ import { whatsappLink } from '../../domain/public-portal';
  * Public Portal P1 — the company as the website introduces it
  * (Public Portal v2.0 §2).
  *
- * `company_settings` also carries trade licence, tax id and the workflow gate
- * switches; only the contact facts below cross over. The website text fields
+ * `company_settings` also carries tax id and the workflow gate switches; only
+ * the contact facts, logo and trade licence below cross over. The website text fields
  * of §2.2 join this shape in batch PB6, when Settings gets its Website card.
  */
 export interface PublicCompanyInfo {
@@ -21,6 +21,10 @@ export interface PublicCompanyInfo {
   whatsapp_url: string | null;
   /** the number as typed — the site shows it anyway, and links with a message need it */
   whatsapp_number: string | null;
+  /** brand logo (Settings → Company); null → the site draws a monogram tile */
+  logo_url: string | null;
+  /** shown in the footer as a trust line */
+  trade_license_no: string | null;
 }
 
 const clean = (value: string | null | undefined) => value?.trim() || null;
@@ -37,6 +41,8 @@ export const publicContentRepository = {
       website: clean(settings?.website),
       whatsapp_url: whatsapp ? whatsappLink(whatsapp) : null,
       whatsapp_number: whatsapp,
+      logo_url: clean(settings?.logo_url),
+      trade_license_no: clean(settings?.trade_license_no),
     };
   },
 };

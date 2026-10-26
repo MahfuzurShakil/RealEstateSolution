@@ -37,7 +37,7 @@ const PORTALS: {
     },
   },
   {
-    href: '/home',
+    href: '/',
     icon: Globe,
     title: 'Public Portal',
     who: 'For buyers',

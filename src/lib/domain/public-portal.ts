@@ -186,3 +186,16 @@ export function whatsappLink(number: string, message?: string): string | null {
   if (digits.startsWith('0')) digits = `88${digits}`;
   return message ? `https://wa.me/${digits}?text=${encodeURIComponent(message)}` : `https://wa.me/${digits}`;
 }
+
+/** `tel:` link from a number as typed ("+880 2 9876543" → "tel:+88029876543"); null when empty. */
+export function telLink(number: string | null | undefined): string | null {
+  const digits = number?.replace(/[^\d+]/g, '');
+  return digits ? `tel:${digits}` : null;
+}
+
+/** "Apr 2029" — how handover dates read on the website. */
+export function formatMonthYear(date: string | null | undefined): string | null {
+  if (!date) return null;
+  const d = new Date(date);
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+}

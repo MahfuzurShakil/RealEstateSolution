@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils/cn';
 import { Taka } from '../ProjectCard';
 import { SiteImage } from '../SiteImage';
 import { COVER_FALLBACK } from '../stock-images';
-import { Reveal } from './motion';
+import { Reveal } from '../motion';
 
 interface AreaTile {
   area: string;

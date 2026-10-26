@@ -1,5 +1,5 @@
 import { FileSearch, FileSignature, HandCoins, KeyRound, Landmark, MapPinned, type LucideIcon } from 'lucide-react';
-import { Reveal } from './motion';
+import { Reveal } from '../motion';
 
 /*
  * How a flat, plot or share is actually bought from a developer in Bangladesh,

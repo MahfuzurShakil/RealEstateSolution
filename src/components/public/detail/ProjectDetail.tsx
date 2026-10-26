@@ -1,5 +1,6 @@
 'use client';
 
+import { SalesBadge } from '@/components/public/ui/Badge';
 import Link from 'next/link';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
@@ -25,7 +26,6 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import {
-  PUBLIC_SALES_BADGE_LABEL,
   PUBLIC_STAGE_LABEL,
   formatPublicPrice,
   whatsappLink,
@@ -38,7 +38,7 @@ import {
 } from '@/lib/repositories/public/project.public.repository';
 import { cn } from '@/lib/utils/cn';
 import { InstalmentPlanner } from '../home/InstalmentPlanner';
-import { Reveal } from '../home/motion';
+import { Reveal } from '../motion';
 import { ProjectCard, Taka } from '../ProjectCard';
 import { COVER_FALLBACK } from '../stock-images';
 import { useCompanyInfo } from '../useCompanyInfo';
@@ -208,7 +208,7 @@ export function ProjectDetail({ code }: { code: string }) {
     <>
       <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
         <nav className="flex items-center gap-1.5 text-sm text-site-muted" aria-label="Breadcrumb">
-          <Link href="/home" className="hover:text-site-primary">Home</Link>
+          <Link href="/" className="hover:text-site-primary">Home</Link>
           <ChevronRight className="size-4" />
           <Link href="/projects" className="hover:text-site-primary">Projects</Link>
           <ChevronRight className="size-4" />
@@ -218,9 +218,7 @@ export function ProjectDetail({ code }: { code: string }) {
         <header className="mt-6 flex flex-wrap items-end justify-between gap-6">
           <div className="min-w-0">
             <div className="flex flex-wrap gap-2">
-              <span className="rounded-full bg-site-primary px-3.5 py-1 text-sm font-medium text-white">
-                {PUBLIC_SALES_BADGE_LABEL[project.sales_badge]}
-              </span>
+              <SalesBadge badge={project.sales_badge} className="px-3.5 text-sm" />
               <span className="rounded-full bg-site-soft px-3.5 py-1 text-sm font-medium">
                 {project.type_label} · {PUBLIC_STAGE_LABEL[project.stage]}
               </span>

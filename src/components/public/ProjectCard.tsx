@@ -3,20 +3,13 @@
 import Link from 'next/link';
 import { CalendarCheck, KeyRound, MapPin, Ruler } from 'lucide-react';
 import {
-  PUBLIC_SALES_BADGE_LABEL,
   PUBLIC_STAGE_LABEL,
   formatPublicPrice,
 } from '@/lib/domain/public-portal';
 import type { PublicProjectCard } from '@/lib/repositories/public/project.public.repository';
-import { cn } from '@/lib/utils/cn';
 import { SiteImage } from './SiteImage';
 import { COVER_FALLBACK } from './stock-images';
-
-const BADGE_TONE: Record<PublicProjectCard['sales_badge'], string> = {
-  on_sale: 'bg-site-primary text-white',
-  paused: 'bg-amber-500 text-white',
-  sold_out: 'bg-slate-700 text-white',
-};
+import { SalesBadge } from './ui/Badge';
 
 /** League Spartan has no ৳, so the sign is drawn in the Bangla face and the figure stays in the UI one. */
 export function Taka({ text }: { text: string }) {
@@ -53,14 +46,7 @@ export function ProjectCard({ card }: { card: PublicProjectCard }) {
             alt={card.name}
             className="aspect-4/3 w-full transition-transform duration-700 group-hover:scale-105"
           />
-          <span
-            className={cn(
-              'absolute top-4 left-4 rounded-full px-3 py-1 text-xs font-medium',
-              BADGE_TONE[card.sales_badge],
-            )}
-          >
-            {PUBLIC_SALES_BADGE_LABEL[card.sales_badge]}
-          </span>
+          <SalesBadge badge={card.sales_badge} className="absolute top-4 left-4" />
           <span className="absolute top-4 right-4 rounded-full bg-white/95 px-3 py-1 text-xs font-medium text-site-ink">
             {card.type_label}
           </span>

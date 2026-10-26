@@ -60,6 +60,21 @@ data audit (§0, §10.1–10.3). Next step: build W0.
 
 ---
 
+## 0.1 Branding is swappable ("Nokshi Properties" is sample data only)
+The platform will be sold to developers, so no brand may be hard-coded in public code:
+- **Name, contact, logo, trade licence**: from Admin → Settings → Company (`company_settings`).
+  The logo is shown when `logo_url` is set; otherwise a monogram tile from the name's first letter.
+- **Colours**: only the `--color-site-*` tokens in the public `@theme` block of `globals.css`.
+  Rebranding means editing that one block; components never use raw hex values.
+- **Fonts**: declared once in `src/app/(public)/layout.tsx`.
+- **Words**: all public copy goes through `src/components/public/i18n/en.ts` (also the Bangla hook).
+  Copy says "we" / "our team", never a company name.
+- **Favicon / OG image**: Website settings in a later batch; until then a neutral icon.
+- "Nokshi" appears only in demo seed files (`src/lib/db/demo-*.ts`, `seed.ts`).
+
+**Rebrand checklist:** Settings → Company (name, logo, contacts) → colour tokens → favicon →
+reseed or clear demo data.
+
 ## 1. Product principles (every decision is checked against these)
 1. **Trust first** — big money decision. Show papers, approvals, live availability, real progress
    photos, every taka against a receipt. Never fake numbers or stock photos on real projects.
@@ -194,7 +209,7 @@ FAQ, contact) · Contact (address, phone, email, hours, map) · social · legal 
 
 ---
 
-## 5. Design system ("Nokshi Green" — evolved Hously)
+## 5. Design system (evolved Hously; colours are swappable per §0.1)
 Keep what the client liked (green, airy white, rounded cards, friendly geometric sans) and add
 premium depth (deeper green, warm neutrals, brass accent, dark "forest" sections). Scoped to the
 public layout only (`.site` scope / public `@theme`), Admin teal untouched.

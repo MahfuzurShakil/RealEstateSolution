@@ -1,9 +1,10 @@
 'use client';
 
+import { SalesBadge } from '@/components/public/ui/Badge';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowRight, CalendarCheck, ChevronLeft, ChevronRight, KeyRound, MapPin, PhoneCall, Ruler } from 'lucide-react';
-import { PUBLIC_SALES_BADGE_LABEL, PUBLIC_STAGE_LABEL, formatPublicPrice } from '@/lib/domain/public-portal';
+import { PUBLIC_STAGE_LABEL, formatPublicPrice } from '@/lib/domain/public-portal';
 import type { PublicProjectCard } from '@/lib/repositories/public/project.public.repository';
 import { cn } from '@/lib/utils/cn';
 import { Taka } from '../ProjectCard';
@@ -116,9 +117,7 @@ export function HeroSlider({
           ) : (
             <div key={slide.code} className="relative z-10 max-w-2xl motion-safe:animate-[fade-up_.7s_ease-out]">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full bg-site-primary px-3.5 py-1 text-sm font-medium text-white">
-                  {PUBLIC_SALES_BADGE_LABEL[slide.sales_badge]}
-                </span>
+                <SalesBadge badge={slide.sales_badge} className="px-3.5 text-sm" />
                 <span className="rounded-full bg-white/15 px-3.5 py-1 text-sm text-white backdrop-blur">
                   {slide.type_label} · {PUBLIC_STAGE_LABEL[slide.stage]}
                 </span>

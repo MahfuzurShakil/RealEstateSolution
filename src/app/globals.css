@@ -32,20 +32,75 @@
 }
 
 /*
- * Public Portal (Design Reference Part B, Hously-style layout chosen by the
- * client 2026-10-25): fresh green on white and slate, League Spartan for the
- * UI and Hind Siliguri for Bangla lines. Distinct from the admin teal.
+ * Public Portal brand (PUBLIC-WEBSITE-MASTER-PLAN.md §5.1, evolved Hously).
+ * THIS BLOCK IS THE BRAND: rebranding the website for another developer means
+ * changing these values only (§0.1) — public components never use raw hex.
  * Prefixed `site-` so no admin screen picks one up by accident.
  */
 @theme {
-  --color-site-primary: #16a34a;
-  --color-site-primary-dark: #15803d;
-  --color-site-primary-soft: #dcfce7;
-  --color-site-ink: #0f172a;
-  --color-site-muted: #64748b;
-  --color-site-line: #e2e8f0;
-  --color-site-soft: #f8fafc;
-  --color-site-night: #0f172a;
+  /* primary: white text on it passes WCAG AA (≈5:1) */
+  --color-site-primary: #157f4c;
+  --color-site-primary-dark: #11663e;
+  --color-site-primary-soft: #e3f3ea;
+  /* decorative only (icons, progress fills, large text) — not for small text on white */
+  --color-site-primary-bright: #1e9a5e;
+
+  --color-site-ink: #1c1917;
+  --color-site-muted: #57534e;
+  --color-site-faint: #a8a29e;
+  --color-site-line: #e7e5e4;
+  --color-site-ivory: #fbfaf7;   /* page background */
+  --color-site-soft: #f4efe6;    /* sand: alternate bands, tiles, inactive tabs */
+  --color-site-night: #0d1f17;   /* forest: dark sections, hero overlay, footer */
+  --color-site-night-deep: #07120d;
+
+  --color-site-brass: #c9a35a;      /* accent on dark */
+  --color-site-brass-dark: #8a6420; /* accent text on light */
+
+  /* availability / sales states — always paired with an icon or word */
+  --color-site-booked: #b45309;
+  --color-site-booked-soft: #fef3c7;
+  --color-site-sold: #57534e;
+  --color-site-sold-soft: #f5f5f4;
+  --color-site-danger: #b91c1c;
+  /* WhatsApp buttons: the darker WhatsApp green, so white text stays legible */
+  --color-site-whatsapp: #128c7e;
+
+  /* elevation, green-tinted */
+  --shadow-site-1: 0 1px 2px rgb(13 31 23 / 0.06);
+  --shadow-site-2: 0 10px 30px -12px rgb(13 31 23 / 0.18);
+  --shadow-site-3: 0 24px 60px -20px rgb(13 31 23 / 0.28);
+
+  /* motion (§6.1) */
+  --ease-site-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-site-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/* Public shell: headings in the display face, visible keyboard focus everywhere */
+.site h1,
+.site h2,
+.site h3,
+.site .font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+.site :focus-visible {
+  outline: 2px solid var(--color-site-primary);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.site .tabular {
+  font-variant-numeric: tabular-nums;
+}
+@media (prefers-reduced-motion: reduce) {
+  .site *,
+  .site *::before,
+  .site *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Public hero slider: slow zoom on the showing slide, and the dot's timer bar */
@@ -64,8 +119,10 @@
 
 /* inline: the font variables live on the public layout's wrapper, not :root */
 @theme inline {
-  --font-site: var(--font-spartan), system-ui, sans-serif;
-  --font-taka: var(--font-hind), var(--font-spartan), sans-serif;
+  --font-site: var(--font-jakarta), system-ui, sans-serif;
+  --font-display: var(--font-spartan), var(--font-jakarta), system-ui, sans-serif;
+  --font-accent: var(--font-instrument), Georgia, serif;
+  --font-taka: var(--font-hind), var(--font-jakarta), sans-serif;
 }
 
 :root {
