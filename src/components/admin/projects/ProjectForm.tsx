@@ -34,6 +34,7 @@ import {
   CONSTRUCTION_AFTER_SALE_LABEL,
   PROJECT_TYPE_HINT,
   PROJECT_TYPE_LABEL,
+  siteRoadWidthFt,
 } from '@/lib/domain/project';
 import {
   companySettingsRepository,
@@ -56,8 +57,6 @@ interface FormState {
   expected_start_date: string;
   expected_completion_date: string;
   actual_start_date: string;
-  architect: string;
-  front_road_width_ft: string;
   project_manager: string;
   surroundings: string;
   construction_after_sale: ConstructionAfterSale;
@@ -70,8 +69,6 @@ const EMPTY: FormState = {
   expected_start_date: '',
   expected_completion_date: '',
   actual_start_date: '',
-  architect: '',
-  front_road_width_ft: '',
   project_manager: '',
   surroundings: '',
   construction_after_sale: 'undecided',
@@ -163,6 +160,8 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
   // QA audit P-11 — the actual start belongs to a project whose construction has begun
   const showActualStart = Boolean(project && isSiteActive(project.status)) || Boolean(project?.actual_start_date);
 
+  const roadWidth = siteRoadWidthFt(lands);
+
   /** Area from the land, never typed: summed when the lands share a unit. */
   const area = useMemo(() => {
     if (lands.length === 0) return null;
@@ -212,8 +211,6 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
       next.expected_completion_date = `${timeline.end} cannot be before ${timeline.start.toLowerCase()}`;
     }
     if (gateOn && blockedLands.length > 0) next.lands = blockedLands.join(' ');
-    if (form.front_road_width_ft.trim() && !(Number(form.front_road_width_ft) >= 0))
-      next.front_road_width_ft = 'Must be 0 or more';
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -251,8 +248,8 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
         expected_start_date: form.expected_start_date || null,
         expected_completion_date: form.expected_completion_date || null,
         actual_start_date: kind === 'built' ? form.actual_start_date || null : null,
-        architect: kind === 'share' ? null : form.architect.trim() || null,
-        front_road_width_ft: form.front_road_width_ft.trim() === '' ? null : Number(form.front_road_width_ft),
+        // the architect comes from Design Complete; a land share has none
+        ...(kind === 'share' ? { architect: null } : {}),
         project_manager: form.project_manager || null,
         surroundings: form.surroundings.trim() || null,
         amenities: kind === 'share' ? [] : amenities,
@@ -399,32 +396,9 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
           title={`${PROJECT_TYPE_LABEL[form.project_type]} details`}
           action={<TypeIcon className="size-5 text-admin-500" />}
         />
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {kind !== 'share' && (
-            <Field label={kind === 'plot' ? 'Layout planner / architect' : 'Architect'}>
-              <TextInput
-                value={form.architect}
-                onChange={(e) => set('architect', e.target.value)}
-                placeholder={kind === 'plot' ? 'e.g. Planning Associates' : 'e.g. Volumezero Ltd.'}
-              />
-            </Field>
-          )}
-          {/* 2026-10-18 — the site's road, shared by every tower on it (was on each tower) */}
-          <Field
-            label="Front road width (ft)"
-            hint="The road the site fronts onto"
-            error={errors.front_road_width_ft}
-          >
-            <TextInput
-              type="number"
-              min="0"
-              step="0.1"
-              value={form.front_road_width_ft}
-              onChange={(e) => set('front_road_width_ft', e.target.value)}
-              placeholder="e.g. 30"
-            />
-          </Field>
-          {kind === 'share' && (
+        {/* 2026-10-23 — the architect is named when Design is completed, not here */}
+        {kind === 'share' && (
+          <div className="mb-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <Field
               label="After the shares are sold"
               className="xl:col-span-3"
@@ -441,10 +415,10 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
                 ))}
               </SelectInput>
             </Field>
-          )}
-        </div>
+          </div>
+        )}
 
-        <p className="mb-3 mt-5 text-sm font-medium text-ink">{timeline.title}</p>
+        <p className="mb-3 text-sm font-medium text-ink">{timeline.title}</p>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <Field
             label={timeline.start}
@@ -522,7 +496,7 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
                 </div>
               </div>
             ))}
-            <div className="grid gap-4 rounded-xl bg-admin-50/60 p-3 sm:grid-cols-2">
+            <div className="grid gap-4 rounded-xl bg-admin-50/60 p-3 sm:grid-cols-3">
               <Field label="Total land area" hint="From the land record; change it on the land">
                 <TextInput
                   value={
@@ -536,6 +510,10 @@ export function ProjectForm({ project }: { project?: ProjectWithRelations }) {
               </Field>
               <Field label="Area unit">
                 <TextInput value={area ? LAND_SIZE_UNIT_LABEL[area.unit] : ''} readOnly disabled />
+              </Field>
+              {/* 2026-10-22 — read from the land, never typed here, so the two can't disagree */}
+              <Field label="Front road width" hint="Widest road among the lands">
+                <TextInput value={roadWidth != null ? `${roadWidth} ft` : 'Not set on the land'} readOnly disabled />
               </Field>
             </div>
           </div>
@@ -644,8 +622,6 @@ function toFormState(project: ProjectWithRelations): FormState {
     expected_start_date: project.expected_start_date ?? '',
     expected_completion_date: project.expected_completion_date ?? '',
     actual_start_date: str(project.actual_start_date),
-    architect: str(project.architect),
-    front_road_width_ft: str(project.front_road_width_ft),
     project_manager: str(project.project_manager),
     surroundings: str(project.surroundings),
     construction_after_sale: project.construction_after_sale ?? 'undecided',

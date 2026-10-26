@@ -299,6 +299,13 @@ export interface Land extends BaseEntity {
    */
   road_access?: string | null;
   /**
+   * v39 (client 2026-10-22) — width of the road the plot fronts onto, and the
+   * only place it is typed. The project reads it from its lands (widest one,
+   * which is what RAJUK goes by); a site visit's measurement can be copied
+   * here. `road_access` stays as the free-text description.
+   */
+  front_road_width_ft?: number | null;
+  /**
    * BRD LAND-001 — নাল, ভিটি, ডোবা and the rest. Sourced from `lookup_values`
    * (category='land_classification') because the list differs by district and
    * the office should not need a deploy to add one.
@@ -1211,6 +1218,9 @@ export interface Project extends BaseEntity {
    * it, and RAJUK's FAR and height limits are read off it. Used to sit on
    * each tower. A plot scheme's blocks still carry their own internal road
    * width on `towers.front_road_width_ft`.
+   *
+   * v39 — no longer typed or read: the width lives on `lands` now, and this
+   * column was copied onto the project's lands. Kept so old rows still load.
    */
   /**
    * Client, 2026-10-21: what the finished design fixes, asked when Design is

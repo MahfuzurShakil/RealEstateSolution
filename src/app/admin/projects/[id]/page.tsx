@@ -32,6 +32,7 @@ import {
   UNIT_STATUS_META,
   projectShape,
   shapeIsBuilt,
+  siteRoadWidthFt,
 } from '@/lib/domain/project';
 import { projectRepository, userRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
@@ -213,6 +214,14 @@ export default function ProjectDetailPage() {
                     value={project.architect}
                   />
                 )}
+                {/* 2026-10-22 — read from the land, the only place it is typed */}
+                <Row
+                  label="Front road width"
+                  value={(() => {
+                    const w = siteRoadWidthFt(project.lands);
+                    return w != null ? `${w} ft (from the land)` : null;
+                  })()}
+                />
                 {/* Scope v3 §3.3 — who runs this project (2026-10-04) */}
                 <Row label="Project manager" value={manager?.name} />
                 <Row

@@ -884,6 +884,36 @@ export class AppDatabase extends Dexie {
           }
         }
       });
+
+    /*
+     * v39 — client 2026-10-22: road width is typed once, on the land. A land
+     * without one takes its project's old `front_road_width_ft`, else the
+     * latest site visit that measured the road.
+     */
+    this.version(39)
+      .stores({})
+      .upgrade(async (tx) => {
+        const projects = new Map(
+          (await tx.table('projects').toArray()).map((p) => [p.id, Number(p.front_road_width_ft) || 0]),
+        );
+        const fromProject = new Map<string, number>();
+        for (const m of await tx.table('land_project_mapping').toArray()) {
+          const w = projects.get(m.project_id) ?? 0;
+          if (w > (fromProject.get(m.land_id) ?? 0)) fromProject.set(m.land_id, w);
+        }
+        const fromVisit = new Map<string, { date: string; w: number }>();
+        for (const v of await tx.table('site_visits').toArray()) {
+          const w = Number(v.road_width_ft) || 0;
+          if (w <= 0 || v.status === 'planned') continue;
+          const prev = fromVisit.get(v.land_id);
+          if (!prev || v.visit_date > prev.date) fromVisit.set(v.land_id, { date: v.visit_date, w });
+        }
+        for (const land of await tx.table('lands').toArray()) {
+          if (Number(land.front_road_width_ft) > 0) continue;
+          const w = fromProject.get(land.id) || fromVisit.get(land.id)?.w;
+          if (w) await tx.table('lands').update(land.id, { front_road_width_ft: w });
+        }
+      });
   }
 }
 

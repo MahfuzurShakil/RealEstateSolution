@@ -27,6 +27,7 @@ import { LandProgressCard, type TimelineSection } from '@/components/admin/lands
 import {
   LandStageStepper,
   SECTION_FOR_WAITING,
+  type Stage,
   sectionForStatus,
 } from '@/components/admin/lands/LandStageStepper';
 import { LandClosingCard } from '@/components/admin/lands/LandClosingCard';
@@ -58,6 +59,7 @@ import { JV_SHARE_BASIS_LABEL } from '@/lib/domain/project';
 import {
   landRepository,
   landDdRepository,
+  landFeasibilityRepository,
   landNegotiationRepository,
   ownerSettlementRepository,
   landDevelopmentRepository,
@@ -78,13 +80,14 @@ import { LandPapersPanel, OwnedLandCard } from '@/components/admin/lands/OwnedLa
  * and the documents are one tab each; everything that *happens* to the land
  * lives under Timeline, in the four sections BRD §8–11 names.
  */
-type Tab = 'overview' | 'owners' | 'jv' | 'papers' | 'cost' | 'documents' | 'timeline';
+type Tab = 'overview' | 'owners' | 'jv' | 'papers' | 'cost' | 'documents' | 'timeline' | 'development';
 
 const SECTIONS: { key: TimelineSection; label: string }[] = [
-  { key: 'site', label: 'Site Visit & Feasibility' },
+  // 2026-10-23 — visit and feasibility are two steps, each with its own record
+  { key: 'site', label: 'Site Visit' },
+  { key: 'feasibility', label: 'Feasibility' },
   { key: 'legal', label: 'Legal Due Diligence' },
   { key: 'acquisition', label: 'Deal & Registration' },
-  { key: 'development', label: 'Land Development' },
 ];
 
 /**
@@ -189,6 +192,8 @@ export default function LandDetailPage() {
 
   const land = useLiveQuery(() => landRepository.getWithRelations(id), [id]);
   const visitCount = useLiveQuery(() => siteVisitRepository.countForLand(id), [id]);
+  // newest first: the current study's recommendation is the decision
+  const studies = useLiveQuery(() => landFeasibilityRepository.listForLand(id), [id]);
   // the tab badge counts what BLOCKS, not what is done — see the panel
   const ddProgress = useLiveQuery(() => landDdRepository.progressForLand(id), [id]);
   // BRD LAND-002 / ACQ-003 — what each owner is owed and what has gone to them
@@ -235,6 +240,8 @@ export default function LandDetailPage() {
   const isJv = land.acquisition_type === 'joint_venture';
   // LAND-OWNED-FLOW-PLAN.md — land already held gets its own, shorter screen
   const owned = landEntryMode(land) === 'owned';
+  // the land is ours (or was, once disposed): only then is there development to record
+  const held = owned || landIsHeld(land.status) || land.status === 'disposed';
   const inProject = (inProjects?.length ?? 0) > 0;
   const canEditOwnerAmounts =
     land.owners.length > 0 &&
@@ -244,7 +251,9 @@ export default function LandDetailPage() {
   // 2026-10-21 — the work first, then the money, then the parties and papers
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
-    { key: 'timeline', label: owned ? 'Development' : 'Acquisition Steps' },
+    // 2026-10-23 — development is its own tab, opened once the land is ours
+    ...(owned ? [] : [{ key: 'timeline' as Tab, label: 'Acquisition' }]),
+    ...(held ? [{ key: 'development' as Tab, label: 'Development' }] : []),
     // budget, deal, paid and pending, with the payments
     { key: 'cost', label: 'Land Cost' },
     {
@@ -255,18 +264,24 @@ export default function LandDetailPage() {
     ...(owned ? [{ key: 'papers' as Tab, label: 'Papers' }] : []),
     { key: 'documents', label: 'Documents' },
   ];
-  // an owned land skipped the acquisition: its timeline is only development
-  const sections = owned ? SECTIONS.filter((x) => x.key === 'development') : SECTIONS;
   const currentSection = sectionForStatus(land.status);
-  const activeSection: TimelineSection = owned ? 'development' : (section ?? currentSection);
+  const activeSection: TimelineSection = section && section !== 'development' ? section : currentSection;
   const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
-  const stages = SECTIONS.map((sec) => {
+  const stages = SECTIONS.map((sec): Stage => {
     switch (sec.key) {
       case 'site':
         return {
           ...sec,
-          done: !['sourced', 'under_review', 'on_hold', 'rejected'].includes(land.status),
+          done: Boolean(visitCount) || !['sourced', 'on_hold', 'rejected'].includes(land.status),
           sub: visitCount ? plural(visitCount, 'visit') : undefined,
+        };
+      case 'feasibility':
+        return {
+          ...sec,
+          // same rule as the Progress card: the current study says proceed
+          done: studies?.[0]?.recommendation === 'proceed',
+          started: Boolean(studies?.length),
+          sub: studies?.length ? plural(studies.length, 'version') : undefined,
         };
       case 'legal':
         return {
@@ -276,30 +291,22 @@ export default function LandDetailPage() {
             ? `${ddProgress.mandatoryTotal - ddProgress.mandatoryOutstanding}/${ddProgress.mandatoryTotal} papers`
             : undefined,
         };
-      case 'acquisition':
+      default:
         return {
           ...sec,
           done: landIsHeld(land.status) || land.status === 'disposed',
           sub: roundCount ? plural(roundCount, 'round') : undefined,
         };
-      case 'development':
-        return {
-          ...sec,
-          done:
-            land.status === 'ready_for_project' ||
-            Boolean(land.no_development_required) ||
-            Boolean(devReadiness && devReadiness.total > 0 && devReadiness.outstanding === 0),
-          sub: land.no_development_required
-            ? 'not needed'
-            : devReadiness?.total
-              ? `${devReadiness.total - devReadiness.outstanding}/${devReadiness.total}`
-              : undefined,
-        };
     }
   });
   const openSection = (next: TimelineSection) => {
-    setTab('timeline');
-    setSection(next);
+    // development work lives on its own tab; before the land is ours there is none to open
+    if (next === 'development') {
+      if (held) setTab('development');
+    } else {
+      setTab('timeline');
+      setSection(next);
+    }
     // the card sits beside the tabs on desktop and under them on a phone
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -432,6 +439,10 @@ export default function LandDetailPage() {
                   <Fact label="District" value={land.location_district} />
                   <Fact label="Division" value={land.location_division} />
                   <Fact label="Road" value={land.road} />
+                  <Fact
+                    label="Front road width"
+                    value={land.front_road_width_ft ? `${land.front_road_width_ft} ft` : null}
+                  />
                   <Fact label="Road access" value={land.road_access} />
                   <Fact
                     label="GPS"
@@ -612,19 +623,17 @@ export default function LandDetailPage() {
 
           {tab === 'timeline' && (
             <div className="space-y-5">
-              {sections.length > 1 && (
-                <LandStageStepper
-                  stages={stages}
-                  active={activeSection}
-                  current={currentSection}
-                  next={
-                    waitingOn && waitingOn.key !== 'nothing'
-                      ? { text: waitingOn.text, section: SECTION_FOR_WAITING[waitingOn.key] }
-                      : undefined
-                  }
-                  onSelect={setSection}
-                />
-              )}
+              <LandStageStepper
+                stages={stages}
+                active={activeSection}
+                current={currentSection}
+                next={
+                  waitingOn && waitingOn.key !== 'nothing'
+                    ? { text: waitingOn.text, section: SECTION_FOR_WAITING[waitingOn.key] }
+                    : undefined
+                }
+                onSelect={openSection}
+              />
 
               {activeSection === 'site' && (
                 <>
@@ -632,11 +641,14 @@ export default function LandDetailPage() {
                     <CardHeader title="Site Visits" />
                     <SiteVisitPanel land={land} />
                   </Card>
-                  <Card>
-                    <CardHeader title="Feasibility" />
-                    <FeasibilityPanel land={land} />
-                  </Card>
                 </>
+              )}
+
+              {activeSection === 'feasibility' && (
+                <Card>
+                  <CardHeader title="Feasibility" />
+                  <FeasibilityPanel land={land} />
+                </Card>
               )}
 
               {activeSection === 'legal' && (
@@ -685,13 +697,14 @@ export default function LandDetailPage() {
                 </>
               )}
 
-              {activeSection === 'development' && (
-                <Card>
-                  <CardHeader title="Land Development" />
-                  <DevelopmentPanel land={land} />
-                </Card>
-              )}
             </div>
+          )}
+
+          {tab === 'development' && held && (
+            <Card>
+              <CardHeader title="Land Development" />
+              <DevelopmentPanel land={land} />
+            </Card>
           )}
 
           {tab === 'papers' && owned && <LandPapersPanel land={land} readOnly={!mayEdit} />}
@@ -711,7 +724,7 @@ export default function LandDetailPage() {
             <OwnedLandCard
               land={land}
               onOpen={(t) => {
-                setTab(t === 'papers' ? 'papers' : 'timeline');
+                setTab(t === 'papers' ? 'papers' : 'development');
                 window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
             />

@@ -320,6 +320,10 @@ class ProjectRepository extends BaseRepository<Project> {
           design_floor_count: n('floor_count'),
           design_basement_count: n('basement_count'),
           design_floor_area_sqft: n('floor_area_sqft'),
+          // 2026-10-23 — the architect (or a plot's planner) is named here, not on the project form
+          ...(String(d.architect ?? d.planner ?? '').trim()
+            ? { architect: String(d.architect ?? d.planner).trim() }
+            : {}),
         }
       : {};
     const saved = await this.update(id, {

@@ -57,7 +57,7 @@ export function PlotShareGenerateModal({
   const [startNumber, setStartNumber] = useState('1');
   const [plotSize, setPlotSize] = useState('5');
   const [ratePerKatha, setRatePerKatha] = useState('1200000');
-  const [roadWidth, setRoadWidth] = useState('25');
+  const [roadWidth, setRoadWidth] = useState(tower.front_road_width_ft ? String(tower.front_road_width_ft) : '25');
   const [cornerNumbers, setCornerNumbers] = useState('');
   const [cornerPremium, setCornerPremium] = useState('500000');
   const [facing, setFacing] = useState('South');
@@ -312,7 +312,7 @@ export function PlotShareGenerateModal({
                   </Field>
                 </div>
                 <div className="mt-4 grid gap-4 sm:grid-cols-4">
-                  <Field label="Road width (ft)" hint="What the plots front onto">
+                  <Field label="Road width (ft)" hint="Starts from the block's internal road">
                     <TextInput
                       value={roadWidth}
                       onChange={(e) => setRoadWidth(e.target.value)}

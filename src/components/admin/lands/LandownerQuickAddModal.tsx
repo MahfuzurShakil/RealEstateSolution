@@ -51,24 +51,22 @@ function LandownerDialog({
     address: owner?.address ?? '',
     notes: owner?.notes ?? '',
   });
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState<{ name?: string; phone?: string; nid?: string }>({});
   const [saving, setSaving] = useState(false);
 
-  const set = (key: keyof typeof form, value: string) => setForm((f) => ({ ...f, [key]: value }));
+  const set = (key: keyof typeof form, value: string) => {
+    setForm((f) => ({ ...f, [key]: value }));
+    setErrors((e) => ({ ...e, [key]: undefined }));
+  };
 
   async function save() {
-    if (!form.name.trim()) {
-      setError('Name is required');
-      return;
-    }
-    if (form.phone.trim() && !isValidBdPhone(form.phone)) {
-      setError('Phone must be a Bangladeshi mobile number, e.g. 01711 223344');
-      return;
-    }
-    if (form.nid.trim() && !isValidNid(form.nid)) {
-      setError('NID must be 10, 13 or 17 digits');
-      return;
-    }
+    const next: typeof errors = {};
+    if (!form.name.trim()) next.name = 'Name is required';
+    if (form.phone.trim() && !isValidBdPhone(form.phone))
+      next.phone = 'Phone must be a Bangladeshi mobile number, e.g. 01711 223344';
+    if (form.nid.trim() && !isValidNid(form.nid)) next.nid = 'NID must be 10, 13 or 17 digits';
+    setErrors(next);
+    if (Object.keys(next).length) return;
     setSaving(true);
     try {
       const payload = {
@@ -106,26 +104,30 @@ function LandownerDialog({
       }
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Name" required error={error} className="sm:col-span-2">
+        <Field label="Name" required error={errors.name} className="sm:col-span-2">
           <TextInput
             value={form.name}
             onChange={(e) => set('name', e.target.value)}
             placeholder="e.g. Md. Rafiqul Islam"
-            invalid={Boolean(error)}
+            invalid={Boolean(errors.name)}
             disabled={saving}
             autoFocus
           />
         </Field>
-        <Field label="Phone">
+        <Field label="Phone" error={errors.phone}>
           <TextInput
             value={form.phone}
+            invalid={Boolean(errors.phone)}
+            disabled={saving}
             placeholder="e.g. 01711 223344"
             onChange={(e) => set('phone', e.target.value)}
           />
         </Field>
-        <Field label="NID">
+        <Field label="NID" error={errors.nid}>
           <TextInput
             value={form.nid}
+            invalid={Boolean(errors.nid)}
+            disabled={saving}
             placeholder="e.g. 1990123456789"
             onChange={(e) => set('nid', e.target.value)}
           />

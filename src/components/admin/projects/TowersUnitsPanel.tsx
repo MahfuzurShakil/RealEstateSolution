@@ -263,7 +263,7 @@ export function TowersUnitsPanel({
                             .join(' · ')
                         : [
                             tower.building_type,
-                            tower.front_road_width_ft ? `${tower.front_road_width_ft} ft road` : null,
+                            tower.front_road_width_ft ? `${tower.front_road_width_ft} ft internal road` : null,
                           ]
                             .filter(Boolean)
                             .join(' · ') || 'No details recorded'}

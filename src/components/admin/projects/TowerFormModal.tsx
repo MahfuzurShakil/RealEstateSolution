@@ -255,9 +255,9 @@ export function TowerFormModal({
         )}
         {!isTower && (
           <Field
-            label="Front Road Width (ft)"
+            label="Internal Road Width (ft)"
             error={errors.front_road_width_ft}
-            hint="What the plots in this block front onto"
+            hint="The road inside this block that its plots front onto — the site's own road is on the land"
           >
             <TextInput
               type="number"

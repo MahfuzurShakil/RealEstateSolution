@@ -1490,3 +1490,13 @@ export const CONSTRUCTION_AFTER_SALE_LABEL: Record<ConstructionAfterSale, string
   planned: 'Construction planned for the shareholders',
   undecided: 'Not decided yet',
 };
+
+/**
+ * The site's front road, read from the project's lands — never typed on the
+ * project (client 2026-10-22). The widest road wins: it is the one RAJUK reads
+ * FAR and height off. Null when no linked land has a width yet.
+ */
+export function siteRoadWidthFt(lands: { front_road_width_ft?: number | null }[]): number | null {
+  const widths = lands.map((l) => Number(l.front_road_width_ft)).filter((w) => w > 0);
+  return widths.length ? Math.max(...widths) : null;
+}

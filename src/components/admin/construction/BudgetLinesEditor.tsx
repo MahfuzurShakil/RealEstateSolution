@@ -2,7 +2,6 @@
 
 import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { TextInput } from '@/components/ui/Field';
 import { CONSTRUCTION_COST_TYPES, type ConstructionCostType } from '@/lib/db/types';
 import { COST_TYPE_META, type BudgetTemplateLine } from '@/lib/domain/construction-cost';
 import { money } from '@/lib/domain/procurement';
@@ -22,21 +21,22 @@ export interface EditorLine {
   amount: string;
 }
 
+/** qty and rate both typed: the amount is their product */
+const counted = (l: EditorLine) => l.quantity.trim() !== '' && l.rate.trim() !== '';
+
 export function editorLineAmount(l: EditorLine): number {
-  return l.basis === 'qty_rate'
-    ? money((Number(l.quantity) || 0) * (Number(l.rate) || 0))
-    : Number(l.amount) || 0;
+  return counted(l) ? money((Number(l.quantity) || 0) * (Number(l.rate) || 0)) : Number(l.amount) || 0;
 }
 
 export function toBudgetInput(l: EditorLine): BudgetLineInput {
-  const counted = l.basis === 'qty_rate';
+  // 2026-10-23 — no basis toggle: whatever was typed is kept, the amount follows
   return {
     id: l.id,
     cost_type: l.cost_type,
     description: l.description,
-    quantity: counted && l.quantity.trim() ? Number(l.quantity) : null,
-    unit: counted ? l.unit || null : null,
-    rate: counted && l.rate.trim() ? Number(l.rate) : null,
+    quantity: l.quantity.trim() ? Number(l.quantity) : null,
+    unit: l.unit.trim() || null,
+    rate: l.rate.trim() ? Number(l.rate) : null,
     budgeted_amount: editorLineAmount(l),
   };
 }
@@ -87,10 +87,10 @@ export interface BuildingSize {
 
 /**
  * The budget of a work item, typed by the user (client, 2026-10-21): no
- * figure is filled in. The kind of work offers its usual items as chips; a
- * line reads like a sentence — "60 person-day × 900 per person-day =
- * BDT 54,000" — or is just a lump sum. Lines counted in sqft can be filled
- * from the tower's floor area in one click.
+ * figure is filled in. The kind of work offers its usual items as chips.
+ * Since 2026-10-23 the lines are one table: Qty × Rate gives the amount, and
+ * a line with no quantity or rate takes a typed amount. Lines counted in sqft
+ * can be filled from the tower's floor area in one click.
  */
 export function BudgetLinesEditor({
   lines,
@@ -162,137 +162,152 @@ export function BudgetLinesEditor({
         </p>
       )}
 
-      {lines.map((l, i) => {
-        const amount = editorLineAmount(l);
-        const s = l.id ? (spent?.get(l.id) ?? 0) : 0;
-        const unit = l.unit.trim() || 'unit';
-        const sqft = l.unit.trim().toLowerCase() === 'sqft' && size;
-        return (
-          <div key={l.id ?? `n-${i}`} className="rounded-xl border border-hairline bg-white p-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <TextInput
-                aria-label="Item"
-                className="min-w-0 flex-1 font-medium"
-                value={l.description}
-                onChange={(e) => set(i, { description: e.target.value })}
-                placeholder="What is needed — e.g. Rod 16mm"
-              />
-              <select
-                aria-label="Cost type"
-                value={l.cost_type}
-                onChange={(e) => set(i, { cost_type: e.target.value as ConstructionCostType })}
-                className="rounded-lg border border-hairline bg-white px-2 py-2 text-xs text-ink-muted"
-              >
-                {CONSTRUCTION_COST_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {COST_TYPE_META[t].label}
-                  </option>
-                ))}
-              </select>
-              <Button variant="ghost" aria-label="Remove line" onClick={() => onChange(lines.filter((_, j) => j !== i))}>
-                <Trash2 className="size-4" />
-              </Button>
-            </div>
-
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <div className="inline-flex rounded-lg border border-hairline p-0.5 text-xs" role="radiogroup" aria-label="Counted as">
-                {(
-                  [
-                    ['qty_rate', 'Quantity × rate'],
-                    ['lump', 'Fixed amount'],
-                  ] as const
-                ).map(([v, label]) => (
-                  <button
-                    key={v}
-                    type="button"
-                    role="radio"
-                    aria-checked={l.basis === v}
-                    onClick={() => set(i, { basis: v })}
-                    className={cn(
-                      'rounded-md px-2.5 py-1',
-                      l.basis === v ? 'bg-admin-500 font-medium text-white' : 'text-ink-muted hover:text-ink',
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              {l.basis === 'qty_rate' ? (
-                <div className="flex flex-1 flex-wrap items-center gap-1.5 text-sm">
-                  <TextInput
-                    aria-label="Quantity"
-                    type="number"
-                    min={0}
-                    step="any"
-                    className="w-24"
-                    value={l.quantity}
-                    onChange={(e) => set(i, { quantity: e.target.value })}
-                    placeholder="Qty"
-                  />
-                  <TextInput
-                    aria-label="Unit"
-                    list="budget-units"
-                    className="w-28"
-                    value={l.unit}
-                    onChange={(e) => set(i, { unit: e.target.value })}
-                    placeholder="unit"
-                  />
-                  <span className="text-ink-muted">×</span>
-                  <TextInput
-                    aria-label="Rate"
-                    type="number"
-                    min={0}
-                    step="any"
-                    className="w-28"
-                    value={l.rate}
-                    onChange={(e) => set(i, { rate: e.target.value })}
-                    placeholder="Rate"
-                  />
-                  <span className="text-xs text-ink-muted">BDT per {unit}</span>
-                </div>
-              ) : (
-                <div className="flex flex-1 items-center gap-1.5">
-                  <TextInput
-                    aria-label="Fixed amount"
-                    type="number"
-                    min={0}
-                    step="any"
-                    className="w-40"
-                    value={l.amount}
-                    onChange={(e) => set(i, { amount: e.target.value })}
-                    placeholder="Amount"
-                  />
-                  <span className="text-xs text-ink-muted">BDT</span>
-                </div>
-              )}
-
-              <span className="ml-auto text-right">
-                <span className="block text-sm font-semibold text-ink">{amount > 0 ? formatBdt(amount) : '—'}</span>
-                {spent && (
-                  <span className={cn('block text-[11px]', s > amount && amount > 0 ? 'font-medium text-red-600' : 'text-ink-muted')}>
-                    spent {s > 0 ? formatBdt(s) : '—'}
-                  </span>
-                )}
-              </span>
-            </div>
-
-            {sqft && l.basis === 'qty_rate' && (
-              <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px]">
-                <span className="text-ink-muted">Fill quantity:</span>
-                <button type="button" className="text-admin-700 hover:underline" onClick={() => set(i, { quantity: String(size.floor_area) })}>
-                  one floor · {size.floor_area.toLocaleString('en-IN')}
-                </button>
-                {!size.per_floor && (
-                  <button type="button" className="text-admin-700 hover:underline" onClick={() => set(i, { quantity: String(size.built_up) })}>
-                    whole building · {size.built_up.toLocaleString('en-IN')}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
+      {lines.length > 0 && (
+        // 2026-10-23 — one row per item, like a BOQ sheet (client: the cards were too busy)
+        <div className="overflow-x-auto rounded-xl border border-hairline">
+          <table className="w-full min-w-[720px] text-sm">
+            <thead className="bg-slate-50 text-left text-xs text-ink-muted">
+              <tr>
+                <th className="px-2 py-2 font-medium">Item</th>
+                <th className="w-32 px-2 py-2 font-medium">Type</th>
+                <th className="w-24 px-2 py-2 font-medium">Qty</th>
+                <th className="w-24 px-2 py-2 font-medium">Unit</th>
+                <th className="w-28 px-2 py-2 font-medium">Rate</th>
+                <th className="w-36 px-2 py-2 text-right font-medium">Amount (BDT)</th>
+                <th className="w-10" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-hairline">
+              {lines.map((l, i) => {
+                const amount = editorLineAmount(l);
+                const s = l.id ? (spent?.get(l.id) ?? 0) : 0;
+                const sqft = l.unit.trim().toLowerCase() === 'sqft' && size;
+                const cell = 'h-9 w-full rounded-md border border-hairline bg-white px-2 text-sm';
+                return (
+                  <tr key={l.id ?? `n-${i}`} className="align-top">
+                    <td className="px-2 py-1.5">
+                      <input
+                        aria-label="Item"
+                        className={cn(cell, 'font-medium')}
+                        value={l.description}
+                        onChange={(e) => set(i, { description: e.target.value })}
+                        placeholder="e.g. Rod 16mm"
+                      />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <select
+                        aria-label="Cost type"
+                        value={l.cost_type}
+                        onChange={(e) => set(i, { cost_type: e.target.value as ConstructionCostType })}
+                        className={cn(cell, 'text-ink-muted')}
+                      >
+                        {CONSTRUCTION_COST_TYPES.map((t) => (
+                          <option key={t} value={t}>
+                            {COST_TYPE_META[t].label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <input
+                        aria-label="Quantity"
+                        type="number"
+                        min={0}
+                        step="any"
+                        className={cell}
+                        value={l.quantity}
+                        onChange={(e) => set(i, { quantity: e.target.value, basis: 'qty_rate' })}
+                        placeholder="—"
+                      />
+                      {sqft && (
+                        <div className="mt-1 flex flex-col text-[11px]">
+                          <button
+                            type="button"
+                            className="text-left text-admin-700 hover:underline"
+                            onClick={() => set(i, { quantity: String(size.floor_area), basis: 'qty_rate' })}
+                          >
+                            1 floor
+                          </button>
+                          {!size.per_floor && (
+                            <button
+                              type="button"
+                              className="text-left text-admin-700 hover:underline"
+                              onClick={() => set(i, { quantity: String(size.built_up), basis: 'qty_rate' })}
+                            >
+                              building
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <input
+                        aria-label="Unit"
+                        list="budget-units"
+                        className={cell}
+                        value={l.unit}
+                        onChange={(e) => set(i, { unit: e.target.value })}
+                        placeholder="—"
+                      />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <input
+                        aria-label="Rate"
+                        type="number"
+                        min={0}
+                        step="any"
+                        className={cell}
+                        value={l.rate}
+                        onChange={(e) => set(i, { rate: e.target.value, basis: 'qty_rate' })}
+                        placeholder="—"
+                      />
+                    </td>
+                    <td className="px-2 py-1.5 text-right">
+                      {counted(l) ? (
+                        <span className="block h-9 pt-2 font-semibold text-ink">
+                          {amount > 0 ? formatBdt(amount) : '—'}
+                        </span>
+                      ) : (
+                        <input
+                          aria-label="Amount"
+                          type="number"
+                          min={0}
+                          step="any"
+                          className={cn(cell, 'text-right font-semibold')}
+                          value={l.amount}
+                          onChange={(e) => set(i, { amount: e.target.value, basis: 'lump' })}
+                          placeholder="Amount"
+                        />
+                      )}
+                      {spent && (
+                        <span
+                          className={cn(
+                            'block text-[11px]',
+                            s > amount && amount > 0 ? 'font-medium text-red-600' : 'text-ink-muted',
+                          )}
+                        >
+                          spent {s > 0 ? formatBdt(s) : '—'}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-1.5 pr-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label="Remove line"
+                        onClick={() => onChange(lines.filter((_, j) => j !== i))}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="text-[11px] text-ink-muted">Enter Qty and Rate to calculate the amount, or type a fixed Amount.</p>
 
       <datalist id="budget-units">
         {UNITS.map((u) => (

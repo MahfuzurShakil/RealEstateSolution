@@ -25,7 +25,7 @@ import { Modal } from '@/components/ui/Modal';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { Land, SiteVisit, SiteVisitStatus } from '@/lib/db/types';
-import { landPipelineRepository, siteVisitRepository } from '@/lib/repositories';
+import { landPipelineRepository, landRepository, siteVisitRepository } from '@/lib/repositories';
 import { TimelineItem, TimelineList } from '@/components/admin/lands/TimelineItem';
 import { formatDate, todayLocal } from '@/lib/utils/format';
 
@@ -97,6 +97,18 @@ export function SiteVisitPanel({ land }: { land: Land }) {
                 }
               >
                 <div className="mb-3 flex flex-wrap justify-end gap-1">
+                  {/* 2026-10-22 — the land holds the one road width; a measurement can replace it */}
+                  {!isPlanned &&
+                    visit.road_width_ft != null &&
+                    Number(land.front_road_width_ft) !== Number(visit.road_width_ft) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => landRepository.update(land.id, { front_road_width_ft: visit.road_width_ft })}
+                      >
+                        Use {visit.road_width_ft} ft as the land&apos;s road width
+                      </Button>
+                    )}
                   {isPlanned && (
                     <Button size="sm" onClick={() => setEditing({ visit, mode: 'record' })}>
                       <CheckCircle2 className="size-4" /> Mark as done
@@ -303,6 +315,10 @@ function VisitDialog({
       // through the pipeline: a visit that happened moves a sourced land to Under Review
       if (visit) await landPipelineRepository.updateSiteVisit(visit.id, payload, userId);
       else await landPipelineRepository.recordSiteVisit(payload, userId);
+      // first measurement fills the land's empty width; a different one is offered on the card
+      if (!planning && payload.road_width_ft && !land.front_road_width_ft) {
+        await landRepository.update(land.id, { front_road_width_ft: payload.road_width_ft });
+      }
       onClose();
     } finally {
       setSaving(false);

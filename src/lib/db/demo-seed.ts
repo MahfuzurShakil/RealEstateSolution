@@ -826,6 +826,8 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
         location_area: demo.location_area,
         road: demo.road ?? null,
         road_access: demo.road_access ?? null,
+        // the first width the description names; projects overwrite it below
+        front_road_width_ft: Number(demo.road_access?.match(/(\d+)\s*ft/)?.[1]) || null,
         land_classification: demo.land_classification ?? null,
         source: demo.source ?? null,
         mouza: demo.mouza ?? null,
@@ -1127,12 +1129,6 @@ async function seedDemoProjects(
         status: demo.status,
         project_manager: null,
         architect: demo.architect ?? null,
-        // v33 — the site's road, from the buildings that used to carry it
-        front_road_width_ft:
-          Math.max(
-            0,
-            ...demo.towers.filter((t) => !t.plot_patterns?.length).map((t) => t.front_road_width_ft ?? 0),
-          ) || null,
         surroundings: demo.surroundings ?? null,
         amenities: demo.amenities,
         cover_image_url: demo.cover_image_url ?? null,
@@ -1165,6 +1161,18 @@ async function seedDemoProjects(
       project.id,
       demo.land_names.map((name) => landIds.get(name)).filter((id): id is string => Boolean(id)),
     );
+
+    // v39 — the site's road lives on the land, from the buildings that used to carry it
+    const siteRoad = Math.max(
+      0,
+      ...demo.towers.filter((t) => !t.plot_patterns?.length).map((t) => t.front_road_width_ft ?? 0),
+    );
+    if (siteRoad > 0) {
+      for (const name of demo.land_names) {
+        const landId = landIds.get(name);
+        if (landId) await db.lands.update(landId, { front_road_width_ft: siteRoad });
+      }
+    }
 
     const unitIdByCode = new Map<string, string>();
 

@@ -90,6 +90,7 @@ interface FormState {
   location_area: string;
   road: string;
   road_access: string;
+  front_road_width_ft: string;
   land_classification: string;
   source: string;
   mouza: string;
@@ -122,6 +123,7 @@ const EMPTY: FormState = {
   location_area: '',
   road: '',
   road_access: '',
+  front_road_width_ft: '',
   land_classification: '',
   source: '',
   mouza: '',
@@ -158,6 +160,7 @@ function toFormState(land: LandWithRelations): FormState {
     location_area: land.location_area,
     road: str(land.road),
     road_access: str(land.road_access),
+    front_road_width_ft: str(land.front_road_width_ft),
     land_classification: str(land.land_classification),
     source: str(land.source),
     mouza: str(land.mouza),
@@ -405,6 +408,8 @@ export function LandForm({
       form.gps_lng.trim() ? Number(form.gps_lng) : null,
     );
     if (gps) next.gps = gps;
+    if (form.front_road_width_ft.trim() && !(Number(form.front_road_width_ft) > 0))
+      next.front_road_width_ft = 'Must be more than 0';
 
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -438,6 +443,7 @@ export function LandForm({
         location_area: form.location_area.trim(),
         road: form.road.trim() || null,
         road_access: form.road_access.trim() || null,
+        front_road_width_ft: form.front_road_width_ft.trim() === '' ? null : Number(form.front_road_width_ft),
         land_classification: form.land_classification.trim() || null,
         source: form.source.trim() || null,
         mouza: form.mouza.trim() || null,
@@ -654,9 +660,23 @@ export function LandForm({
               onChange={(e) => set('road', e.target.value)}
             />
           </Field>
-          {/* BRD LAND-001 — how the plot is *reached*, which is a different
-              question from which road it is on. The surveyed width belongs to
-              the site visit (SITE-001), not here. */}
+          {/* 2026-10-22 — the one place the road width is typed; projects
+              and towers read it from here. A site visit can fill it in. */}
+          <Field
+            label="Front Road Width (ft)"
+            hint="Used by the project on this land"
+            error={errors.front_road_width_ft}
+          >
+            <TextInput
+              type="number"
+              min="0"
+              step="0.1"
+              value={form.front_road_width_ft}
+              placeholder="e.g. 30"
+              onChange={(e) => set('front_road_width_ft', e.target.value)}
+            />
+          </Field>
+          {/* BRD LAND-001 — how the plot is *reached*, a description next to the width */}
           <Field label="Road Access" hint="How the plot is reached today">
             <TextInput
               value={form.road_access}

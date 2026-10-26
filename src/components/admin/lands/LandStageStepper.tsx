@@ -12,21 +12,28 @@ export interface Stage {
   done: boolean;
   /** a few words under the label — "2 visits", "4/6 papers" */
   sub?: string;
+  /** work is recorded but not finished, even if the land's status is elsewhere */
+  started?: boolean;
 }
 
-/** The stage a status sits in — what Acquisition Steps opens on. */
+/**
+ * The stage a status sits in — what the Acquisition tab opens on. A land that
+ * is ours opens on Deal & Registration; its development has its own tab.
+ */
 export function sectionForStatus(status: LandStatus): TimelineSection {
   switch (status) {
+    // a done visit moves the land to Under Review, which waits on feasibility
+    case 'under_review':
+      return 'feasibility';
     case 'dd_in_progress':
       return 'legal';
     case 'negotiation':
     case 'agreed':
-      return 'acquisition';
     case 'acquired':
     case 'under_development':
     case 'ready_for_project':
     case 'disposed':
-      return 'development';
+      return 'acquisition';
     default:
       return 'site';
   }
@@ -35,7 +42,7 @@ export function sectionForStatus(status: LandStatus): TimelineSection {
 /** Where the work a land is waiting on gets recorded. */
 export const SECTION_FOR_WAITING: Partial<Record<WaitingKey, TimelineSection>> = {
   visit: 'site',
-  feasibility: 'site',
+  feasibility: 'feasibility',
   dd: 'legal',
   negotiation: 'acquisition',
   registration: 'acquisition',
@@ -131,7 +138,7 @@ export function LandStageStepper({
                     {stage.label}
                   </span>
                   <span className="block text-[11px] text-ink-muted">
-                    {stage.done ? 'Done' : isCurrent ? 'In progress' : 'Not started'}
+                    {stage.done ? 'Done' : isCurrent || stage.started ? 'In progress' : 'Not started'}
                     {stage.sub ? ` · ${stage.sub}` : ''}
                   </span>
                 </span>

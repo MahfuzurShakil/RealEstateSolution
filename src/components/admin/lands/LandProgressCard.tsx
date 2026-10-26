@@ -22,7 +22,7 @@ import {
 } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 
-export type TimelineSection = 'site' | 'legal' | 'acquisition' | 'development';
+export type TimelineSection = 'site' | 'feasibility' | 'legal' | 'acquisition' | 'development';
 
 interface Step {
   key: keyof typeof STEP_SETS_STATUS;
@@ -87,7 +87,7 @@ export function LandProgressCard({
         label: 'Feasibility study',
         done: current?.recommendation === 'proceed',
         count: studies.length ? plural(studies.length, 'version') : undefined,
-        section: 'site',
+        section: 'feasibility',
       },
       {
         key: 'dd',
@@ -221,7 +221,7 @@ export function LandProgressCard({
                 Status moves on its own as this work is recorded.{' '}
                 {isJv
                   ? 'JV signing is recorded on the Joint Venture tab'
-                  : 'Registration is recorded from the Registered step above (Acquisition Steps → Deal & Registration)'}
+                  : 'Registration is recorded from the Registered step above (Acquisition → Deal & Registration)'}
                 ; reject or divest from the page header.
               </>
             )}
