@@ -8,8 +8,7 @@ import { whatsappLink } from '../../domain/public-portal';
  * (Public Portal v2.0 §2).
  *
  * `company_settings` also carries tax id and the workflow gate switches; only
- * the contact facts, logo and trade licence below cross over. The website text fields
- * of §2.2 join this shape in batch PB6, when Settings gets its Website card.
+ * the contact facts, logo, trade licence and the Website card (§2.2) cross over.
  */
 export interface PublicCompanyInfo {
   company_name: string;
@@ -25,9 +24,33 @@ export interface PublicCompanyInfo {
   logo_url: string | null;
   /** shown in the footer as a trust line */
   trade_license_no: string | null;
+  tagline: string | null;
+  /** About page body, already split on blank lines */
+  about_paragraphs: string[];
+  office_hours: string | null;
+  office_map_url: string | null;
+  /** only the networks that are set, in a fixed order */
+  social: { network: 'facebook' | 'youtube' | 'instagram' | 'linkedin'; url: string }[];
+  established_year: number | null;
+  rehab_member_no: string | null;
+  /** false → every price on the site reads "Price on request" */
+  show_prices: boolean;
 }
 
+const HTTP = /^https?:\/\//i;
+/** Only web links reach an `href` — a typo'd "javascript:" in Settings never becomes a link. */
+const webUrl = (value: string | null | undefined) => {
+  const v = clean(value);
+  return v && HTTP.test(v) ? v : null;
+};
+
 const clean = (value: string | null | undefined) => value?.trim() || null;
+
+/** Whether the website shows prices (Website card switch); absent means yes. */
+export async function publicShowsPrices(): Promise<boolean> {
+  const settings = (await db.company_settings.limit(1).toArray())[0];
+  return settings?.public_show_prices !== false;
+}
 
 export const publicContentRepository = {
   async company(): Promise<PublicCompanyInfo> {
@@ -43,6 +66,24 @@ export const publicContentRepository = {
       whatsapp_number: whatsapp,
       logo_url: clean(settings?.logo_url),
       trade_license_no: clean(settings?.trade_license_no),
+      tagline: clean(settings?.website_tagline),
+      about_paragraphs: (settings?.about_text ?? '')
+        .split(/\n\s*\n/)
+        .map((p) => p.trim())
+        .filter(Boolean),
+      office_hours: clean(settings?.office_hours),
+      office_map_url: webUrl(settings?.office_map_url),
+      social: (
+        [
+          ['facebook', settings?.facebook_url],
+          ['youtube', settings?.youtube_url],
+          ['instagram', settings?.instagram_url],
+          ['linkedin', settings?.linkedin_url],
+        ] as const
+      ).flatMap(([network, url]) => (webUrl(url) ? [{ network, url: webUrl(url)! }] : [])),
+      established_year: settings?.established_year ?? null,
+      rehab_member_no: clean(settings?.rehab_member_no),
+      show_prices: settings?.public_show_prices !== false,
     };
   },
 };

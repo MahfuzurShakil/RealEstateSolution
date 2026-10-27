@@ -138,6 +138,31 @@ export interface CompanySettings extends BaseEntity {
   tax_id?: string | null;
   default_currency: string;
   notes?: string | null;
+  /*
+   * Website card (Public Portal v2.0 §2.2, master plan §10). Unindexed, so no
+   * Dexie version — the `whatsapp_number` precedent. An empty field hides its
+   * section on the site; it never shows a blank label.
+   */
+  /** hero / about line */
+  website_tagline?: string | null;
+  /** About page body; blank lines separate paragraphs */
+  about_text?: string | null;
+  /** e.g. "Sat–Thu, 10am–7pm" */
+  office_hours?: string | null;
+  /** Google Maps link for the head office */
+  office_map_url?: string | null;
+  facebook_url?: string | null;
+  youtube_url?: string | null;
+  instagram_url?: string | null;
+  linkedin_url?: string | null;
+  established_year?: number | null;
+  /** REHAB membership number, shown as a trust line */
+  rehab_member_no?: string | null;
+  /**
+   * false hides every price on the website ("Price on request"). null/absent
+   * means shown — the site has always shown starting prices.
+   */
+  public_show_prices?: boolean | null;
   /**
    * Gate G1 (BRD SITE-003): block the move from Under Review to Due Diligence
    * until an approved feasibility recommends proceeding.

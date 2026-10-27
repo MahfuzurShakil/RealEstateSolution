@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Mail, MapPin, MessageCircle, PhoneCall, ShieldCheck } from 'lucide-react';
+import { Clock, Mail, MapPin, MessageCircle, PhoneCall, ShieldCheck } from 'lucide-react';
 import { telLink } from '@/lib/domain/public-portal';
 import { cn } from '@/lib/utils/cn';
 import { BrandMark } from './BrandMark';
+import { useEnquiry } from './enquiry/EnquiryProvider';
 import { en } from './i18n/en';
-import { SITE_NAV } from './site-nav';
+import { FOOTER_EXTRA, LEGAL_NAV, SITE_NAV } from './site-nav';
 import { useCompanyInfo } from './useCompanyInfo';
 import { useProjectMenu } from './useProjectMenu';
 
@@ -22,6 +23,7 @@ export function SiteFooter() {
   const barBelow = /^\/projects\/[^/]+/.test(pathname ?? '');
   const year = new Date().getFullYear();
   const tel = telLink(company?.phone);
+  const enquiry = useEnquiry();
   const heading = 'mb-5 text-xs font-semibold tracking-[0.16em] text-site-brass uppercase';
   const link = 'transition-colors hover:text-white';
 
@@ -37,6 +39,27 @@ export function SiteFooter() {
             <p className="text-sm text-white/50">
               {t.tradeLicence}: <span className="tabular">{company.trade_license_no}</span>
             </p>
+          )}
+          {company?.rehab_member_no && (
+            <p className="text-sm text-white/50">
+              <span className="tabular">{en.about.rehab(company.rehab_member_no)}</span>
+            </p>
+          )}
+          {company && company.social.length > 0 && (
+            <ul className="flex flex-wrap gap-2" aria-label={en.contact.follow}>
+              {company.social.map((s) => (
+                <li key={s.network}>
+                  <a
+                    href={s.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block rounded-full border border-white/15 px-3.5 py-1.5 text-sm capitalize transition-colors hover:border-white/40 hover:text-white"
+                  >
+                    {s.network === 'youtube' ? 'YouTube' : s.network === 'linkedin' ? 'LinkedIn' : s.network}
+                  </a>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
 
@@ -61,7 +84,7 @@ export function SiteFooter() {
         <div>
           <p className={heading}>{t.explore}</p>
           <ul className="space-y-3">
-            {SITE_NAV.map((item) => (
+            {[...SITE_NAV.filter((item) => item.href !== '/'), ...FOOTER_EXTRA].map((item) => (
               <li key={item.href}>
                 <Link href={item.href} className={link}>
                   {item.label}
@@ -80,6 +103,12 @@ export function SiteFooter() {
                 <span>{company.address}</span>
               </li>
             )}
+            {company?.office_hours && (
+              <li className="flex gap-3">
+                <Clock className="mt-0.5 size-5 shrink-0 text-site-brass" aria-hidden />
+                <span>{company.office_hours}</span>
+              </li>
+            )}
             {tel && (
               <li className="flex gap-3">
                 <PhoneCall className="mt-0.5 size-5 shrink-0 text-site-brass" aria-hidden />
@@ -91,7 +120,7 @@ export function SiteFooter() {
             {company?.whatsapp_url && (
               <li className="flex gap-3">
                 <MessageCircle className="mt-0.5 size-5 shrink-0 text-site-brass" aria-hidden />
-                <a href={company.whatsapp_url} target="_blank" rel="noopener noreferrer" className={cn(link, 'tabular')}>
+                <a href={enquiry.whatsapp() ?? company.whatsapp_url} target="_blank" rel="noopener noreferrer" className={cn(link, 'tabular')}>
                   {company.whatsapp_number}
                 </a>
               </li>
@@ -121,7 +150,12 @@ export function SiteFooter() {
             © {year} {company?.company_name?.replace(/\.$/, '')}. {t.rights}
           </p>
           {/* demo navigation back to the portal chooser and the admin side */}
-          <p className="flex gap-4">
+          <p className="flex flex-wrap gap-4">
+            {LEGAL_NAV.map((item) => (
+              <Link key={item.href} href={item.href} className={link}>
+                {item.label}
+              </Link>
+            ))}
             <Link href="/admin" className={link}>
               {t.adminPortal}
             </Link>

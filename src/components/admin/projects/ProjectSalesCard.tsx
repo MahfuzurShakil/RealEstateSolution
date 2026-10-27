@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { AlertTriangle, Lock, ShoppingBag } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Circle, Lock, ShoppingBag } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -21,6 +21,7 @@ import {
 } from '@/lib/domain/project';
 import { companySettingsRepository, projectRepository } from '@/lib/repositories';
 import { todayLocal } from '@/lib/utils/format';
+import { websiteReadiness, type WebsiteReadinessItem } from '@/lib/repositories/public/project.public.repository';
 
 const MOVE_QUESTION: Record<ProjectSalesStatus, string> = {
   open: 'Bookings can be taken on this project from now on.',
@@ -44,6 +45,7 @@ export function ProjectSalesCard({ project, lands }: { project: Project; lands: 
   const [error, setError] = useState('');
   const settings = useLiveQuery(() => companySettingsRepository.get(), []);
   const readiness = useLiveQuery(() => projectRepository.readiness(project.id), [project.id, project.updated_at]);
+  const website = useLiveQuery(() => websiteReadiness(project.id), [project.id, project.updated_at]);
   // every unit has a buyer: suggest closing sales rather than waiting for somebody to notice
   const allSpokenFor =
     readiness !== undefined && readiness.unit_count > 0 && readiness.units_spoken_for >= readiness.unit_count;
@@ -191,6 +193,7 @@ export function ProjectSalesCard({ project, lands }: { project: Project; lands: 
             <p className="text-xs text-ink-muted">Open sales first, then publish.</p>
           )}
         </div>
+        {website && website.length > 0 && <WebsiteChecklist items={website} published={project.is_public} />}
       </Card>
 
       <ConfirmDialog
@@ -242,5 +245,43 @@ export function ProjectSalesCard({ project, lands }: { project: Project; lands: 
         )}
       </ConfirmDialog>
     </>
+  );
+}
+
+const WEBSITE_CHECK_LABEL: Record<WebsiteReadinessItem['key'], string> = {
+  cover: 'Cover image',
+  location: 'Location summary',
+  gallery: 'At least one gallery image marked "Show on website"',
+  priced_unit: 'At least one available unit with a price',
+  brochure: 'Brochure on the website (optional)',
+};
+
+/**
+ * "Ready for the website" (Public Portal v2.0 §6.3). Warnings only: a project
+ * can be published with gaps, the list just says what buyers will miss.
+ */
+function WebsiteChecklist({ items, published }: { items: WebsiteReadinessItem[]; published: boolean }) {
+  const missing = items.filter((i) => !i.ok && !i.optional).length;
+  return (
+    <div className="mt-4 rounded-xl border border-hairline bg-slate-50/60 p-3">
+      <p className="text-xs font-semibold text-ink">
+        Ready for the website{' '}
+        <span className={missing ? 'text-amber-700' : 'text-emerald-700'}>
+          {missing ? `— ${missing} to fix${published ? ' (already live)' : ''}` : '— all set'}
+        </span>
+      </p>
+      <ul className="mt-2 space-y-1.5">
+        {items.map((i) => (
+          <li key={i.key} className="flex items-start gap-2 text-xs">
+            {i.ok ? (
+              <CheckCircle2 className="mt-px size-3.5 shrink-0 text-emerald-600" />
+            ) : (
+              <Circle className={`mt-px size-3.5 shrink-0 ${i.optional ? 'text-slate-400' : 'text-amber-600'}`} />
+            )}
+            <span className={i.ok ? 'text-ink-muted' : 'text-ink'}>{WEBSITE_CHECK_LABEL[i.key]}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

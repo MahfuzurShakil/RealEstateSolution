@@ -28,7 +28,8 @@ const UNDER_1CR = ['under_50l', '50l_1cr'];
  * pre-filtered. A real form, so Enter searches. Only kinds, areas and quick
  * chips that have a live project are offered — no search ends empty.
  */
-export function HeroSearch({ cards }: { cards: PublicProjectCard[] }) {
+/** `showPrices` false (Website card) drops the budget field: it would reveal what the cards hide. */
+export function HeroSearch({ cards, showPrices = true }: { cards: PublicProjectCard[]; showPrices?: boolean }) {
   const router = useRouter();
   const kinds = BUYER_KINDS.filter((k) => cards.some((c) => k.types.includes(c.project_type)));
   const [kind, setKind] = useState<string>('all');
@@ -91,7 +92,8 @@ export function HeroSearch({ cards }: { cards: PublicProjectCard[] }) {
       <form
         onSubmit={search}
         className={cn(
-          'grid gap-4 bg-white p-4 shadow-site-3 sm:p-5 md:grid-cols-[1fr_1fr_auto] md:items-end md:p-6',
+          'grid gap-4 bg-white p-4 shadow-site-3 sm:p-5 md:items-end md:p-6',
+          showPrices ? 'md:grid-cols-[1fr_1fr_auto]' : 'md:grid-cols-[1fr_auto]',
           kinds.length > 1 ? 'rounded-2xl rounded-tl-none' : 'rounded-2xl',
         )}
       >
@@ -109,6 +111,7 @@ export function HeroSearch({ cards }: { cards: PublicProjectCard[] }) {
             </select>
           </span>
         </label>
+        {showPrices && (
         <label className="block">
           <span className="mb-2 block text-sm font-semibold">{t.budget}</span>
           <span className={field}>
@@ -123,11 +126,12 @@ export function HeroSearch({ cards }: { cards: PublicProjectCard[] }) {
             </select>
           </span>
         </label>
+        )}
         <Button type="submit" size="lg" icon={<Search className="size-4.5" />} className="h-12 w-full md:w-auto md:px-9">
           {t.submit}
         </Button>
         {quick.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 md:col-span-3">
+          <div className="flex flex-wrap items-center gap-2 md:col-span-full">
             <span className="text-sm text-site-muted">{t.quick}</span>
             {quick.map((q) => (
               <Link

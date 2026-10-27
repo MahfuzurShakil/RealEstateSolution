@@ -115,3 +115,29 @@ export async function ensureDemoSitePhotos(): Promise<void> {
     });
   }
 }
+
+/**
+ * Website card text for the sample company (W6). Only fills a row whose
+ * website fields have never been saved (`undefined`, not `null`): once the
+ * Website card is saved — even with blanks — the user's choice stands.
+ */
+export async function ensureDemoWebsiteText(): Promise<void> {
+  const settings = (await db.company_settings.limit(1).toArray())[0];
+  // the sample company only: a real client's row never gets demo text
+  if (!settings || settings.company_name !== 'Nokshi Properties Ltd.' || settings.about_text !== undefined) return;
+  await db.company_settings.update(settings.id, {
+    website_tagline: 'Homes with clear papers, built in Dhaka since 2008',
+    about_text: [
+      'Nokshi Properties started in 2008 with a single six-storey building in Uttara, built on land owned by three brothers who wanted to stay on as neighbours. They still live there.',
+      'Today we develop apartments, serviced plots and land shares across Dhaka — usually together with the landowners, who keep a share of what is built.',
+      'What has not changed is how we sell: every paper shown before booking, the price written down, and progress photos published as the work goes on.',
+    ].join('\n\n'),
+    office_hours: 'Sat–Thu, 10am–7pm',
+    office_map_url: 'https://www.google.com/maps?q=23.7937,90.4066',
+    facebook_url: 'https://facebook.com/',
+    youtube_url: 'https://youtube.com/',
+    established_year: 2008,
+    rehab_member_no: '1187',
+    public_show_prices: true,
+  });
+}

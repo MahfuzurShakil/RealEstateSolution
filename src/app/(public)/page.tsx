@@ -66,7 +66,7 @@ export default function HomePage() {
       )}
 
       <section className="relative z-10 -mt-44 px-4 sm:px-6 md:-mt-32">
-        {cards === undefined ? <div className="mx-auto h-40 max-w-5xl animate-pulse rounded-2xl bg-white shadow-site-3" /> : <HeroSearch cards={live} />}
+        {cards === undefined ? <div className="mx-auto h-40 max-w-5xl animate-pulse rounded-2xl bg-white shadow-site-3" /> : <HeroSearch cards={live} showPrices={company?.show_prices !== false} />}
       </section>
 
       {/* trust numbers — columns follow how many there are, so no gap is left */}

@@ -132,6 +132,8 @@ export function ProjectsBrowser() {
   const pathname = usePathname();
   const company = useCompanyInfo();
   const enquiry = useEnquiry();
+  // Website card switch: no budget filter while prices are hidden
+  const showPrices = company?.show_prices !== false;
   const [sheet, setSheet] = useState(false);
   const [shownCount, setShownCount] = useState(PAGE);
   const [hovered, setHovered] = useState<string | null>(null);
@@ -328,7 +330,7 @@ export function ProjectsBrowser() {
           <div className="hidden flex-wrap items-center gap-2 lg:flex">
             {types.length > 1 && <Popover label={t.type} count={filters.project_types?.length ?? 0}>{typeChips}</Popover>}
             {stages.length > 1 && <Popover label={t.stage} count={filters.stages?.length ?? 0}>{stageChips}</Popover>}
-            <Popover label={t.budget} count={filters.price_bands?.length ?? 0}>{budgetChips}</Popover>
+            {showPrices && <Popover label={t.budget} count={filters.price_bands?.length ?? 0}>{budgetChips}</Popover>}
             {areas.length > 1 && <Popover label={t.area} count={filters.area ? 1 : 0}>{areaChips}</Popover>}
             {availableToggle}
           </div>
@@ -413,7 +415,7 @@ export function ProjectsBrowser() {
               {[
                 [t.type, types.length > 1 && typeChips],
                 [t.stage, stages.length > 1 && stageChips],
-                [t.budget, budgetChips],
+                [t.budget, showPrices && budgetChips],
                 [t.area, areas.length > 1 && areaChips],
               ].map(([label, chips]) =>
                 chips ? (

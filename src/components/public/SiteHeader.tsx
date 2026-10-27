@@ -171,7 +171,7 @@ export function SiteHeader() {
                   // a click right after hover-open would otherwise close the menu again
                   onClick={() => setMega((m) => (m && Date.now() - hoverOpenedAt.current < 500 ? true : !m))}
                   className={cn(
-                    'flex items-center gap-1 rounded-full px-4 py-2 text-[15px] font-medium transition-colors hover:text-site-primary',
+                    'flex items-center gap-1 rounded-full px-3 py-2 text-[15px] font-medium whitespace-nowrap transition-colors hover:text-site-primary xl:px-4',
                     (isActive(item.href) || mega) && 'text-site-primary',
                   )}
                 >
@@ -196,7 +196,7 @@ export function SiteHeader() {
                 href={item.href}
                 aria-current={isActive(item.href) ? 'page' : undefined}
                 className={cn(
-                  'rounded-full px-4 py-2 text-[15px] font-medium transition-colors hover:text-site-primary',
+                  'rounded-full px-3 py-2 text-[15px] font-medium whitespace-nowrap transition-colors hover:text-site-primary xl:px-4',
                   isActive(item.href) && 'text-site-primary',
                 )}
               >
@@ -207,8 +207,18 @@ export function SiteHeader() {
         </nav>
 
         <div className="hidden items-center gap-5 lg:flex">
+          {/* five nav links leave no room for the number below xl: an icon there, the full hotline from xl */}
           {tel && (
-            <a href={tel} className="group flex items-center gap-3 rounded-full">
+            <a
+              href={tel}
+              aria-label={`${t.call} ${company?.phone}`}
+              className="grid size-10 place-items-center rounded-full bg-site-primary-soft text-site-primary transition-colors hover:bg-site-primary hover:text-white xl:hidden"
+            >
+              <PhoneCall className="size-4.5" aria-hidden />
+            </a>
+          )}
+          {tel && (
+            <a href={tel} className="group hidden items-center gap-3 rounded-full xl:flex">
               <span className="grid size-10 place-items-center rounded-full bg-site-primary-soft text-site-primary transition-colors group-hover:bg-site-primary group-hover:text-white">
                 <PhoneCall className="size-4.5" aria-hidden />
               </span>

@@ -28,8 +28,11 @@ interface EnquiryContextValue {
   /** what the current page is showing; cleared when the page unmounts */
   setPage: (subject: EnquirySubject | null) => void;
   page: EnquirySubject | null;
-  /** a `wa.me` link prefilled for the subject (or the page); null without a company WhatsApp */
-  whatsapp: (subject?: EnquirySubject | null) => string | null;
+  /**
+   * A `wa.me` link prefilled for the subject (or the page), or with `text`
+   * as given; null without a company WhatsApp.
+   */
+  whatsapp: (subject?: EnquirySubject | null, text?: string) => string | null;
 }
 
 const EnquiryContext = createContext<EnquiryContextValue | null>(null);
@@ -74,7 +77,8 @@ export function EnquiryProvider({ children }: { children: React.ReactNode }) {
 
   const number = company?.whatsapp_number ?? null;
   const whatsapp = useCallback(
-    (subject?: EnquirySubject | null) => (number ? whatsappLink(number, whatsappText(subject ?? page)) : null),
+    (subject?: EnquirySubject | null, text?: string) =>
+      number ? whatsappLink(number, text ?? whatsappText(subject ?? page)) : null,
     [number, page],
   );
 

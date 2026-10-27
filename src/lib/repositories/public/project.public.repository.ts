@@ -16,6 +16,7 @@ import {
   type PublicStage,
   type PublicUnitStatus,
 } from '../../domain/public-portal';
+import { publicShowsPrices } from './content.public.repository';
 
 /**
  * Public Portal P2 — projects, towers and units as a buyer may see them
@@ -389,12 +390,53 @@ function matches(
   return true;
 }
 
+/*
+ * Website card "Show prices on the website" off: prices are taken out here,
+ * where every public object is built, so no page can forget to hide one. The
+ * pages already read a null price as "Price on request".
+ */
+function unpriced<T extends PublicProjectCard>(card: T): T {
+  return { ...card, price_from: null };
+}
+
+/** Public Portal v2.0 §6.3 — what a project needs before it looks right on the website. */
+export interface WebsiteReadinessItem {
+  key: 'cover' | 'location' | 'gallery' | 'priced_unit' | 'brochure';
+  ok: boolean;
+  /** the brochure is nice to have; the rest are expected */
+  optional: boolean;
+}
+
+/**
+ * The checklist under the publish switch. Built from the same mapping the
+ * site uses (cover, public gallery, available company-sold units), so it can
+ * never say "ready" about something the website would leave out. Warnings
+ * only — publishing is never blocked by it.
+ */
+export async function websiteReadiness(projectId: string): Promise<WebsiteReadinessItem[]> {
+  const project = await db.projects.get(projectId);
+  if (!project) return [];
+  const loaded = await loadFor([project.id]);
+  const docs = loaded.docsByProject.get(project.id) ?? [];
+  const publicDocs = docs.filter((d) => d.is_public);
+  return [
+    { key: 'cover', ok: coverFor(project, docs) !== null, optional: false },
+    { key: 'location', ok: !!project.location_summary?.trim(), optional: false },
+    { key: 'gallery', ok: publicDocs.some((d) => d.document_type === 'gallery_image' && isPicture(d)), optional: false },
+    { key: 'priced_unit', ok: minPrice(shownUnits(project, loaded)) !== null, optional: false },
+    { key: 'brochure', ok: publicDocs.some((d) => d.document_type === 'brochure'), optional: true },
+  ];
+}
+
 export const publicProjectRepository = {
   /** v2.0 §3.4 — the listing. Featured first, then newest. */
   async list(filters: PublicProjectFilters = {}): Promise<PublicProjectCard[]> {
     const projects = await visibleProjects();
     const loaded = await loadFor(projects.map((p) => p.id));
-    return projects
+    const showPrices = await publicShowsPrices();
+    // with prices hidden a budget filter would still reveal them by what it drops
+    if (!showPrices) filters = { ...filters, price_bands: undefined };
+    const cards = projects
       .sort(
         (a, b) =>
           Number(b.is_featured) - Number(a.is_featured) || b.created_at.localeCompare(a.created_at),
@@ -407,6 +449,7 @@ export const publicProjectRepository = {
         ),
       )
       .map((p) => toCard(p, loaded));
+    return showPrices ? cards : cards.map(unpriced);
   },
 
   /** Home page — featured first, topped up with the newest (the listing's own order). */
@@ -479,7 +522,8 @@ export const publicProjectRepository = {
       .filter((d) => d.document_type === 'brochure')
       .sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at))[0];
 
-    return {
+    const showPrices = await publicShowsPrices();
+    const detail: PublicProjectDetail = {
       ...card,
       container_kind: shape.container,
       container_label: shape.labels.container,
@@ -514,6 +558,13 @@ export const publicProjectRepository = {
       progress_pct: built && progressValues.length && publicStage(project.status, shape) !== 'upcoming'
         ? Math.round(progressValues.reduce((s, n) => s + n, 0) / progressValues.length)
         : null,
+    };
+    if (showPrices) return detail;
+    return {
+      ...unpriced(detail),
+      containers: detail.containers.map((c) => ({ ...c, units: c.units.map((u) => ({ ...u, price: null })) })),
+      unit_types: detail.unit_types.map((t) => ({ ...t, price_from: null })),
+      payment_plan: [],
     };
   },
 };

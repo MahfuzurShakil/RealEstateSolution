@@ -55,7 +55,19 @@ function SettingsForm({
     default_currency: settings?.default_currency ?? 'BDT',
     logo_url: settings?.logo_url ?? '',
     notes: settings?.notes ?? '',
+    website_tagline: settings?.website_tagline ?? '',
+    about_text: settings?.about_text ?? '',
+    office_hours: settings?.office_hours ?? '',
+    office_map_url: settings?.office_map_url ?? '',
+    facebook_url: settings?.facebook_url ?? '',
+    youtube_url: settings?.youtube_url ?? '',
+    instagram_url: settings?.instagram_url ?? '',
+    linkedin_url: settings?.linkedin_url ?? '',
+    established_year: settings?.established_year ? String(settings.established_year) : '',
+    rehab_member_no: settings?.rehab_member_no ?? '',
   });
+  // a boolean, kept apart from the all-string `form` for the reason given below
+  const [showPrices, setShowPrices] = useState(settings?.public_show_prices !== false);
   /*
    * The three pipeline gates (BRD SITE-003, DD-004, DEV-004). Kept out of
    * `form` because that state is all strings and these are booleans —
@@ -73,6 +85,7 @@ function SettingsForm({
     purchaseModeOf(settings?.purchase_mode),
   );
   const [error, setError] = useState('');
+  const [yearError, setYearError] = useState('');
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -86,6 +99,13 @@ function SettingsForm({
       setError('The company needs a name — it goes on every document.');
       return;
     }
+    const year = form.established_year.trim() ? Number(form.established_year) : null;
+    if (year !== null && (!Number.isInteger(year) || year < 1900 || year > new Date().getFullYear())) {
+      setError('');
+      setYearError('Enter a four-digit year, e.g. 2008.');
+      return;
+    }
+    setYearError('');
     setError('');
     setSaving(true);
     try {
@@ -101,6 +121,17 @@ function SettingsForm({
         default_currency: form.default_currency.trim() || 'BDT',
         logo_url: form.logo_url.trim() || null,
         notes: form.notes.trim() || null,
+        website_tagline: form.website_tagline.trim() || null,
+        about_text: form.about_text.trim() || null,
+        office_hours: form.office_hours.trim() || null,
+        office_map_url: form.office_map_url.trim() || null,
+        facebook_url: form.facebook_url.trim() || null,
+        youtube_url: form.youtube_url.trim() || null,
+        instagram_url: form.instagram_url.trim() || null,
+        linkedin_url: form.linkedin_url.trim() || null,
+        established_year: year,
+        rehab_member_no: form.rehab_member_no.trim() || null,
+        public_show_prices: showPrices,
         ...gates,
         purchase_mode: purchaseMode,
       });
@@ -189,6 +220,85 @@ function SettingsForm({
                 placeholder="https://company.com.bd"
               />
             </Field>
+          </div>
+        </Card>
+
+        {/* Website card (Public Portal v2.0 §2.2): every field here is optional; a blank one hides its section */}
+        <Card>
+          <CardHeader title="Website" />
+          <p className="mb-3 text-xs text-ink-muted">
+            What the public website says about the company. Leave a field blank and its section is
+            simply left out — the site never shows an empty label.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Tagline" hint="One line under the name on the About page" className="sm:col-span-2">
+              <TextInput
+                value={form.website_tagline}
+                onChange={(e) => set('website_tagline', e.target.value)}
+                placeholder="e.g. Homes with clear papers since 2008"
+              />
+            </Field>
+            <Field label="About the company" hint="A blank line starts a new paragraph" className="sm:col-span-2">
+              <TextArea
+                rows={6}
+                value={form.about_text}
+                onChange={(e) => set('about_text', e.target.value)}
+                placeholder="Who you are, how you started, what you build and for whom"
+              />
+            </Field>
+            <Field label="Office hours">
+              <TextInput
+                value={form.office_hours}
+                onChange={(e) => set('office_hours', e.target.value)}
+                placeholder="Sat–Thu, 10am–7pm"
+              />
+            </Field>
+            <Field label="Office map link" hint="Google Maps link to the head office">
+              <TextInput
+                value={form.office_map_url}
+                onChange={(e) => set('office_map_url', e.target.value)}
+                placeholder="https://maps.app.goo.gl/…"
+              />
+            </Field>
+            <Field label="Established (year)" error={yearError || undefined}>
+              <TextInput
+                inputMode="numeric"
+                value={form.established_year}
+                onChange={(e) => set('established_year', e.target.value)}
+                placeholder="2008"
+                invalid={Boolean(yearError)}
+              />
+            </Field>
+            <Field label="REHAB membership no.">
+              <TextInput
+                value={form.rehab_member_no}
+                onChange={(e) => set('rehab_member_no', e.target.value)}
+                placeholder="e.g. 1234"
+              />
+            </Field>
+            <Field label="Facebook page">
+              <TextInput value={form.facebook_url} onChange={(e) => set('facebook_url', e.target.value)} placeholder="https://facebook.com/…" />
+            </Field>
+            <Field label="YouTube channel">
+              <TextInput value={form.youtube_url} onChange={(e) => set('youtube_url', e.target.value)} placeholder="https://youtube.com/@…" />
+            </Field>
+            <Field label="Instagram">
+              <TextInput value={form.instagram_url} onChange={(e) => set('instagram_url', e.target.value)} placeholder="https://instagram.com/…" />
+            </Field>
+            <Field label="LinkedIn">
+              <TextInput value={form.linkedin_url} onChange={(e) => set('linkedin_url', e.target.value)} placeholder="https://linkedin.com/company/…" />
+            </Field>
+            <div className="sm:col-span-2">
+              <GateToggle
+                label="Show prices on the website"
+                detail="When off, every price on the public site reads “Price on request”, the budget filter is hidden and the payment plan is left out. Buyers can still enquire."
+                checked={showPrices}
+                onChange={(v) => {
+                  setShowPrices(v);
+                  setSaved(false);
+                }}
+              />
+            </div>
           </div>
         </Card>
 
@@ -351,8 +461,8 @@ function SettingsForm({
             <li className="flex gap-2.5">
               <Globe className="mt-0.5 size-4 shrink-0 text-admin-600" />
               <span>
-                <span className="font-medium text-ink">Public website</span> — the contact page and
-                footer read straight from this row.
+                <span className="font-medium text-ink">Public website</span> — the About and Contact
+                pages, the footer and the price display read straight from this row.
               </span>
             </li>
             <li className="flex gap-2.5">

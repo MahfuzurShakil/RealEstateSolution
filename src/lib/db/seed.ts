@@ -7,7 +7,7 @@ import {
   lookupRepository,
 } from '../repositories';
 import { demoDataWasCleared, seedDemoData } from './demo-seed';
-import { ensureDemoSitePhotos, ensureDemoWebsitePictures } from './demo-website';
+import { ensureDemoSitePhotos, ensureDemoWebsitePictures, ensureDemoWebsiteText } from './demo-website';
 import {
   AMENITY_OPTIONS,
   BOOKING_DOCUMENT_TYPES,
@@ -118,6 +118,7 @@ async function runSeed(): Promise<void> {
       notes: null,
     });
   }
+  if (!demoDataWasCleared()) await ensureDemoWebsiteText();
 }
 
 /**

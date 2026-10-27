@@ -502,7 +502,7 @@ references in demo-site-progress, demo-bookings and demo-leads.
 | W3 Detail v2 ✅ (2026-10-26) | gallery + lightbox, sub-nav, unit drawer + deep link, floor-plan viewer, map + landmarks, view-transition morph |
 | W4 Progress ✅ (2026-10-26) | detail progress polish (ring, bars, dated photo timeline, lightbox) + home "Live from our sites" strip |
 | W5 Enquiries ✅ (2026-10-27) | enquiry modal, site-visit booking, callback, WhatsApp templates, lead note fix, `leads.page_url`/`utm_*` (analytics events still to wire) |
-| W6 Company pages + Website settings | About, Contact, Buyer's guide, NRB, legal, Website card, readiness checklist |
+| W6 Company pages + Website settings ✅ (2026-10-27) | About, Contact, Buyer's guide, NRB, legal, Website card, readiness checklist |
 | W7 Trust content | testimonials, team, awards, FAQ tables + admin screens + home sections |
 | W8 Landowners | page + `land_offers` + Lands inbox |
 | W9 Blog | v2 PB7 |
