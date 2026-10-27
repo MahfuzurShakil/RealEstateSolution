@@ -3099,3 +3099,25 @@ export interface LandOffer extends BaseEntity {
   notes?: string | null;
   page_url?: string | null;
 }
+
+/* ------------------------------------------------------------------ *
+ * Blog (Public Portal v2.0 §2.3, W9) — v42
+ * ------------------------------------------------------------------ */
+
+export const BLOG_POST_STATUSES = ['draft', 'published'] as const;
+export type BlogPostStatus = (typeof BLOG_POST_STATUSES)[number];
+
+export interface BlogPost extends BaseEntity {
+  /** UNIQUE — the post's address: /blog/{slug} */
+  slug: string;
+  title: string;
+  excerpt: string;
+  /** plain text; a blank line starts a new paragraph (Phase A) */
+  content: string;
+  author_id?: UUID | null;
+  status: BlogPostStatus;
+  published_at?: ISODate | null;
+}
+
+/** Document types for entity_type = 'blog_post' (§2.3) */
+export const BLOG_POST_DOCUMENT_TYPES = ['cover_image', 'content_image', 'other'] as const;

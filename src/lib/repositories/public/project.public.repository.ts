@@ -200,12 +200,12 @@ function minPrice(units: Unit[]): number | null {
 const HOSTED = /^https?:\/\//;
 
 /** An uploaded image, or an image hosted elsewhere and linked by URL (no file stored). */
-function isPicture(doc: DocumentRecord): boolean {
+export function isPicture(doc: DocumentRecord): boolean {
   if (doc.file_data) return (doc.mime_type ?? '').startsWith('image/');
   return HOSTED.test(doc.file_url) && (doc.mime_type ?? 'image/').startsWith('image/');
 }
 
-function pictureOf(doc: DocumentRecord, alt: string): PublicImage {
+export function pictureOf(doc: DocumentRecord, alt: string): PublicImage {
   return doc.file_data
     ? { kind: 'blob', id: doc.id, blob: doc.file_data, alt }
     : { kind: 'url', url: doc.file_url, alt };

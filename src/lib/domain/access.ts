@@ -123,6 +123,7 @@ export const MODULE_KEYS = [
   'dashboard',
   'master_data',
   'user_management',
+  'website',
 ] as const;
 export type ModuleKey = (typeof MODULE_KEYS)[number];
 
@@ -141,6 +142,7 @@ export const MODULE_LABEL: Record<ModuleKey, string> = {
   dashboard: 'Dashboard (Revenue / Cost)',
   master_data: 'Master Data / Settings',
   user_management: 'User Management',
+  website: 'Website (content & blog)',
 };
 
 const F: Permission = { level: 'full' };
@@ -240,6 +242,16 @@ export const PERMISSION_MATRIX: Record<ModuleKey, Record<UserRole, Permission>> 
   },
   user_management: {
     super_admin: F, management: N, land_team: N, project_manager: N,
+    sales_executive: N, sales_manager: N, head_of_sales: N,
+    site_manager: N, procurement: N, accounts: N,
+  },
+  /*
+   * W9 — Public Portal v2.0 §2.3/§6: the website's own content (testimonials,
+   * team, FAQ, blog) is for super_admin and management. Company settings
+   * stay under master_data.
+   */
+  website: {
+    super_admin: F, management: F, land_team: N, project_manager: N,
     sales_executive: N, sales_manager: N, head_of_sales: N,
     site_manager: N, procurement: N, accounts: N,
   },
@@ -359,7 +371,8 @@ const ROUTE_MODULES: Array<[string, ModuleKey]> = [
   ['/admin/users', 'user_management'],
   ['/admin/master-data', 'master_data'],
   ['/admin/settings', 'master_data'],
-  ['/admin/website', 'master_data'],
+  ['/admin/website', 'website'],
+  ['/admin/blog', 'website'],
 ];
 
 export function moduleForPath(pathname: string): ModuleKey | null {

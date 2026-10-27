@@ -4,6 +4,7 @@ import type { UserRole } from '@/lib/db/types';
 import {
   Building2,
   Coins,
+  Globe,
   HardHat,
   LayoutDashboard,
   Map,
@@ -158,7 +159,15 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Users & Roles', href: '/admin/users', module: 'user_management' },
       { label: 'Master Data', href: '/admin/master-data', module: 'master_data' },
       { label: 'Company Settings', href: '/admin/settings', module: 'master_data' },
-      { label: 'Website Content', href: '/admin/website', module: 'master_data' },
+    ],
+  },
+  {
+    // Public Portal v2.0 §6.2: the website's own content, apart from company settings
+    label: 'Website',
+    icon: Globe,
+    items: [
+      { label: 'Website Content', href: '/admin/website', module: 'website' },
+      { label: 'Blog', href: '/admin/blog', module: 'website' },
     ],
   },
 ];

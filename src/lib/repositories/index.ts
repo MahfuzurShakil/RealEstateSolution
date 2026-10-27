@@ -269,3 +269,4 @@ export {
   faqItemRepository,
 } from './website-content.repository';
 export { landOfferRepository } from './land-offer.repository';
+export { blogRepository, DuplicateSlugError, slugify } from './blog.repository';

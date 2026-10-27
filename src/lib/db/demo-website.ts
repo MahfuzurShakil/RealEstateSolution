@@ -272,7 +272,126 @@ export async function ensureDemoWebsiteContent(): Promise<void> {
 export function forgetDemoWebsiteContent(): void {
   try {
     localStorage.removeItem(CONTENT_FLAG);
+    localStorage.removeItem(BLOG_FLAG);
   } catch {
     /* nothing to forget */
+  }
+}
+
+const BLOG_FLAG = 'demo-blog-seeded';
+
+/**
+ * Sample blog (W9): three published articles with stock covers and one
+ * draft, for the sample company. Its own flag, so a demo that already has
+ * the W7 samples still gets the blog once.
+ */
+export async function ensureDemoBlog(): Promise<void> {
+  try {
+    if (localStorage.getItem(BLOG_FLAG) === '1') return;
+  } catch {
+    return;
+  }
+  const settings = (await db.company_settings.limit(1).toArray())[0];
+  if (!settings || settings.company_name !== 'Nokshi Properties Ltd.') return;
+  if ((await db.blog_posts.count()) > 0) return;
+
+  const author = (await db.users.toArray()).find((u) => u.role === 'management') ?? null;
+  const day = (n: number) => {
+    const d = new Date(Date.now() - n * 86_400_000);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const posts = [
+    {
+      slug: 'five-papers-to-check-before-you-book-a-flat',
+      title: 'Five papers to check before you book a flat',
+      excerpt: 'The title deed is only the start. Here is what to ask for at the site office — and what each paper tells you.',
+      content: [
+        'Most families buy one home in their lifetime, and the papers decide whether it is truly theirs. Before you pay booking money, ask the developer to show you the originals of five papers.',
+        'The title deed shows who owns the land today and how they came to own it. Follow the chain back at least 25 years: every sale should be registered.',
+        'The khatian — CS, SA, RS and, in Dhaka, the BS record — shows the land in the government survey. The names and the plot (dag) number should match the deed.',
+        'The mutation (namjari) record and the latest land tax (khajna) receipt prove the owner is recorded with the land office and has paid what is due.',
+        'Finally, the approved building plan from RAJUK or the local authority shows the building you are buying is the building that was approved — number of floors included.',
+        'If any of these is missing, ask why. A good developer will explain, and show you how it is being fixed.',
+      ].join('\n\n'),
+      cover: 'photo-1450101499163-c8848c66ca85',
+      status: 'published' as const,
+      published_at: day(3),
+    },
+    {
+      slug: 'green-residence-tower-a-reaches-the-roof',
+      title: 'Green Residence: Tower A reaches the roof',
+      excerpt: 'The last roof slab of Tower A was cast this month. Brickwork and plumbing move up floor by floor next.',
+      content: [
+        'The final roof slab of Tower A at Green Residence was cast this month, on schedule. Curing takes three weeks, after which the roof waterproofing begins.',
+        'Inside, brickwork has reached the sixth floor and plumbing risers are going in behind it. Buyers can see the latest site photos on the project page.',
+        'Tower B is two floors behind, as planned, so the two towers finish a few months apart and lifts can be installed one after the other.',
+      ].join('\n\n'),
+      cover: 'photo-1503387762-592deb58ef4e',
+      status: 'published' as const,
+      published_at: day(12),
+    },
+    {
+      slug: 'buying-from-abroad-a-checklist',
+      title: 'Buying from abroad: a short checklist',
+      excerpt: 'Video walkthrough, power of attorney, bank transfer — how families abroad book a home without flying in.',
+      content: [
+        'More than a third of our buyers live outside Bangladesh. The process is the same as for a buyer in Dhaka — only the signatures travel differently.',
+        'Start with a video walkthrough of the site and the papers. Ask every question you would ask in person.',
+        'Pay booking money by bank transfer to the company account printed on your receipt, never to a personal account.',
+        'For the agreement and registration, sign a power of attorney at the Bangladesh embassy or consulate, naming the family member who will sign for you.',
+      ].join('\n\n'),
+      cover: 'photo-1436491865332-7a61a109cc05',
+      status: 'published' as const,
+      published_at: day(25),
+    },
+    {
+      slug: 'what-a-joint-venture-means-for-landowners',
+      title: 'What a joint venture means for landowners',
+      excerpt: 'Draft — shares, signing money and handover, explained.',
+      content: 'Draft text. A joint venture lets a landowner keep a share of the finished building while the developer pays for and builds it.',
+      cover: null,
+      status: 'draft' as const,
+      published_at: null,
+    },
+  ];
+
+  const now = new Date().toISOString();
+  for (const p of posts) {
+    const id = crypto.randomUUID();
+    await db.blog_posts.add({
+      id,
+      created_at: now,
+      updated_at: now,
+      created_by: null,
+      slug: p.slug,
+      title: p.title,
+      excerpt: p.excerpt,
+      content: p.content,
+      author_id: author?.id ?? null,
+      status: p.status,
+      published_at: p.published_at,
+    });
+    if (p.cover) {
+      await documentRepository.create({
+        entity_type: 'blog_post',
+        entity_id: id,
+        document_type: 'cover_image',
+        custom_type_name: null,
+        file_url: u(p.cover),
+        file_data: null,
+        file_name: 'cover.jpg',
+        file_size: null,
+        mime_type: 'image/jpeg',
+        is_public: true,
+        uploaded_by: null,
+        uploaded_at: now,
+        notes: STOCK_NOTE,
+      });
+    }
+  }
+  try {
+    localStorage.setItem(BLOG_FLAG, '1');
+  } catch {
+    /* the count check above still prevents duplicates */
   }
 }

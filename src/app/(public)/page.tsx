@@ -15,6 +15,8 @@ import { HeroSlider } from '@/components/public/home/HeroSlider';
 import { InstalmentPlanner } from '@/components/public/home/InstalmentPlanner';
 import { SiteStrip } from '@/components/public/home/SiteStrip';
 import { Testimonials } from '@/components/public/home/Testimonials';
+import { BlogCard } from '@/components/public/blog/BlogCard';
+import { publicBlogRepository } from '@/lib/repositories/public/blog.public.repository';
 import { publicContentRepository } from '@/lib/repositories/public/content.public.repository';
 import { CountUp, Reveal } from '@/components/public/motion';
 import { Button, ButtonLink } from '@/components/public/ui/Button';
@@ -27,7 +29,7 @@ import { cn } from '@/lib/utils/cn';
 /*
  * Home (PUBLIC-WEBSITE-MASTER-PLAN.md §7.1). Section order: hero → search →
  * trust numbers → projects on sale → areas → live site photos → why us → testimonials →
- * buying steps → payment planner → buyers abroad → landowners → FAQ.
+ * buying steps → payment planner → buyers abroad → landowners → latest news → FAQ.
  * Every project fact comes from the public repositories; every word from
  * i18n/en.ts. Sections with no data hide themselves.
  */
@@ -40,6 +42,7 @@ export default function HomePage() {
   const cards = useLiveQuery(() => publicProjectRepository.list(), []);
   const testimonials = useLiveQuery(() => publicContentRepository.testimonials(), []);
   const faqs = useLiveQuery(() => publicContentRepository.faqs(), []);
+  const posts = useLiveQuery(() => publicBlogRepository.list(3), []);
   const [tab, setTab] = useState('all');
   const enquiry = useEnquiry();
 
@@ -272,6 +275,33 @@ export default function HomePage() {
           </div>
         </Reveal>
       </Container>
+
+      {/* latest news (§7.1 item 14) — hidden until a post is published */}
+      {posts && posts.length > 0 && (
+        <Container className="mt-24 md:mt-28">
+          <Reveal>
+            <SectionHeader
+              eyebrow={en.blog.latestEyebrow}
+              title={en.blog.latestTitle}
+              accent={en.blog.latestAccent}
+              action={
+                <ButtonLink href="/blog" variant="outline" iconRight={<ArrowRight className="size-4" />}>
+                  {en.blog.seeAll}
+                </ButtonLink>
+              }
+            />
+          </Reveal>
+          <ul className="mt-10 grid gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
+            {posts.map((p, i) => (
+              <li key={p.slug}>
+                <Reveal delay={i * 90} className="h-full">
+                  <BlogCard post={p} />
+                </Reveal>
+              </li>
+            ))}
+          </ul>
+        </Container>
+      )}
 
       {/* FAQ + contact */}
       <Container className="mt-24 grid gap-12 md:mt-28 lg:grid-cols-[1fr_1.5fr]">

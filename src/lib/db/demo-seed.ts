@@ -81,7 +81,7 @@ import { DEMO_PROJECTS } from './demo-projects';
 import { templateForItem, towerBasements, workTypeDef } from '../domain/construction-cost';
 import { DEMO_MATERIAL_REQUESTS, DEMO_TOWER_PROGRESS } from './demo-site-progress';
 import { DEMO_EXPENSES, DEMO_REFUNDS } from './demo-finance';
-import { ensureDemoWebsiteContent, forgetDemoWebsiteContent } from './demo-website';
+import { ensureDemoBlog, ensureDemoWebsiteContent, forgetDemoWebsiteContent } from './demo-website';
 import {
   DEMO_PURCHASE_ORDERS,
   DEMO_STOCK_ISSUES,
@@ -2829,6 +2829,7 @@ export async function clearDemoData(): Promise<void> {
     db.awards.clear(),
     db.faq_items.clear(),
     db.land_offers.clear(),
+    db.blog_posts.clear(),
   ]);
   forgetDemoWebsiteContent();
   setClearedFlag(true);
@@ -2838,6 +2839,7 @@ export async function resetDemoData(createdBy: string | null = null): Promise<vo
   await clearDemoData();
   await seedDemoData(createdBy);
   await ensureDemoWebsiteContent();
+  await ensureDemoBlog();
 }
 
 /**

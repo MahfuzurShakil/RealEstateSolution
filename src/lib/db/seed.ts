@@ -7,7 +7,7 @@ import {
   lookupRepository,
 } from '../repositories';
 import { demoDataWasCleared, seedDemoData } from './demo-seed';
-import { ensureDemoSitePhotos, ensureDemoWebsiteContent, ensureDemoWebsitePictures, ensureDemoWebsiteText } from './demo-website';
+import { ensureDemoBlog, ensureDemoSitePhotos, ensureDemoWebsiteContent, ensureDemoWebsitePictures, ensureDemoWebsiteText } from './demo-website';
 import {
   AMENITY_OPTIONS,
   BOOKING_DOCUMENT_TYPES,
@@ -27,6 +27,7 @@ import {
   WORK_ITEM_TYPE_OPTIONS,
   PURCHASE_ORDER_DOCUMENT_TYPES,
   REFUND_DOCUMENT_TYPES,
+  BLOG_POST_DOCUMENT_TYPES,
   SUPPLIER_VOUCHER_DOCUMENT_TYPES,
   SUPPLIER_BILL_DOCUMENT_TYPES,
   SITE_PROGRESS_DOCUMENT_TYPES,
@@ -73,6 +74,7 @@ async function runSeed(): Promise<void> {
   await ensureOptions('document_type', 'expense', [...EXPENSE_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'direct_purchase', [...DIRECT_PURCHASE_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'refund', [...REFUND_DOCUMENT_TYPES]);
+  await ensureOptions('document_type', 'blog_post', [...BLOG_POST_DOCUMENT_TYPES]);
   await ensureOptions('land_size_unit', null, [...LAND_SIZE_UNITS]);
   // BRD LAND-001. Both vary by district, so neither is an ENUM in code.
   await ensureOptions('land_classification', null, [...LAND_CLASSIFICATION_OPTIONS]);
@@ -121,6 +123,7 @@ async function runSeed(): Promise<void> {
   if (!demoDataWasCleared()) {
     await ensureDemoWebsiteText();
     await ensureDemoWebsiteContent();
+    await ensureDemoBlog();
   }
 }
 

@@ -4,6 +4,7 @@ import Dexie, { type EntityTable } from 'dexie';
 import { backfillMaterialItems } from './backfill-material-items';
 import type {
   Award,
+  BlogPost,
   LandOffer,
   FaqItem,
   TeamMember,
@@ -180,6 +181,7 @@ export class AppDatabase extends Dexie {
   awards!: EntityTable<Award, 'id'>;
   faq_items!: EntityTable<FaqItem, 'id'>;
   land_offers!: EntityTable<LandOffer, 'id'>;
+  blog_posts!: EntityTable<BlogPost, 'id'>;
 
   constructor() {
     super('realestate_platform');
@@ -945,6 +947,11 @@ export class AppDatabase extends Dexie {
      */
     this.version(41).stores({
       land_offers: 'id, &code, status, created_at',
+    });
+
+    // v42 — blog posts (Public Portal v2.0 §2.3, W9): slug unique, status and date indexed
+    this.version(42).stores({
+      blog_posts: 'id, &slug, status, published_at',
     });
   }
 }
