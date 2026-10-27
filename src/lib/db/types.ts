@@ -1132,6 +1132,7 @@ export const LAND_SOURCE_OPTIONS = [
   'Reference',
   'Own survey',
   'Auction / Bank',
+  'Website offer',
   'Other',
 ] as const;
 
@@ -3057,4 +3058,44 @@ export interface FaqItem extends BaseEntity {
   answer: string;
   is_published: boolean;
   sort_order: number;
+}
+
+/* ------------------------------------------------------------------ *
+ * Land offers from the website (master plan §8 / W8) — v41
+ *
+ * A landowner's offer from /landowners. Not a land yet: the land team calls,
+ * and either declines it or adds it as a land (status `sourced`), which links
+ * the two. Kept apart from `lands` so a website form can never create pipeline
+ * records on its own.
+ * ------------------------------------------------------------------ */
+
+export const LAND_OFFER_STATUSES = ['new', 'contacted', 'converted', 'declined'] as const;
+export type LandOfferStatus = (typeof LAND_OFFER_STATUSES)[number];
+
+/** What the owner is open to. */
+export const LAND_OFFER_TYPES = ['joint_venture', 'sale', 'either'] as const;
+export type LandOfferType = (typeof LAND_OFFER_TYPES)[number];
+
+/** Papers the owner says they have, as ticked on the form. */
+export const LAND_OFFER_PAPERS = ['deed', 'khatian', 'mutation', 'land_tax', 'survey_map'] as const;
+export type LandOfferPaper = (typeof LAND_OFFER_PAPERS)[number];
+
+export interface LandOffer extends BaseEntity {
+  code: string;                       // LOF-2026-001
+  owner_name: string;
+  phone: string;
+  /** free text as typed: area, road, landmark */
+  location: string;
+  land_size?: number | null;
+  land_size_unit?: LandSizeUnit | null;
+  front_road_width_ft?: number | null;
+  offer_type: LandOfferType;
+  papers: LandOfferPaper[];
+  message?: string | null;
+  status: LandOfferStatus;
+  /** set when the offer is added as a land */
+  land_id?: UUID | null;
+  /** the land team's own note (why declined, when called) */
+  notes?: string | null;
+  page_url?: string | null;
 }

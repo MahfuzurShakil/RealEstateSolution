@@ -19,6 +19,7 @@ import {
   type LandEntryMode,
   type JvShareBasis,
   type Land,
+  type LandOffer,
   type LandSizeUnit,
   type Landowner,
 } from '@/lib/db/types';
@@ -42,6 +43,7 @@ import { todayLocal } from '@/lib/utils/format';
 import { USER_ROLE_META } from '@/lib/domain/access';
 import {
   landJvRepository,
+  landOfferRepository,
   landPipelineRepository,
   lookupRepository,
   landOwnerMappingRepository,
@@ -150,6 +152,40 @@ const EMPTY: FormState = {
 const str = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 const num = (v: string) => (v.trim() === '' ? null : Number(v));
 
+const OFFER_PAPER_LABEL: Record<string, string> = {
+  deed: 'title deed',
+  khatian: 'khatian',
+  mutation: 'mutation',
+  land_tax: 'land tax receipt',
+  survey_map: 'survey map',
+};
+const OFFER_TYPE_LABEL: Record<string, string> = { joint_venture: 'joint venture', sale: 'outright sale', either: 'JV or sale' };
+
+/**
+ * W8 — a land offer from the website, as a starting point for a new land.
+ * Only what the owner typed is carried over; division, district and the
+ * owner record are for the land team to fill after their call.
+ */
+function fromOffer(offer: LandOffer): FormState {
+  return {
+    ...EMPTY,
+    name: offer.location.split(/[,—-]/)[0].trim().slice(0, 80),
+    location_area: offer.location,
+    land_size: str(offer.land_size),
+    land_size_unit: offer.land_size_unit ?? 'katha',
+    front_road_width_ft: str(offer.front_road_width_ft),
+    acquisition_type: offer.offer_type === 'sale' ? 'direct_purchase' : 'joint_venture',
+    source: 'Website offer',
+    remarks: [
+      `From website offer ${offer.code}: ${offer.owner_name}, ${offer.phone}, open to ${OFFER_TYPE_LABEL[offer.offer_type]}.`,
+      offer.papers.length ? `Papers they have: ${offer.papers.map((p) => OFFER_PAPER_LABEL[p] ?? p).join(', ')}.` : null,
+      offer.message,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  };
+}
+
 function toFormState(land: LandWithRelations): FormState {
   return {
     ...EMPTY,
@@ -194,15 +230,18 @@ function toFormState(land: LandWithRelations): FormState {
 export function LandForm({
   land,
   initialMode = 'pipeline',
+  offer,
 }: {
   land?: LandWithRelations;
   /** v29 — create only: start in the owned-land entry */
   initialMode?: LandEntryMode;
+  /** W8 — create only: start from a website land offer, and mark it converted on save */
+  offer?: LandOffer;
 }) {
   const router = useRouter();
   const isEdit = Boolean(land);
 
-  const [form, setForm] = useState<FormState>(land ? toFormState(land) : EMPTY);
+  const [form, setForm] = useState<FormState>(land ? toFormState(land) : offer ? fromOffer(offer) : EMPTY);
   /*
    * v29 — how this land is being entered (PLATFORM-REPLAN.md §1.3). Chosen on
    * create only: an owned land goes straight to Acquired, so switching mode on
@@ -236,6 +275,8 @@ export function LandForm({
   );
   const [allOwners, setAllOwners] = useState<Landowner[]>([]);
   const [quickAddIndex, setQuickAddIndex] = useState<number | null>(null);
+  // W8 — the quick-add dialog opened from an offer starts with the owner's name and phone
+  const [quickPrefill, setQuickPrefill] = useState<{ name: string; phone: string } | undefined>(undefined);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
@@ -535,6 +576,8 @@ export function LandForm({
           null,
         );
       }
+
+      if (!land && offer) await landOfferRepository.markConverted(offer.id, saved.id);
 
       router.push(`/admin/lands/${saved.id}`);
     } finally {
@@ -899,6 +942,23 @@ export function LandForm({
             </div>
           }
         />
+        {owners.length === 0 && offer && (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-admin-100 bg-admin-50/60 p-3">
+            <p className="text-sm text-ink">
+              The website offer came from <span className="font-medium">{offer.owner_name}</span> ({offer.phone}).
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                setQuickPrefill({ name: offer.owner_name, phone: offer.phone });
+                addNewOwner();
+              }}
+            >
+              <UserPlus className="size-4" /> Add as landowner
+            </Button>
+          </div>
+        )}
         {owners.length === 0 ? (
           <p className="text-sm text-ink-muted">
             No landowner linked yet. Use <strong>Add owner</strong> to pick someone already on the
@@ -1168,11 +1228,16 @@ export function LandForm({
 
       <LandownerQuickAddModal
         open={quickAddIndex !== null}
-        onClose={() => setQuickAddIndex(null)}
+        prefill={quickPrefill}
+        onClose={() => {
+          setQuickAddIndex(null);
+          setQuickPrefill(undefined);
+        }}
         onCreated={(owner) => {
           setAllOwners((rows) => [...rows, owner].sort((a, b) => a.name.localeCompare(b.name)));
           if (quickAddIndex !== null) updateOwnerRow(quickAddIndex, { owner_id: owner.id });
           setQuickAddIndex(null);
+          setQuickPrefill(undefined);
         }}
       />
     </form>

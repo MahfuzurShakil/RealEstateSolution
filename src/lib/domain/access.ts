@@ -335,6 +335,7 @@ export function visibleProjectIds(
 const ROUTE_MODULES: Array<[string, ModuleKey]> = [
   ['/admin/lands', 'land'],
   ['/admin/landowners', 'land'],
+  ['/admin/land-offers', 'land'],
   ['/admin/projects', 'project'],
   ['/admin/leads', 'crm'],
   ['/admin/bookings', 'booking'],

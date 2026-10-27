@@ -75,6 +75,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Lands', href: '/admin/lands', module: 'land' },
       { label: 'Landowners', href: '/admin/landowners', module: 'land' },
+      { label: 'Land Offers', href: '/admin/land-offers', module: 'land' },
     ],
   },
   /*

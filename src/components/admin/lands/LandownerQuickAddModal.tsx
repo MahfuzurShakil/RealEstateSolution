@@ -21,32 +21,37 @@ import { landownerRepository } from '@/lib/repositories';
 export function LandownerQuickAddModal({
   open,
   owner,
+  prefill,
   onClose,
   onCreated,
 }: {
   open: boolean;
   owner?: Landowner;
+  /** a new owner's name and phone as already known (W8 — from a website land offer) */
+  prefill?: { name: string; phone: string };
   onClose: () => void;
   onCreated: (owner: Landowner) => void;
 }) {
   if (!open) return null;
   return (
-    <LandownerDialog key={owner?.id ?? 'new'} owner={owner} onClose={onClose} onCreated={onCreated} />
+    <LandownerDialog key={owner?.id ?? 'new'} owner={owner} prefill={prefill} onClose={onClose} onCreated={onCreated} />
   );
 }
 
 function LandownerDialog({
   owner,
+  prefill,
   onClose,
   onCreated,
 }: {
   owner?: Landowner;
+  prefill?: { name: string; phone: string };
   onClose: () => void;
   onCreated: (owner: Landowner) => void;
 }) {
   const [form, setForm] = useState({
-    name: owner?.name ?? '',
-    phone: owner?.phone ?? '',
+    name: owner?.name ?? prefill?.name ?? '',
+    phone: owner?.phone ?? prefill?.phone ?? '',
     nid: owner?.nid ?? '',
     address: owner?.address ?? '',
     notes: owner?.notes ?? '',

@@ -15,7 +15,10 @@ export const SITE_NAV: { href: string; label: string; mega?: 'projects' }[] = [
 ];
 
 /** Footer-only links: helpful pages that would crowd the header. */
-export const FOOTER_EXTRA: { href: string; label: string }[] = [{ href: '/nrb', label: en.nav.nrb }];
+export const FOOTER_EXTRA: { href: string; label: string }[] = [
+  { href: '/nrb', label: en.nav.nrb },
+  { href: '/landowners', label: en.nav.landowners },
+];
 export const LEGAL_NAV: { href: string; label: string }[] = [
   { href: '/privacy', label: en.nav.privacy },
   { href: '/terms', label: en.nav.terms },

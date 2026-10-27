@@ -268,3 +268,4 @@ export {
   awardRepository,
   faqItemRepository,
 } from './website-content.repository';
+export { landOfferRepository } from './land-offer.repository';

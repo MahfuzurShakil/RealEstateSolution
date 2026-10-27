@@ -13,6 +13,8 @@ import {
 } from '../../domain/public-enquiry';
 import { isPubliclyVisible, publicUnitStatus } from '../../domain/public-portal';
 import { nowIso } from '../../utils/id';
+import { LAND_OFFER_PAPERS, LAND_OFFER_TYPES, LAND_SIZE_UNITS, type LandOfferPaper, type LandOfferType, type LandSizeUnit } from '../../db/types';
+import { landOfferRepository } from '../land-offer.repository';
 import { leadActivityRepository, leadRepository } from '../lead.repository';
 
 /**
@@ -69,7 +71,63 @@ async function resolve(projectCode?: string, unitCode?: string) {
   return { project, unit };
 }
 
+/** A landowner's offer from /landowners (W8). */
+export interface PublicLandOfferInput {
+  owner_name: string;
+  phone: string;
+  location: string;
+  land_size?: string;
+  land_size_unit?: LandSizeUnit;
+  front_road_width_ft?: string;
+  offer_type: LandOfferType;
+  papers: LandOfferPaper[];
+  message?: string;
+  website?: string;
+  page_url?: string;
+}
+export type PublicLandOfferError = 'name' | 'phone' | 'location' | 'size' | 'road';
+
+const positive = (v?: string) => {
+  const n = Number(v?.trim());
+  return v?.trim() ? (Number.isFinite(n) && n > 0 ? n : NaN) : null;
+};
+
 export const publicInquiryRepository = {
+  /**
+   * Writes a `land_offers` row for the Lands inbox, never a land: the land
+   * team decides what enters the pipeline. Answers `{ ok }` only.
+   */
+  async submitLandOffer(input: PublicLandOfferInput): Promise<{ ok: true } | { ok: false; field: PublicLandOfferError }> {
+    if (input.website?.trim()) return { ok: true };
+    const owner_name = input.owner_name.trim();
+    if (owner_name.length < 2) return { ok: false, field: 'name' };
+    if (!isBdMobile(input.phone) && !isIntlPhone(input.phone)) return { ok: false, field: 'phone' };
+    const location = input.location.trim();
+    if (location.length < 3) return { ok: false, field: 'location' };
+    const size = positive(input.land_size);
+    if (Number.isNaN(size)) return { ok: false, field: 'size' };
+    const road = positive(input.front_road_width_ft);
+    if (Number.isNaN(road)) return { ok: false, field: 'road' };
+
+    await landOfferRepository.create({
+      code: '',
+      owner_name,
+      phone: input.phone.trim(),
+      location: location.slice(0, 300),
+      land_size: size,
+      land_size_unit: size !== null && LAND_SIZE_UNITS.includes(input.land_size_unit as LandSizeUnit) ? input.land_size_unit! : null,
+      front_road_width_ft: road,
+      offer_type: LAND_OFFER_TYPES.includes(input.offer_type) ? input.offer_type : 'either',
+      papers: input.papers.filter((p) => LAND_OFFER_PAPERS.includes(p)),
+      message: input.message?.trim().slice(0, 2000) || null,
+      status: 'new',
+      land_id: null,
+      notes: null,
+      page_url: input.page_url?.slice(0, 300) || null,
+    });
+    return { ok: true };
+  },
+
   async submit(input: PublicInquiryInput): Promise<PublicInquiryResult> {
     if (input.website?.trim()) return { ok: true };
 

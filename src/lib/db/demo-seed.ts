@@ -2828,6 +2828,7 @@ export async function clearDemoData(): Promise<void> {
     db.team_members.clear(),
     db.awards.clear(),
     db.faq_items.clear(),
+    db.land_offers.clear(),
   ]);
   forgetDemoWebsiteContent();
   setClearedFlag(true);

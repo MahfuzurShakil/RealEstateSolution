@@ -215,6 +215,52 @@ export async function ensureDemoWebsiteContent(): Promise<void> {
     en.home.faq.items.map((item, i) => ({ ...base(i), category: topics[i] ?? 'other', question: item.q, answer: item.a })),
   );
 
+  if ((await db.land_offers.count()) === 0) {
+    const day = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+    await db.land_offers.bulkAdd([
+      {
+        id: crypto.randomUUID(),
+        created_at: day(1),
+        updated_at: day(1),
+        created_by: null,
+        code: 'LOF-2026-001',
+        owner_name: 'Habibur Rahman',
+        phone: '01713-556677',
+        location: 'Sector 14, Uttara — two plots from the lake road',
+        land_size: 6,
+        land_size_unit: 'katha',
+        front_road_width_ft: 25,
+        offer_type: 'joint_venture',
+        papers: ['deed', 'khatian', 'mutation', 'land_tax'],
+        message: 'Inherited with my two sisters; we all want to keep flats in the building.',
+        status: 'new',
+        land_id: null,
+        notes: null,
+        page_url: '/landowners',
+      },
+      {
+        id: crypto.randomUUID(),
+        created_at: day(5),
+        updated_at: day(3),
+        created_by: null,
+        code: 'LOF-2026-002',
+        owner_name: 'Selina Parvin',
+        phone: '+44 7700 900123',
+        location: 'Bashundhara R/A, Block G',
+        land_size: 5,
+        land_size_unit: 'katha',
+        front_road_width_ft: 30,
+        offer_type: 'either',
+        papers: ['deed', 'khatian'],
+        message: 'I live in London. Please call in the evening UK time.',
+        status: 'contacted',
+        land_id: null,
+        notes: 'Called 2 days ago; site visit planned for Saturday.',
+        page_url: '/landowners',
+      },
+    ]);
+  }
+
   try {
     localStorage.setItem(CONTENT_FLAG, '1');
   } catch {

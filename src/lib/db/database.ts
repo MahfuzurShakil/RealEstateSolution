@@ -4,6 +4,7 @@ import Dexie, { type EntityTable } from 'dexie';
 import { backfillMaterialItems } from './backfill-material-items';
 import type {
   Award,
+  LandOffer,
   FaqItem,
   TeamMember,
   Testimonial,
@@ -178,6 +179,7 @@ export class AppDatabase extends Dexie {
   team_members!: EntityTable<TeamMember, 'id'>;
   awards!: EntityTable<Award, 'id'>;
   faq_items!: EntityTable<FaqItem, 'id'>;
+  land_offers!: EntityTable<LandOffer, 'id'>;
 
   constructor() {
     super('realestate_platform');
@@ -935,6 +937,14 @@ export class AppDatabase extends Dexie {
       team_members: 'id, sort_order',
       awards: 'id, kind, sort_order',
       faq_items: 'id, category, sort_order',
+    });
+
+    /*
+     * v41 — land offers from the website's /landowners form (W8). `code` is
+     * unique like every display code; `status` drives the Lands inbox.
+     */
+    this.version(41).stores({
+      land_offers: 'id, &code, status, created_at',
     });
   }
 }

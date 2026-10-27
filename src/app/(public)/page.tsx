@@ -261,23 +261,17 @@ export default function HomePage() {
         </div>
       </Container>
 
-      {/* landowners — talks to the sales team until the /landowners page is built (W8) */}
-      {(wa(h.landowner.whatsappText) || tel) && (
-        <Container className="mt-24 md:mt-28">
-          <Reveal>
-            <div className="flex flex-col items-start justify-between gap-8 rounded-[28px] border border-site-line bg-white p-8 shadow-site-1 md:flex-row md:items-center md:p-12">
-              <SectionHeader eyebrow={h.landowner.eyebrow} title={h.landowner.title} accent={h.landowner.accent} lead={h.landowner.lead} />
-              <ButtonLink
-                href={wa(h.landowner.whatsappText) ?? tel!}
-                size="lg"
-                icon={wa(h.landowner.whatsappText) ? <MessageCircle className="size-4.5" /> : <PhoneCall className="size-4.5" />}
-              >
-                {h.landowner.cta}
-              </ButtonLink>
-            </div>
-          </Reveal>
-        </Container>
-      )}
+      {/* landowners — the full page and offer form are at /landowners */}
+      <Container className="mt-24 md:mt-28">
+        <Reveal>
+          <div className="flex flex-col items-start justify-between gap-8 rounded-[28px] border border-site-line bg-white p-8 shadow-site-1 md:flex-row md:items-center md:p-12">
+            <SectionHeader eyebrow={h.landowner.eyebrow} title={h.landowner.title} accent={h.landowner.accent} lead={h.landowner.lead} />
+            <ButtonLink href="/landowners" size="lg" iconRight={<ArrowRight className="size-4.5" />}>
+              {h.landowner.cta}
+            </ButtonLink>
+          </div>
+        </Reveal>
+      </Container>
 
       {/* FAQ + contact */}
       <Container className="mt-24 grid gap-12 md:mt-28 lg:grid-cols-[1fr_1.5fr]">
