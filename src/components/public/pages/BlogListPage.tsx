@@ -29,14 +29,14 @@ export function BlogListPage() {
         ) : (
           <>
             <Reveal>
-              <BlogCard post={first} featured />
+              <BlogCard post={first} featured level={2} />
             </Reveal>
             {rest.length > 0 && (
               <ul className="mt-16 grid gap-x-8 gap-y-14 border-t border-site-line pt-14 sm:grid-cols-2 lg:grid-cols-3">
                 {rest.map((p, i) => (
                   <li key={p.slug}>
                     <Reveal delay={(i % 3) * 90} className="h-full">
-                      <BlogCard post={p} />
+                      <BlogCard post={p} level={2} />
                     </Reveal>
                   </li>
                 ))}

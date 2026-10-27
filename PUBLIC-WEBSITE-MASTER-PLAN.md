@@ -506,7 +506,7 @@ references in demo-site-progress, demo-bookings and demo-leads.
 | W7 Trust content ✅ (2026-10-27) | testimonials, team, awards, FAQ tables + admin screens + home sections |
 | W8 Landowners ✅ (2026-10-28) | page + `land_offers` + Lands inbox |
 | W9 Blog ✅ (2026-10-28) | v2 PB7 |
-| W10 Polish | route transitions everywhere, a11y audit, performance pass, SEO prep |
+| W10 Polish — part done (2026-10-28) | done: automated a11y sweep of every public page (alt text, names, labels, heading order, duplicate ids) and fixes, robots.txt + sitemap (static pages; `NEXT_PUBLIC_SITE_URL`), lazy images with eager above-the-fold. Open: route transitions everywhere, Lighthouse/performance pass, whitelist test (needs a test runner — not added without approval), React's hidden `#S:0` streamed copy left in the DOM on several pages (pre-existing, invisible; investigate with a production build) |
 | Phase 2 | Bangla toggle, customer portal, shortlist/compare, WhatsApp Business API, structured landmarks |
 
 ## 13. Verification (per batch)

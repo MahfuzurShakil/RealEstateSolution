@@ -104,7 +104,7 @@ export function BlogPostPage({ slug }: { slug: string }) {
         </Container>
 
         <Container className="mt-10 max-w-5xl">
-          <SiteImage image={post.cover} fallback={INTERIOR_IMAGE} alt={post.title} className="aspect-[16/9] rounded-[24px]" />
+          <SiteImage image={post.cover} fallback={INTERIOR_IMAGE} alt={post.title} eager className="aspect-[16/9] rounded-[24px]" />
         </Container>
 
         <Container className="mt-12 max-w-3xl">

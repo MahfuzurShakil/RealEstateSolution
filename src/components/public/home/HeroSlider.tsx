@@ -116,6 +116,7 @@ export function HeroSlider({ cards }: { cards: PublicProjectCard[] }) {
                   image={s.cover}
                   fallback={COVER_FALLBACK[s.project_type]}
                   alt={s.name}
+                  eager={i === 0}
                   className={cn('size-full transition-transform duration-[7000ms] ease-out', i === current ? 'scale-100' : 'scale-[1.06]')}
                 />
               </div>

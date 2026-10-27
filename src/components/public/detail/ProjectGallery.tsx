@@ -54,6 +54,7 @@ export function ProjectGallery({ images, fallback, name, code }: { images: Publi
               image={first}
               fallback={fallback}
               alt={name}
+              eager
               className="aspect-16/10 w-full transition-transform duration-700 ease-site-out group-hover:scale-[1.03] md:aspect-auto md:h-[480px]"
             />
           </ViewTransition>

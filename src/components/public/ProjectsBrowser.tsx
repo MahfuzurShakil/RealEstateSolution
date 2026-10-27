@@ -351,9 +351,10 @@ export function ProjectsBrowser() {
 
       <Container className="pt-6">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="mr-2 text-sm font-semibold text-site-muted" aria-live="polite">
+          {/* a heading, so the cards' h3 titles sit under an h2 (W10 a11y sweep) */}
+          <h2 className="mr-2 text-sm font-semibold text-site-muted" aria-live="polite">
             {cards === undefined ? en.common.loading : t.count(live.length)}
-          </p>
+          </h2>
           {active.map((a) => (
             <button
               key={a.label}

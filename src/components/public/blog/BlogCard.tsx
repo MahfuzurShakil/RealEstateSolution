@@ -12,8 +12,13 @@ export function postDate(iso: string): string {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-/** A post in a list; `featured` lays it out wide, picture beside the text, from md up. */
-export function BlogCard({ post, featured = false }: { post: PublicPostCard; featured?: boolean }) {
+/**
+ * A post in a list; `featured` lays it out wide, picture beside the text, from
+ * md up. `level` keeps the outline whole: h2 straight under the page's h1, h3
+ * under a section heading.
+ */
+export function BlogCard({ post, featured = false, level = 3 }: { post: PublicPostCard; featured?: boolean; level?: 2 | 3 }) {
+  const Heading = level === 2 ? 'h2' : 'h3';
   return (
     <article className={cn('group h-full', featured && 'md:grid md:grid-cols-[1.3fr_1fr] md:items-center md:gap-10')}>
       <Link href={`/blog/${encodeURIComponent(post.slug)}`} className="block overflow-hidden rounded-[20px]" tabIndex={-1} aria-hidden>
@@ -28,11 +33,11 @@ export function BlogCard({ post, featured = false }: { post: PublicPostCard; fea
         <p className="text-sm text-site-muted">
           <time dateTime={post.published_at}>{postDate(post.published_at)}</time> · {t.minutes(post.reading_minutes)}
         </p>
-        <h3 className={cn('mt-2 font-semibold leading-snug', featured ? 'text-2xl md:text-3xl' : 'text-xl')}>
+        <Heading className={cn('mt-2 font-semibold leading-snug', featured ? 'text-2xl md:text-3xl' : 'text-xl')}>
           <Link href={`/blog/${encodeURIComponent(post.slug)}`} className="hover:text-site-primary">
             {post.title}
           </Link>
-        </h3>
+        </Heading>
         <p className={cn('mt-3 text-site-muted', !featured && 'line-clamp-3')}>{post.excerpt}</p>
         <Link
           href={`/blog/${encodeURIComponent(post.slug)}`}
