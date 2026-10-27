@@ -1582,6 +1582,15 @@ export interface Lead extends BaseEntity {
   status: LeadStatus;
   /** filled when status = lost */
   lost_reason?: string | null;
+  /**
+   * Website attribution (master plan §10.2): the page the enquiry was sent
+   * from and the campaign tags it arrived with. Unindexed, so no Dexie
+   * version; absent on leads typed in by the sales desk.
+   */
+  page_url?: string | null;
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
 }
 
 export const LEAD_ACTIVITY_TYPES = [

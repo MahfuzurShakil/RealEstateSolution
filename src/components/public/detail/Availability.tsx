@@ -1,17 +1,19 @@
 'use client';
 
-import { useRef, useState } from 'react';
-import { BedDouble, Bath, Check, Clock3, Compass, CornerDownRight, Link2, MessageCircle, PhoneCall, Ruler, Signpost, Sun, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { BedDouble, Bath, Check, Clock3, Compass, CornerDownRight, Link2, Mail, MessageCircle, PhoneCall, Ruler, Signpost, Sun, X } from 'lucide-react';
 import { PUBLIC_UNIT_STATUS_LABEL, formatPublicPrice, type PublicUnitStatus } from '@/lib/domain/public-portal';
 import type { PublicContainer, PublicProjectDetail, PublicUnit } from '@/lib/repositories/public/project.public.repository';
 import { cn } from '@/lib/utils/cn';
+import { useEnquiry } from '../enquiry/EnquiryProvider';
+import { en } from '../i18n/en';
 import { Taka } from '../ProjectCard';
 
 /*
  * v2.0 §3.6–3.7 — the building (or the plot layout, or the share register)
  * as a buyer sees it: every item that exists, coloured by whether it can still
  * be booked. Only available items carry a price, and clicking one opens its
- * details with a call and a WhatsApp message that already names it.
+ * details with an enquiry, a call and a WhatsApp message that already name it.
  */
 
 // status is never colour alone (master plan §5.1): booked carries a clock, sold is struck through
@@ -82,15 +84,14 @@ function UnitDetails({
   unit,
   project,
   itemLabel,
-  whatsapp,
   tel,
 }: {
   unit: PublicUnit | null;
   project: PublicProjectDetail;
   itemLabel: string;
-  whatsapp: (message: string) => string | null;
   tel: string | null;
 }) {
+  const enquiry = useEnquiry();
   if (!unit) {
     return (
       <div className="grid h-full min-h-56 place-items-center rounded-2xl border border-dashed border-site-line p-6 text-center text-site-muted">
@@ -109,8 +110,8 @@ function UnitDetails({
     ...(unit.road_width_ft ? [{ icon: Signpost, label: `${unit.road_width_ft} ft road` }] : []),
     ...(unit.is_corner ? [{ icon: CornerDownRight, label: 'Corner plot' }] : []),
   ];
-  const message = `Hi, I'm interested in ${itemLabel} ${unit.code} at ${project.name} (${project.code}).`;
-  const wa = whatsapp(message);
+  const subject = { project: { name: project.name, code: project.code }, unit: { code: unit.code, item: itemLabel } };
+  const wa = enquiry.whatsapp(subject);
 
   return (
     <div className="rounded-[20px] bg-site-night p-6 text-white motion-safe:animate-[fade-up_.4s_var(--ease-site-out)]">
@@ -151,24 +152,36 @@ function UnitDetails({
         </div>
       )}
       <div className="mt-6 flex flex-col gap-2.5">
-        {wa && (
-          <a
-            href={wa}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 rounded-full bg-site-primary px-5 py-3 font-medium text-white hover:bg-site-primary-dark"
-          >
-            <MessageCircle className="size-4.5" /> Ask about {unit.code}
-          </a>
-        )}
-        {tel && (
-          <a
-            href={tel}
-            className="flex items-center justify-center gap-2 rounded-full border border-white/25 px-5 py-3 font-medium text-white hover:bg-white/10"
-          >
-            <PhoneCall className="size-4.5" /> Call to book
-          </a>
-        )}
+        <button
+          type="button"
+          onClick={() => enquiry.open('enquiry', subject)}
+          className="flex items-center justify-center gap-2 rounded-full bg-site-primary px-5 py-3 font-medium text-white hover:bg-site-primary-dark"
+        >
+          <Mail className="size-4.5" aria-hidden /> {en.enquiry.cta.enquireUnit(unit.code)}
+        </button>
+        <div className="grid grid-cols-2 gap-2.5">
+          {wa && (
+            <a
+              href={wa}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 rounded-full border border-white/25 px-4 py-3 font-medium text-white hover:bg-white/10"
+            >
+              <MessageCircle className="size-4.5" aria-hidden /> {en.nav.whatsapp}
+            </a>
+          )}
+          {tel && (
+            <a
+              href={tel}
+              className={cn(
+                'flex items-center justify-center gap-2 rounded-full border border-white/25 px-4 py-3 font-medium text-white hover:bg-white/10',
+                !wa && 'col-span-2',
+              )}
+            >
+              <PhoneCall className="size-4.5" aria-hidden /> {en.nav.call}
+            </a>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -215,12 +228,13 @@ function ContainerGrid({
 
 export function Availability({
   project,
-  whatsapp,
   tel,
+  onUnitChange,
 }: {
   project: PublicProjectDetail;
-  whatsapp: (message: string) => string | null;
   tel: string | null;
+  /** the picked item's code, so the page's WhatsApp buttons can name it */
+  onUnitChange?: (code: string | null) => void;
 }) {
   const containers = project.containers.filter((c) => c.units.length > 0);
   // `?unit=A-5B` opens that unit (master plan §7.3): a buyer can send one flat to family
@@ -232,6 +246,9 @@ export function Availability({
   const [tab, setTab] = useState(() => fromUrl()?.tab ?? 0);
   const [picked, setPickedState] = useState<PublicUnit | null>(() => fromUrl()?.unit ?? null);
   const details = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    onUnitChange?.(picked?.code ?? null);
+  }, [picked, onUnitChange]);
   const setPicked = (u: PublicUnit | null) => {
     setPickedState(u);
     const url = new URL(window.location.href);
@@ -287,7 +304,6 @@ export function Availability({
           unit={picked}
           project={project}
           itemLabel={project.item_label_singular}
-          whatsapp={whatsapp}
           tel={tel}
         />
       </div>

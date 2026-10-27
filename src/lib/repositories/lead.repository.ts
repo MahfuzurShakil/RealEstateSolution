@@ -12,6 +12,7 @@ import type {
   User,
 } from '../db/types';
 import { LEAD_STATUS_META } from '../domain/lead';
+import { todayLocal } from '../utils/format';
 import { nextCode, nowIso } from '../utils/id';
 import { BaseRepository, type NewRecord } from './base.repository';
 import { documentRepository } from './document.repository';
@@ -89,20 +90,32 @@ class LeadRepository extends BaseRepository<Lead> {
       interested_unit_id?: string | null;
       budget_range?: string | null;
       assigned_to?: string | null;
-    },
+    } & Partial<Pick<Lead, 'page_url' | 'utm_source' | 'utm_medium' | 'utm_campaign'>>,
     createdBy: string | null = null,
   ): Promise<DedupResult> {
     const existing = await this.findByPhone(input.phone);
 
     if (existing) {
+      /*
+       * The repeat note has to say what this inquiry was about: the lead keeps
+       * its first project and unit, so without them the desk saw "repeat
+       * inquiry" and could not tell the buyer had moved on to another flat.
+       */
+      const project = input.interested_project_id ? await db.projects.get(input.interested_project_id) : undefined;
+      const unit = input.interested_unit_id ? await db.units.get(input.interested_unit_id) : undefined;
+      const about = project
+        ? ` about ${unit ? `${unit.code} at ` : ''}${project.name} (${project.code})`
+        : '';
       await leadActivityRepository.create(
         {
           lead_id: existing.id,
           activity_type: 'other',
           activity_date: nowIso(),
-          next_follow_up_date: null,
+          // the newest entry sets the follow-up, so a null here would wipe a pending call
+          next_follow_up_date: todayLocal(),
           notes: [
-            `Repeat inquiry via ${input.source.replace(/_/g, ' ')} under the name "${input.name}".`,
+            `Repeat inquiry via ${input.source.replace(/_/g, ' ')} under the name "${input.name}"${about}.`,
+            input.budget_range ? `Budget: ${input.budget_range}.` : null,
             input.inquiry_message?.trim(),
           ]
             .filter(Boolean)
@@ -111,7 +124,16 @@ class LeadRepository extends BaseRepository<Lead> {
         },
         createdBy,
       );
-      return { merged: true, lead: existing };
+      // fill what the lead is missing; never overwrite what the desk recorded
+      const fill: Partial<Lead> = {};
+      if (!existing.interested_project_id && project) {
+        fill.interested_project_id = project.id;
+        if (unit) fill.interested_unit_id = unit.id;
+      }
+      if (!existing.budget_range && input.budget_range) fill.budget_range = input.budget_range;
+      if (!existing.email && input.email) fill.email = input.email;
+      const lead = Object.keys(fill).length ? ((await this.update(existing.id, fill)) ?? existing) : existing;
+      return { merged: true, lead };
     }
 
     const lead = await this.create(
@@ -128,6 +150,10 @@ class LeadRepository extends BaseRepository<Lead> {
         assigned_to: input.assigned_to ?? null,
         status: 'new',
         lost_reason: null,
+        page_url: input.page_url ?? null,
+        utm_source: input.utm_source ?? null,
+        utm_medium: input.utm_medium ?? null,
+        utm_campaign: input.utm_campaign ?? null,
       },
       createdBy,
     );

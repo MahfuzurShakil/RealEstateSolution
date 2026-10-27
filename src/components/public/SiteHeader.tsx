@@ -4,15 +4,16 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowRight, ChevronDown, MapPin, Menu, MessageCircle, PhoneCall, X } from 'lucide-react';
+import { ArrowRight, CalendarCheck, ChevronDown, MapPin, Menu, MessageCircle, PhoneCall, X } from 'lucide-react';
 import { formatPublicPrice, telLink } from '@/lib/domain/public-portal';
 import { cn } from '@/lib/utils/cn';
 import { BrandMark } from './BrandMark';
+import { useEnquiry } from './enquiry/EnquiryProvider';
 import { en } from './i18n/en';
 import { SiteImage } from './SiteImage';
 import { SITE_NAV } from './site-nav';
 import { COVER_FALLBACK } from './stock-images';
-import { ButtonLink } from './ui/Button';
+import { Button, ButtonLink } from './ui/Button';
 import { useCompanyInfo } from './useCompanyInfo';
 import { useProjectMenu, type ProjectMenu } from './useProjectMenu';
 
@@ -97,6 +98,7 @@ export function SiteHeader() {
   const megaWrap = useRef<HTMLDivElement>(null);
   const hoverOpenedAt = useRef(0);
   const tel = telLink(company?.phone);
+  const enquiry = useEnquiry();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -216,11 +218,9 @@ export function SiteHeader() {
               </span>
             </a>
           )}
-          {tel && (
-            <ButtonLink href={tel} size="md">
-              {t.bookVisit}
-            </ButtonLink>
-          )}
+          <Button size="md" onClick={() => enquiry.open('visit', enquiry.page ?? {})}>
+            {t.bookVisit}
+          </Button>
         </div>
 
         <div className="flex items-center gap-2 lg:hidden">
@@ -308,11 +308,22 @@ export function SiteHeader() {
               {t.call}
             </ButtonLink>
           )}
-          {company?.whatsapp_url && (
-            <ButtonLink href={company.whatsapp_url} variant="whatsapp" icon={<MessageCircle className="size-4" />} className="w-full">
+          {enquiry.whatsapp() && (
+            <ButtonLink href={enquiry.whatsapp()!} variant="whatsapp" icon={<MessageCircle className="size-4" />} className="w-full">
               {t.whatsapp}
             </ButtonLink>
           )}
+          <Button
+            variant="outline"
+            icon={<CalendarCheck className="size-4" />}
+            className="col-span-2 w-full"
+            onClick={() => {
+              setOpen(false);
+              enquiry.open('visit', enquiry.page ?? {});
+            }}
+          >
+            {t.bookVisit}
+          </Button>
         </div>
       </div>,
       // the public shell carries the font variables, so the sheet keeps the brand type

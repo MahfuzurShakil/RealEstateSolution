@@ -176,6 +176,13 @@ export default function LeadDetailPage() {
                 <Row label="Source" value={LEAD_SOURCE_LABEL[lead.source]} />
                 <Row label="Budget range" value={lead.budget_range} />
                 <Row label="First inquiry" value={formatDate(lead.created_at)} />
+                {lead.page_url && <Row label="Sent from page" value={lead.page_url} />}
+                {(lead.utm_source || lead.utm_campaign) && (
+                  <Row
+                    label="Campaign"
+                    value={[lead.utm_source, lead.utm_medium, lead.utm_campaign].filter(Boolean).join(' · ')}
+                  />
+                )}
               </Card>
 
               <Card>

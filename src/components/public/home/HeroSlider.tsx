@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowRight, CalendarCheck, ChevronLeft, ChevronRight, KeyRound, MapPin, Pause, PhoneCall, Play, Ruler } from 'lucide-react';
+import { ArrowRight, CalendarCheck, ChevronLeft, ChevronRight, KeyRound, MapPin, Pause, Play, Ruler } from 'lucide-react';
 import { PUBLIC_STAGE_LABEL, formatMonthYear, formatPublicPrice } from '@/lib/domain/public-portal';
 import type { PublicProjectCard } from '@/lib/repositories/public/project.public.repository';
 import { cn } from '@/lib/utils/cn';
@@ -10,7 +10,8 @@ import { Taka } from '../ProjectCard';
 import { SiteImage } from '../SiteImage';
 import { COVER_FALLBACK, HERO_IMAGE } from '../stock-images';
 import { SalesBadge } from '../ui/Badge';
-import { ButtonLink } from '../ui/Button';
+import { Button, ButtonLink } from '../ui/Button';
+import { useEnquiry } from '../enquiry/EnquiryProvider';
 
 const t = en.home.hero;
 const INTERVAL_MS = 7000;
@@ -47,7 +48,8 @@ function BrandSlide() {
  * Autoplay pauses on hover, focus, a hidden tab, the pause button, and never
  * starts for people who asked their system for less motion (WCAG 2.2.2).
  */
-export function HeroSlider({ cards, tel }: { cards: PublicProjectCard[]; tel: string | null }) {
+export function HeroSlider({ cards }: { cards: PublicProjectCard[] }) {
+  const enquiry = useEnquiry();
   const slides = cards.slice(0, 5);
   const count = slides.length;
   const reduced = useReducedMotion();
@@ -178,11 +180,13 @@ export function HeroSlider({ cards, tel }: { cards: PublicProjectCard[]; tel: st
                   >
                     {t.explore}
                   </ButtonLink>
-                  {tel && (
-                    <ButtonLink href={tel} variant="onDark" icon={<PhoneCall className="size-4.5" />}>
-                      {t.bookVisit}
-                    </ButtonLink>
-                  )}
+                  <Button
+                    variant="onDark"
+                    icon={<CalendarCheck className="size-4.5" />}
+                    onClick={() => enquiry.open('visit', { project: { name: slide.name, code: slide.code } })}
+                  >
+                    {t.bookVisit}
+                  </Button>
                 </div>
               </div>
             </div>

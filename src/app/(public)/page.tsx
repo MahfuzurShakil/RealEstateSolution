@@ -2,7 +2,7 @@
 
 import { useState, ViewTransition } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowRight, Banknote, CircleCheck, FileText, Globe2, MessageCircle, PhoneCall, Video, type LucideIcon } from 'lucide-react';
+import { ArrowRight, Banknote, CircleCheck, FileText, Globe2, Mail, MessageCircle, PhoneCall, Video, type LucideIcon } from 'lucide-react';
 import { en } from '@/components/public/i18n/en';
 import { ProjectCard, ProjectCardSkeleton } from '@/components/public/ProjectCard';
 import { HERO_IMAGE, INTERIOR_IMAGE } from '@/components/public/stock-images';
@@ -15,7 +15,8 @@ import { HeroSlider } from '@/components/public/home/HeroSlider';
 import { InstalmentPlanner } from '@/components/public/home/InstalmentPlanner';
 import { SiteStrip } from '@/components/public/home/SiteStrip';
 import { CountUp, Reveal } from '@/components/public/motion';
-import { ButtonLink } from '@/components/public/ui/Button';
+import { Button, ButtonLink } from '@/components/public/ui/Button';
+import { useEnquiry } from '@/components/public/enquiry/EnquiryProvider';
 import { Container, SectionHeader } from '@/components/public/ui/SectionHeader';
 import { telLink, whatsappLink } from '@/lib/domain/public-portal';
 import { publicProjectRepository } from '@/lib/repositories/public/project.public.repository';
@@ -36,6 +37,7 @@ export default function HomePage() {
   const company = useCompanyInfo();
   const cards = useLiveQuery(() => publicProjectRepository.list(), []);
   const [tab, setTab] = useState('all');
+  const enquiry = useEnquiry();
 
   const live = (cards ?? []).filter((c) => c.stage !== 'completed');
   const kinds = BUYER_KINDS.filter((k) => live.some((c) => k.types.includes(c.project_type)));
@@ -60,7 +62,7 @@ export default function HomePage() {
           <div className="min-h-[640px] animate-pulse rounded-[28px] bg-site-night md:min-h-[700px]" />
         </section>
       ) : (
-        <HeroSlider cards={live} tel={tel} />
+        <HeroSlider cards={live} />
       )}
 
       <section className="relative z-10 -mt-44 px-4 sm:px-6 md:-mt-32">
@@ -223,11 +225,16 @@ export default function HomePage() {
           <div className="relative grid gap-12 lg:grid-cols-[1fr_1.4fr] lg:items-center">
             <Reveal>
               <SectionHeader tone="dark" eyebrow={h.nrb.eyebrow} title={h.nrb.title} accent={h.nrb.accent} lead={h.nrb.lead} />
-              {wa(h.nrb.whatsappText) && (
-                <ButtonLink href={wa(h.nrb.whatsappText)!} variant="light" className="mt-8" icon={<Video className="size-4.5" />}>
-                  {h.nrb.cta}
-                </ButtonLink>
-              )}
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Button variant="light" icon={<PhoneCall className="size-4.5" />} onClick={() => enquiry.open('callback')}>
+                  {en.enquiry.cta.callback}
+                </Button>
+                {wa(h.nrb.whatsappText) && (
+                  <ButtonLink href={wa(h.nrb.whatsappText)!} variant="onDark" icon={<Video className="size-4.5" />}>
+                    {h.nrb.cta}
+                  </ButtonLink>
+                )}
+              </div>
             </Reveal>
             <div className="grid gap-4 sm:grid-cols-2">
               {h.nrb.items.map(({ title, body }, i) => {
@@ -270,13 +277,16 @@ export default function HomePage() {
         <Reveal>
           <SectionHeader eyebrow={h.faq.eyebrow} title={h.faq.title} accent={h.faq.accent} lead={h.faq.lead} />
           <div className="mt-8 flex flex-wrap gap-3">
+            <Button icon={<Mail className="size-4.5" />} onClick={() => enquiry.open('enquiry')}>
+              {en.enquiry.cta.message}
+            </Button>
             {tel && (
-              <ButtonLink href={tel} icon={<PhoneCall className="size-4.5" />}>
+              <ButtonLink href={tel} variant="outline" icon={<PhoneCall className="size-4.5" />}>
                 <span className="tabular">{company?.phone}</span>
               </ButtonLink>
             )}
-            {company?.whatsapp_url && (
-              <ButtonLink href={company.whatsapp_url} variant="outline" icon={<MessageCircle className="size-4.5" />}>
+            {enquiry.whatsapp() && (
+              <ButtonLink href={enquiry.whatsapp()!} variant="outline" icon={<MessageCircle className="size-4.5" />}>
                 {en.nav.whatsapp}
               </ButtonLink>
             )}

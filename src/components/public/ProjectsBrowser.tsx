@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState, ViewTransition } from 'react';
-import { ChevronDown, LayoutGrid, List, Map as MapIcon, MessageCircle, SlidersHorizontal, X } from 'lucide-react';
+import { ChevronDown, LayoutGrid, List, Mail, Map as MapIcon, MessageCircle, SlidersHorizontal, X } from 'lucide-react';
 import { PROJECT_TYPES, type ProjectType } from '@/lib/db/types';
 import { PROJECT_TYPE_LABEL } from '@/lib/domain/project';
 import {
@@ -20,7 +20,8 @@ import { cn } from '@/lib/utils/cn';
 import { en } from './i18n/en';
 import { Reveal } from './motion';
 import { ProjectCard, ProjectCardSkeleton } from './ProjectCard';
-import { ButtonLink } from './ui/Button';
+import { Button, ButtonLink } from './ui/Button';
+import { useEnquiry } from './enquiry/EnquiryProvider';
 import { Container, SectionHeader } from './ui/SectionHeader';
 import { useCompanyInfo } from './useCompanyInfo';
 
@@ -130,6 +131,7 @@ export function ProjectsBrowser() {
   const router = useRouter();
   const pathname = usePathname();
   const company = useCompanyInfo();
+  const enquiry = useEnquiry();
   const [sheet, setSheet] = useState(false);
   const [shownCount, setShownCount] = useState(PAGE);
   const [hovered, setHovered] = useState<string | null>(null);
@@ -268,9 +270,12 @@ export function ProjectsBrowser() {
             {t.clearAll}
           </button>
         )}
+        <Button icon={<Mail className="size-4" />} onClick={() => enquiry.open('enquiry')}>
+          {t.tellUs}
+        </Button>
         {tellUs && (
           <ButtonLink href={tellUs} variant="whatsapp" icon={<MessageCircle className="size-4" />}>
-            {t.tellUs}
+            {en.nav.whatsapp}
           </ButtonLink>
         )}
       </div>

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Hind_Siliguri, Instrument_Serif, League_Spartan, Plus_Jakarta_Sans } from 'next/font/google';
+import { EnquiryProvider } from '@/components/public/enquiry/EnquiryProvider';
 import { SiteFooter } from '@/components/public/SiteFooter';
 import { SiteHeader } from '@/components/public/SiteHeader';
 import { WhatsAppButton } from '@/components/public/WhatsAppButton';
@@ -29,10 +30,12 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
       lang="en"
       className={`${spartan.variable} ${jakarta.variable} ${instrument.variable} ${hind.variable} site flex min-h-screen flex-col bg-site-ivory font-site text-site-ink antialiased`}
     >
-      <SiteHeader />
-      <main id="main" className="flex-1">{children}</main>
-      <SiteFooter />
-      <WhatsAppButton />
+      <EnquiryProvider>
+        <SiteHeader />
+        <main id="main" className="flex-1">{children}</main>
+        <SiteFooter />
+        <WhatsAppButton />
+      </EnquiryProvider>
     </div>
   );
 }

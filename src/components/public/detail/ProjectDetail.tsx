@@ -14,6 +14,7 @@ import {
   FileText,
   KeyRound,
   Landmark,
+  Mail,
   Layers,
   MapPin,
   MessageCircle,
@@ -27,7 +28,6 @@ import {
 import {
   PUBLIC_STAGE_LABEL,
   formatPublicPrice,
-  whatsappLink,
 } from '@/lib/domain/public-portal';
 import {
   publicProjectRepository,
@@ -36,16 +36,18 @@ import {
   type PublicProjectDetail,
 } from '@/lib/repositories/public/project.public.repository';
 import { cn } from '@/lib/utils/cn';
+import { Button } from '../ui/Button';
 import { InstalmentPlanner } from '../home/InstalmentPlanner';
 import { Reveal, useInView } from '../motion';
 import { ProjectCard, Taka } from '../ProjectCard';
 import { COVER_FALLBACK } from '../stock-images';
 import { useCompanyInfo } from '../useCompanyInfo';
 import dynamic from 'next/dynamic';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Share2 } from 'lucide-react';
 import { areaOf } from '@/lib/domain/public-portal';
 import { progressPublicRepository } from '@/lib/repositories/public/progress.public.repository';
+import { usePageSubject, useEnquiry } from '../enquiry/EnquiryProvider';
 import { en } from '../i18n/en';
 import { Availability } from './Availability';
 import { Amenities, Nearby, Papers, PaymentPlan, PlotStepper, ProgressBar, SectionNav, SitePhotos } from './DetailParts';
@@ -174,6 +176,17 @@ export function ProjectDetail({ code }: { code: string }) {
   const photos = useLiveQuery(() => progressPublicRepository.photoFeed(6, code), [code]);
   const company = useCompanyInfo();
   const [copied, setCopied] = useState(false);
+  const [unitCode, setUnitCode] = useState<string | null>(null);
+  const onUnitChange = useCallback((c: string | null) => setUnitCode(c), []);
+  const enquiry = useEnquiry();
+  usePageSubject(
+    project
+      ? {
+          project: { name: project.name, code: project.code },
+          unit: unitCode ? { code: unitCode, item: project.item_label_singular } : undefined,
+        }
+      : null,
+  );
 
   if (project === undefined) {
     return (
@@ -186,7 +199,9 @@ export function ProjectDetail({ code }: { code: string }) {
   if (project === null) return <NotFound />;
 
   const tel = company?.phone ? `tel:${company.phone.replace(/[^\d+]/g, '')}` : null;
-  const wa = (message: string) => (company?.whatsapp_number ? whatsappLink(company.whatsapp_number, message) : null);
+  // the page subject names the project, and the unit once one is picked
+  const wa = enquiry.whatsapp();
+  const about = { project: { name: project.name, code: project.code } };
   const share = async () => {
     const data = { title: project.name, text: td.shareText(project.name), url: window.location.href.split('?')[0] };
     if (navigator.share) {
@@ -197,7 +212,6 @@ export function ProjectDetail({ code }: { code: string }) {
       setTimeout(() => setCopied(false), 2000);
     }
   };
-  const projectMessage = `Hi, I'm interested in ${project.name} (${project.code}). Please share the details.`;
   const built = project.container_kind === 'tower';
   const land = project.container_kind !== 'tower';
   const handoverText = handover(project.expected_completion_date);
@@ -379,11 +393,14 @@ export function ProjectDetail({ code }: { code: string }) {
             title={land ? (project.container_kind === 'none' ? 'Share availability' : 'Plot availability') : 'Floor-wise availability'}
           >
             {project.total_count === 0 ? (
-              <p className="rounded-2xl bg-site-soft p-6 text-site-muted">
-                {project.item_label} for this project will be listed soon. Call us to register your interest.
-              </p>
+              <div className="flex flex-col items-start gap-4 rounded-2xl bg-site-soft p-6 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-site-muted">{project.item_label} for this project will be listed soon.</p>
+                <Button size="sm" icon={<Mail className="size-4" />} onClick={() => enquiry.open('enquiry', about)}>
+                  {en.enquiry.cta.register}
+                </Button>
+              </div>
             ) : (
-              <Availability project={project} whatsapp={wa} tel={tel} />
+              <Availability project={project} tel={tel} onUnitChange={onUnitChange} />
             )}
           </Section>
 
@@ -511,11 +528,13 @@ export function ProjectDetail({ code }: { code: string }) {
                         <Navigation className="size-4" aria-hidden /> {td.directions}
                       </a>
                     )}
-                    {tel && (
-                      <a href={tel} className="flex h-10 items-center gap-2 rounded-full border border-site-line px-4 text-sm font-semibold hover:border-site-primary">
-                        <PhoneCall className="size-4" aria-hidden /> Book a site visit
-                      </a>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => enquiry.open('visit', about)}
+                      className="flex h-10 items-center gap-2 rounded-full border border-site-line px-4 text-sm font-semibold hover:border-site-primary hover:text-site-primary"
+                    >
+                      <CalendarCheck className="size-4" aria-hidden /> {en.enquiry.cta.visit}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -559,21 +578,33 @@ export function ProjectDetail({ code }: { code: string }) {
                 {project.total_count ? `${project.available_count} ${project.item_label.toLowerCase()} still available` : ''}
               </p>
               <div className="mt-6 space-y-2.5">
-                {tel && (
-                  <a href={tel} className="flex items-center justify-center gap-2 rounded-full bg-site-primary px-5 py-3 font-medium text-white hover:bg-site-primary-dark">
-                    <PhoneCall className="size-4.5" /> Call {company?.phone}
-                  </a>
-                )}
-                {wa(projectMessage) && (
-                  <a
-                    href={wa(projectMessage)!}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-2 rounded-full border border-site-line px-5 py-3 font-medium hover:border-site-primary hover:text-site-primary"
-                  >
-                    <MessageCircle className="size-4.5" /> WhatsApp us
-                  </a>
-                )}
+                <Button className="w-full" icon={<Mail className="size-4.5" />} onClick={() => enquiry.open('enquiry', about)}>
+                  {en.enquiry.cta.enquire}
+                </Button>
+                <Button variant="outline" className="w-full" icon={<CalendarCheck className="size-4.5" />} onClick={() => enquiry.open('visit', about)}>
+                  {en.enquiry.cta.visit}
+                </Button>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {tel && (
+                    <a href={tel} className="flex items-center justify-center gap-2 rounded-full border border-site-line px-4 py-2.5 text-sm font-semibold hover:border-site-primary hover:text-site-primary">
+                      <PhoneCall className="size-4" aria-hidden /> {en.nav.call}
+                    </a>
+                  )}
+                  {wa && (
+                    <a
+                      href={wa}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={cn(
+                        'flex items-center justify-center gap-2 rounded-full border border-site-line px-4 py-2.5 text-sm font-semibold hover:border-site-whatsapp hover:text-site-whatsapp',
+                        !tel && 'col-span-2',
+                      )}
+                    >
+                      <MessageCircle className="size-4" aria-hidden /> {en.nav.whatsapp}
+                    </a>
+                  )}
+                </div>
+                {company?.phone && <p className="tabular pt-1 text-center text-sm text-site-muted">{en.nav.hotline} {company.phone}</p>}
               </div>
               <p className="mt-5 border-t border-site-line pt-4 text-sm text-site-muted">
                 Free site visit · Land papers shown before booking · Project code {project.code}
@@ -598,21 +629,29 @@ export function ProjectDetail({ code }: { code: string }) {
         </section>
       )}
 
-      {/* phones: call and WhatsApp stay within thumb reach */}
+      {/* phones: enquiry, call and WhatsApp stay within thumb reach */}
       <div className="fixed inset-x-0 bottom-0 z-40 flex gap-2 border-t border-site-line bg-white/95 p-3 backdrop-blur lg:hidden">
+        <button
+          type="button"
+          onClick={() => enquiry.open('enquiry', enquiry.page ?? about)}
+          className="flex flex-[1.4] items-center justify-center gap-2 rounded-full bg-site-primary py-3 font-medium text-white"
+        >
+          <Mail className="size-4.5" aria-hidden /> {en.enquiry.cta.short}
+        </button>
         {tel && (
-          <a href={tel} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-site-primary py-3 font-medium text-white">
-            <PhoneCall className="size-4.5" /> Call
+          <a href={tel} aria-label={`${en.nav.call} ${company?.phone ?? ''}`} className="flex flex-1 items-center justify-center gap-2 rounded-full border border-site-line py-3 font-medium">
+            <PhoneCall className="size-4.5" aria-hidden /> {en.nav.call}
           </a>
         )}
-        {wa(projectMessage) && (
+        {wa && (
           <a
-            href={wa(projectMessage)!}
+            href={wa}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex flex-1 items-center justify-center gap-2 rounded-full border border-site-line py-3 font-medium"
+            aria-label={en.nav.chatOnWhatsapp}
+            className="flex flex-1 items-center justify-center gap-2 rounded-full border border-site-line py-3 font-medium text-site-whatsapp"
           >
-            <MessageCircle className="size-4.5" /> WhatsApp
+            <MessageCircle className="size-4.5" aria-hidden /> {en.nav.whatsapp}
           </a>
         )}
       </div>
