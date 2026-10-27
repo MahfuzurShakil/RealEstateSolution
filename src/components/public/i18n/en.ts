@@ -349,6 +349,26 @@ export const en = {
     project: (project: string, code: string) => `Hi, I'm interested in ${project}. Code ${code}`,
     unit: (project: string, item: string, unit: string, code: string) => `Hi, I'm interested in ${project} – ${item} ${unit}. Code ${code}`,
   },
+  testimonials: {
+    eyebrow: 'What buyers say',
+    title: 'Families who',
+    accent: 'bought with us',
+    lead: 'In their own words — about the home, the papers and how we kept our promises.',
+    stars: (n: number) => `${n} out of 5 stars`,
+    prev: 'Previous',
+    next: 'Next',
+  },
+  team: {
+    eyebrow: 'Our people',
+    title: 'The team',
+    accent: 'behind every project',
+  },
+  awards: {
+    eyebrow: 'Recognition',
+    title: 'Awards, certifications',
+    accent: '& memberships',
+    kinds: { award: 'Award', certification: 'Certification', membership: 'Membership' },
+  },
   about: {
     eyebrow: 'About us',
     title: 'We build homes',

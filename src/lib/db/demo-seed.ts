@@ -81,6 +81,7 @@ import { DEMO_PROJECTS } from './demo-projects';
 import { templateForItem, towerBasements, workTypeDef } from '../domain/construction-cost';
 import { DEMO_MATERIAL_REQUESTS, DEMO_TOWER_PROGRESS } from './demo-site-progress';
 import { DEMO_EXPENSES, DEMO_REFUNDS } from './demo-finance';
+import { ensureDemoWebsiteContent, forgetDemoWebsiteContent } from './demo-website';
 import {
   DEMO_PURCHASE_ORDERS,
   DEMO_STOCK_ISSUES,
@@ -2822,13 +2823,20 @@ export async function clearDemoData(): Promise<void> {
     db.fund_receipts.clear(),
     db.fund_allocations.clear(),
     db.user_project_assignments.clear(),
+    // W7 website content: samples go with the rest, and come back on reload
+    db.testimonials.clear(),
+    db.team_members.clear(),
+    db.awards.clear(),
+    db.faq_items.clear(),
   ]);
+  forgetDemoWebsiteContent();
   setClearedFlag(true);
 }
 
 export async function resetDemoData(createdBy: string | null = null): Promise<void> {
   await clearDemoData();
   await seedDemoData(createdBy);
+  await ensureDemoWebsiteContent();
 }
 
 /**

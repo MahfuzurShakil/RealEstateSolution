@@ -2,6 +2,7 @@
 
 import { useLiveQuery } from 'dexie-react-hooks';
 import { CalendarCheck, CheckCircle2, Receipt } from 'lucide-react';
+import { publicContentRepository } from '@/lib/repositories/public/content.public.repository';
 import { publicProjectRepository } from '@/lib/repositories/public/project.public.repository';
 import { useEnquiry } from '../enquiry/EnquiryProvider';
 import { BuyerFaq } from '../home/BuyerFaq';
@@ -24,6 +25,7 @@ const PAPER_KINDS = ['tower', 'block', 'none'] as const;
 export function GuidePage() {
   const enquiry = useEnquiry();
   const cards = useLiveQuery(() => publicProjectRepository.list(), []);
+  const faqs = useLiveQuery(() => publicContentRepository.faqs(), []);
   const flatPrices = (cards ?? [])
     .filter((c) => c.stage !== 'completed' && c.project_type !== 'plot_development' && c.project_type !== 'land_share' && c.price_from)
     .map((c) => c.price_from!);
@@ -109,7 +111,7 @@ export function GuidePage() {
             <SectionHeader eyebrow={en.home.faq.eyebrow} title={t.faqTitle} lead={en.home.faq.lead} />
           </Reveal>
           <Reveal delay={120}>
-            <BuyerFaq />
+            {faqs !== undefined && <BuyerFaq items={faqs.map((f) => ({ q: f.question, a: f.answer }))} />}
           </Reveal>
         </section>
 

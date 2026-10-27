@@ -157,6 +157,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Users & Roles', href: '/admin/users', module: 'user_management' },
       { label: 'Master Data', href: '/admin/master-data', module: 'master_data' },
       { label: 'Company Settings', href: '/admin/settings', module: 'master_data' },
+      { label: 'Website Content', href: '/admin/website', module: 'master_data' },
     ],
   },
 ];

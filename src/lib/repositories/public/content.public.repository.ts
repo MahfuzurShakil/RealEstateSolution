@@ -1,7 +1,8 @@
 'use client';
 
 import { db } from '../../db/database';
-import { whatsappLink } from '../../domain/public-portal';
+import type { AwardKind, FaqCategory } from '../../db/types';
+import { isPubliclyVisible, whatsappLink } from '../../domain/public-portal';
 
 /**
  * Public Portal P1 — the company as the website introduces it
@@ -52,6 +53,41 @@ export async function publicShowsPrices(): Promise<boolean> {
   return settings?.public_show_prices !== false;
 }
 
+/* W7 website content — built field by field, published rows only. */
+export interface PublicTestimonial {
+  id: string;
+  buyer_name: string;
+  buyer_detail: string | null;
+  quote: string;
+  rating: number | null;
+  photo_url: string | null;
+  /** only while that project is itself on the website */
+  project: { name: string; code: string } | null;
+}
+export interface PublicTeamMember {
+  id: string;
+  name: string;
+  title: string;
+  bio: string | null;
+  photo_url: string | null;
+}
+export interface PublicAward {
+  id: string;
+  kind: AwardKind;
+  title: string;
+  issuer: string | null;
+  year: number | null;
+}
+export interface PublicFaq {
+  id: string;
+  category: FaqCategory;
+  question: string;
+  answer: string;
+}
+
+const byOrder = (a: { sort_order: number; created_at: string }, b: { sort_order: number; created_at: string }) =>
+  a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at);
+
 export const publicContentRepository = {
   async company(): Promise<PublicCompanyInfo> {
     const settings = (await db.company_settings.limit(1).toArray())[0];
@@ -85,5 +121,44 @@ export const publicContentRepository = {
       rehab_member_no: clean(settings?.rehab_member_no),
       show_prices: settings?.public_show_prices !== false,
     };
+  },
+
+  async testimonials(): Promise<PublicTestimonial[]> {
+    const rows = (await db.testimonials.toArray()).filter((r) => r.is_published && r.quote.trim()).sort(byOrder);
+    const projects = new Map((await db.projects.toArray()).filter(isPubliclyVisible).map((p) => [p.id, p]));
+    return rows.map((r) => {
+      const p = r.project_id ? projects.get(r.project_id) : undefined;
+      return {
+        id: r.id,
+        buyer_name: r.buyer_name,
+        buyer_detail: clean(r.buyer_detail),
+        quote: r.quote.trim(),
+        rating: r.rating && r.rating >= 1 && r.rating <= 5 ? Math.round(r.rating) : null,
+        photo_url: webUrl(r.photo_url),
+        project: p ? { name: p.name, code: p.code } : null,
+      };
+    });
+  },
+
+  async team(): Promise<PublicTeamMember[]> {
+    return (await db.team_members.toArray())
+      .filter((r) => r.is_published)
+      .sort(byOrder)
+      .map((r) => ({ id: r.id, name: r.name, title: r.title, bio: clean(r.bio), photo_url: webUrl(r.photo_url) }));
+  },
+
+  async awards(): Promise<PublicAward[]> {
+    return (await db.awards.toArray())
+      .filter((r) => r.is_published)
+      .sort(byOrder)
+      .map((r) => ({ id: r.id, kind: r.kind, title: r.title, issuer: clean(r.issuer), year: r.year ?? null }));
+  },
+
+  /** Published FAQ items; empty means the site falls back to its built-in questions. */
+  async faqs(category?: FaqCategory): Promise<PublicFaq[]> {
+    return (await db.faq_items.toArray())
+      .filter((r) => r.is_published && (!category || r.category === category))
+      .sort(byOrder)
+      .map((r) => ({ id: r.id, category: r.category, question: r.question, answer: r.answer }));
   },
 };

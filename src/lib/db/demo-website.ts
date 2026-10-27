@@ -141,3 +141,92 @@ export async function ensureDemoWebsiteText(): Promise<void> {
     public_show_prices: true,
   });
 }
+
+const CONTENT_FLAG = 'demo-website-content-seeded';
+
+/**
+ * Sample testimonials, team, awards and FAQ (W7) for the sample company.
+ * Seeded once per demo load: the flag stops a user who deliberately emptied
+ * a list from getting the samples back on the next visit, and "Reload sample
+ * data" (which clears the tables and the flag) brings them back.
+ */
+export async function ensureDemoWebsiteContent(): Promise<void> {
+  try {
+    if (localStorage.getItem(CONTENT_FLAG) === '1') return;
+  } catch {
+    return;
+  }
+  const settings = (await db.company_settings.limit(1).toArray())[0];
+  if (!settings || settings.company_name !== 'Nokshi Properties Ltd.') return;
+  const counts = await Promise.all([db.testimonials.count(), db.team_members.count(), db.awards.count(), db.faq_items.count()]);
+  if (counts.some((n) => n > 0)) return;
+
+  const projectId = async (name: string) => (await db.projects.toArray()).find((p) => p.name === name)?.id ?? null;
+  const now = new Date().toISOString();
+  const base = (i: number) => ({ id: crypto.randomUUID(), created_at: now, updated_at: now, created_by: null, is_published: true, sort_order: i + 1 });
+
+  await db.testimonials.bulkAdd([
+    {
+      ...base(0),
+      buyer_name: 'Farhana Akter',
+      buyer_detail: 'Flat owner, Nokshi Green Residence',
+      project_id: await projectId('Nokshi Green Residence'),
+      quote: 'They showed us every land paper at the site office before we paid a taka. Two years on, the instalments and the handover date are exactly as written in our agreement.',
+      rating: 5,
+      photo_url: null,
+    },
+    {
+      ...base(1),
+      buyer_name: 'Mahbub Rahman',
+      buyer_detail: 'Bought from Riyadh',
+      project_id: null,
+      quote: 'I live in Saudi Arabia and booked after a video call on WhatsApp. My brother signed with a power of attorney, and I get the progress photos every month.',
+      rating: 5,
+      photo_url: null,
+    },
+    {
+      ...base(2),
+      buyer_name: 'Shirin & Kamal Hossain',
+      buyer_detail: 'Plot owners, Kanchan Model Town',
+      project_id: await projectId('Nokshi Kanchan Model Town'),
+      quote: 'The plot was measured with us on site, the road was built as promised, and the mutation was done within weeks of registration.',
+      rating: 4,
+      photo_url: null,
+    },
+  ]);
+
+  await db.team_members.bulkAdd([
+    { ...base(0), name: 'Abdul Karim', title: 'Managing Director', bio: 'Founded the company in 2008 after twenty years in civil construction.', photo_url: null },
+    { ...base(1), name: 'Nasrin Sultana', title: 'Director, Sales', bio: 'Leads the sales desk and every buyer’s agreement, from booking to registration.', photo_url: null },
+    { ...base(2), name: 'Engr. Tanvir Ahmed', title: 'Head of Construction', bio: 'Structural engineer; runs all our sites and the monthly progress reports.', photo_url: null },
+    { ...base(3), name: 'Rezaul Haque', title: 'Head of Land', bio: 'Checks every land paper and works with landowners on joint ventures.', photo_url: null },
+  ]);
+
+  await db.awards.bulkAdd([
+    { ...base(0), kind: 'membership', title: 'Member, Real Estate & Housing Association of Bangladesh', issuer: 'REHAB', year: 2010 },
+    { ...base(1), kind: 'certification', title: 'ISO 9001:2015 Quality Management', issuer: 'Bureau Veritas', year: 2022 },
+    { ...base(2), kind: 'award', title: 'Best Mid-size Residential Project', issuer: 'REHAB Fair', year: 2024 },
+  ]);
+
+  // the built-in buyer questions become editable rows
+  const { en } = await import('../../components/public/i18n/en');
+  const topics = ['buying', 'papers', 'payment', 'payment', 'papers', 'abroad'] as const;
+  await db.faq_items.bulkAdd(
+    en.home.faq.items.map((item, i) => ({ ...base(i), category: topics[i] ?? 'other', question: item.q, answer: item.a })),
+  );
+
+  try {
+    localStorage.setItem(CONTENT_FLAG, '1');
+  } catch {
+    /* private mode: the empty-table check above still prevents duplicates */
+  }
+}
+
+/** Called by `clearDemoData`, so "Reload sample data" seeds the samples again. */
+export function forgetDemoWebsiteContent(): void {
+  try {
+    localStorage.removeItem(CONTENT_FLAG);
+  } catch {
+    /* nothing to forget */
+  }
+}

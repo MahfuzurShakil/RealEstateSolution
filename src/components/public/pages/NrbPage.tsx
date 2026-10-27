@@ -38,13 +38,13 @@ export function NrbPage() {
         </Reveal>
         <ol className="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-5">
           {t.steps.map((s, i) => (
-            <Reveal key={s.title} delay={i * 80}>
-              <li className="h-full list-none rounded-[20px] border border-site-line bg-white p-6">
+            <li key={s.title}>
+              <Reveal delay={i * 80} className="h-full rounded-[20px] border border-site-line bg-white p-6">
                 <span className="font-display tabular grid size-10 place-items-center rounded-full bg-site-primary text-lg font-bold text-white">{i + 1}</span>
                 <p className="mt-5 text-lg font-semibold">{s.title}</p>
                 <p className="mt-2 text-site-muted">{s.body}</p>
-              </li>
-            </Reveal>
+              </Reveal>
+            </li>
           ))}
         </ol>
       </Container>

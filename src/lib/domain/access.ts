@@ -358,6 +358,7 @@ const ROUTE_MODULES: Array<[string, ModuleKey]> = [
   ['/admin/users', 'user_management'],
   ['/admin/master-data', 'master_data'],
   ['/admin/settings', 'master_data'],
+  ['/admin/website', 'master_data'],
 ];
 
 export function moduleForPath(pathname: string): ModuleKey | null {

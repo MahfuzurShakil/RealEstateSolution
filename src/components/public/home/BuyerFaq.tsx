@@ -12,12 +12,14 @@ import { en } from '../i18n/en';
  */
 const FAQ = en.home.faq.items;
 
-export function BuyerFaq() {
+/** `items` are the questions from Admin → Website content; empty or absent → the built-in ones. */
+export function BuyerFaq({ items }: { items?: readonly { q: string; a: string }[] }) {
   const [open, setOpen] = useState(0);
+  const list = items?.length ? items : FAQ;
 
   return (
     <div className="divide-y divide-site-line rounded-2xl border border-site-line bg-white">
-      {FAQ.map((item, i) => {
+      {list.map((item, i) => {
         const isOpen = open === i;
         return (
           <div key={item.q}>

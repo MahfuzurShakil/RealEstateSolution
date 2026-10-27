@@ -3,6 +3,10 @@
 import Dexie, { type EntityTable } from 'dexie';
 import { backfillMaterialItems } from './backfill-material-items';
 import type {
+  Award,
+  FaqItem,
+  TeamMember,
+  Testimonial,
   BankAccount,
   Booking,
   CompanySettings,
@@ -168,6 +172,12 @@ export class AppDatabase extends Dexie {
 
   // Module 8 — User & Role Management
   user_project_assignments!: EntityTable<UserProjectAssignment, 'id'>;
+
+  // Public website content (W7)
+  testimonials!: EntityTable<Testimonial, 'id'>;
+  team_members!: EntityTable<TeamMember, 'id'>;
+  awards!: EntityTable<Award, 'id'>;
+  faq_items!: EntityTable<FaqItem, 'id'>;
 
   constructor() {
     super('realestate_platform');
@@ -914,6 +924,18 @@ export class AppDatabase extends Dexie {
           if (w) await tx.table('lands').update(land.id, { front_road_width_ft: w });
         }
       });
+
+    /*
+     * v40 — website content (W7): testimonials, team, awards and FAQ, edited
+     * under Admin → Website content. `is_published` is a boolean, which
+     * IndexedDB cannot index, so lists are filtered after the read.
+     */
+    this.version(40).stores({
+      testimonials: 'id, project_id, sort_order',
+      team_members: 'id, sort_order',
+      awards: 'id, kind, sort_order',
+      faq_items: 'id, category, sort_order',
+    });
   }
 }
 

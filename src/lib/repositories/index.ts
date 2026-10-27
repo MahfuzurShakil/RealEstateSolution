@@ -262,3 +262,9 @@ export {
   type StatementEntry,
   type StatementPartner,
 } from './project-statement.repository';
+export {
+  testimonialRepository,
+  teamMemberRepository,
+  awardRepository,
+  faqItemRepository,
+} from './website-content.repository';

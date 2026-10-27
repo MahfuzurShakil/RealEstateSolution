@@ -3001,3 +3001,60 @@ export interface UserProjectAssignment extends BaseEntity {
   user_id: UUID;
   project_id: UUID;
 }
+
+/* ------------------------------------------------------------------ *
+ * Website content (PUBLIC-WEBSITE-MASTER-PLAN.md §10, batch W7) — v40
+ *
+ * Small tables the Admin "Website content" screen edits and the public site
+ * reads through `content.public.repository.ts`. Nothing here is internal:
+ * each row exists to be published, so `is_published` is the only gate.
+ * ------------------------------------------------------------------ */
+
+/** A buyer's words about a delivered home or a purchase. */
+export interface Testimonial extends BaseEntity {
+  buyer_name: string;
+  /** shown under the name, e.g. "Flat owner, Uttara Heights" */
+  buyer_detail?: string | null;
+  /** optional link to the project it is about */
+  project_id?: UUID | null;
+  quote: string;
+  /** 1–5; null shows no stars */
+  rating?: number | null;
+  photo_url?: string | null;
+  is_published: boolean;
+  sort_order: number;
+}
+
+export interface TeamMember extends BaseEntity {
+  name: string;
+  /** e.g. "Managing Director" */
+  title: string;
+  bio?: string | null;
+  photo_url?: string | null;
+  is_published: boolean;
+  sort_order: number;
+}
+
+export const AWARD_KINDS = ['award', 'certification', 'membership'] as const;
+export type AwardKind = (typeof AWARD_KINDS)[number];
+
+/** Awards, certifications and memberships (REHAB, ISO …) for the About page. */
+export interface Award extends BaseEntity {
+  kind: AwardKind;
+  title: string;
+  issuer?: string | null;
+  year?: number | null;
+  is_published: boolean;
+  sort_order: number;
+}
+
+export const FAQ_CATEGORIES = ['buying', 'payment', 'papers', 'abroad', 'other'] as const;
+export type FaqCategory = (typeof FAQ_CATEGORIES)[number];
+
+export interface FaqItem extends BaseEntity {
+  category: FaqCategory;
+  question: string;
+  answer: string;
+  is_published: boolean;
+  sort_order: number;
+}

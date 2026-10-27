@@ -1,7 +1,8 @@
 'use client';
 
 import { useLiveQuery } from 'dexie-react-hooks';
-import { BadgeCheck, CalendarCheck, Camera, FileCheck2, HandCoins, ReceiptText, type LucideIcon } from 'lucide-react';
+import { Award as AwardIcon, BadgeCheck, CalendarCheck, Camera, FileCheck2, HandCoins, ReceiptText, type LucideIcon } from 'lucide-react';
+import { publicContentRepository } from '@/lib/repositories/public/content.public.repository';
 import { publicProjectRepository } from '@/lib/repositories/public/project.public.repository';
 import { cn } from '@/lib/utils/cn';
 import { useEnquiry } from '../enquiry/EnquiryProvider';
@@ -26,6 +27,8 @@ export function AboutPage() {
   const company = useCompanyInfo();
   const cards = useLiveQuery(() => publicProjectRepository.list(), []);
   const enquiry = useEnquiry();
+  const team = useLiveQuery(() => publicContentRepository.team(), []);
+  const awards = useLiveQuery(() => publicContentRepository.awards(), []);
 
   const live = (cards ?? []).filter((c) => c.stage !== 'completed');
   const years = company?.established_year ? new Date().getFullYear() - company.established_year : 0;
@@ -126,6 +129,60 @@ export function AboutPage() {
           )}
         </Container>
       </section>
+
+      {team && team.length > 0 && (
+        <Container className="mt-24">
+          <Reveal>
+            <SectionHeader eyebrow={en.team.eyebrow} title={en.team.title} accent={en.team.accent} />
+          </Reveal>
+          <ul className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {team.map((m, i) => (
+              <li key={m.id}>
+                <Reveal delay={(i % 4) * 80}>
+                  {m.photo_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- any https host from Admin; next/image needs each one allowed
+                    <img src={m.photo_url} alt={m.name} loading="lazy" className="aspect-[4/5] w-full rounded-[20px] object-cover" />
+                  ) : (
+                    <div aria-hidden className="font-display grid aspect-[4/5] w-full place-items-center rounded-[20px] bg-site-soft text-6xl font-semibold text-site-primary">
+                      {m.name.charAt(0)}
+                    </div>
+                  )}
+                  <p className="mt-4 text-lg font-semibold">{m.name}</p>
+                  <p className="text-site-primary">{m.title}</p>
+                  {m.bio && <p className="mt-2 text-sm leading-relaxed text-site-muted">{m.bio}</p>}
+                </Reveal>
+              </li>
+            ))}
+          </ul>
+        </Container>
+      )}
+
+      {awards && awards.length > 0 && (
+        <Container className="mt-24">
+          <Reveal>
+            <SectionHeader eyebrow={en.awards.eyebrow} title={en.awards.title} accent={en.awards.accent} />
+          </Reveal>
+          <ul className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {awards.map((a, i) => (
+              <li key={a.id}>
+                <Reveal delay={(i % 3) * 80} className="flex h-full gap-4 rounded-[20px] border border-site-line bg-white p-5">
+                  <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-site-primary-soft text-site-primary">
+                    <AwardIcon className="size-6" aria-hidden />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-xs font-semibold tracking-[0.14em] text-site-brass-dark uppercase">
+                      {en.awards.kinds[a.kind]}
+                      {a.year ? ` · ${a.year}` : ''}
+                    </span>
+                    <span className="mt-1 block font-semibold">{a.title}</span>
+                    {a.issuer && <span className="block text-sm text-site-muted">{a.issuer}</span>}
+                  </span>
+                </Reveal>
+              </li>
+            ))}
+          </ul>
+        </Container>
+      )}
 
       <Container className="mt-24">
         <Reveal>

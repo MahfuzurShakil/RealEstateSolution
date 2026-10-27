@@ -14,6 +14,8 @@ import { HeroSearch, BUYER_KINDS } from '@/components/public/home/HeroSearch';
 import { HeroSlider } from '@/components/public/home/HeroSlider';
 import { InstalmentPlanner } from '@/components/public/home/InstalmentPlanner';
 import { SiteStrip } from '@/components/public/home/SiteStrip';
+import { Testimonials } from '@/components/public/home/Testimonials';
+import { publicContentRepository } from '@/lib/repositories/public/content.public.repository';
 import { CountUp, Reveal } from '@/components/public/motion';
 import { Button, ButtonLink } from '@/components/public/ui/Button';
 import { useEnquiry } from '@/components/public/enquiry/EnquiryProvider';
@@ -24,7 +26,7 @@ import { cn } from '@/lib/utils/cn';
 
 /*
  * Home (PUBLIC-WEBSITE-MASTER-PLAN.md §7.1). Section order: hero → search →
- * trust numbers → projects on sale → areas → live site photos → why us →
+ * trust numbers → projects on sale → areas → live site photos → why us → testimonials →
  * buying steps → payment planner → buyers abroad → landowners → FAQ.
  * Every project fact comes from the public repositories; every word from
  * i18n/en.ts. Sections with no data hide themselves.
@@ -36,6 +38,8 @@ const NRB_ICONS: LucideIcon[] = [Video, FileText, Banknote, Globe2];
 export default function HomePage() {
   const company = useCompanyInfo();
   const cards = useLiveQuery(() => publicProjectRepository.list(), []);
+  const testimonials = useLiveQuery(() => publicContentRepository.testimonials(), []);
+  const faqs = useLiveQuery(() => publicContentRepository.faqs(), []);
   const [tab, setTab] = useState('all');
   const enquiry = useEnquiry();
 
@@ -199,6 +203,9 @@ export default function HomePage() {
       </Container>
 
       {/* how buying works */}
+      {/* buyers' words — hidden until Admin → Website content has one published */}
+      <Testimonials items={testimonials ?? []} className="mt-24 md:mt-28" />
+
       <section className="mt-24 bg-site-soft py-20 md:mt-28 md:py-24">
         <Container>
           <Reveal>
@@ -293,7 +300,7 @@ export default function HomePage() {
           </div>
         </Reveal>
         <Reveal delay={120}>
-          <BuyerFaq />
+          {faqs !== undefined && <BuyerFaq items={faqs.map((f) => ({ q: f.question, a: f.answer }))} />}
         </Reveal>
       </Container>
     </>
