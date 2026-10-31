@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ArrowLeft, BadgeCheck, Building, CheckCircle2, ChevronDown, ChevronRight, Clock, CreditCard, FlaskConical, Landmark, Loader2, Lock, ShieldCheck, Smartphone, X } from 'lucide-react';
+import { CompanyEmblem } from '@/components/public/BrandMark';
 import { useCompanyInfo } from '@/components/public/useCompanyInfo';
 import { allocationLabel, formatTaka, viewHolding, type HoldingView, type InvestorSnapshot, type PaymentMethod } from '@/lib/domain/investor-portal';
 import { investorRepository, type GatewayOutcome, type PaymentIntent } from '@/lib/repositories/investor/investor.mock.repository';
@@ -234,7 +235,7 @@ export function GatewayScreen({ intentId }: { intentId: string }) {
           {/* order summary */}
           <aside className="border-b border-slate-200 bg-slate-50 p-4 sm:p-6 md:border-r md:border-b-0">
             <div className="flex items-center gap-3">
-              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-slate-900 text-lg font-bold text-white sm:size-11">{merchant.charAt(0)}</span>
+              <CompanyEmblem name={merchant} className="sm:size-11" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-semibold">{merchant}</span>
                 <span className="flex items-center gap-1 text-xs text-emerald-700">

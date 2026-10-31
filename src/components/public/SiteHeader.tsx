@@ -152,7 +152,7 @@ export function SiteHeader() {
         {t.skipToContent}
       </a>
       <div className="mx-auto flex h-18 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:h-20">
-        <Link href="/" className="min-w-0 rounded-xl">
+        <Link href="/" className="min-w-0 rounded-xl xl:shrink-0">
           <BrandMark company={company} />
         </Link>
 
@@ -171,7 +171,7 @@ export function SiteHeader() {
                   // a click right after hover-open would otherwise close the menu again
                   onClick={() => setMega((m) => (m && Date.now() - hoverOpenedAt.current < 500 ? true : !m))}
                   className={cn(
-                    'flex items-center gap-1 rounded-full px-3 py-2 text-[15px] font-medium whitespace-nowrap transition-colors hover:text-site-primary xl:px-4',
+                    'flex items-center gap-1 rounded-full px-2 py-2 text-[15px] font-medium whitespace-nowrap transition-colors hover:text-site-primary xl:px-4',
                     (isActive(item.href) || mega) && 'text-site-primary',
                   )}
                 >
@@ -196,7 +196,7 @@ export function SiteHeader() {
                 href={item.href}
                 aria-current={isActive(item.href) ? 'page' : undefined}
                 className={cn(
-                  'rounded-full px-3 py-2 text-[15px] font-medium whitespace-nowrap transition-colors hover:text-site-primary xl:px-4',
+                  'rounded-full px-2 py-2 text-[15px] font-medium whitespace-nowrap transition-colors hover:text-site-primary xl:px-4',
                   isActive(item.href) && 'text-site-primary',
                 )}
               >
@@ -206,7 +206,7 @@ export function SiteHeader() {
           )}
         </nav>
 
-        <div className="hidden items-center gap-5 lg:flex">
+        <div className="hidden items-center gap-3 lg:flex xl:gap-5">
           {/* five nav links leave no room for the number below xl: an icon there, the full hotline from xl */}
           {tel && (
             <a
@@ -224,19 +224,22 @@ export function SiteHeader() {
               </span>
               <span className="leading-tight">
                 <span className="block text-xs text-site-muted">{t.hotline}</span>
-                <span className="tabular block text-[15px] font-semibold">{company?.phone}</span>
+                <span className="tabular block text-[15px] font-semibold whitespace-nowrap">{company?.phone}</span>
               </span>
             </a>
           )}
-          {/* the Customer Portal (customers of type Investor): an icon below 2xl, the label from 2xl, so the hotline keeps one line */}
+          {/*
+            The Customer Portal (customers of type Investor), as an icon at every
+            width: the header is capped at max-w-7xl, so a text label here takes
+            its room from the company name and the hotline, never from spare space.
+          */}
           <Link
             href="/investor/login"
             aria-label={t.customerLogin}
             title={t.customerLogin}
-            className="flex items-center gap-2 rounded-full text-[15px] font-semibold whitespace-nowrap transition-colors hover:text-site-primary"
+            className="grid size-10 shrink-0 place-items-center rounded-full border border-site-line bg-white text-site-ink transition-colors hover:border-site-primary hover:text-site-primary"
           >
-            <CircleUserRound className="size-6 text-site-primary" aria-hidden />
-            <span className="hidden 2xl:inline">{t.customerLogin}</span>
+            <CircleUserRound className="size-5" aria-hidden />
           </Link>
           <Button size="md" onClick={() => enquiry.open('visit', enquiry.page ?? {})}>
             {t.bookVisit}
