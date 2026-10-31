@@ -28,6 +28,7 @@ export const en = {
     bookVisit: 'Book a site visit',
     openMenu: 'Open menu',
     closeMenu: 'Close menu',
+    customerLogin: 'Customer login',
     skipToContent: 'Skip to content',
     call: 'Call',
     whatsapp: 'WhatsApp',

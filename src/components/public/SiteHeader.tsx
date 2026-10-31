@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowRight, CalendarCheck, ChevronDown, MapPin, Menu, MessageCircle, PhoneCall, X } from 'lucide-react';
+import { ArrowRight, CalendarCheck, ChevronDown, CircleUserRound, MapPin, Menu, MessageCircle, PhoneCall, X } from 'lucide-react';
 import { formatPublicPrice, telLink } from '@/lib/domain/public-portal';
 import { cn } from '@/lib/utils/cn';
 import { BrandMark } from './BrandMark';
@@ -228,6 +228,16 @@ export function SiteHeader() {
               </span>
             </a>
           )}
+          {/* the Customer Portal (customers of type Investor): an icon below 2xl, the label from 2xl, so the hotline keeps one line */}
+          <Link
+            href="/investor/login"
+            aria-label={t.customerLogin}
+            title={t.customerLogin}
+            className="flex items-center gap-2 rounded-full text-[15px] font-semibold whitespace-nowrap transition-colors hover:text-site-primary"
+          >
+            <CircleUserRound className="size-6 text-site-primary" aria-hidden />
+            <span className="hidden 2xl:inline">{t.customerLogin}</span>
+          </Link>
           <Button size="md" onClick={() => enquiry.open('visit', enquiry.page ?? {})}>
             {t.bookVisit}
           </Button>
@@ -334,6 +344,9 @@ export function SiteHeader() {
           >
             {t.bookVisit}
           </Button>
+          <ButtonLink href="/investor/login" variant="ghost" icon={<CircleUserRound className="size-4" />} className="col-span-2 w-full" onClick={() => setOpen(false)}>
+            {t.customerLogin}
+          </ButtonLink>
         </div>
       </div>,
       // the public shell carries the font variables, so the sheet keeps the brand type

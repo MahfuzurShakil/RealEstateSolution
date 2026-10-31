@@ -1,16 +1,9 @@
 import type { Metadata } from 'next';
-import { Hind_Siliguri, Instrument_Serif, League_Spartan, Plus_Jakarta_Sans } from 'next/font/google';
 import { EnquiryProvider } from '@/components/public/enquiry/EnquiryProvider';
 import { SiteFooter } from '@/components/public/SiteFooter';
 import { SiteHeader } from '@/components/public/SiteHeader';
+import { SITE_FONT_VARS } from '@/components/public/site-fonts';
 import { WhatsAppButton } from '@/components/public/WhatsAppButton';
-
-// The brand's type (master plan §5.2) is declared here once, so a rebrand changes one file.
-const spartan = League_Spartan({ variable: '--font-spartan', subsets: ['latin'] });
-const jakarta = Plus_Jakarta_Sans({ variable: '--font-jakarta', subsets: ['latin'] });
-const instrument = Instrument_Serif({ variable: '--font-instrument', subsets: ['latin'], weight: ['400'], style: ['italic'] });
-// only for the ৳ sign, which the Latin faces do not draw
-const hind = Hind_Siliguri({ variable: '--font-hind', subsets: ['bengali'], weight: ['600'] });
 
 export const metadata: Metadata = {
   title: 'Apartments, plots and land shares',
@@ -28,7 +21,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
     <div
       id="site-root"
       lang="en"
-      className={`${spartan.variable} ${jakarta.variable} ${instrument.variable} ${hind.variable} site flex min-h-screen flex-col bg-site-ivory font-site text-site-ink antialiased`}
+      className={`${SITE_FONT_VARS} site flex min-h-screen flex-col bg-site-ivory font-site text-site-ink antialiased`}
     >
       <EnquiryProvider>
         <SiteHeader />

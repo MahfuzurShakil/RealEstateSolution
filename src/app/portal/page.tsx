@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowRight, Building2, CheckCircle2, Globe, LayoutDashboard, type LucideIcon } from 'lucide-react';
+import { ArrowRight, Building2, CheckCircle2, CircleUserRound, Globe, LayoutDashboard, type LucideIcon } from 'lucide-react';
 import { HERO_IMAGE } from '@/components/public/stock-images';
 import { publicContentRepository } from '@/lib/repositories/public/content.public.repository';
 import { cn } from '@/lib/utils/cn';
@@ -50,6 +50,20 @@ const PORTALS: {
       tick: 'text-site-primary',
     },
   },
+  {
+    href: '/investor/login',
+    icon: CircleUserRound,
+    title: 'Customer Portal',
+    who: 'For customers of type Investor',
+    body: 'Share owners sign in to see their investments, pay installments online and download receipts.',
+    points: ['Shares, ownership and value', 'Payment schedule and online payment', 'Receipts, documents and alerts'],
+    tone: {
+      card: 'hover:border-site-brass',
+      icon: 'bg-site-night text-site-brass',
+      button: 'bg-site-night hover:bg-site-night-deep',
+      tick: 'text-site-brass-dark',
+    },
+  },
 ];
 
 export default function PortalChooser() {
@@ -60,7 +74,7 @@ export default function PortalChooser() {
       <div aria-hidden className="absolute inset-0 bg-cover bg-center opacity-25" style={{ backgroundImage: `url(${HERO_IMAGE})` }} />
       <div aria-hidden className="absolute inset-0 bg-linear-to-b from-slate-950/60 via-slate-950/80 to-slate-950" />
 
-      <div className="relative mx-auto w-full max-w-5xl">
+      <div className="relative mx-auto w-full max-w-6xl">
         <div className="text-center">
           <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-white/10 backdrop-blur">
             <Building2 className="size-7" />
@@ -69,7 +83,7 @@ export default function PortalChooser() {
           <p className="mt-3 text-lg text-white/70">Choose where you want to go</p>
         </div>
 
-        <div className="mt-12 grid gap-6 md:grid-cols-2">
+        <div className="mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {PORTALS.map(({ href, icon: Icon, title, who, body, points, tone }) => (
             <Link
               key={href}
