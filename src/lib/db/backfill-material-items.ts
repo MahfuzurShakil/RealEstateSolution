@@ -35,6 +35,23 @@ interface TableScope {
 
 const asText = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 
+/**
+ * A table, or null when this scope does not have it.
+ *
+ * The v13 upgrade transaction only holds the tables that exist at v13, and
+ * asking it for a later one throws — which, on 2026-11-01, stopped every
+ * browser still holding a v1–v12 database from opening the app at all
+ * ("Table stock_consumptions not part of transaction"). Such a table was
+ * created empty after v13, so there is nothing in it to link anyway.
+ */
+function tableIfPresent(scope: TableScope, name: string): ReturnType<TableScope['table']> | null {
+  try {
+    return scope.table(name);
+  } catch {
+    return null;
+  }
+}
+
 export async function backfillMaterialItems(scope: TableScope): Promise<number> {
   const items = scope.table('material_items');
   const existing = await items.toArray();
@@ -102,7 +119,9 @@ export async function backfillMaterialItems(scope: TableScope): Promise<number> 
     'stock_transfers',
     'purchase_order_items',
   ]) {
-    const table = scope.table(name);
+    const table = tableIfPresent(scope, name);
+    // not created yet: the v13 upgrade runs before v16 adds the consumption tables
+    if (!table) continue;
     for (const row of await table.toArray()) {
       if (row.item_id) continue;
       const id = await ensure(row.item_name, row.unit);
