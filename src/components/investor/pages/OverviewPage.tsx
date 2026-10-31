@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { AlertTriangle, ArrowRight, Briefcase, CalendarClock, Check, CreditCard, Landmark, Loader2, Receipt, TrendingUp, Wallet } from 'lucide-react';
-import { ButtonLink, Button } from '@/components/public/ui/Button';
+import { Briefcase, CalendarClock, Check, Landmark, Loader2, Receipt, TrendingUp, Wallet } from 'lucide-react';
+import { Button } from '@/components/public/ui/Button';
 import { formatDay, formatPct, formatTaka, PAYMENT_METHOD_LABEL } from '@/lib/domain/investor-portal';
 import { investorRepository } from '@/lib/repositories/investor/investor.mock.repository';
 import { useCustomerPortal } from '../CustomerPortalProvider';
 import { HoldingCard } from '../HoldingCard';
+import { NextPaymentCard } from '../NextPaymentCard';
 import { Money, PageHeading, Panel, StatCard, StatusPill } from '../ui';
 
 function greeting() {
@@ -37,31 +38,9 @@ export function OverviewPage() {
         eyebrow={new Date(`${snapshot.today}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
         title={`${greeting()}, ${c.full_name.split(' ')[0]}`}
         description="Here is where your investments and payments stand today."
-        actions={
-          <ButtonLink href="/investor/payments" icon={<CreditCard className="size-4" />}>
-            Make a payment
-          </ButtonLink>
-        }
       />
 
-      {portfolio.due_now > 0 && (
-        <div className="flex flex-col gap-4 rounded-3xl border border-site-danger/25 bg-red-50 p-5 sm:flex-row sm:items-center sm:p-6" role="alert">
-          <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-site-danger text-white">
-            <AlertTriangle className="size-6" aria-hidden />
-          </span>
-          <div className="flex-1">
-            <p className="font-semibold text-site-danger">
-              {portfolio.overdue_count === 1 ? 'You have 1 overdue installment' : `You have ${portfolio.overdue_count} overdue installments`}
-            </p>
-            <p className="mt-0.5 text-[15px] text-site-ink/80">
-              Pay <Money amount={portfolio.due_now} className="font-semibold" /> now, including late fees, to bring your account up to date.
-            </p>
-          </div>
-          <ButtonLink href="/investor/payments" className="bg-site-danger hover:bg-site-danger hover:brightness-110" iconRight={<ArrowRight className="size-4" />}>
-            Pay overdue
-          </ButtonLink>
-        </div>
-      )}
+      <NextPaymentCard portfolio={portfolio} today={snapshot.today} />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={Briefcase} label="Total investment" value={<Money amount={portfolio.total_invested} />} hint={`${portfolio.holdings.length} projects · ${shares} shares`} tone="primary" />
@@ -77,16 +56,7 @@ export function OverviewPage() {
           }
         />
         <StatCard icon={Wallet} label="Paid to date" value={<Money amount={portfolio.paid} />} hint={`${Math.round((portfolio.paid / portfolio.total_invested) * 100)}% of total price`} />
-        {portfolio.due_now > 0 ? (
-          <StatCard icon={AlertTriangle} label="Due now" value={<Money amount={portfolio.due_now} />} hint="Overdue installments and late fees" tone="danger" />
-        ) : (
-          <StatCard
-            icon={CalendarClock}
-            label="Next payment"
-            value={portfolio.next ? <Money amount={portfolio.next.installment.amount} /> : '—'}
-            hint={portfolio.next ? `${formatDay(portfolio.next.installment.due_date)} · ${portfolio.next.view.project.name}` : 'Nothing due'}
-          />
-        )}
+        <StatCard icon={CalendarClock} label="Outstanding balance" value={<Money amount={portfolio.outstanding} />} hint="Still to pay across all investments" />
       </div>
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">

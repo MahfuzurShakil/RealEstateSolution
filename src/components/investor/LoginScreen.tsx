@@ -3,12 +3,13 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent } from 'react';
-import { AlertCircle, ArrowLeft, ArrowRight, BadgeCheck, FileCheck2, KeyRound, Loader2, LockKeyhole, PieChart, WalletCards } from 'lucide-react';
+import { AlertCircle, ArrowRight, CircleCheck, FileCheck2, Loader2, LockKeyhole, Mail, PencilLine, PieChart, Smartphone, WalletCards, X } from 'lucide-react';
 import { BrandMark } from '@/components/public/BrandMark';
 import { HERO_IMAGE } from '@/components/public/stock-images';
 import { Button } from '@/components/public/ui/Button';
 import { useCompanyInfo } from '@/components/public/useCompanyInfo';
 import { investorRepository } from '@/lib/repositories/investor/investor.mock.repository';
+import { cn } from '@/lib/utils/cn';
 import { formatPhone } from '@/lib/utils/format';
 
 const FEATURES = [
@@ -40,7 +41,7 @@ function CodeBoxes({ value, onChange, disabled }: { value: string; onChange: (v:
   };
 
   return (
-    <div className="flex justify-between gap-2" role="group" aria-label="6-digit code">
+    <div className="grid grid-cols-6 gap-2 sm:gap-2.5" role="group" aria-label="6-digit code">
       {digits.map((d, i) => (
         <input
           key={i}
@@ -60,7 +61,8 @@ function CodeBoxes({ value, onChange, disabled }: { value: string; onChange: (v:
             set(i, v);
             if (v && i < 5) refs.current[i + 1]?.focus();
           }}
-          className="tabular font-display size-12 rounded-2xl border border-site-line bg-white text-center text-xl font-semibold transition-colors outline-none focus:border-site-primary focus:ring-4 focus:ring-site-primary/15 sm:size-14"
+          style={{ outline: 'none' }}
+          className="tabular font-display aspect-square w-full min-w-0 rounded-xl border border-site-line bg-white text-center text-xl font-semibold transition-colors focus:border-site-primary focus:ring-4 focus:ring-site-primary/15 sm:rounded-2xl sm:text-2xl"
         />
       ))}
     </div>
@@ -78,6 +80,8 @@ export function LoginScreen({ next, signedOut }: { next: string | null; signedOu
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [resendIn, setResendIn] = useState(0);
+  const [notice, setNotice] = useState(signedOut);
+  const isEmail = identifier.includes('@');
   const target = next && next.startsWith('/investor') ? next : '/investor';
 
   // already signed in: straight to the portal
@@ -119,7 +123,7 @@ export function LoginScreen({ next, signedOut }: { next: string | null; signedOu
   };
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-[1.05fr_1fr]">
+    <div className="grid min-h-screen grid-cols-[minmax(0,1fr)] lg:grid-cols-[1.05fr_1fr]">
       {/* brand panel */}
       <div className="relative hidden overflow-hidden bg-site-night text-white lg:flex lg:flex-col">
         <div aria-hidden className="absolute inset-0 bg-cover bg-center opacity-35" style={{ backgroundImage: `url(${HERO_IMAGE})` }} />
@@ -154,98 +158,141 @@ export function LoginScreen({ next, signedOut }: { next: string | null; signedOu
       </div>
 
       {/* form */}
-      <div className="flex flex-col px-5 py-8 sm:px-10">
-        <div className="flex items-center justify-between gap-4">
-          <Link href="/" className="lg:hidden">
-            <BrandMark company={company} />
-          </Link>
-          <Link href="/" className="ml-auto inline-flex items-center gap-1.5 text-sm font-medium text-site-muted transition-colors hover:text-site-primary">
-            <ArrowLeft className="size-4" aria-hidden /> Back to website
-          </Link>
+      <div className="flex min-h-screen flex-col bg-white lg:min-h-0">
+        {/* phones: a short brand band stands in for the side panel */}
+        <div className="relative overflow-hidden bg-site-night px-6 pt-8 pb-14 text-white lg:hidden">
+          <div aria-hidden className="absolute inset-0 bg-cover bg-center opacity-25" style={{ backgroundImage: `url(${HERO_IMAGE})` }} />
+          <div aria-hidden className="absolute inset-0 bg-linear-to-b from-site-night/80 to-site-night" />
+          <div className="relative">
+            <Link href="/" className="inline-block rounded-xl">
+              <BrandMark company={company} tone="dark" />
+            </Link>
+            <p className="mt-7 text-[11px] font-semibold tracking-[0.2em] text-site-brass uppercase">Customer Portal</p>
+            <p className="font-display mt-1.5 text-2xl leading-tight font-semibold">
+              Your project shares, <span className="font-accent font-normal text-site-brass italic">in one secure place.</span>
+            </p>
+          </div>
         </div>
 
-        <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center py-10">
-          <span className="grid size-14 place-items-center rounded-2xl bg-site-primary-soft text-site-primary">
-            {step === 'id' ? <KeyRound className="size-6" aria-hidden /> : <BadgeCheck className="size-6" aria-hidden />}
-          </span>
-          <h1 className="mt-6 text-3xl font-semibold">{step === 'id' ? 'Sign in to your account' : 'Enter your code'}</h1>
-          <p className="mt-2 text-[15px] text-site-muted">
-            {step === 'id'
-              ? 'For customers of type Investor. Use the mobile number or email address registered on your share agreement.'
-              : `We sent a 6-digit code by ${sentTo}. It expires in 10 minutes.`}
-          </p>
+        <div className="relative -mt-6 flex flex-1 flex-col rounded-t-[28px] bg-white px-6 pt-8 pb-6 sm:px-10 lg:mt-0 lg:rounded-none lg:px-16 lg:py-12">
+          <div className="mx-auto flex w-full max-w-[400px] flex-1 flex-col lg:justify-center">
+            <div className="flex items-center gap-3" aria-label={`Step ${step === 'id' ? 1 : 2} of 2`}>
+              <span className="flex gap-1.5" aria-hidden>
+                <span className="h-1.5 w-8 rounded-full bg-site-primary" />
+                <span className={cn('h-1.5 w-8 rounded-full transition-colors', step === 'code' ? 'bg-site-primary' : 'bg-site-line')} />
+              </span>
+              <span className="tabular text-xs font-semibold text-site-muted">Step {step === 'id' ? 1 : 2} of 2</span>
+            </div>
 
-          {signedOut && step === 'id' && !error && (
-            <p className="mt-6 rounded-2xl bg-site-primary-soft px-4 py-3 text-sm font-medium text-site-primary-dark" role="status">
-              You have signed out. See you soon.
+            <h1 className="mt-5 text-[28px] leading-tight font-semibold sm:text-[32px]">{step === 'id' ? 'Welcome back' : 'Check your phone'}</h1>
+            <p className="mt-2 text-[15px] leading-relaxed text-site-muted">
+              {step === 'id' ? 'Sign in with the mobile number or email on your share agreement.' : 'Enter the 6-digit code we just sent you. It expires in 10 minutes.'}
             </p>
-          )}
-          {error && (
-            <p className="mt-6 flex gap-2.5 rounded-2xl bg-red-50 px-4 py-3 text-sm text-site-danger" role="alert">
-              <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
-              {error}
-            </p>
-          )}
 
-          {step === 'id' ? (
-            <form onSubmit={requestCode} className="mt-6 space-y-5" noValidate>
-              <label className="block">
-                <span className="text-sm font-semibold">Mobile number or email</span>
-                <input
-                  value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
-                  autoComplete="username"
-                  autoFocus
-                  placeholder="01XXX XXXXXX or name@example.com"
-                  className="mt-2 h-13 w-full rounded-2xl border border-site-line bg-white px-4 text-[15px] transition-colors outline-none placeholder:text-site-faint focus:border-site-primary focus:ring-4 focus:ring-site-primary/15"
-                />
-              </label>
-              <Button type="submit" size="lg" className="w-full" disabled={busy} iconRight={busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}>
-                {busy ? 'Sending code' : 'Send me a code'}
-              </Button>
-            </form>
-          ) : (
-            <form onSubmit={verify} className="mt-6 space-y-5">
-              <CodeBoxes value={code} onChange={setCode} disabled={busy} />
-              <Button type="submit" size="lg" className="w-full" disabled={busy || code.length !== 6} iconRight={busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}>
-                {busy ? 'Signing in' : 'Verify and sign in'}
-              </Button>
-              <div className="flex items-center justify-between text-sm">
-                <button type="button" className="font-medium text-site-muted hover:text-site-primary" onClick={() => { setStep('id'); setError(null); }}>
-                  Use a different number
-                </button>
-                <button type="button" disabled={resendIn > 0 || busy} onClick={() => requestCode()} className="tabular font-semibold text-site-primary disabled:text-site-faint">
-                  {resendIn > 0 ? `Resend in 0:${String(resendIn).padStart(2, '0')}` : 'Resend code'}
+            {notice && step === 'id' && !error && (
+              <div className="mt-6 flex items-center gap-3 rounded-xl border border-site-primary/20 bg-site-primary-soft/60 px-3.5 py-3 text-sm" role="status">
+                <CircleCheck className="size-5 shrink-0 text-site-primary" aria-hidden />
+                <span className="flex-1 font-medium text-site-primary-dark">You have signed out securely.</span>
+                <button type="button" aria-label="Dismiss" onClick={() => setNotice(false)} className="grid size-6 place-items-center rounded-md text-site-primary-dark/60 hover:text-site-primary-dark">
+                  <X className="size-4" />
                 </button>
               </div>
-            </form>
-          )}
+            )}
+            {error && (
+              <div className="mt-6 flex gap-3 rounded-xl border border-site-danger/20 bg-red-50 px-3.5 py-3 text-sm text-site-danger" role="alert">
+                <AlertCircle className="mt-px size-5 shrink-0" aria-hidden />
+                <span>{error}</span>
+              </div>
+            )}
 
-          <div className="mt-8 rounded-2xl border border-dashed border-site-brass/50 bg-site-brass/5 p-4 text-sm">
-            <p className="font-semibold text-site-brass-dark">Demo account</p>
-            <p className="mt-1 text-site-muted">
-              Mobile <span className="tabular font-semibold text-site-ink">{formatPhone(demo.phone)}</span> · code{' '}
-              <span className="tabular font-semibold text-site-ink">{demo.otp}</span>
-            </p>
-            <button
-              type="button"
-              className="mt-2 font-semibold text-site-primary hover:underline"
-              onClick={() => {
-                setError(null);
-                if (step === 'id') setIdentifier(formatPhone(demo.phone));
-                else setCode(demo.otp);
-              }}
-            >
-              {step === 'id' ? 'Fill in the demo number' : 'Fill in the demo code'}
-            </button>
+            {step === 'id' ? (
+              <form onSubmit={requestCode} className="mt-7 space-y-5" noValidate>
+                <label className="block">
+                  <span className="text-sm font-semibold">Mobile number or email</span>
+                  <span className="mt-2 flex h-13 items-center gap-3 rounded-xl border border-site-line bg-white px-4 transition-colors focus-within:border-site-primary focus-within:ring-4 focus-within:ring-site-primary/15">
+                    {isEmail ? <Mail className="size-5 shrink-0 text-site-faint" aria-hidden /> : <Smartphone className="size-5 shrink-0 text-site-faint" aria-hidden />}
+                    <input
+                      value={identifier}
+                      onChange={(e) => setIdentifier(e.target.value)}
+                      autoComplete="username"
+                      autoFocus
+                      inputMode={isEmail ? 'email' : 'text'}
+                      placeholder="01XXX XXXXXX or name@email.com"
+                      style={{ outline: 'none' }}
+                      className="h-full w-full min-w-0 bg-transparent text-[15px] placeholder:text-site-faint"
+                    />
+                  </span>
+                </label>
+                <Button type="submit" size="lg" className="w-full rounded-xl" disabled={busy} iconRight={busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}>
+                  {busy ? 'Sending code' : 'Continue'}
+                </Button>
+              </form>
+            ) : (
+              <form onSubmit={verify} className="mt-7 space-y-5">
+                <div className="flex items-center justify-between gap-3 rounded-xl bg-site-ivory px-3.5 py-3 text-sm">
+                  <span className="min-w-0 truncate text-site-muted">
+                    Sent by <span className="font-semibold text-site-ink">{sentTo}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStep('id');
+                      setError(null);
+                    }}
+                    className="inline-flex shrink-0 items-center gap-1 font-semibold text-site-primary hover:underline"
+                  >
+                    <PencilLine className="size-3.5" aria-hidden /> Change
+                  </button>
+                </div>
+                <CodeBoxes value={code} onChange={setCode} disabled={busy} />
+                <Button type="submit" size="lg" className="w-full rounded-xl" disabled={busy || code.length !== 6} iconRight={busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}>
+                  {busy ? 'Signing in' : 'Verify and sign in'}
+                </Button>
+                <p className="text-center text-sm text-site-muted">
+                  Didn’t get it?{' '}
+                  <button type="button" disabled={resendIn > 0 || busy} onClick={() => requestCode()} className="tabular font-semibold text-site-primary disabled:font-medium disabled:text-site-faint">
+                    {resendIn > 0 ? `Resend in 0:${String(resendIn).padStart(2, '0')}` : 'Resend code'}
+                  </button>
+                </p>
+              </form>
+            )}
+
+            <div className="mt-7 flex items-center justify-between gap-3 rounded-xl border border-dashed border-site-brass/50 bg-site-brass/5 px-3.5 py-2.5 text-[13px]">
+              <span className="min-w-0 text-site-muted">
+                <span className="font-semibold text-site-brass-dark">Demo</span> ·{' '}
+                {step === 'id' ? (
+                  <span className="tabular">{formatPhone(demo.phone)}</span>
+                ) : (
+                  <>
+                    code <span className="tabular">{demo.otp}</span>
+                  </>
+                )}
+              </span>
+              <button
+                type="button"
+                className="shrink-0 font-semibold text-site-primary hover:underline"
+                onClick={() => {
+                  setError(null);
+                  if (step === 'id') setIdentifier(formatPhone(demo.phone));
+                  else setCode(demo.otp);
+                }}
+              >
+                Fill in
+              </button>
+            </div>
           </div>
 
-          <p className="mt-8 text-center text-sm text-site-muted">
-            Not a customer yet?{' '}
-            <Link href="/projects" className="font-semibold text-site-primary hover:underline">
-              Explore our projects
-            </Link>
-          </p>
+          <footer className="mx-auto mt-10 w-full max-w-[400px] space-y-2 text-center text-[13px] text-site-muted">
+            <p className="flex items-center justify-center gap-1.5">
+              <LockKeyhole className="size-3.5" aria-hidden /> Protected by a one-time passcode
+            </p>
+            <p>
+              Not a customer yet?{' '}
+              <Link href="/projects" className="font-semibold text-site-primary hover:underline">
+                Explore our projects
+              </Link>
+            </p>
+          </footer>
         </div>
       </div>
     </div>

@@ -11,9 +11,19 @@ import {
 } from '@/lib/domain/investor-portal';
 import { cn } from '@/lib/utils/cn';
 
-/** Money in the portal: tabular digits, the ৳ sign in the face that draws it. */
+/**
+ * Money in the portal: tabular digits, the ৳ sign in the face that draws it.
+ * Only the sign takes the taka face, so a caller's own font (the display face
+ * on a big total) still sets the digits without knocking the sign back to a
+ * font that has no ৳.
+ */
 export function Money({ amount, className }: { amount: number; className?: string }) {
-  return <span className={cn('tabular font-taka whitespace-nowrap', className)}>{formatTaka(amount)}</span>;
+  const [sign, ...digits] = formatTaka(amount).split(' ');
+  return (
+    <span className={cn('tabular whitespace-nowrap', className)}>
+      <span className="font-taka">{sign}</span> {digits.join(' ')}
+    </span>
+  );
 }
 
 export function PageHeading({ eyebrow, title, description, actions }: { eyebrow?: string; title: string; description?: ReactNode; actions?: ReactNode }) {

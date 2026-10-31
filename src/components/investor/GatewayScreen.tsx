@@ -647,7 +647,7 @@ export function GatewayScreen({ intentId }: { intentId: string }) {
           </section>
 
           {phase.at === 'processing' && (
-            <div className="absolute inset-0 grid place-items-center bg-white/95 backdrop-blur-sm" role="status">
+            <div className="fixed inset-0 z-50 grid place-items-center bg-white/95 p-6 backdrop-blur-sm" role="status">
               <div className="text-center">
                 <Loader2 className="mx-auto size-11 animate-spin text-blue-600" aria-hidden />
                 <p className="mt-4 text-lg font-semibold">{phase.label}…</p>
@@ -656,7 +656,7 @@ export function GatewayScreen({ intentId }: { intentId: string }) {
             </div>
           )}
           {phase.at === 'done' && (
-            <div className="absolute inset-0 grid place-items-center bg-white p-6" role="status">
+            <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-white p-6" role="status">
               <div className="text-center">
                 <span className="mx-auto grid size-20 place-items-center rounded-full bg-emerald-50">
                   <CheckCircle2 className="size-12 text-emerald-600 motion-safe:animate-[fade-up_.4s_ease-out_both]" aria-hidden />
