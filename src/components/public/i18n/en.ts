@@ -16,6 +16,7 @@ export const en = {
     nrb: 'Buying from abroad',
     landowners: 'For landowners',
     blog: 'Blog',
+    invest: 'Invest',
     contact: 'Contact',
     privacy: 'Privacy',
     terms: 'Terms',
@@ -535,6 +536,24 @@ export const en = {
     faqTitle: 'Common questions',
     ctaTitle: 'Ready to see a project?',
     ctaBody: 'Book a visit and we’ll walk you through the site and the papers.',
+  },
+  // BUYER-PORTAL-PLAN.md §6 — share offerings, shown only while the website switch is on
+  investPage: {
+    eyebrow: 'Invest',
+    title: 'Own a share',
+    accent: 'of a project',
+    lead: 'Buy a part of a project as small, equal shares, pay a down payment and the rest in installments, and follow it all on your Customer Portal.',
+    signIn: 'Already a customer? Sign in',
+    offersTitle: 'Open share offerings',
+    offersLead: 'Choose how many shares and how you want to pay. Nothing is charged now — our team calls you to prepare the agreement.',
+    none: 'No share offering is open right now. Please check back soon, or call us to hear about the next one.',
+    stepsTitle: 'How it works',
+    steps: [
+      { title: 'Send a request', body: 'Pick the number of shares and a payment plan. It takes a minute.' },
+      { title: 'We call you', body: 'Our team holds the shares for you and answers your questions.' },
+      { title: 'Sign the agreement', body: 'At our office, with your NID and photo. The down payment is made then.' },
+      { title: 'Pay and follow online', body: 'Pay installments and download receipts on your Customer Portal.' },
+    ],
   },
   nrbPage: {
     eyebrow: 'For buyers abroad',

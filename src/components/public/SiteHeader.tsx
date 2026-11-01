@@ -157,7 +157,7 @@ export function SiteHeader() {
         </Link>
 
         <nav className="hidden items-center gap-1 lg:flex" aria-label="Main">
-          {SITE_NAV.map((item) =>
+          {SITE_NAV.filter((item) => !item.shareSale || company?.show_share_sale).map((item) =>
             item.mega ? (
               <div key={item.href} ref={megaWrap} className="relative" onMouseLeave={() => setMega(false)}>
                 <button
@@ -292,7 +292,7 @@ export function SiteHeader() {
           </button>
         </div>
         <nav className="flex-1 overflow-y-auto px-4 pt-4 sm:px-6" aria-label="Mobile">
-          {SITE_NAV.map((item, i) => (
+          {SITE_NAV.filter((item) => !item.shareSale || company?.show_share_sale).map((item, i) => (
             <Link
               key={item.href}
               href={item.href}

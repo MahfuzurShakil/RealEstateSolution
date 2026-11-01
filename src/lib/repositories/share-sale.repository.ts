@@ -675,7 +675,7 @@ export async function customerPortalInbox(): Promise<{ requests: RequestRow[]; u
   const c = by(customers);
   return {
     requests: requests
-      .map((r) => ({ request: r, offering: o.get(r.offering_id), project: p.get(r.project_id), customer: c.get(r.customer_id), sale: r.sale_id ? s.get(r.sale_id) : undefined }))
+      .map((r) => ({ request: r, offering: o.get(r.offering_id), project: p.get(r.project_id), customer: r.customer_id ? c.get(r.customer_id) : undefined, sale: r.sale_id ? s.get(r.sale_id) : undefined }))
       .sort((a, b) => b.request.requested_at.localeCompare(a.request.requested_at)),
     // the office's own filings are not something it has to review
     uploads: uploads
@@ -716,11 +716,20 @@ class ShareRequestRepository extends BaseRepository<ShareRequest> {
   /** Reserves the shares the customer asked for — the usual reservation, with the plan agreed on the call. */
   async reserve(id: string, plan: { shares: number; down_payment_pct: number; installment_count: number }, userId: string | null): Promise<ShareSale> {
     const r = await this.live(id);
+    // a website visitor becomes a customer here: the one already on file with that phone, or a new Investor
+    let customerId = r.customer_id;
+    if (!customerId && r.prospect_phone) customerId = (await customerRepository.findByPhone(r.prospect_phone))?.id ?? null;
     const sale = await shareSaleRepository.reserve(
-      { offering_id: r.offering_id, customer_id: r.customer_id, ...plan, notes: `From Customer Portal request ${r.code}${r.note ? `: “${r.note}”` : ''}` },
+      {
+        offering_id: r.offering_id,
+        customer_id: customerId,
+        new_customer: customerId ? null : { name: r.prospect_name ?? '', phone: r.prospect_phone ?? '', email: r.prospect_email ?? null },
+        ...plan,
+        notes: `From ${r.source === 'website' ? 'website' : 'Customer Portal'} request ${r.code}${r.note ? `: “${r.note}”` : ''}`,
+      },
       userId,
     );
-    await this.update(id, { status: 'reserved', sale_id: sale.id, office_note: null });
+    await this.update(id, { status: 'reserved', sale_id: sale.id, customer_id: sale.customer_id, office_note: null });
     return sale;
   }
 }

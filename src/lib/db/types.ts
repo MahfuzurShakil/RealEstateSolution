@@ -166,6 +166,11 @@ export interface CompanySettings extends BaseEntity {
    */
   public_show_prices?: boolean | null;
   /**
+   * BUYER-PORTAL-PLAN.md §6 — open share offerings on the website (/invest).
+   * Off unless set: a public offer of shares may need regulatory sign-off.
+   */
+  public_show_share_sale?: boolean | null;
+  /**
    * Gate G1 (BRD SITE-003): block the move from Under Review to Due Diligence
    * until an approved feasibility recommends proceeding.
    *
@@ -3408,7 +3413,14 @@ export interface ShareRequest extends BaseEntity {
   code: string;                       // SRQ-2026-001
   offering_id: UUID;
   project_id: UUID;
-  customer_id: UUID;
+  /** null for a website visitor until the office reserves (which makes the customer) */
+  customer_id: UUID | null;
+  /** BUYER-PORTAL-PLAN.md §6 — sent from the Customer Portal, or from the public /invest page */
+  source?: 'portal' | 'website' | null;
+  /** a website visitor's details, as typed; unindexed */
+  prospect_name?: string | null;
+  prospect_phone?: string | null;
+  prospect_email?: string | null;
   shares: number;
   installments: number;
   note?: string | null;

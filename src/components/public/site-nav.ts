@@ -6,10 +6,12 @@ import { en } from './i18n/en';
  * that 404s. `mega: 'projects'` opens the projects menu instead of navigating
  * straight away on desktop.
  */
-export const SITE_NAV: { href: string; label: string; mega?: 'projects' }[] = [
+export const SITE_NAV: { href: string; label: string; mega?: 'projects'; shareSale?: boolean }[] = [
   { href: '/', label: en.nav.home },
   { href: '/projects', label: en.nav.projects, mega: 'projects' },
   { href: '/buyers-guide', label: en.nav.guide },
+  // BUYER-PORTAL-PLAN.md §6 — shown only while Settings → Website "Show share offerings" is on
+  { href: '/invest', label: en.nav.invest, shareSale: true },
   { href: '/about', label: en.nav.about },
   { href: '/contact', label: en.nav.contact },
 ];

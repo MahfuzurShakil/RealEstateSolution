@@ -216,7 +216,7 @@ export function pictureOf(doc: DocumentRecord, alt: string): PublicImage {
  * gallery picture. The chosen display picture still has to be ticked public:
  * nothing from the Documents tab reaches the site without that tick.
  */
-function coverFor(project: Project, docs: DocumentRecord[]): PublicImage | null {
+export function coverFor(project: Project, docs: DocumentRecord[]): PublicImage | null {
   const chosen = project.cover_image_document_id
     ? docs.find((d) => d.id === project.cover_image_document_id && d.is_public && isPicture(d))
     : undefined;

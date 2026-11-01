@@ -14,6 +14,7 @@ import {
   type ShareRound,
 } from '@/lib/domain/investor-portal';
 import { investorRepository } from '@/lib/repositories/investor/investor.repository';
+import { publicShareOfferRepository } from '@/lib/repositories/public/share-offer.public.repository';
 import { cn } from '@/lib/utils/cn';
 import { todayLocal } from '@/lib/utils/format';
 import { PortalDialog } from './PortalDialog';
@@ -40,18 +41,26 @@ function BuySharesDialog({
   round,
   project,
   existing,
+  visitor = false,
+  onSent,
 }: {
   open: boolean;
   onClose: () => void;
   round: ShareRound;
   project: InvestorProject;
   existing: ShareRequest | undefined;
+  /** BUYER-PORTAL-PLAN.md §6 — on the website: no account, so name and phone are asked */
+  visitor?: boolean;
+  onSent?: (r: { shares: number; installments: number }) => void;
 }) {
   const most = Math.min(round.max_shares, round.shares_available);
   const plans = planOptions(round);
   const [shares, setShares] = useState(existing?.shares ?? round.min_shares);
   const [plan, setPlan] = useState(existing?.installments ?? round.max_installments);
   const [note, setNote] = useState(existing?.note ?? '');
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,7 +73,9 @@ function BuySharesDialog({
     setBusy(true);
     setError(null);
     try {
-      await investorRepository.requestShares({ round_code: round.code, shares, installments: plan, note });
+      if (visitor) await publicShareOfferRepository.requestShares({ round_code: round.code, shares, installments: plan, note, name, phone, email });
+      else await investorRepository.requestShares({ round_code: round.code, shares, installments: plan, note });
+      onSent?.({ shares, installments: plan });
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'The request could not be sent. Please try again.');
@@ -170,6 +181,25 @@ function BuySharesDialog({
           )}
         </dl>
 
+        {visitor && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block sm:col-span-2">
+              <span className="mb-2 block text-xs font-semibold tracking-[0.12em] text-site-muted uppercase">Your name</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" className="h-12 w-full rounded-2xl border border-site-line px-4 text-[15px] focus:border-site-primary focus:outline-none" />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-xs font-semibold tracking-[0.12em] text-site-muted uppercase">Mobile number</span>
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoComplete="tel" placeholder="01XXX XXXXXX" className="tabular h-12 w-full rounded-2xl border border-site-line px-4 text-[15px] placeholder:text-site-faint focus:border-site-primary focus:outline-none" />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-xs font-semibold tracking-[0.12em] text-site-muted uppercase">
+                Email <span className="font-normal tracking-normal normal-case">(optional)</span>
+              </span>
+              <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" autoComplete="email" className="h-12 w-full rounded-2xl border border-site-line px-4 text-[15px] focus:border-site-primary focus:outline-none" />
+            </label>
+          </div>
+        )}
+
         <div>
           <label htmlFor="buy-note" className="mb-2 block text-xs font-semibold tracking-[0.12em] text-site-muted uppercase">
             Note for our team <span className="font-normal tracking-normal normal-case">(optional)</span>
@@ -198,8 +228,22 @@ function BuySharesDialog({
 }
 
 /** One open share offering on the overview: the project, the terms, and a way to buy. */
-export function OpportunityCard({ round, project, owned, request }: { round: ShareRound; project: InvestorProject; owned: boolean; request: ShareRequest | undefined }) {
+export function OpportunityCard({
+  round,
+  project,
+  owned,
+  request,
+  visitor = false,
+}: {
+  round: ShareRound;
+  project: InvestorProject;
+  owned: boolean;
+  request: ShareRequest | undefined;
+  /** on the public website (BUYER-PORTAL-PLAN.md §6): the request goes in without an account */
+  visitor?: boolean;
+}) {
   const [open, setOpen] = useState(false);
+  const [sent, setSent] = useState<{ shares: number; installments: number } | null>(null);
   const [withdrawing, setWithdrawing] = useState(false);
   const soldPct = Math.round(((round.total_shares - round.shares_available) / round.total_shares) * 100);
   const left = daysBetween(todayLocal(), round.closes_on);
@@ -269,7 +313,16 @@ export function OpportunityCard({ round, project, owned, request }: { round: Sha
         </div>
 
         <div className="mt-auto pt-5">
-          {request?.status === 'reserved' ? (
+          {sent ? (
+            <div className="rounded-2xl bg-site-primary-soft/60 px-4 py-3">
+              <p className="flex items-center gap-1.5 text-sm font-semibold text-site-primary-dark">
+                <Check className="size-4" aria-hidden /> Request sent
+              </p>
+              <p className="mt-0.5 text-[13px] text-site-muted">
+                {sent.shares} share{sent.shares > 1 ? 's' : ''} · {planLabel(sent.installments, round)} · our team will call you within one working day.
+              </p>
+            </div>
+          ) : request?.status === 'reserved' ? (
             <div className="rounded-2xl bg-site-primary-soft/60 px-4 py-3">
               <p className="flex items-center gap-1.5 text-sm font-semibold text-site-primary-dark">
                 <Check className="size-4" aria-hidden /> Shares reserved for you
@@ -319,7 +372,7 @@ export function OpportunityCard({ round, project, owned, request }: { round: Sha
         </div>
       </div>
 
-      {open && <BuySharesDialog open onClose={() => setOpen(false)} round={round} project={project} existing={active} />}
+      {open && <BuySharesDialog open onClose={() => setOpen(false)} round={round} project={project} existing={active} visitor={visitor} onSent={visitor ? setSent : undefined} />}
     </article>
   );
 }

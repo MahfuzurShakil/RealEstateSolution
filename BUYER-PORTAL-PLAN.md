@@ -246,3 +246,26 @@ Each batch: browser-verified once, demo seed updated, pushed.
 | D3 | Late fee on buyer installments — same rule shape as Share Sale, set per project? | Yes, default 0% (off) |
 | D4 | Share Sale on the public website? | Yes, behind a switch that stays off until legal sign-off |
 | D5 | Also replace land-module Bangla words (dolil, bayna)? | No — they are accepted trade terms; only the sales side now |
+
+---
+
+## 9. As built — B3 to B6 (1 Nov 2026)
+
+- **B3 signing (bb522b2, Dexie v46):** `/admin/bookings/[id]/sign` — terms, buyer KYC,
+  signatures/witnesses/stamp, papers checklist, review. The papers checklist is the Share Sale one;
+  an upload can belong to a booking (`customer_uploads.booking_id`), and customer papers (NID,
+  photo) serve both kinds of holding. Unlike a share signing it keeps no draft. "Record terms only"
+  stays for a quick agreement without papers.
+- **B4 customers (4fe12c3):** roles are worked out from records (any booking → Buyer; a share
+  purchase or open request → Investor). List tabs All / Buyers / Investors; customer page tabs
+  Flats & Plots / Shares / Payments / Documents, shown for what the customer holds.
+- **B5 portal (3ec9262):** routes moved to `/customer` (`/investor` redirects in `next.config.ts`).
+  A booking is a portal holding of `kind: 'home'` in the same snapshot, so schedule, checkout,
+  gateway, receipts and documents are shared code. Online home payments are recorded as booking
+  receipts (`channel: 'online'`) into the wallet merchant account (bKash/Nagad/Rocket) or the first
+  bank account. Booking receipts have no code, so the portal shows `MR-` + the start of the id.
+  Demo buyer login: 01855 889900.
+- **B6 website:** `/invest` and its menu item only while Settings → Website "Show share offerings
+  on the website" is on (default off). Visitor requests carry `source: 'website'` and prospect
+  name/phone/email with `customer_id` null; reserving one finds the customer by phone or creates an
+  Investor. The public repository maps every field by hand and sends no valuation figures.

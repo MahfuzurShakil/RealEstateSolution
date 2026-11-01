@@ -878,6 +878,7 @@ export const investorRepository = {
         offering_id: o.id,
         project_id: o.project_id,
         customer_id: session.customer_id,
+        source: 'portal',
         sale_id: null,
         ...fields,
         created_at: ts,

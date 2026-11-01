@@ -68,6 +68,7 @@ function SettingsForm({
   });
   // a boolean, kept apart from the all-string `form` for the reason given below
   const [showPrices, setShowPrices] = useState(settings?.public_show_prices !== false);
+  const [showShareSale, setShowShareSale] = useState(settings?.public_show_share_sale === true);
   /*
    * The three pipeline gates (BRD SITE-003, DD-004, DEV-004). Kept out of
    * `form` because that state is all strings and these are booleans —
@@ -132,6 +133,7 @@ function SettingsForm({
         established_year: year,
         rehab_member_no: form.rehab_member_no.trim() || null,
         public_show_prices: showPrices,
+        public_show_share_sale: showShareSale,
         ...gates,
         purchase_mode: purchaseMode,
       });
@@ -295,6 +297,18 @@ function SettingsForm({
                 checked={showPrices}
                 onChange={(v) => {
                   setShowPrices(v);
+                  setSaved(false);
+                }}
+              />
+            </div>
+            {/* BUYER-PORTAL-PLAN.md §6 — off by default */}
+            <div className="sm:col-span-2">
+              <GateToggle
+                label="Show share offerings on the website"
+                detail="Adds an Invest page listing open Share Sale offerings, where visitors can send a request to buy shares; requests arrive in Share Sale → Customer Requests. Selling shares to the public may need regulatory approval (BSEC) — check with your lawyer before turning this on."
+                checked={showShareSale}
+                onChange={(v) => {
+                  setShowShareSale(v);
                   setSaved(false);
                 }}
               />

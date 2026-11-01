@@ -70,8 +70,14 @@ function RequestsPage() {
       header: 'Customer',
       cell: (r) => (
         <span className="block">
-          <span className="block font-medium text-ink">{r.customer?.name ?? '—'}</span>
-          <span className="block text-xs whitespace-nowrap text-ink-muted tabular-nums">{r.customer ? formatPhone(r.customer.phone) : ''}</span>
+          <span className="flex items-center gap-1.5 font-medium text-ink">
+            {r.customer?.name ?? r.request.prospect_name ?? '—'}
+            {r.request.source === 'website' && <Badge tone="blue">Website</Badge>}
+          </span>
+          <span className="block text-xs whitespace-nowrap text-ink-muted tabular-nums">
+            {r.customer ? formatPhone(r.customer.phone) : r.request.prospect_phone ? formatPhone(r.request.prospect_phone) : ''}
+            {!r.customer && r.request.prospect_email ? ` · ${r.request.prospect_email}` : ''}
+          </span>
           <span className="block text-xs whitespace-nowrap text-ink-muted">
             {r.request.code} · {formatDate(r.request.requested_at)}
           </span>
@@ -220,7 +226,7 @@ function RequestsPage() {
 
   return (
     <>
-      <PageHeader title="Customer Requests" subtitle="What customers send from the Customer Portal: requests to buy shares in an open offering, and documents for their purchases." />
+      <PageHeader title="Customer Requests" subtitle="Requests to buy shares in an open offering — from customers on the Customer Portal and visitors on the website — and documents customers send for their purchases." />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <Kpi label="Purchase requests waiting" value={openRequests.length} hint={openRequests.length ? `${formatBdt(askedValue)} asked for` : 'nothing waiting'} icon={ShoppingBag} tone={openRequests.some((r) => r.request.status === 'new') ? 'danger' : 'default'} />
@@ -262,12 +268,15 @@ function RequestsPage() {
               rows={requestRows}
               columns={requestColumns}
               label="requests"
-              emptyState={<EmptyState icon={Inbox} title="No purchase requests waiting" description="When a customer taps “Buy shares” on the Customer Portal, the request shows up here." />}
+              emptyState={<EmptyState icon={Inbox} title="No purchase requests waiting" description="When a customer taps “Buy shares” on the Customer Portal, or a visitor sends a request from the website’s Invest page, it shows up here." />}
               mobileCard={(r) => (
                 <div className="space-y-2">
                   <div className="flex items-start justify-between gap-2">
                     <span>
-                      <span className="block font-medium text-ink">{r.customer?.name}</span>
+                      <span className="block font-medium text-ink">
+                        {r.customer?.name ?? r.request.prospect_name}
+                        {r.request.source === 'website' && <Badge tone="blue" className="ml-1.5">Website</Badge>}
+                      </span>
                       <span className="block text-xs text-ink-muted">
                         {r.project?.name} · {r.request.shares} shares · {formatBdt(r.request.shares * (r.offering?.price_per_share ?? 0))}
                       </span>
@@ -334,7 +343,7 @@ function RequestsPage() {
           request={reserve.request}
           offering={reserve.offering}
           available={availableOf(reserve.request.offering_id)}
-          customerName={reserve.customer?.name ?? ''}
+          customerName={reserve.customer?.name ?? `${reserve.request.prospect_name ?? ''} (new customer)`}
           onClose={() => setReserve(null)}
         />
       )}

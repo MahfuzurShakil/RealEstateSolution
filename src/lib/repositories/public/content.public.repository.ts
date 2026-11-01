@@ -36,6 +36,8 @@ export interface PublicCompanyInfo {
   rehab_member_no: string | null;
   /** false → every price on the site reads "Price on request" */
   show_prices: boolean;
+  /** BUYER-PORTAL-PLAN.md §6 — the /invest page and its menu item */
+  show_share_sale: boolean;
 }
 
 const HTTP = /^https?:\/\//i;
@@ -120,6 +122,7 @@ export const publicContentRepository = {
       established_year: settings?.established_year ?? null,
       rehab_member_no: clean(settings?.rehab_member_no),
       show_prices: settings?.public_show_prices !== false,
+      show_share_sale: settings?.public_show_share_sale === true,
     };
   },
 
