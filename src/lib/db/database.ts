@@ -1027,6 +1027,15 @@ export class AppDatabase extends Dexie {
           await tx.table('bookings').update(b.id, { fully_paid_on: paidOffOn(b, settled) });
         }
       });
+
+    /*
+     * v46 — BUYER-PORTAL-PLAN.md §2.7: a booking is signed with the same
+     * papers checklist as a share purchase, so an uploaded paper can belong to
+     * a booking. The Customer Portal lists a buyer's papers by it.
+     */
+    this.version(46).stores({
+      customer_uploads: 'id, customer_id, sale_id, booking_id, status',
+    });
   }
 }
 

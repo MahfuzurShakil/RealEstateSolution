@@ -9,10 +9,13 @@ import type {
   Project,
   Tower,
   PaymentMethod,
+  ShareSigningRecord,
   Unit,
   User,
 } from '../db/types';
 import { derivedStatus, finalPrice } from '../domain/booking';
+import { missingToSign, paperChecklist } from '../domain/share-documents';
+import { cleanKyc, cleanSigning, type KycField } from '../domain/signing';
 import { nextCode, nowIso } from '../utils/id';
 import { BaseRepository, type NewRecord } from './base.repository';
 import { documentRepository } from './document.repository';
@@ -507,6 +510,46 @@ class BookingRepository extends BaseRepository<Booking> {
   }
 
   /** Records or edits the agreement. Status does not depend on it. */
+  /**
+   * Signs the sale agreement the way a share purchase is signed
+   * (BUYER-PORTAL-PLAN.md §2.7): the terms, the buyer's KYC as written on the
+   * paper, the signatures, witnesses and stamp, and the required papers on
+   * file. The schedule follows the terms through `saveAgreement`.
+   */
+  async signAgreement(
+    id: string,
+    input: { agreement: AgreementInput; signing: ShareSigningRecord; customer?: Partial<Pick<Customer, KycField>> },
+  ): Promise<Booking | undefined> {
+    const booking = await this.getById(id);
+    if (!booking || booking.status === 'cancelled') throw new Error('A cancelled booking cannot be signed.');
+    if (!input.agreement.agreement_date) throw new Error('Enter the day the agreement was signed.');
+    if (input.agreement.agreement_date > nowIso().slice(0, 10)) throw new Error('The signing day cannot be in the future.');
+    const signing = cleanSigning(input.signing);
+    const customer = await db.customers.get(booking.customer_id);
+    if (!customer) throw new Error('The buyer on this booking no longer exists.');
+    const kyc = cleanKyc({ ...customer, ...input.customer });
+    if (!kyc.nid) throw new Error('Enter the buyer’s NID or passport number — it is written on the agreement.');
+    if (!kyc.father_or_spouse_name) throw new Error('Enter the buyer’s father’s or spouse’s name, as the agreement names them.');
+    if (!kyc.address) throw new Error('Enter the buyer’s present address.');
+    const missing = missingToSign(
+      paperChecklist(await db.customer_uploads.where('customer_id').equals(customer.id).toArray(), { kind: 'booking', id }, {
+        has_nominee: !!kyc.nominee_name,
+        by_attorney: !!signing.attorney_name,
+      }),
+    );
+    if (missing.length) throw new Error(`Put these on file before signing: ${missing.map((m) => m.meta.label).join(', ')}.`);
+    await db.customers.update(customer.id, { ...kyc, customer_type: customer.customer_type ?? 'buyer', updated_at: nowIso() });
+    await this.update(id, { signing });
+    return this.saveAgreement(id, input.agreement);
+  }
+
+  /** Corrects the signing record after the fact (a witness's address, the notary date). */
+  async updateSigning(id: string, signing: ShareSigningRecord): Promise<Booking | undefined> {
+    const booking = await this.getById(id);
+    if (!booking?.signing) throw new Error('Only a signed agreement has a signing record.');
+    return this.update(id, { signing: cleanSigning(signing) });
+  }
+
   async saveAgreement(id: string, input: AgreementInput): Promise<Booking | undefined> {
     const updated = await this.update(id, cleanAgreement(input));
     // the schedule follows the terms; receipts are re-applied and the status re-derived from them

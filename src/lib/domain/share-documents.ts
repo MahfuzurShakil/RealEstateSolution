@@ -66,10 +66,39 @@ export function shareDocChecklist(
   saleId: string,
   context: { has_nominee: boolean; by_attorney: boolean },
 ): ChecklistItem[] {
+  return paperChecklist(uploads, { kind: 'sale', id: saleId }, context);
+}
+
+/*
+ * BUYER-PORTAL-PLAN.md §2.7 — a flat or plot booking keeps the same file:
+ * the customer papers are shared with any share purchase, and the booking's
+ * own papers hang off it by `booking_id`. Only the names of a few papers
+ * change to what a sale of a home calls them.
+ */
+export type PaperOwner = { kind: 'sale' | 'booking'; id: string };
+
+const HOME_PAPER: Partial<Record<CustomerUploadKind, Pick<ShareDocMeta, 'label' | 'hint'>>> = {
+  signed_copy: { label: 'Signed sale agreement', hint: 'Signed by the company, the buyer and two witnesses, on stamp paper' },
+  allotment_letter: { label: 'Allotment letter', hint: 'Issued with the agreement, naming the flat or plot' },
+  deed: { label: 'Registered sale deed', hint: 'The deed registered at the sub-registry office' },
+  other: { label: 'Other document', hint: 'Anything else for this booking' },
+};
+
+export function docMeta(kind: CustomerUploadKind, owner: PaperOwner['kind'] = 'sale'): ShareDocMeta {
+  const base = SHARE_DOC_META[kind];
+  return owner === 'booking' && HOME_PAPER[kind] ? { ...base, ...HOME_PAPER[kind] } : base;
+}
+
+export function paperChecklist(
+  uploads: CustomerUpload[],
+  owner: PaperOwner,
+  context: { has_nominee: boolean; by_attorney: boolean },
+): ChecklistItem[] {
+  const mine = (u: CustomerUpload) => (owner.kind === 'sale' ? u.sale_id === owner.id : u.booking_id === owner.id);
   return SHARE_DOC_KINDS.filter((k) => k !== 'other').map((kind) => {
-    const meta = SHARE_DOC_META[kind];
+    const meta = docMeta(kind, owner.kind);
     const files = uploads
-      .filter((u) => u.kind === kind && (meta.scope === 'customer' || u.sale_id === saleId))
+      .filter((u) => u.kind === kind && (meta.scope === 'customer' || mine(u)))
       .sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at));
     const required = meta.required_to_sign || (kind === 'nominee_id' && context.has_nominee) || (kind === 'power_of_attorney' && context.by_attorney);
     return { kind, meta, required, files, done: files.some((f) => f.status !== 'rejected') };

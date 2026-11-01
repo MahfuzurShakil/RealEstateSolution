@@ -1810,6 +1810,8 @@ export interface Booking extends BaseEntity {
   late_fee_grace_days?: number | null;
   /** v45 — the day the last schedule row was paid; null while money is still owed */
   fully_paid_on?: ISODate | null;
+  /** v46 — who signed, the witnesses and the stamp, as on a Share Sale agreement */
+  signing?: ShareSigningRecord | null;
 }
 
 /*
@@ -3448,6 +3450,8 @@ export interface CustomerUpload extends BaseEntity {
   customer_id: UUID;
   /** null for the customer's own papers (NID, photo …), which serve every purchase */
   sale_id: UUID | null;
+  /** v46 — a flat or plot booking's paper (BUYER-PORTAL-PLAN.md §2.7); null otherwise */
+  booking_id?: UUID | null;
   /** who put it on file: the customer on the portal, or the office (accepted on upload) */
   source?: 'customer' | 'office' | null;
   kind: CustomerUploadKind;

@@ -8,7 +8,7 @@ import { Field, SelectInput, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { CustomerUpload, CustomerUploadKind, ShareSale } from '@/lib/db/types';
-import { SHARE_DOC_KINDS, SHARE_DOC_META, shareDocChecklist, shareDocScope, type ChecklistItem } from '@/lib/domain/share-documents';
+import { SHARE_DOC_KINDS, SHARE_DOC_META, docMeta, paperChecklist, shareDocScope, type ChecklistItem, type PaperOwner } from '@/lib/domain/share-documents';
 import { customerUploadRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatDate } from '@/lib/utils/format';
@@ -184,7 +184,7 @@ function paperState(i: ChecklistItem): { label: string; tone: 'green' | 'amber' 
 }
 
 /** One paper, the way the land Legal DD list shows a paper: status, guidance, files, upload. */
-function PaperCard({ item, sale, mayEdit, onReject }: { item: ChecklistItem; sale: Pick<ShareSale, 'id' | 'customer_id'>; mayEdit: boolean; onReject: (u: CustomerUpload) => void }) {
+function PaperCard({ item, sale, owner = 'sale', mayEdit, onReject }: { item: ChecklistItem; sale: Pick<ShareSale, 'id' | 'customer_id'>; owner?: PaperOwner['kind']; mayEdit: boolean; onReject: (u: CustomerUpload) => void }) {
   const { userId } = useMockSession();
   const input = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -199,7 +199,10 @@ function PaperCard({ item, sale, mayEdit, onReject }: { item: ChecklistItem; sal
     setUploading(true);
     try {
       for (const file of Array.from(picked)) {
-        await customerUploadRepository.officeUpload({ customer_id: sale.customer_id, sale_id: sale.id, kind: item.kind, file, file_name: file.name }, userId);
+        await customerUploadRepository.officeUpload(
+          { customer_id: sale.customer_id, sale_id: owner === 'sale' ? sale.id : null, booking_id: owner === 'booking' ? sale.id : null, kind: item.kind, file, file_name: file.name },
+          userId,
+        );
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'The upload did not go through.');
@@ -347,12 +350,15 @@ function AddPapersDialog({ kinds, onAdd, onClose }: { kinds: ChecklistItem[]; on
 export function ShareDocumentChecklist({
   uploads,
   sale,
+  owner = 'sale',
   hasNominee,
   byAttorney,
   mayEdit,
 }: {
   uploads: CustomerUpload[];
+  /** the purchase, or with `owner="booking"` the booking, the papers belong to */
   sale: Pick<ShareSale, 'id' | 'code' | 'customer_id'>;
+  owner?: PaperOwner['kind'];
   hasNominee: boolean;
   byAttorney: boolean;
   mayEdit: boolean;
@@ -362,14 +368,14 @@ export function ShareDocumentChecklist({
   const [added, setAdded] = useState<CustomerUploadKind[]>([]);
   const [adding, setAdding] = useState(false);
   const [reject, setReject] = useState<CustomerUpload | null>(null);
-  const all = shareDocChecklist(uploads, sale.id, { has_nominee: hasNominee, by_attorney: byAttorney });
+  const all = paperChecklist(uploads, { kind: owner, id: sale.id }, { has_nominee: hasNominee, by_attorney: byAttorney });
   const required = all.filter((i) => i.required);
   const extra = all.filter((i) => !i.required && (i.files.length > 0 || added.includes(i.kind)));
   const addable = all.filter((i) => !i.required && !extra.includes(i));
   const done = required.filter((i) => i.done).length;
   const clear = done === required.length;
   const pct = required.length ? Math.round((done / required.length) * 100) : 100;
-  const others = uploads.filter((u) => u.kind === 'other' && u.sale_id === sale.id);
+  const others = uploads.filter((u) => u.kind === 'other' && (owner === 'sale' ? u.sale_id === sale.id : u.booking_id === sale.id));
 
   return (
     <>
@@ -397,7 +403,7 @@ export function ShareDocumentChecklist({
         <h4 className="mb-2 text-xs font-semibold tracking-wide text-ink-muted uppercase">Required papers</h4>
         <ul className="space-y-2">
           {required.map((i) => (
-            <PaperCard key={i.kind} item={i} sale={sale} mayEdit={mayEdit} onReject={setReject} />
+            <PaperCard key={i.kind} item={i} sale={sale} owner={owner} mayEdit={mayEdit} onReject={setReject} />
           ))}
         </ul>
       </section>
@@ -419,18 +425,23 @@ export function ShareDocumentChecklist({
             className="flex w-full flex-col items-center gap-1.5 rounded-xl border-2 border-dashed border-hairline bg-white px-4 py-5 text-center transition-colors hover:border-admin-300 hover:bg-admin-50/40"
           >
             <FilePlus2 className="size-5 text-admin-600" />
-            <span className="text-sm font-medium text-ink">Add a paper this purchase needs</span>
-            <span className="text-xs text-ink-muted">e.g. allotment letter, deed of share ownership, e-TIN, post-dated cheques, source of funds declaration</span>
+            <span className="text-sm font-medium text-ink">Add a paper this {owner === 'sale' ? 'purchase' : 'booking'} needs</span>
+            <span className="text-xs text-ink-muted">
+              {owner === 'sale'
+                ? 'e.g. allotment letter, deed of share ownership, e-TIN, post-dated cheques, source of funds declaration'
+                : 'e.g. allotment letter, post-dated cheques, registered sale deed, e-TIN'}
+            </span>
           </button>
         ) : (
           <ul className="space-y-2">
             {extra.map((i) => (
-              <PaperCard key={i.kind} item={i} sale={sale} mayEdit={mayEdit} onReject={setReject} />
+              <PaperCard key={i.kind} item={i} sale={sale} owner={owner} mayEdit={mayEdit} onReject={setReject} />
             ))}
             {others.length > 0 && (
               <PaperCard
-                item={{ kind: 'other', meta: SHARE_DOC_META.other, required: false, files: others, done: others.some((f) => f.status !== 'rejected') }}
+                item={{ kind: 'other', meta: docMeta('other', owner), required: false, files: others, done: others.some((f) => f.status !== 'rejected') }}
                 sale={sale}
+                owner={owner}
                 mayEdit={mayEdit}
                 onReject={setReject}
               />

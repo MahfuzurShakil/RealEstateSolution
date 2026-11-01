@@ -1,9 +1,11 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Check, FileSignature, Pencil } from 'lucide-react';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
+import { ShareDocumentChecklist } from '@/components/admin/share-sale/ShareDocuments';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -16,7 +18,7 @@ import {
   hasAgreement,
   installmentAmount,
 } from '@/lib/domain/booking';
-import { bookingRepository, paymentRepository } from '@/lib/repositories';
+import { bookingRepository, customerRepository, customerUploadRepository, paymentRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate, todayLocal } from '@/lib/utils/format';
 import {
@@ -49,6 +51,9 @@ export function AgreementPanel({ booking }: { booking: Booking }) {
   const lines = expectedLines(booking);
   const each = booking.payment_mode === 'installment' ? installmentAmount(booking) : 0;
   const cancelled = booking.status === 'cancelled';
+  const signing = booking.signing ?? null;
+  const customer = useLiveQuery(() => customerRepository.getById(booking.customer_id), [booking.customer_id]);
+  const uploads = useLiveQuery(() => customerUploadRepository.forCustomer(booking.customer_id), [booking.customer_id]);
 
   return (
     <div className="space-y-5">
@@ -57,9 +62,18 @@ export function AgreementPanel({ booking }: { booking: Booking }) {
           title="Agreement"
           action={
             recorded && !cancelled ? (
-              <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
-                <Pencil className="size-4" /> Edit
-              </Button>
+              <div className="flex gap-2">
+                {!signing && (
+                  <Link href={`/admin/bookings/${booking.id}/sign`}>
+                    <Button size="sm">
+                      <FileSignature className="size-4" /> Sign with papers
+                    </Button>
+                  </Link>
+                )}
+                <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+                  <Pencil className="size-4" /> Edit terms
+                </Button>
+              </div>
             ) : undefined
           }
         />
@@ -67,12 +81,19 @@ export function AgreementPanel({ booking }: { booking: Booking }) {
           <EmptyState
             icon={FileSignature}
             title="No agreement recorded yet"
-            description="Record the agreement's date, how the buyer pays (in full or in installments), the handover date and anything else it says. Attach the signed copy below."
+            description="Sign it step by step — terms, the buyer's details, witnesses and stamp, and the papers on file — the way a share purchase is signed. Or record the terms only, and sign later."
             action={
               !cancelled ? (
-                <Button onClick={() => setEditing(true)}>
-                  <FileSignature className="size-4" /> Record agreement
-                </Button>
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Link href={`/admin/bookings/${booking.id}/sign`}>
+                    <Button>
+                      <FileSignature className="size-4" /> Sign agreement
+                    </Button>
+                  </Link>
+                  <Button variant="outline" onClick={() => setEditing(true)}>
+                    Record terms only
+                  </Button>
+                </div>
               ) : undefined
             }
           />
@@ -160,8 +181,46 @@ export function AgreementPanel({ booking }: { booking: Booking }) {
         </Card>
       )}
 
+      {signing && (
+        <Card>
+          <CardHeader title="Signing" action={<Badge tone="green">Signed</Badge>} />
+          <div className="grid gap-x-8 md:grid-cols-2">
+            <div>
+              <Row label="Signed at" value={signing.place} />
+              <Row label="For the company" value={[signing.company_signatory, signing.company_signatory_title].filter(Boolean).join(', ')} />
+              {signing.attorney_name && <Row label="For the buyer, by attorney" value={signing.attorney_name} />}
+              <Row label="Witnesses" value={signing.witnesses.map((w) => w.name).join(' and ')} />
+            </div>
+            <div>
+              <Row
+                label="Stamp paper"
+                value={signing.stamp_value != null ? `${formatBdt(signing.stamp_value)}${signing.stamp_serial ? ` · no. ${signing.stamp_serial}` : ''}` : null}
+              />
+              <Row label="Notarized" value={signing.notarized_on ? `${formatDate(signing.notarized_on)}${signing.notary_name ? ` · ${signing.notary_name}` : ''}` : null} />
+              <Row label="Buyer's NID" value={customer?.nid} />
+              <Row label="Nominee" value={customer?.nominee_name ? `${customer.nominee_name}${customer.nominee_relation ? ` (${customer.nominee_relation})` : ''}` : null} />
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* BUYER-PORTAL-PLAN.md §2.7 — the same papers checklist as a share purchase; the buyer sees these on the portal */}
+      {uploads && customer && (
+        <Card>
+          <CardHeader title="Buyer's papers" />
+          <ShareDocumentChecklist
+            uploads={uploads}
+            sale={{ id: booking.id, code: booking.code, customer_id: booking.customer_id }}
+            owner="booking"
+            hasNominee={!!customer.nominee_name}
+            byAttorney={!!signing?.attorney_name}
+            mayEdit={!cancelled}
+          />
+        </Card>
+      )}
+
       <Card>
-        <CardHeader title="Signed copy & documents" />
+        <CardHeader title="Other documents" />
         <DocumentsPanel entityType="booking" entityId={booking.id} />
       </Card>
 

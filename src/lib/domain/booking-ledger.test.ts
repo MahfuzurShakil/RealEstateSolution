@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Booking, BookingInstallment, Payment } from '../db/types';
+import type { Booking, BookingInstallment, CustomerUpload, Payment } from '../db/types';
+import { missingToSign, paperChecklist } from './share-documents';
 import { allocateBookingPayments, bookingFeeRule, bookingScheduleRows, paidOffOn, principalOf, viewBookingLedger } from './booking';
 import { allocatePayment, replayPayments, viewInstallments } from './installment-ledger';
 
@@ -109,5 +110,17 @@ describe('booking ledger view', () => {
     const payments = [pay('p1', '2026-01-10', 200_000), pay('p2', '2026-05-01', 800_000)];
     expect(paidOffOn(booking, payments)).toBe('2026-05-01');
     expect(paidOffOn(booking, payments.slice(0, 1))).toBeNull();
+  });
+});
+
+describe('booking papers', () => {
+  const up = (kind: CustomerUpload['kind'], owner: { sale_id?: string | null; booking_id?: string | null }) =>
+    ({ id: kind + (owner.booking_id ?? owner.sale_id ?? ''), customer_id: 'c1', sale_id: owner.sale_id ?? null, booking_id: owner.booking_id ?? null, kind, title: kind, file_name: 'a.pdf', file_type: 'application/pdf', file_size: 1, uploaded_at: '2026-01-01', status: 'accepted', created_at: '', updated_at: '', created_by: null }) as CustomerUpload;
+
+  it('shares customer papers with share purchases and keeps a booking’s own papers to it', () => {
+    const list = paperChecklist([up('id_document', {}), up('photo', {}), up('signed_copy', { sale_id: 's1' })], { kind: 'booking', id: 'b1' }, { has_nominee: false, by_attorney: false });
+    expect(missingToSign(list).map((i) => i.meta.label)).toEqual(['Signed sale agreement']);
+    const signed = paperChecklist([up('id_document', {}), up('photo', {}), up('signed_copy', { booking_id: 'b1' })], { kind: 'booking', id: 'b1' }, { has_nominee: false, by_attorney: false });
+    expect(missingToSign(signed)).toEqual([]);
   });
 });

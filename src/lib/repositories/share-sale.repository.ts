@@ -15,7 +15,9 @@ import type {
   ShareSignDraft,
   ShareSigningRecord,
 } from '../db/types';
-import { SHARE_DOC_META, missingToSign, shareDocChecklist, shareDocScope } from '../domain/share-documents';
+import { docMeta, missingToSign, shareDocChecklist, shareDocScope } from '../domain/share-documents';
+import { cleanKyc, cleanSigning, type KycField } from '../domain/signing';
+export type { KycField };
 import {
   SALE_HOLDS_SHARES,
   addDays,
@@ -247,37 +249,6 @@ async function checkPlan(sale: ShareSale, t: PlanChange): Promise<Pick<ShareSale
   if (held + shares > o.max_shares) throw new Error(`The customer already holds ${held} share${held === 1 ? '' : 's'} here; the most one customer may take is ${o.max_shares}.`);
   const total = shares * sale.price_per_share;
   return { shares, share_pct: shares * o.share_pct, total_price: total, down_payment: Math.round((total * pct) / 100), installment_count: n };
-}
-
-const KYC_FIELDS = [
-  'email', 'nid', 'tin', 'date_of_birth', 'profession', 'address', 'permanent_address', 'father_or_spouse_name',
-  'nominee_name', 'nominee_relation', 'nominee_phone', 'nominee_nid', 'bank_name', 'bank_branch', 'bank_account', 'kyc_verified_on',
-] as const;
-export type KycField = (typeof KYC_FIELDS)[number];
-
-function cleanKyc(c: Partial<Pick<Customer, KycField>>): Partial<Pick<Customer, KycField>> {
-  return Object.fromEntries(KYC_FIELDS.map((k) => [k, typeof c[k] === 'string' ? (c[k] as string).trim() || null : (c[k] ?? null)]));
-}
-
-function cleanSigning(s: ShareSigningRecord): ShareSigningRecord {
-  const t = (v: string | null | undefined) => v?.trim() || null;
-  const witnesses = s.witnesses.map((w) => ({ name: w.name.trim(), id_or_phone: t(w.id_or_phone), address: t(w.address) })).filter((w) => w.name);
-  if (!s.place?.trim()) throw new Error('Enter where the agreement was signed.');
-  if (!s.company_signatory?.trim()) throw new Error('Enter who signed for the company.');
-  if (witnesses.length < 2) throw new Error('An agreement is witnessed by two people — enter both witnesses.');
-  const stamp = s.stamp_value != null && String(s.stamp_value) !== '' ? Number(s.stamp_value) : null;
-  if (stamp != null && !(stamp >= 0)) throw new Error('The stamp paper value cannot be negative.');
-  return {
-    place: s.place.trim(),
-    company_signatory: s.company_signatory.trim(),
-    company_signatory_title: t(s.company_signatory_title),
-    witnesses,
-    stamp_value: stamp,
-    stamp_serial: t(s.stamp_serial),
-    notarized_on: t(s.notarized_on),
-    notary_name: t(s.notary_name),
-    attorney_name: t(s.attorney_name),
-  };
 }
 
 export interface PaymentInput {
@@ -772,22 +743,24 @@ class CustomerUploadRepository extends BaseRepository<CustomerUpload> {
    * it on the portal. Customer papers are kept without a purchase.
    */
   async officeUpload(
-    input: { customer_id: string; sale_id: string | null; kind: CustomerUpload['kind']; title?: string | null; note?: string | null; file: Blob; file_name: string },
+    input: { customer_id: string; sale_id: string | null; booking_id?: string | null; kind: CustomerUpload['kind']; title?: string | null; note?: string | null; file: Blob; file_name: string },
     userId: string | null,
   ): Promise<CustomerUpload> {
     if (input.file.size > 10 * 1024 * 1024) throw new Error('The file is larger than 10 MB.');
     if (!/\.(pdf|jpe?g|png|webp)$/i.test(input.file_name)) throw new Error('Upload a PDF, JPG, PNG or WEBP file.');
     const scope = shareDocScope(input.kind);
     const saleId = scope === 'customer' ? null : input.sale_id;
-    if (scope === 'purchase' && !saleId) throw new Error('Pick the purchase this paper belongs to.');
+    const bookingId = scope === 'customer' ? null : (input.booking_id ?? null);
+    if (scope === 'purchase' && !saleId && !bookingId) throw new Error('Pick the purchase or booking this paper belongs to.');
     const ts = nowIso();
     const row: CustomerUpload = {
       id: newId(),
       customer_id: input.customer_id,
       sale_id: saleId,
+      booking_id: bookingId,
       source: 'office',
       kind: input.kind,
-      title: input.title?.trim() || SHARE_DOC_META[input.kind].label,
+      title: input.title?.trim() || docMeta(input.kind, bookingId ? 'booking' : 'sale').label,
       note: input.note?.trim() || null,
       file_name: input.file_name,
       file_type: input.file.type || 'application/octet-stream',
