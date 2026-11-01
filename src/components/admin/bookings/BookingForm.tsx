@@ -614,7 +614,7 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
       {!isEdit && (
         <Card>
           <CardHeader
-            title="Agreement (চুক্তি)"
+            title="Agreement"
             action={
               <Checkbox
                 label="Signed now"

@@ -3,7 +3,7 @@ import { GuidePage } from '@/components/public/pages/GuidePage';
 
 export const metadata: Metadata = {
   title: 'Buyer’s guide',
-  description: 'How buying a flat, plot or land share works: steps, papers to check, costs and instalments.',
+  description: 'How buying a flat, plot or land share works: steps, papers to check, costs and installments.',
 };
 
 export default function Page() {

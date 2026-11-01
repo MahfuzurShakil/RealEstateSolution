@@ -263,7 +263,7 @@ export interface BookingInput {
   } | null;
 }
 
-/** The agreement (চুক্তি) fields, as typed — see `Booking` for what each means. */
+/** The agreement fields, as typed — see `Booking` for what each means. */
 export type AgreementInput = Pick<
   Booking,
   | 'agreement_date'
@@ -497,7 +497,7 @@ class BookingRepository extends BaseRepository<Booking> {
     return updated;
   }
 
-  /** Records or edits the agreement (চুক্তি). Status does not depend on it. */
+  /** Records or edits the agreement. Status does not depend on it. */
   async saveAgreement(id: string, input: AgreementInput): Promise<Booking | undefined> {
     return this.update(id, cleanAgreement(input));
   }

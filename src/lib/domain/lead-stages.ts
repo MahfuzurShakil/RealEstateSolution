@@ -113,7 +113,7 @@ export const LEAD_STAGES: Partial<Record<LeadStatus, LeadStage>> = {
       { key: 'unit', label: 'Unit under discussion', type: 'unit', required: true, updates: 'interested_unit_id' },
       { key: 'our_price', label: 'Our price (BDT)', type: 'money' },
       { key: 'buyer_offer', label: "Buyer's offer (BDT)", type: 'money' },
-      { key: 'payment', label: 'How they want to pay', type: 'select', options: ['Full payment', 'Kisti'] },
+      { key: 'payment', label: 'How they want to pay', type: 'select', options: ['Full payment', 'Installments'] },
     ],
     notesPlaceholder: 'Discount asked, parking, handover expectations…',
     asksFollowUp: true,

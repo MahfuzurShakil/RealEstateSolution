@@ -3,7 +3,7 @@
 import { use } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { PrintField, PrintSheet, SignatureRow } from '@/components/print/PrintSheet';
-import { kistiAmount } from '@/lib/domain/booking';
+import { installmentAmount } from '@/lib/domain/booking';
 import { amountInWords } from '@/lib/domain/document';
 import {
   PREMIUM_FIELD,
@@ -175,7 +175,7 @@ export default function BookingFormPrintPage({ params }: { params: Promise<{ id:
             label="Payment"
             value={
               booking.payment_mode === 'installment' && booking.installment_count
-                ? `${booking.installment_count} monthly kisti of ${formatBdt(kistiAmount(booking))} from ${formatDate(booking.first_installment_date)}`
+                ? `${booking.installment_count} monthly installments of ${formatBdt(installmentAmount(booking))} from ${formatDate(booking.first_installment_date)}`
                 : booking.payment_mode === 'full'
                   ? `Full price by ${formatDate(booking.full_payment_due_date)}`
                   : 'As per agreement'

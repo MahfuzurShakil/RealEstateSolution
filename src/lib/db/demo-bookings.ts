@@ -8,7 +8,7 @@ import type { PaymentMethod } from './types';
  *   - confirmed bookings with a discount (nobody approves it since 2026-10-22)
  *   - one on hold because the booking money has not arrived
  *   - one confirmed with no agreement recorded yet
- *   - kisti and full-payment agreements, some buyers behind on them
+ *   - installment and full-payment agreements, some buyers behind on them
  *   - a cancelled booking, with the unit released
  *   - a customer with two bookings, and one with none yet
  *
@@ -176,9 +176,9 @@ export interface DemoBooking {
   /**
    * SALES-FLOW-PLAN.md S3 — the agreement, signed a few days after the booking
    * money. Six or fewer = the full price by then; more = that many monthly
-   * kisti from the month after booking. Absent = no agreement recorded yet.
+   * installments from the month after booking. Absent = no agreement recorded yet.
    */
-  kisti_count?: number;
+  installment_count?: number;
   /** receipts taken against this booking; empty means nothing received yet */
   payments?: Array<{
     amount: number;
@@ -209,7 +209,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 350000,
     discount_amount: 0,
     booking_amount: 1500000,
-    kisti_count: 24,
+    installment_count: 24,
     payments: [
       {
         amount: 1500000,
@@ -234,7 +234,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 300000,
     discount_amount: 400000,
     booking_amount: 1200000,
-    kisti_count: 30,
+    installment_count: 30,
     payments: [
       { amount: 700000, days_ago: 2, method: 'cash', notes: 'Cash taken at the sales office' },
       {
@@ -284,7 +284,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 250000,
     discount_amount: 500000,
     booking_amount: 1000000,
-    kisti_count: 24,
+    installment_count: 24,
     // nothing received yet - this is the booking that stays on hold
   },
 
@@ -307,7 +307,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 300000,
     discount_amount: 0,
     booking_amount: 1400000,
-    kisti_count: 24,
+    installment_count: 24,
     payments: [
       {
         amount: 1400000,
@@ -357,7 +357,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 250000,
     discount_amount: 0,
     booking_amount: 1300000,
-    kisti_count: 24,
+    installment_count: 24,
     payments: [
       {
         amount: 1300000,
@@ -376,7 +376,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     ],
     cancel: {
       reason:
-        'পরিবার নিয়ে কানাডা চলে যাচ্ছেন — বুকিং বাতিল করে টাকা ফেরত চেয়েছেন। চুক্তি অনুযায়ী cancellation charge কাটা হবে।',
+        'Moving to Canada with the family — cancelled the booking and asked for the money back. The cancellation charge is deducted as the agreement says.',
     },
   },
 
@@ -393,7 +393,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 200000,
     discount_amount: 0,
     booking_amount: 1000000,
-    kisti_count: 24,
+    installment_count: 24,
     // cancelled before any money was taken, so there is nothing to refund
     cancel: {
       reason: 'দ্বিতীয় ইউনিটের সিদ্ধান্ত বাতিল — ব্যবসার টাকা আটকে গেছে বলে জানিয়েছেন।',
@@ -422,7 +422,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 250000,
     discount_amount: 0,
     booking_amount: 1400000,
-    kisti_count: 24,
+    installment_count: 24,
     payments: [
       {
         amount: 1400000,
@@ -445,7 +445,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 250000,
     discount_amount: 300000,
     booking_amount: 1300000,
-    kisti_count: 30,
+    installment_count: 30,
     payments: [
       { amount: 800000, days_ago: 39, method: 'cheque', reference_no: 'CHQ 4471290' },
       {
@@ -474,7 +474,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 250000,
     discount_amount: 0,
     booking_amount: 1200000,
-    kisti_count: 24,
+    installment_count: 24,
     payments: [
       {
         amount: 400000,
@@ -508,7 +508,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 420000,
     discount_amount: 200000,
     booking_amount: 900000,
-    kisti_count: 48,
+    installment_count: 48,
     payments: [
       {
         amount: 900000,
@@ -546,7 +546,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 60000,
     discount_amount: 0,
     booking_amount: 500000,
-    kisti_count: 6,
+    installment_count: 6,
     payments: [
       {
         amount: 2_960_000,
@@ -574,7 +574,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 60000,
     discount_amount: 0,
     booking_amount: 500000,
-    kisti_count: 6,
+    installment_count: 6,
     payments: [
       { amount: 2_960_000, days_ago: 48, method: 'bank', reference_no: 'BEFTN 6620590' },
     ],
@@ -591,7 +591,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 60000,
     discount_amount: 0,
     booking_amount: 500000,
-    kisti_count: 6,
+    installment_count: 6,
     payments: [
       { amount: 2_960_000, days_ago: 45, method: 'bank', reference_no: 'BEFTN 6620733' },
     ],
@@ -608,7 +608,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 60000,
     discount_amount: 0,
     booking_amount: 500000,
-    kisti_count: 6,
+    installment_count: 6,
     payments: [
       { amount: 2_960_000, days_ago: 41, method: 'bank', reference_no: 'BEFTN 6620811' },
     ],
@@ -632,7 +632,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     other_charges: 250000,
     discount_amount: 0,
     booking_amount: 400000,
-    kisti_count: 48,
+    installment_count: 48,
     payments: [
       { amount: 400000, days_ago: 70, method: 'cheque', reference_no: 'CHQ 5530117' },
       {

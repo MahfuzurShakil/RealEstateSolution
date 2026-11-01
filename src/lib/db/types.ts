@@ -1779,7 +1779,7 @@ export interface Booking extends BaseEntity {
   booked_by?: UUID | null;
 
   /*
-   * The agreement (চুক্তি) — SALES-FLOW-PLAN.md S3, client 2026-10-22.
+   * The agreement — SALES-FLOW-PLAN.md S3, client 2026-10-22.
    *
    * Replaces the generated instalment schedule: the buyer pays what was
    * agreed, typed in plain terms, and what should be in by a date is worked
@@ -1793,7 +1793,7 @@ export interface Booking extends BaseEntity {
   payment_mode?: SalePaymentMode | null;
   /** `full` — the whole price is due by this date */
   full_payment_due_date?: ISODate | null;
-  /** `installment` — the balance after the booking money, in equal monthly kisti */
+  /** `installment` — the balance after the booking money, in equal monthly installments */
   installment_count?: number | null;
   installment_amount?: number | null;
   first_installment_date?: ISODate | null;

@@ -105,7 +105,7 @@ export function derivedStatus(
 
 export const SALE_PAYMENT_MODE_LABEL: Record<SalePaymentMode, string> = {
   full: 'Full payment',
-  installment: 'Instalments (kisti)',
+  installment: 'Installments',
 };
 
 export type AgreementTerms = Pick<
@@ -133,8 +133,8 @@ export function addMonths(date: string, months: number): string {
   return first.toISOString().slice(0, 10);
 }
 
-/** What one kisti is: the typed amount, or the balance after booking money split evenly. */
-export function kistiAmount(t: AgreementTerms): number {
+/** What one installment is: the typed amount, or the balance after booking money split evenly. */
+export function installmentAmount(t: AgreementTerms): number {
   const typed = Number(t.installment_amount) || 0;
   if (typed > 0) return typed;
   const n = Number(t.installment_count) || 0;
@@ -147,7 +147,7 @@ export function kistiAmount(t: AgreementTerms): number {
  * The dates money is expected on, in order, from the agreement's plain terms.
  * Nothing is stored: change the terms and every figure built on this moves
  * with them. The last line always closes at the final price, so rounding in a
- * typed kisti amount never leaves a few taka owed for ever.
+ * typed installment amount never leaves a few taka owed for ever.
  */
 export function expectedLines(t: AgreementTerms): Array<{ date: string; label: string; cumulative: number }> {
   const total = Number(t.final_price) || 0;
@@ -159,11 +159,11 @@ export function expectedLines(t: AgreementTerms): Array<{ date: string; label: s
   }
   if (t.payment_mode === 'installment' && t.first_installment_date) {
     const n = Math.max(Math.floor(Number(t.installment_count) || 0), 0);
-    const each = kistiAmount(t);
+    const each = installmentAmount(t);
     for (let k = 1; k <= n; k++) {
       lines.push({
         date: addMonths(t.first_installment_date, k - 1),
-        label: `Kisti ${k} of ${n}`,
+        label: `Installment ${k} of ${n}`,
         cumulative: k === n ? total : Math.min(booking + each * k, total),
       });
     }

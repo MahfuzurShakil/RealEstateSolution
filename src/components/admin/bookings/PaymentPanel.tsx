@@ -80,7 +80,7 @@ export function PaymentPanel({ booking }: { booking: Booking }) {
               ? 'Fully paid.'
               : agreed
                 ? 'No more dates in the agreement — the balance is due now.'
-                : 'No agreement recorded yet — add one on the Agreement tab to track kisti dates.'}
+                : 'No agreement recorded yet — add one on the Agreement tab to track installment dates.'}
         </p>
       </div>
 

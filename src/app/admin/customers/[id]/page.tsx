@@ -233,7 +233,7 @@ export default function CustomerDetailPage() {
                                 )}{' '}
                                 received
                                 {booking.payment_mode === 'installment' && booking.installment_count
-                                  ? ` · ${booking.installment_count} kisti`
+                                  ? ` · ${booking.installment_count} installments`
                                   : booking.payment_mode === 'full'
                                     ? ' · full payment'
                                     : ''}

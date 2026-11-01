@@ -92,7 +92,7 @@ export function InstalmentPlanner({ startingPrice }: { startingPrice: number | n
         <Slider label="Booking money" value={bookingPct} min={5} max={30} step={1} display={`${bookingPct}%`} onChange={setBookingPct} />
         <Slider label="Down payment at agreement" value={downPct} min={0} max={50} step={5} display={`${downPct}%`} onChange={setDownPct} />
         <Slider label="Paid at handover" value={handoverPct} min={0} max={30} step={5} display={`${handoverPct}%`} onChange={setHandoverPct} />
-        <Slider label="Monthly instalments" value={months} min={6} max={60} step={6} display={`${months} months`} onChange={setMonths} />
+        <Slider label="Monthly installments" value={months} min={6} max={60} step={6} display={`${months} months`} onChange={setMonths} />
       </div>
 
       <div className="flex flex-col bg-site-night p-7 text-white md:p-10">
@@ -107,7 +107,7 @@ export function InstalmentPlanner({ startingPrice }: { startingPrice: number | n
         <div className="mt-8">
           <Row label="Booking money" amount={booking} />
           <Row label="Down payment" amount={down} />
-          <Row label={`${months} instalments`} amount={instalmentTotal} />
+          <Row label={`${months} installments`} amount={instalmentTotal} />
           <Row label="At handover" amount={atHandover} />
           <Row label="Total price" amount={price} strong />
         </div>

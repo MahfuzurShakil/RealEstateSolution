@@ -1600,24 +1600,24 @@ async function seedDemoBookings(
     /*
      * SALES-FLOW-PLAN.md S3 — the agreement, signed a few days after the
      * booking money, recorded only on bookings that got their money in.
-     * Six or fewer months reads as "full price by then"; more as monthly kisti.
+     * Six or fewer months reads as "full price by then"; more as monthly installments.
      */
     const paidIn = (demo.payments ?? []).reduce((s, p) => s + p.amount, 0);
-    if (demo.kisti_count && paidIn >= demo.booking_amount && !demo.cancel) {
+    if (demo.installment_count && paidIn >= demo.booking_amount && !demo.cancel) {
       const signed = daysFromToday(-Math.max(demo.days_ago - 5, 0)).slice(0, 10);
-      const full = demo.kisti_count <= 6;
+      const full = demo.installment_count <= 6;
       await bookingRepository.saveAgreement(booking.id, {
         agreement_date: signed,
         agreement_no: `AGR-${booking.code.slice(-3)}`,
         payment_mode: full ? 'full' : 'installment',
-        full_payment_due_date: full ? addMonths(bookingDate, demo.kisti_count) : null,
-        installment_count: full ? null : demo.kisti_count,
+        full_payment_due_date: full ? addMonths(bookingDate, demo.installment_count) : null,
+        installment_count: full ? null : demo.installment_count,
         installment_amount: null,
         first_installment_date: full ? null : addMonths(bookingDate, 1),
-        handover_date: addMonths(bookingDate, Math.max(demo.kisti_count, 24)),
+        handover_date: addMonths(bookingDate, Math.max(demo.installment_count, 24)),
         agreement_terms: full
           ? 'Full price within the agreed date; registration cost borne by the buyer.'
-          : 'Monthly kisti by the 10th; 2% late fee after 30 days. Utility connection charged at cost.',
+          : 'Monthly installment by the 10th; 2% late fee after 30 days. Utility connection charged at cost.',
       });
     }
 

@@ -2,12 +2,12 @@
 
 import { Field, MoneyInput, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
 import { SALE_PAYMENT_MODES, type Booking, type SalePaymentMode } from '@/lib/db/types';
-import { SALE_PAYMENT_MODE_LABEL, addMonths, kistiAmount } from '@/lib/domain/booking';
+import { SALE_PAYMENT_MODE_LABEL, addMonths, installmentAmount } from '@/lib/domain/booking';
 import type { AgreementInput } from '@/lib/repositories';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
 /**
- * The agreement (চুক্তি) as typed — SALES-FLOW-PLAN.md S3.
+ * The agreement as typed — SALES-FLOW-PLAN.md S3.
  *
  * Shared by the booking form (optional, at booking time) and the Agreement tab's
  * popup (later), so the two can never ask for different things.
@@ -76,12 +76,12 @@ export function validateAgreement(f: AgreementForm): Record<string, string> {
   if (f.payment_mode === 'installment') {
     const count = Number(f.installment_count);
     if (!Number.isInteger(count) || count < 1 || count > 240) {
-      e.installment_count = 'Enter 1 to 240 kisti';
+      e.installment_count = 'Enter 1 to 240 installments';
     }
     if (f.installment_amount.trim() && !(Number(f.installment_amount) > 0)) {
       e.installment_amount = 'Must be more than zero';
     }
-    if (!f.first_installment_date) e.first_installment_date = 'When is the first kisti due?';
+    if (!f.first_installment_date) e.first_installment_date = 'When is the first installment due?';
   }
   return e;
 }
@@ -96,7 +96,7 @@ export function AgreementFields({
   value: AgreementForm;
   onChange: (next: AgreementForm) => void;
   errors: Record<string, string>;
-  /** to show what a kisti comes to when no amount is typed */
+  /** to show what an installment comes to when no amount is typed */
   finalPrice: number;
   bookingAmount: number;
 }) {
@@ -104,7 +104,7 @@ export function AgreementFields({
     onChange({ ...value, [key]: v });
 
   const count = Number(value.installment_count) || 0;
-  const each = kistiAmount({
+  const each = installmentAmount({
     booking_date: '',
     final_price: finalPrice,
     booking_amount: bookingAmount,
@@ -165,7 +165,7 @@ export function AgreementFields({
           </Field>
         ) : (
           <>
-            <Field label="Number of kisti" required error={errors.installment_count}>
+            <Field label="Number of installments" required error={errors.installment_count}>
               <TextInput
                 type="number"
                 min="1"
@@ -177,7 +177,7 @@ export function AgreementFields({
               />
             </Field>
             <Field
-              label="Each kisti (BDT)"
+              label="Each installment (BDT)"
               error={errors.installment_amount}
               hint={
                 count > 0 && !value.installment_amount.trim()
@@ -192,7 +192,7 @@ export function AgreementFields({
               />
             </Field>
             <Field
-              label="First kisti due"
+              label="First installment due"
               required
               error={errors.first_installment_date}
               hint={lastDate ? `Monthly, last one ${formatDate(lastDate)}` : 'Then the same day every month'}
@@ -222,7 +222,7 @@ export function AgreementFields({
         Math.abs(typedTotal - finalPrice) > 1 && (
           <p className="rounded-xl border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
             Booking money {formatBdt(bookingAmount)} + {count} × {formatBdt(each)} ={' '}
-            {formatBdt(typedTotal)}, but the final price is {formatBdt(finalPrice)}. The last kisti
+            {formatBdt(typedTotal)}, but the final price is {formatBdt(finalPrice)}. The last installment
             is taken as whatever closes the price.
           </p>
         )}

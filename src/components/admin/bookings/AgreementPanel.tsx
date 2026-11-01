@@ -14,7 +14,7 @@ import {
   SALE_PAYMENT_MODE_LABEL,
   expectedLines,
   hasAgreement,
-  kistiAmount,
+  installmentAmount,
 } from '@/lib/domain/booking';
 import { bookingRepository, paymentRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
@@ -37,7 +37,7 @@ function Row({ label, value }: { label: string; value: ReactNode }) {
 }
 
 /**
- * The Agreement tab (SALES-FLOW-PLAN.md S3): the চুক্তি's terms, what they
+ * The Agreement tab (SALES-FLOW-PLAN.md S3): the agreement's terms, what they
  * expect and when, and the signed copy. Recorded with the booking or any time
  * after — the booking's status never waits on it.
  */
@@ -47,14 +47,14 @@ export function AgreementPanel({ booking }: { booking: Booking }) {
   const today = todayLocal();
   const recorded = hasAgreement(booking);
   const lines = expectedLines(booking);
-  const kisti = booking.payment_mode === 'installment' ? kistiAmount(booking) : 0;
+  const each = booking.payment_mode === 'installment' ? installmentAmount(booking) : 0;
   const cancelled = booking.status === 'cancelled';
 
   return (
     <div className="space-y-5">
       <Card>
         <CardHeader
-          title="Agreement (চুক্তি)"
+          title="Agreement"
           action={
             recorded && !cancelled ? (
               <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
@@ -67,7 +67,7 @@ export function AgreementPanel({ booking }: { booking: Booking }) {
           <EmptyState
             icon={FileSignature}
             title="No agreement recorded yet"
-            description="Record the agreement's date, how the buyer pays (full or in kisti), the handover date and anything else it says. Attach the signed copy below."
+            description="Record the agreement's date, how the buyer pays (in full or in installments), the handover date and anything else it says. Attach the signed copy below."
             action={
               !cancelled ? (
                 <Button onClick={() => setEditing(true)}>
@@ -91,10 +91,10 @@ export function AgreementPanel({ booking }: { booking: Booking }) {
               {booking.payment_mode === 'installment' && (
                 <>
                   <Row
-                    label="Kisti"
-                    value={`${booking.installment_count ?? 0} × ${formatBdt(kisti)} monthly`}
+                    label="Installments"
+                    value={`${booking.installment_count ?? 0} × ${formatBdt(each)} monthly`}
                   />
-                  <Row label="First kisti" value={formatDate(booking.first_installment_date)} />
+                  <Row label="First installment" value={formatDate(booking.first_installment_date)} />
                 </>
               )}
               <Row label="Handover by" value={formatDate(booking.handover_date)} />

@@ -524,7 +524,7 @@ function SalesCollection({
         <Tile
           label="Overdue"
           value={formatBdt(sales.overdue_amount)}
-          hint={`${sales.overdue_count} instalment${sales.overdue_count === 1 ? '' : 's'} late`}
+          hint={`${sales.overdue_count} installment${sales.overdue_count === 1 ? '' : 's'} late`}
           tone={sales.overdue_amount > 0 ? 'bad' : undefined}
         />
       </div>

@@ -126,7 +126,7 @@ export default function FinanceOverviewPage() {
             <span className="font-medium text-red-600">
               {formatBdt(row.overdue_amount )}
               <span className="block text-xs font-normal">
-                {row.overdue_count} instalment{row.overdue_count === 1 ? '' : 's'}
+                {row.overdue_count} installment{row.overdue_count === 1 ? '' : 's'}
               </span>
             </span>
           </Link>
@@ -227,7 +227,7 @@ export default function FinanceOverviewPage() {
           <p className="mr-auto text-sm text-ink">
             <span className="font-semibold">Overdue collections:</span>{' '}
             <span className="text-red-600">
-              {formatBdt(data.overdue_amount)} across {data.overdue_count} instalment
+              {formatBdt(data.overdue_amount)} across {data.overdue_count} installment
               {data.overdue_count === 1 ? '' : 's'}
             </span>
           </p>
