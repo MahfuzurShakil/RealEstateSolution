@@ -56,4 +56,35 @@ describe('database upgrade path', () => {
     expect((await current.table('stock').get('s1'))?.item_id).toBe(items[0].id);
     current.close();
   });
+  it('gives a v44 booking its schedule and applies its receipts oldest first', async () => {
+    const old = new Dexie(NAME);
+    for (const v of all.filter((x) => x._cfg.version <= 44)) old.version(v._cfg.version).stores(v._cfg.storesSource);
+    await old.open();
+    await old.table('bookings').add({
+      id: 'b1', code: 'BOOK-2026-001', customer_id: 'c1', unit_id: 'u1', booking_date: '2026-01-10', status: 'confirmed',
+      final_price: 1_000_000, booking_amount: 200_000, payment_mode: 'installment', installment_count: 4,
+      installment_amount: null, first_installment_date: '2026-02-10', agreement_date: '2026-01-10',
+    });
+    await old.table('payments').bulkAdd([
+      { id: 'p1', booking_id: 'b1', amount: 200_000, payment_date: '2026-01-10', created_at: '2026-01-10T10:00:00Z' },
+      { id: 'p2', booking_id: 'b1', amount: 300_000, payment_date: '2026-02-10', created_at: '2026-02-10T10:00:00Z' },
+    ]);
+    old.close();
+
+    const current = new AppDatabase();
+    await current.open();
+    const rows = (await current.table('booking_installments').where('booking_id').equals('b1').toArray()).sort((a, b) => a.seq - b.seq);
+    expect(rows.map((r) => [r.kind, r.amount])).toEqual([
+      ['booking_money', 200_000],
+      ['installment', 200_000],
+      ['installment', 200_000],
+      ['installment', 200_000],
+      ['installment', 200_000],
+    ]);
+    const p2 = await current.table('payments').get('p2');
+    expect(p2.allocations.map((a: { installment_id: string; principal: number }) => a.principal)).toEqual([200_000, 100_000]);
+    expect(p2.late_fee).toBe(0);
+    expect((await current.table('bookings').get('b1')).fully_paid_on).toBeNull();
+    current.close();
+  });
 });

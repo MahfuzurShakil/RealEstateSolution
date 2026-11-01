@@ -29,7 +29,8 @@ import {
   planLandInstallments,
   type LandPaymentTerms,
 } from '../domain/land-schedule';
-import { buyerLedger } from '../domain/booking';
+import { buyerLedger, principalOf } from '../domain/booking';
+import { bookingLedgerRepository } from './booking-ledger.repository';
 import { nextCode } from '../utils/id';
 import { todayLocal } from '../utils/format';
 import { BaseRepository, type NewRecord, type UpdateRecord } from './base.repository';
@@ -315,6 +316,8 @@ export interface CollectionRow {
   /** what the agreement says should be in by today */
   expected: number;
   behind: number;
+  /** v45 — late fees owed on top of the price (BUYER-PORTAL-PLAN.md §2) */
+  late_fee: number;
   due_this_month: number;
   next: { date: string; label: string; amount: number } | null;
   state: 'behind' | 'on_track' | 'paid';
@@ -344,12 +347,13 @@ class CollectionRepository {
 
     const paidByBooking = new Map<string, number>();
     for (const p of payments) {
-      paidByBooking.set(p.booking_id, (paidByBooking.get(p.booking_id) ?? 0) + (Number(p.amount) || 0));
+      paidByBooking.set(p.booking_id, (paidByBooking.get(p.booking_id) ?? 0) + principalOf(p));
     }
     const customerById = new Map(customers.map((c) => [c.id, c]));
     const unitById = new Map(units.map((u) => [u.id, u]));
     const towerById = new Map(towers.map((t) => [t.id, t]));
     const projectById = new Map(projects.map((p) => [p.id, p]));
+    const ledgers = await bookingLedgerRepository.viewAll(today);
 
     let rows: CollectionRow[] = [];
     for (const booking of bookings) {
@@ -365,6 +369,7 @@ class CollectionRepository {
         project: tower ? projectById.get(tower.project_id) : undefined,
         ...ledger,
         behind: money(ledger.behind),
+        late_fee: ledgers.get(booking.id)?.late_fees ?? 0,
         state: ledger.balance <= 0.5 ? 'paid' : ledger.behind > 0.5 ? 'behind' : 'on_track',
       });
     }
@@ -600,7 +605,7 @@ class RefundRepository extends BaseRepository<Refund> {
 
     const paidByBooking = new Map<string, number>();
     for (const p of payments) {
-      paidByBooking.set(p.booking_id, (paidByBooking.get(p.booking_id) ?? 0) + (Number(p.amount) || 0));
+      paidByBooking.set(p.booking_id, (paidByBooking.get(p.booking_id) ?? 0) + principalOf(p));
     }
     const refundedByBooking = new Map<string, number>();
     for (const r of refunds) {
@@ -1015,7 +1020,7 @@ class FinanceDashboardRepository {
 
     const paidByBooking = new Map<string, number>();
     for (const p of payments) {
-      paidByBooking.set(p.booking_id, (paidByBooking.get(p.booking_id) ?? 0) + (Number(p.amount) || 0));
+      paidByBooking.set(p.booking_id, (paidByBooking.get(p.booking_id) ?? 0) + principalOf(p));
     }
     for (const booking of bookings) {
       if (booking.status === 'cancelled' || !isCompanySale(booking)) continue;

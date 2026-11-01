@@ -88,6 +88,22 @@ The v45 upgrade builds rows for every booking that has agreement terms (using to
 upgrade-path rule, the v45 upgrade only touches tables that exist at v45. Add a case to
 `upgrade-path.test.ts`. The demo seed writes schedules for its bookings (some buyers behind).
 
+### 2.5a As built (B2, 1 Nov 2026) — where it differs from the above
+
+- **Rows follow the terms; receipts are replayed.** Rather than "only unpaid rows are rewritten",
+  the rows are rebuilt from the booking money and agreement whenever they change, and every
+  receipt is re-applied oldest first, each as of its own date (`replayPayments`). The result is
+  the same for paid rows, and a deleted or back-dated receipt can never leave the schedule wrong.
+- **Late fee is set on the agreement**, not the project (late fee % + grace days on the Agreement
+  form). A project-level default can come later.
+- **Booking money never carries a late fee.** It confirms the unit before any agreement exists; a
+  fee on it could pull a confirmed booking back to Hold.
+- **No separate "Buyers & Dues" page.** Collections already is that list; it gained a late fee
+  column. The booking's Payments tab shows the schedule, row status, late fees and what each
+  receipt paid.
+- Money received beyond the rows (an advance before the agreement) stays unallocated but still
+  counts as received.
+
 ### 2.6 Also, to make the two truly the same
 
 Add `account_id` to `share_payments` so investor money also lands in **Cash Position** — today it

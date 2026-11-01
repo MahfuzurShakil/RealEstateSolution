@@ -214,7 +214,7 @@ export interface SignInput {
   /** KYC as written on the agreement; saved on the customer */
   customer?: Partial<Pick<Customer, KycField>>;
   /** the down payment was handed over at the signing */
-  down_payment?: { method: SharePaymentMethod; reference?: string | null } | null;
+  down_payment?: { method: SharePaymentMethod; reference?: string | null; account_id?: string | null } | null;
   /** the plan as agreed at the table, when it differs from the reservation */
   terms?: PlanChange | null;
 }
@@ -290,6 +290,8 @@ export interface PaymentInput {
   /** set by the Customer Portal's gateway; the office's own entries leave it out */
   channel?: 'office' | 'online';
   method_detail?: string | null;
+  /** the account the money landed in — what puts it in Cash Position */
+  account_id?: string | null;
 }
 
 async function ruleFor(sale: ShareSale) {
@@ -417,7 +419,7 @@ class ShareSaleRepository extends BaseRepository<ShareSale> {
     await db.customers.update(customer.id, { ...kyc, customer_type: 'investor', updated_at: ts });
     if (input.down_payment && sale.down_payment > 0) {
       await this.recordPayment(
-        { sale_id: id, paid_on: input.agreement_date, amount: sale.down_payment, method: input.down_payment.method, reference: input.down_payment.reference, notes: 'Down payment received at signing' },
+        { sale_id: id, paid_on: input.agreement_date, amount: sale.down_payment, method: input.down_payment.method, reference: input.down_payment.reference, account_id: input.down_payment.account_id, notes: 'Down payment received at signing' },
         userId,
       );
     }
@@ -501,6 +503,7 @@ class ShareSaleRepository extends BaseRepository<ShareSale> {
         notes: input.notes?.trim() || null,
         channel: input.channel ?? 'office',
         method_detail: input.method_detail ?? null,
+        account_id: input.account_id ?? null,
       },
       userId,
     );

@@ -112,6 +112,7 @@ export {
   installmentPlanTemplateRepository,
   type PaymentInput,
 } from './payment.repository';
+export { bookingLedgerRepository } from './booking-ledger.repository';
 export {
   towerWorkItemRepository,
   siteProgressUpdateRepository,

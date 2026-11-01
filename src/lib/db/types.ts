@@ -1801,6 +1801,33 @@ export interface Booking extends BaseEntity {
   handover_date?: ISODate | null;
   /** anything else the paper says */
   agreement_terms?: string | null;
+
+  /*
+   * v45 — BUYER-PORTAL-PLAN.md §2: the late fee the agreement sets, the same
+   * rule shape as a Share Sale offering. Null = no late fee.
+   */
+  late_fee_pct?: number | null;
+  late_fee_grace_days?: number | null;
+  /** v45 — the day the last schedule row was paid; null while money is still owed */
+  fully_paid_on?: ISODate | null;
+}
+
+/*
+ * v45 — a booking's schedule (BUYER-PORTAL-PLAN.md §2), written from its
+ * booking money and agreement terms and rewritten when those change.
+ * Receipts name the rows they paid through `Payment.allocations`.
+ */
+export const BOOKING_INSTALLMENT_KINDS = ['booking_money', 'installment', 'full_balance'] as const;
+export type BookingInstallmentKind = (typeof BOOKING_INSTALLMENT_KINDS)[number];
+
+export interface BookingInstallment extends BaseEntity {
+  booking_id: UUID;
+  /** 0 = booking money */
+  seq: number;
+  kind: BookingInstallmentKind;
+  label: string;
+  due_date: ISODate;
+  amount: number;
 }
 
 export const SALE_PAYMENT_MODES = ['full', 'installment'] as const;
@@ -1853,6 +1880,19 @@ export interface Payment extends BaseEntity {
   reference_no?: string | null;
   received_by?: UUID | null;
   notes?: string | null;
+  /*
+   * v45 — what this receipt paid, worked out by the shared ledger
+   * (installment-ledger.ts): late fees first, then the oldest row. Rewritten
+   * whenever the booking's schedule or receipts change. `amount - late_fee`
+   * is what counts toward the price; anything beyond the schedule stays
+   * unallocated but still counts.
+   */
+  allocations?: InstallmentAllocation[] | null;
+  principal?: number | null;
+  late_fee?: number | null;
+  /** v45 — taken at the office, or paid by the buyer on the Customer Portal */
+  channel?: 'office' | 'online' | null;
+  method_detail?: string | null;
 }
 
 export const SCHEDULE_TYPES = ['on_booking', 'monthly', 'on_handover', 'manual'] as const;
@@ -3285,6 +3325,8 @@ export interface ShareSignDraft {
   take_down_payment: boolean;
   down_payment_method: SharePaymentMethod;
   down_payment_reference: string;
+  /** v45 — the account the down payment went into */
+  down_payment_account_id?: string;
   saved_at: string;
 }
 
@@ -3321,11 +3363,13 @@ export interface ShareInstallment extends BaseEntity {
 export const SHARE_PAYMENT_METHODS = ['bank_transfer', 'cheque', 'cash', 'bkash', 'nagad', 'card', 'online'] as const;
 export type SharePaymentMethod = (typeof SHARE_PAYMENT_METHODS)[number];
 
-export interface SharePaymentAllocation {
+/** v45 — how much of one payment went to one schedule row; shared by share sales and bookings */
+export interface InstallmentAllocation {
   installment_id: UUID;
   principal: number;
   late_fee: number;
 }
+export type SharePaymentAllocation = InstallmentAllocation;
 
 export interface SharePayment extends BaseEntity {
   code: string;                       // SRC-2026-001 (receipt)
@@ -3343,6 +3387,8 @@ export interface SharePayment extends BaseEntity {
   channel?: 'office' | 'online' | null;
   /** v44 — "bKash 01711•••344", "Visa •••• 4242": what the gateway reported */
   method_detail?: string | null;
+  /** v45 — the account the money landed in, so investor money reaches Cash Position */
+  account_id?: UUID | null;
 }
 
 /* ------------------------------------------------- Customer Portal → office */

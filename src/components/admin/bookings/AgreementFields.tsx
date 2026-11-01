@@ -22,6 +22,9 @@ export interface AgreementForm {
   first_installment_date: string;
   handover_date: string;
   agreement_terms: string;
+  /** v45 — one late fee per overdue installment, as a % of it; blank = none */
+  late_fee_pct: string;
+  late_fee_grace_days: string;
 }
 
 export function emptyAgreement(date: string): AgreementForm {
@@ -35,6 +38,8 @@ export function emptyAgreement(date: string): AgreementForm {
     first_installment_date: addMonths(date, 1),
     handover_date: '',
     agreement_terms: '',
+    late_fee_pct: '',
+    late_fee_grace_days: '',
   };
 }
 
@@ -50,6 +55,8 @@ export function agreementFromBooking(b: Booking, fallbackDate: string): Agreemen
     first_installment_date: b.first_installment_date ?? '',
     handover_date: b.handover_date ?? '',
     agreement_terms: b.agreement_terms ?? '',
+    late_fee_pct: b.late_fee_pct ? String(b.late_fee_pct) : '',
+    late_fee_grace_days: b.late_fee_pct ? String(b.late_fee_grace_days ?? 0) : '',
   };
 }
 
@@ -64,6 +71,8 @@ export function agreementInput(f: AgreementForm): AgreementInput {
     first_installment_date: f.first_installment_date || null,
     handover_date: f.handover_date || null,
     agreement_terms: f.agreement_terms,
+    late_fee_pct: Number(f.late_fee_pct) || null,
+    late_fee_grace_days: Number(f.late_fee_grace_days) || 0,
   };
 }
 
@@ -82,6 +91,12 @@ export function validateAgreement(f: AgreementForm): Record<string, string> {
       e.installment_amount = 'Must be more than zero';
     }
     if (!f.first_installment_date) e.first_installment_date = 'When is the first installment due?';
+  }
+  if (f.late_fee_pct.trim() && !(Number(f.late_fee_pct) >= 0 && Number(f.late_fee_pct) <= 100)) {
+    e.late_fee_pct = 'Enter 0 to 100';
+  }
+  if (f.late_fee_grace_days.trim() && !(Number.isInteger(Number(f.late_fee_grace_days)) && Number(f.late_fee_grace_days) >= 0)) {
+    e.late_fee_grace_days = 'Whole days, 0 or more';
   }
   return e;
 }
@@ -214,6 +229,25 @@ export function AgreementFields({
             onChange={(e) => set('handover_date', e.target.value)}
           />
         </Field>
+        {/* BUYER-PORTAL-PLAN.md §2 — the same late fee rule a Share Sale offering has */}
+        <Field label="Late fee (%)" hint="Charged once on an installment paid late (optional)" error={errors.late_fee_pct}>
+          <TextInput
+            inputMode="decimal"
+            value={value.late_fee_pct}
+            onChange={(e) => set('late_fee_pct', e.target.value.replace(/[^\d.]/g, ''))}
+            placeholder="e.g. 2"
+          />
+        </Field>
+        {Number(value.late_fee_pct) > 0 && (
+          <Field label="Grace days" hint="Days after the due date before the fee applies" error={errors.late_fee_grace_days}>
+            <TextInput
+              inputMode="numeric"
+              value={value.late_fee_grace_days}
+              onChange={(e) => set('late_fee_grace_days', e.target.value.replace(/\D/g, ''))}
+              placeholder="e.g. 30"
+            />
+          </Field>
+        )}
       </div>
 
       {value.payment_mode === 'installment' &&

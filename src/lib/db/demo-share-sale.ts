@@ -258,6 +258,10 @@ export async function seedDemoShareSale(projectIds: Map<string, string>, created
         createdBy,
       );
       const view = await shareSaleRepository.view(sale.id);
+      // BUYER-PORTAL-PLAN.md §2.6 — investor money lands in an account, so Cash Position counts it
+      const accounts = await getDb().bank_accounts.toArray();
+      const into = (m: string) =>
+        accounts.find((a) => a.name === (m === 'bkash' || m === 'nagad' ? 'bKash Merchant' : 'City Bank Escrow — Gulshan'))?.id ?? null;
       for (const i of view!.schedule.filter((x) => x.seq <= b.paid_through && x.due_date <= today)) {
         const online = i.seq > 0 && (b.method === 'bkash' || b.method === 'nagad');
         await shareSaleRepository.recordPayment(
@@ -269,13 +273,14 @@ export async function seedDemoShareSale(projectIds: Map<string, string>, created
             reference: online ? `${b.method === 'bkash' ? 'BK' : 'NG'}${sale.code.slice(-3)}${i.seq}X7Q` : `DEMO-${sale.code}-${i.seq}`,
             channel: online ? 'online' : 'office',
             method_detail: online ? `${b.method === 'bkash' ? 'bKash' : 'Nagad'} ${b.phone.slice(0, 5)}•••${b.phone.slice(-3)}` : null,
+            account_id: into(i.seq === 0 ? 'bank_transfer' : b.method),
           },
           createdBy,
         );
       }
       if (b.part) {
         await shareSaleRepository.recordPayment(
-          { sale_id: sale.id, paid_on: ago(b.part[1]), amount: b.part[0], method: 'bkash', reference: `BK${sale.code.slice(-3)}PART`, channel: 'online', method_detail: `bKash ${b.phone.slice(0, 5)}•••${b.phone.slice(-3)}` },
+          { sale_id: sale.id, paid_on: ago(b.part[1]), amount: b.part[0], method: 'bkash', reference: `BK${sale.code.slice(-3)}PART`, channel: 'online', method_detail: `bKash ${b.phone.slice(0, 5)}•••${b.phone.slice(-3)}`, account_id: into('bkash') },
           createdBy,
         );
       }

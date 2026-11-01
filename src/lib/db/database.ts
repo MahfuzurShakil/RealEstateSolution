@@ -2,7 +2,10 @@
 
 import Dexie, { type EntityTable } from 'dexie';
 import { backfillMaterialItems } from './backfill-material-items';
+import { allocateBookingPayments, bookingFeeRule, bookingScheduleRows, paidOffOn } from '../domain/booking';
+import { newId } from '../utils/id';
 import type {
+  BookingInstallment,
   Award,
   BlogPost,
   ShareInstallment,
@@ -198,6 +201,7 @@ export class AppDatabase extends Dexie {
   share_requests!: EntityTable<ShareRequest, 'id'>;
   customer_uploads!: EntityTable<CustomerUpload, 'id'>;
   customer_upload_files!: EntityTable<CustomerUploadFile, 'id'>;
+  booking_installments!: EntityTable<BookingInstallment, 'id'>;
 
   constructor() {
     super('realestate_platform');
@@ -993,6 +997,36 @@ export class AppDatabase extends Dexie {
       customer_uploads: 'id, customer_id, sale_id, status',
       customer_upload_files: 'id',
     });
+
+    /*
+     * v45 — BUYER-PORTAL-PLAN.md §2 (client decision D1, 2026-11-01): a
+     * booking keeps a stored schedule again, run by the same ledger as Share
+     * Sale. Reverses v37's "no buyer schedule". Every booking gets its rows
+     * from its booking money and agreement terms, and its receipts are
+     * re-applied oldest first. Share payments gain an indexed account so
+     * investor money reaches Cash Position.
+     */
+    this.version(45)
+      .stores({
+        booking_installments: 'id, booking_id, due_date',
+        share_payments: 'id, &code, sale_id, paid_on, account_id',
+      })
+      .upgrade(async (tx) => {
+        const ts = new Date().toISOString();
+        const payments = await tx.table('payments').toArray();
+        for (const b of await tx.table('bookings').toArray()) {
+          const rows = bookingScheduleRows(b).map((r) => ({ ...r, id: newId(), booking_id: b.id, created_at: ts, updated_at: ts, created_by: null }));
+          await tx.table('booking_installments').bulkAdd(rows);
+          const mine = payments.filter((p) => p.booking_id === b.id);
+          const applied = allocateBookingPayments(rows, mine, bookingFeeRule(b));
+          for (const p of mine) {
+            const a = applied.get(p.id);
+            if (a) await tx.table('payments').update(p.id, { allocations: a.allocations, principal: a.principal, late_fee: a.late_fee });
+          }
+          const settled = mine.map((p) => ({ ...p, late_fee: applied.get(p.id)?.late_fee ?? 0 }));
+          await tx.table('bookings').update(b.id, { fully_paid_on: paidOffOn(b, settled) });
+        }
+      });
   }
 }
 

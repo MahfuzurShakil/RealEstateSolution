@@ -11,6 +11,19 @@ import type {
   ShareSaleStatus,
 } from '../db/types';
 import { addMonths } from './booking';
+import {
+  DUE_WINDOW_DAYS,
+  INSTALLMENT_STATUS_META,
+  addDays,
+  allocatePayment,
+  daysBetween,
+  viewInstallments,
+  type FeeRule,
+  type InstallmentStatus,
+  type InstallmentView,
+} from './installment-ledger';
+
+export { DUE_WINDOW_DAYS, addDays, daysBetween, type FeeRule };
 
 /*
  * Share Sale rules (PROJECT-SHARE-SALE-PLAN.md, Phase 1), kept free of Dexie
@@ -113,14 +126,6 @@ export function closesOn(opensOn: string, validityDays: number): string {
   return addDays(opensOn, Math.max(0, validityDays - 1));
 }
 
-export function addDays(date: string, days: number): string {
-  return new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
-}
-
-export function daysBetween(from: string, to: string): number {
-  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
-}
-
 export interface OfferingAvailability {
   sold: number;
   reserved: number;
@@ -177,59 +182,14 @@ export function installmentLabel(seq: number): string {
 
 /* ----------------------------------------------------------- what is due */
 
-export type ShareInstallmentStatus = 'paid' | 'overdue' | 'due' | 'upcoming';
-export const SHARE_INSTALLMENT_STATUS_META: Record<ShareInstallmentStatus, { label: string; tone: BadgeTone }> = {
-  paid: { label: 'Paid', tone: 'green' },
-  overdue: { label: 'Overdue', tone: 'red' },
-  due: { label: 'Due', tone: 'amber' },
-  upcoming: { label: 'Upcoming', tone: 'neutral' },
-};
-/** an unpaid installment falling due within this many days shows as "Due" */
-export const DUE_WINDOW_DAYS = 30;
+// the money rules themselves live in installment-ledger.ts, shared with bookings
+export type ShareInstallmentStatus = InstallmentStatus;
+export const SHARE_INSTALLMENT_STATUS_META = INSTALLMENT_STATUS_META;
 
-export interface ShareInstallmentView extends ShareInstallment {
-  label: string;
-  status: ShareInstallmentStatus;
-  paid_amount: number;
-  remaining: number;
-  days_late: number;
-  late_fee_paid: number;
-  late_fee_due: number;
-  paid_on: string | null;
-}
-
-export interface FeeRule {
-  late_fee_pct: number;
-  grace_days: number;
-}
+export type ShareInstallmentView = InstallmentView<ShareInstallment> & { label: string };
 
 export function viewShareInstallments(installments: ShareInstallment[], payments: SharePayment[], today: string, rule: FeeRule): ShareInstallmentView[] {
-  return installments
-    .slice()
-    .sort((a, b) => a.seq - b.seq)
-    .map((inst) => {
-      const touching = payments.filter((p) => p.allocations.some((a) => a.installment_id === inst.id));
-      const allocs = touching.flatMap((p) => p.allocations.filter((a) => a.installment_id === inst.id));
-      const paid = Math.min(inst.amount, allocs.reduce((t, a) => t + a.principal, 0));
-      const feePaid = allocs.reduce((t, a) => t + a.late_fee, 0);
-      const remaining = inst.amount - paid;
-      const days = daysBetween(inst.due_date, today);
-      const status: ShareInstallmentStatus = remaining <= 0 ? 'paid' : days > 0 ? 'overdue' : -days <= DUE_WINDOW_DAYS ? 'due' : 'upcoming';
-      const daysLate = status === 'overdue' ? days : 0;
-      const fee = status === 'overdue' && daysLate > rule.grace_days ? Math.round((inst.amount * rule.late_fee_pct) / 100) : feePaid;
-      const lastPaid = touching.map((p) => p.paid_on).sort().pop() ?? null;
-      return {
-        ...inst,
-        label: installmentLabel(inst.seq),
-        status,
-        paid_amount: paid,
-        remaining,
-        days_late: daysLate,
-        late_fee_paid: feePaid,
-        late_fee_due: Math.max(0, fee - feePaid),
-        paid_on: status === 'paid' ? lastPaid : null,
-      };
-    });
+  return viewInstallments(installments, payments, today, rule).map((i) => ({ ...i, label: installmentLabel(i.seq) }));
 }
 
 export interface SaleView {
@@ -285,18 +245,7 @@ export function viewSale(sale: ShareSale, installments: ShareInstallment[], paym
 
 /** Late fees first, then the oldest installment; what is left goes to the next one. */
 export function allocateSharePayment(view: SaleView, amount: number): SharePaymentAllocation[] {
-  let left = Math.round(amount);
-  const out: SharePaymentAllocation[] = [];
-  for (const i of view.schedule) {
-    if (left <= 0) break;
-    if (i.status === 'paid' && i.late_fee_due === 0) continue;
-    const fee = Math.min(left, i.late_fee_due);
-    left -= fee;
-    const principal = Math.min(left, i.remaining);
-    left -= principal;
-    if (fee || principal) out.push({ installment_id: i.id, principal, late_fee: fee });
-  }
-  return out;
+  return allocatePayment(view.schedule, amount);
 }
 
 export function maxSharePayable(view: SaleView): number {

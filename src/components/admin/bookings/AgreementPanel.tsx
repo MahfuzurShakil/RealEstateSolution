@@ -98,6 +98,14 @@ export function AgreementPanel({ booking }: { booking: Booking }) {
                 </>
               )}
               <Row label="Handover by" value={formatDate(booking.handover_date)} />
+              <Row
+                label="Late fee"
+                value={
+                  booking.late_fee_pct
+                    ? `${booking.late_fee_pct}% of an installment, after ${booking.late_fee_grace_days ?? 0} days`
+                    : 'None'
+                }
+              />
             </div>
             <div className="pt-2.5 md:pt-0">
               <p className="mb-1.5 text-sm text-ink-muted">Other terms</p>

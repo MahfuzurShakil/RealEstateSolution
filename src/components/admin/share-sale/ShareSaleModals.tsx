@@ -1,5 +1,6 @@
 'use client';
 
+import { AccountPicker } from '@/components/admin/finance/AccountPicker';
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { CalendarPlus, HandCoins, Ticket } from 'lucide-react';
@@ -199,6 +200,7 @@ export function RecordPaymentModal({ view, onClose }: { view: SaleView; onClose:
   const [method, setMethod] = useState<SharePaymentMethod>('bank_transfer');
   const [reference, setReference] = useState('');
   const [notes, setNotes] = useState('');
+  const [accountId, setAccountId] = useState('');
   const { error, busy, run } = useAction();
   const value = Math.round(Number(amount) || 0);
   const alloc = value > 0 && value <= maxSharePayable(view) ? allocateSharePayment(view, value) : [];
@@ -217,7 +219,7 @@ export function RecordPaymentModal({ view, onClose }: { view: SaleView; onClose:
           </Button>
           <Button
             disabled={busy}
-            onClick={() => run(() => shareSaleRepository.recordPayment({ sale_id: view.sale.id, paid_on: date, amount: value, method, reference, notes }, userId), onClose)}
+            onClick={() => run(() => shareSaleRepository.recordPayment({ sale_id: view.sale.id, paid_on: date, amount: value, method, reference, notes, account_id: accountId || null }, userId), onClose)}
           >
             {busy ? 'Saving…' : 'Record payment'}
           </Button>
@@ -243,6 +245,8 @@ export function RecordPaymentModal({ view, onClose }: { view: SaleView; onClose:
         <Field label="Reference" hint="Deposit slip, cheque or transaction number">
           <TextInput value={reference} onChange={(e) => setReference(e.target.value)} />
         </Field>
+        {/* BUYER-PORTAL-PLAN.md §2.6 — the account puts investor money in Cash Position */}
+        <AccountPicker label="Received into" value={accountId} onChange={setAccountId} />
         <Field label="Notes" className="md:col-span-2">
           <TextArea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </Field>

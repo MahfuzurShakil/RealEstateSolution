@@ -1,10 +1,14 @@
 import type { BadgeTone } from '@/components/ui/Badge';
 import type {
   Booking,
+  BookingInstallment,
+  BookingInstallmentKind,
   BookingStatus,
+  Payment,
   PaymentMethod,
   SalePaymentMode,
 } from '@/lib/db/types';
+import { NO_LATE_FEE, replayPayments, viewInstallments, type FeeRule, type InstallmentView } from './installment-ledger';
 
 /**
  * Booking status (SALES-FLOW-PLAN.md S1, client 2026-10-22):
@@ -211,4 +215,111 @@ export function buyerLedger(t: AgreementTerms, received: number, asOf: string) {
     due_this_month: Math.max(expectedByDate(t, monthEnd) - Math.max(expected, received), 0),
     next: nextDue(t, received),
   };
+}
+
+/* ------------------------------------------------------------------ *
+ * The stored schedule (BUYER-PORTAL-PLAN.md §2, v45)
+ *
+ * The rows are exactly `expectedLines` turned from running totals into
+ * amounts, so the Collections figures read from the terms and the schedule
+ * read from the rows can never disagree. Money goes through the same ledger
+ * as a Share Sale purchase (installment-ledger.ts).
+ * ------------------------------------------------------------------ */
+
+export type BookingScheduleRow = Pick<BookingInstallment, 'seq' | 'kind' | 'label' | 'due_date' | 'amount'>;
+
+export function bookingScheduleRows(t: AgreementTerms): BookingScheduleRow[] {
+  const rows: BookingScheduleRow[] = [];
+  let before = 0;
+  expectedLines(t).forEach((line, seq) => {
+    const kind: BookingInstallmentKind = seq === 0 ? 'booking_money' : line.label === 'Full payment' ? 'full_balance' : 'installment';
+    const amount = Math.round(line.cumulative - before);
+    before = line.cumulative;
+    if (amount > 0) rows.push({ seq, kind, label: kind === 'full_balance' ? 'Balance' : line.label, due_date: line.date, amount });
+  });
+  return rows;
+}
+
+/**
+ * The late fee the agreement sets; none when it sets none. The booking money
+ * never carries one: it is what confirms the unit, taken before any agreement,
+ * and a fee on it could pull a confirmed booking back to Hold.
+ */
+export function bookingFeeRule(b: Pick<Booking, 'late_fee_pct' | 'late_fee_grace_days'>): FeeRule {
+  const pct = Number(b.late_fee_pct) || 0;
+  if (!(pct > 0)) return NO_LATE_FEE;
+  return { late_fee_pct: pct, grace_days: Math.max(0, Number(b.late_fee_grace_days) || 0), exempt: (row) => row.seq === 0 };
+}
+
+/** What a receipt puts toward the price: all of it, less any late fee it paid. */
+export function principalOf(p: Pick<Payment, 'amount' | 'late_fee'>): number {
+  return (Number(p.amount) || 0) - (Number(p.late_fee) || 0);
+}
+
+/** Receipts in the order the ledger applies them: by date, then as entered. */
+export function inLedgerOrder<P extends Pick<Payment, 'payment_date' | 'created_at'>>(payments: P[]): P[] {
+  return payments.slice().sort((a, b) => a.payment_date.localeCompare(b.payment_date) || a.created_at.localeCompare(b.created_at));
+}
+
+/** Re-applies a booking's receipts to its rows (see `replayPayments`). */
+export function allocateBookingPayments(rows: BookingInstallment[], payments: Payment[], rule: FeeRule) {
+  return replayPayments(
+    rows,
+    inLedgerOrder(payments).map((p) => ({ id: p.id, paid_on: p.payment_date, amount: Number(p.amount) || 0 })),
+    rule,
+  );
+}
+
+export type BookingInstallmentView = InstallmentView<BookingInstallment>;
+
+export interface BookingLedgerView {
+  schedule: BookingInstallmentView[];
+  /** toward the price (late fees left out) */
+  paid: number;
+  outstanding: number;
+  overdue_amount: number;
+  overdue_count: number;
+  late_fees: number;
+  /** overdue principal plus late fees */
+  due_now: number;
+  next: BookingInstallmentView | null;
+  /** received but beyond every row — an advance waiting for the agreement */
+  unallocated: number;
+}
+
+export function viewBookingLedger(booking: Booking, rows: BookingInstallment[], payments: Payment[], today: string): BookingLedgerView {
+  const schedule = viewInstallments(
+    rows,
+    payments.map((p) => ({ paid_on: p.payment_date, allocations: p.allocations ?? [] })),
+    today,
+    bookingFeeRule(booking),
+  );
+  const paid = payments.reduce((t, p) => t + principalOf(p), 0);
+  const allocated = schedule.reduce((t, r) => t + r.paid_amount, 0);
+  const overdue = schedule.filter((r) => r.status === 'overdue');
+  const overdueAmount = overdue.reduce((t, r) => t + r.remaining, 0);
+  const lateFees = schedule.reduce((t, r) => t + r.late_fee_due, 0);
+  return {
+    schedule,
+    paid,
+    outstanding: booking.status === 'cancelled' ? 0 : Math.max(Number(booking.final_price) - paid, 0),
+    overdue_amount: overdueAmount,
+    overdue_count: overdue.length,
+    late_fees: lateFees,
+    due_now: overdueAmount + lateFees,
+    next: schedule.find((r) => r.status !== 'paid') ?? null,
+    unallocated: Math.max(paid - allocated, 0),
+  };
+}
+
+/** The day the receipts first covered the whole price, or null while money is owed. */
+export function paidOffOn(booking: Pick<Booking, 'final_price' | 'status'>, payments: Payment[]): string | null {
+  const price = Number(booking.final_price) || 0;
+  if (price <= 0 || booking.status === 'cancelled') return null;
+  let total = 0;
+  for (const p of inLedgerOrder(payments)) {
+    total += principalOf(p);
+    if (total + 0.5 >= price) return p.payment_date;
+  }
+  return null;
 }

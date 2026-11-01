@@ -19,6 +19,7 @@ import { documentRepository } from './document.repository';
 import { leadActivityRepository, normalizePhone } from './lead.repository';
 import { refundRepository } from './finance.repository';
 import { paymentRepository } from './payment.repository';
+import { bookingLedgerRepository } from './booking-ledger.repository';
 
 export interface BookingFilters {
   search?: string;
@@ -275,6 +276,8 @@ export type AgreementInput = Pick<
   | 'first_installment_date'
   | 'handover_date'
   | 'agreement_terms'
+  | 'late_fee_pct'
+  | 'late_fee_grace_days'
 >;
 
 /** Keeps only the fields the chosen payment mode uses, so stale terms never linger. */
@@ -290,6 +293,8 @@ function cleanAgreement(a: AgreementInput): AgreementInput {
     first_installment_date: mode === 'installment' ? a.first_installment_date || null : null,
     handover_date: a.handover_date || null,
     agreement_terms: a.agreement_terms?.trim() || null,
+    late_fee_pct: Number(a.late_fee_pct) > 0 ? Number(a.late_fee_pct) : null,
+    late_fee_grace_days: Number(a.late_fee_pct) > 0 ? Math.max(0, Math.floor(Number(a.late_fee_grace_days) || 0)) : null,
   };
 }
 
@@ -377,8 +382,9 @@ class BookingRepository extends BaseRepository<Booking> {
       );
     }
 
+    await bookingLedgerRepository.sync(booking.id, createdBy);
     await this.applySideEffects(booking, createdBy);
-    return booking;
+    return (await this.getById(booking.id)) ?? booking;
   }
 
   /**
@@ -456,6 +462,8 @@ class BookingRepository extends BaseRepository<Booking> {
    * so the flag can never drift away from the receipts.
    */
   async syncFromPayments(id: string, createdBy: string | null = null): Promise<Booking | undefined> {
+    // the schedule and each receipt's share of it first: what counts as received depends on the late fees
+    await bookingLedgerRepository.sync(id, createdBy);
     const current = await this.getById(id);
     if (!current) return undefined;
 
@@ -492,6 +500,7 @@ class BookingRepository extends BaseRepository<Booking> {
       final_price: finalPrice(input),
       status: derivedStatus({ booking_amount_received: isReceived, status: current.status }),
     });
+    if (updated) await bookingLedgerRepository.sync(id, createdBy);
 
     if (updated) await this.applySideEffects(updated, createdBy);
     return updated;
@@ -499,7 +508,10 @@ class BookingRepository extends BaseRepository<Booking> {
 
   /** Records or edits the agreement. Status does not depend on it. */
   async saveAgreement(id: string, input: AgreementInput): Promise<Booking | undefined> {
-    return this.update(id, cleanAgreement(input));
+    const updated = await this.update(id, cleanAgreement(input));
+    // the schedule follows the terms; receipts are re-applied and the status re-derived from them
+    if (updated) return this.syncFromPayments(id);
+    return updated;
   }
 
   /** Records a receipt against the booking, then re-derives its status. */
@@ -552,6 +564,7 @@ class BookingRepository extends BaseRepository<Booking> {
       status: 'cancelled',
       cancellation_reason: reason,
     });
+    if (updated) await bookingLedgerRepository.sync(id, createdBy);
     if (updated) await this.applySideEffects(updated, createdBy);
     return updated;
   }
@@ -743,6 +756,7 @@ class BookingRepository extends BaseRepository<Booking> {
       await refundRepository.removeCascade(refund.id);
     }
     await paymentRepository.removeForBooking(id);
+    await bookingLedgerRepository.removeForBooking(id);
     // Phase 3 — the delivery record is this booking's too
     const deliveries = await db.unit_deliveries.where('booking_id').equals(id).toArray();
     await db.unit_deliveries.bulkDelete(deliveries.map((d) => d.id));

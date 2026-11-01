@@ -1,6 +1,7 @@
 'use client';
 
 import { db } from '../db/database';
+import { principalOf } from '../domain/booking';
 import type { DeliveryStep, UnitDelivery } from '../db/types';
 import { money } from '../domain/finance';
 import {
@@ -76,7 +77,7 @@ class DeliveryRepository extends BaseRepository<UnitDelivery> {
       }
     }
 
-    const paid = money(payments.reduce((s, p) => s + (Number(p.amount) || 0), 0));
+    const paid = money(payments.reduce((s, p) => s + principalOf(p), 0));
     const facts: DeliveryFacts = {
       bookingStatus: booking.status,
       outstanding: money(Math.max(0, booking.final_price - paid)),

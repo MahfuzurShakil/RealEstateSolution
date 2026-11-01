@@ -1,6 +1,7 @@
 'use client';
 
 import { db } from '../db/database';
+import { principalOf } from '../domain/booking';
 import type { BookingStatus, ConstructionCostType, Project, ProjectStatus } from '../db/types';
 import { CONSTRUCTION_COST_TYPES } from '../db/types';
 import { COST_TYPE_META } from '../domain/construction-cost';
@@ -276,7 +277,7 @@ export async function projectStatement(projectId: string): Promise<ProjectStatem
 
   /* ---------------- bookings ---------------- */
   const paidByBooking = new Map<string, number>();
-  for (const p of myPayments) paidByBooking.set(p.booking_id, money((paidByBooking.get(p.booking_id) ?? 0) + p.amount));
+  for (const p of myPayments) paidByBooking.set(p.booking_id, money((paidByBooking.get(p.booking_id) ?? 0) + principalOf(p)));
   const bookingRows: StatementBooking[] = myBookings
     .map((b) => {
       const paid = paidByBooking.get(b.id) ?? 0;

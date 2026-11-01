@@ -10,8 +10,9 @@ import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { PAYMENT_METHODS, type Booking, type PaymentMethod } from '@/lib/db/types';
 import { PAYMENT_METHOD_LABEL } from '@/lib/domain/booking';
-import { bookingRepository, paymentRepository } from '@/lib/repositories';
-import { formatBdt, todayLocal } from '@/lib/utils/format';
+import { allocatePayment } from '@/lib/domain/installment-ledger';
+import { bookingLedgerRepository, bookingRepository, paymentRepository } from '@/lib/repositories';
+import { formatBdt, formatDate, todayLocal } from '@/lib/utils/format';
 
 /**
  * The "record payment" dialog, on its own so more than one screen can open it.
@@ -22,8 +23,8 @@ import { formatBdt, todayLocal } from '@/lib/utils/format';
  * still enforced by `bookingRepository.recordPayment`; this is only the form.
  *
  * `defaultAmount` lets the caller suggest a figure (the collections queue
- * suggests what that instalment still needs). Receipts are allocated
- * oldest-first by the finance repository, so the money still lands where the
+ * suggests what that installment still needs). Receipts are allocated
+ * by the booking ledger (late fees, then oldest row first), so the money lands where the
  * schedule says it should, not necessarily on the row that was clicked.
  */
 export function RecordPaymentModal({
@@ -74,7 +75,10 @@ function PaymentDialog({
 }) {
   const { userId } = useMockSession();
   const received = useLiveQuery(() => paymentRepository.totalForBooking(booking.id), [booking.id]);
-  const outstanding = booking.final_price - (received ?? 0);
+  const ledger = useLiveQuery(() => bookingLedgerRepository.view(booking.id), [booking.id]);
+  // late fees ride on top of the price; the ledger takes them first
+  const lateFees = ledger?.late_fees ?? 0;
+  const outstanding = booking.final_price - (received ?? 0) + lateFees;
 
   const suggested =
     defaultAmount !== undefined
@@ -90,6 +94,8 @@ function PaymentDialog({
   const [error, setError] = useState('');
   const [accountError, setAccountError] = useState('');
   const [busy, setBusy] = useState(false);
+  const typed = Math.round(Number(amount) || 0);
+  const alloc = ledger && typed > 0 && typed <= outstanding + 0.01 ? allocatePayment(ledger.schedule, typed) : [];
 
   async function save() {
     const value = Number(amount);
@@ -100,7 +106,9 @@ function PaymentDialog({
     if (!amount.trim() || Number.isNaN(value)) return setError('Enter the amount received');
     if (value <= 0) return setError('Amount must be greater than zero');
     if (received === undefined) return;
-    if (value > outstanding + 0.01) return setError('That is more than the outstanding balance');
+    if (value > outstanding + 0.01) {
+      return setError(`That is more than is owed (${formatBdt(outstanding)}${lateFees ? ' incl. late fees' : ''})`);
+    }
     setError('');
     if (!accountId) return setAccountError('Pick the account it went into');
 
@@ -192,6 +200,28 @@ function PaymentDialog({
           />
         </Field>
       </div>
+      {/* the same preview Share Sale shows: late fees first, then the oldest row */}
+      {alloc.length > 0 && ledger && (
+        <div className="mt-4 rounded-xl border border-hairline bg-white text-sm">
+          <p className="border-b border-hairline px-4 py-2.5 font-semibold text-ink">How it is applied</p>
+          <ul className="divide-y divide-hairline">
+            {alloc.map((a) => {
+              const row = ledger.schedule.find((r) => r.id === a.installment_id)!;
+              return (
+                <li key={a.installment_id} className="flex justify-between gap-3 px-4 py-2">
+                  <span>
+                    {row.label} <span className="text-xs text-ink-muted">due {formatDate(row.due_date)}</span>
+                    {a.late_fee > 0 && (
+                      <span className="text-xs text-ink-muted"> · incl. {formatBdt(a.late_fee)} late fee</span>
+                    )}
+                  </span>
+                  <span className="tabular-nums">{formatBdt(a.principal + a.late_fee)}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
     </Modal>
   );
 }

@@ -103,7 +103,13 @@ class BankAccountRepository extends BaseRepository<BankAccount> {
         db.direct_purchase_payments.toArray(),
         db.direct_purchases.toArray(),
       ]);
-    const [fundIn, partners] = await Promise.all([db.fund_receipts.toArray(), db.partners.toArray()]);
+    const [fundIn, partners, sharePayments, shareSales] = await Promise.all([
+      db.fund_receipts.toArray(),
+      db.partners.toArray(),
+      db.share_payments.toArray(),
+      db.share_sales.toArray(),
+    ]);
+    const customerOfSale = new Map(shareSales.map((s) => [s.id, customers.find((c) => c.id === s.customer_id)?.name ?? null]));
     const partnerName = new Map(partners.map((p) => [p.id, p.name]));
     const purchaseById = new Map(purchases.map((p) => [p.id, p]));
 
@@ -121,6 +127,16 @@ class BankAccountRepository extends BaseRepository<BankAccount> {
         kind: 'receipt' as const,
         label: customerOfBooking.get(p.booking_id) ?? 'Buyer receipt',
         reference: p.reference_no ?? null,
+      })),
+      // BUYER-PORTAL-PLAN.md §2.6 — investor money is money in, the same as a buyer's
+      ...sharePayments.map((p) => ({
+        id: p.id,
+        account_id: p.account_id ?? null,
+        date: p.paid_on,
+        amount: money(Number(p.amount) || 0),
+        kind: 'share_receipt' as const,
+        label: customerOfSale.get(p.sale_id) ?? 'Investor receipt',
+        reference: p.reference ?? null,
       })),
       ...expenses.map((e) => ({
         id: e.id,
@@ -227,6 +243,7 @@ class BankAccountRepository extends BaseRepository<BankAccount> {
   async setAccountOnMovement(kind: CashFlowRow['kind'], id: string, accountId: string): Promise<void> {
     const changes = { account_id: accountId, updated_at: new Date().toISOString() };
     if (kind === 'receipt') await db.payments.update(id, changes);
+    else if (kind === 'share_receipt') await db.share_payments.update(id, changes);
     else if (kind === 'expense') await db.expenses.update(id, changes);
     else if (kind === 'supplier_payment') await db.supplier_vouchers.update(id, changes);
     else if (kind === 'refund') await db.refunds.update(id, changes);
@@ -241,15 +258,16 @@ class BankAccountRepository extends BaseRepository<BankAccount> {
     const account = await this.getById(id);
     if (!account) return;
 
-    const [p, e, v, r, s, f] = await Promise.all([
+    const [p, e, v, r, s, f, sh] = await Promise.all([
       db.payments.where('account_id').equals(id).count(),
       db.expenses.where('account_id').equals(id).count(),
       db.supplier_vouchers.where('account_id').equals(id).count(),
       db.refunds.where('account_id').equals(id).count(),
       db.direct_purchase_payments.where('account_id').equals(id).count(),
       db.fund_receipts.where('account_id').equals(id).count(),
+      db.share_payments.where('account_id').equals(id).count(),
     ]);
-    if (p + e + v + r + s + f > 0) throw new BankAccountInUseError(account.name);
+    if (p + e + v + r + s + f + sh > 0) throw new BankAccountInUseError(account.name);
     await this.remove(id);
   }
 }

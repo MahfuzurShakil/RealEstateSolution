@@ -1,5 +1,6 @@
 'use client';
 
+import { AccountPicker } from '@/components/admin/finance/AccountPicker';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeft, ArrowRight, CheckCircle2, Circle, FileSignature, LogOut, RotateCcw, Save } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -185,7 +186,7 @@ export function SignAgreementWizard({ row, uploads, onExit }: { row: SaleRow; up
             notary_name: d.notary_name,
             attorney_name: d.attorney_name,
           },
-          down_payment: d.take_down_payment && down > 0 ? { method: d.down_payment_method, reference: d.down_payment_reference } : null,
+          down_payment: d.take_down_payment && down > 0 ? { method: d.down_payment_method, reference: d.down_payment_reference, account_id: d.down_payment_account_id || null } : null,
         },
         userId,
       );
@@ -447,6 +448,7 @@ export function SignAgreementWizard({ row, uploads, onExit }: { row: SaleRow; up
                       <Field label="Reference" hint="cheque, pay order or deposit slip no.">
                         <TextInput value={d.down_payment_reference} onChange={(e) => set('down_payment_reference', e.target.value)} />
                       </Field>
+                      <AccountPicker label="Received into" value={d.down_payment_account_id ?? ''} onChange={(id) => set('down_payment_account_id', id)} />
                     </div>
                   )}
                 </>

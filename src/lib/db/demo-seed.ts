@@ -2789,6 +2789,7 @@ export async function clearDemoData(): Promise<void> {
     db.bookings.clear(),
     db.discount_approval_rules.clear(),
     db.payments.clear(),
+    db.booking_installments.clear(),
     db.installment_plan_templates.clear(),
     db.tower_work_items.clear(),
     db.site_progress_updates.clear(),

@@ -42,6 +42,7 @@ const COLLECTION_CSV_COLUMNS: CsvColumn<CollectionRow>[] = [
   { header: 'Balance', value: (r) => r.balance },
   { header: 'Expected by today', value: (r) => r.expected },
   { header: 'Behind', value: (r) => r.behind },
+  { header: 'Late fee', value: (r) => r.late_fee },
   { header: 'Next due date', value: (r) => r.next?.date ?? '' },
   { header: 'Next due amount', value: (r) => r.next?.amount ?? '' },
   { header: 'State', value: (r) => r.state },
@@ -142,7 +143,10 @@ function CollectionsPage() {
       align: 'right',
       cell: (row) =>
         row.behind > 0.5 ? (
-          <span className="font-medium text-red-600">{formatBdt(row.behind)}</span>
+          <span className="font-medium text-red-600">
+            {formatBdt(row.behind)}
+            {row.late_fee > 0 && <span className="block text-xs font-normal">+ {formatBdt(row.late_fee)} late fee</span>}
+          </span>
         ) : (
           <span className="text-ink-muted">—</span>
         ),
@@ -328,7 +332,7 @@ function CollectionsPage() {
         <RecordPaymentModal
           open
           booking={payFor.booking}
-          defaultAmount={payFor.behind > 0.5 ? payFor.behind : (payFor.next?.amount ?? undefined)}
+          defaultAmount={payFor.behind > 0.5 ? payFor.behind + payFor.late_fee : (payFor.next?.amount ?? undefined)}
           subtitle={`${payFor.customer?.name ?? payFor.booking.code} · balance ${formatBdt(payFor.balance)}`}
           onClose={() => setPayFor(null)}
         />

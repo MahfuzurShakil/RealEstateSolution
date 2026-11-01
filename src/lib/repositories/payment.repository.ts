@@ -7,6 +7,7 @@ import {
   type Payment,
   type PaymentMethod,
 } from '../db/types';
+import { principalOf } from '../domain/booking';
 import { BaseRepository } from './base.repository';
 import { documentRepository } from './document.repository';
 
@@ -20,6 +21,9 @@ export interface PaymentInput {
   notes?: string | null;
   /** Tier 3.5: the account this money landed in. */
   account_id?: string | null;
+  /** v45 — set by the Customer Portal's gateway; the office leaves it out */
+  channel?: 'office' | 'online';
+  method_detail?: string | null;
 }
 
 /**
@@ -42,14 +46,15 @@ class PaymentRepository extends BaseRepository<Payment> {
 
   async totalForBooking(bookingId: string): Promise<number> {
     const rows = await this.listForBooking(bookingId);
-    return rows.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    // toward the price: a late fee is money in, but not part of what the unit costs
+    return rows.reduce((sum, p) => sum + principalOf(p), 0);
   }
 
   /** Totals for several bookings at once, for roll-ups on a customer page. */
   async totalsByBooking(): Promise<Record<string, number>> {
     const rows = await db.payments.toArray();
     return rows.reduce<Record<string, number>>((acc, p) => {
-      acc[p.booking_id] = (acc[p.booking_id] ?? 0) + (Number(p.amount) || 0);
+      acc[p.booking_id] = (acc[p.booking_id] ?? 0) + principalOf(p);
       return acc;
     }, {});
   }
@@ -58,8 +63,10 @@ class PaymentRepository extends BaseRepository<Payment> {
     return this.create(
       {
         booking_id: input.booking_id,
-        // Module 7 fills this in when it generates the instalment rows
+        // the ledger (booking-ledger.repository.ts) writes allocations right after
         installment_id: null,
+        channel: input.channel ?? 'office',
+        method_detail: input.method_detail ?? null,
         amount: input.amount,
         payment_date: input.payment_date,
         payment_method: input.payment_method,
