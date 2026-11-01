@@ -12,8 +12,8 @@ import type { CustomerUploadKind } from '@/lib/db/types';
 import { localDay } from '@/lib/utils/format';
 import { SHARE_DOC_KINDS, SHARE_DOC_META } from './share-documents';
 
-export type CustomerType = 'investor';
-export const CUSTOMER_TYPE_LABEL: Record<CustomerType, string> = { investor: 'Investor' };
+export type CustomerType = 'investor' | 'buyer';
+export const CUSTOMER_TYPE_LABEL: Record<CustomerType, string> = { investor: 'Investor', buyer: 'Buyer' };
 
 export type PaymentFrequency = 'monthly' | 'quarterly';
 export const FREQUENCY_LABEL: Record<PaymentFrequency, string> = { monthly: 'Monthly', quarterly: 'Quarterly' };
@@ -107,6 +107,14 @@ export interface ShareHolding {
   frequency: PaymentFrequency;
   status: HoldingStatus;
   certificate_no: string | null;
+  /**
+   * BUYER-PORTAL-PLAN.md §5 — a flat or plot booking is a holding too, with
+   * the same schedule, payments and checkout. Share fields are 0 on a home.
+   */
+  kind?: 'share' | 'home';
+  home?: HomeInfo | null;
+  /** a home's late fee comes from its agreement, not a share round */
+  fee_rule?: LateFeeRule | null;
   /** how the agreement was signed and witnessed; witness ID numbers stay with the office */
   signing?: {
     place: string;
@@ -118,10 +126,29 @@ export interface ShareHolding {
   } | null;
 }
 
+/** What a buyer sees of their flat or plot: the unit, the agreement and how far handover has come. */
+export interface HomeInfo {
+  unit_code: string;
+  /** "Flat · Tower A, 7th floor · 1,450 sft" */
+  unit_label: string;
+  booking_date: string;
+  booking_amount: number;
+  /** "Installments" / "Full payment" / null before the agreement */
+  payment_plan: string | null;
+  handover_date: string | null;
+  fully_paid_on: string | null;
+  /** keys, deed, mutation — each with the day it was done */
+  delivery: { label: string; done_on: string | null }[];
+  /** a booking still waiting for its booking money */
+  on_hold: boolean;
+}
+
 export interface Installment {
   /** `${holding_code}-${seq}` */
   id: string;
   holding_code: string;
+  /** a home's rows carry their own name ("Booking money", "Installment 3 of 24") */
+  label?: string;
   /** 0 = down payment */
   seq: number;
   due_date: string;
@@ -205,6 +232,8 @@ export interface CustomerUpload {
 export interface InvestorSnapshot {
   today: string;
   customer: InvestorCustomer;
+  /** BUYER-PORTAL-PLAN.md §5 — what the customer holds: homes, shares or both */
+  roles: CustomerType[];
   projects: InvestorProject[];
   rounds: ShareRound[];
   holdings: ShareHolding[];
@@ -288,7 +317,7 @@ export function viewInstallments(installments: Installment[], payments: PaymentR
       const feeCharged = status === 'overdue' ? lateFeeFor(inst.amount, daysLate, rule) : feePaid;
       return {
         ...inst,
-        label: installmentLabel(inst.seq),
+        label: inst.label ?? installmentLabel(inst.seq),
         status,
         paid_amount: paidAmount,
         remaining,
@@ -329,9 +358,46 @@ export interface HoldingView {
   health: HoldingHealth;
 }
 
+/** A home has no share round; its plan and late fee stand in for one. */
+function homeRound(h: ShareHolding): ShareRound {
+  return {
+    code: '',
+    project_code: h.project_code,
+    round_no: 0,
+    valuation: 0,
+    offered_pct: 0,
+    total_shares: 0,
+    share_pct: 0,
+    price_per_share: 0,
+    shares_available: 0,
+    opens_on: h.agreement_date,
+    closes_on: h.agreement_date,
+    is_open: false,
+    min_shares: 0,
+    max_shares: 0,
+    down_payment_pct: 0,
+    max_installments: h.installment_count,
+    frequency: 'monthly',
+    late_fee_pct: h.fee_rule?.late_fee_pct ?? 0,
+    grace_days: h.fee_rule?.grace_days ?? 0,
+  };
+}
+
+export const isHome = (h: ShareHolding) => h.kind === 'home';
+
+/** "Unit D-7A" or "40 shares": what a holding is, in a word, beside its code. */
+export function holdingTag(h: ShareHolding): string {
+  return isHome(h) ? `Unit ${h.home?.unit_code ?? '—'}` : `${h.shares} shares`;
+}
+
+/** Where a holding's own page is: My homes or My investments. */
+export function holdingHref(h: ShareHolding): string {
+  return isHome(h) ? `/customer/homes/${h.code}` : `/customer/investments/${h.code}`;
+}
+
 export function viewHolding(s: InvestorSnapshot, holding: ShareHolding): HoldingView {
   const project = s.projects.find((p) => p.code === holding.project_code)!;
-  const round = s.rounds.find((r) => r.code === holding.round_code)!;
+  const round = isHome(holding) ? homeRound(holding) : s.rounds.find((r) => r.code === holding.round_code)!;
   const payments = s.payments.filter((p) => p.holding_code === holding.code).sort((a, b) => b.paid_at.localeCompare(a.paid_at));
   const schedule = viewInstallments(
     s.installments.filter((i) => i.holding_code === holding.code),
@@ -359,8 +425,9 @@ export function viewHolding(s: InvestorSnapshot, holding: ShareHolding): Holding
     due_now: overdue + lateFees,
     next: schedule.find((r) => r.status !== 'paid') ?? null,
     paid_count: schedule.filter((r) => r.status === 'paid').length,
-    progress_pct: Math.round((paid / holding.total_price) * 100),
-    current_value: Math.round((project.valuation * holding.share_pct) / 100),
+    progress_pct: holding.total_price ? Math.round((paid / holding.total_price) * 100) : 0,
+    // a home is worth its price here; a share follows the project's valuation
+    current_value: isHome(holding) ? holding.total_price : Math.round((project.valuation * holding.share_pct) / 100),
     health: allPaid ? 'fully_paid' : overdueRows.length ? 'overdue' : 'on_track',
   };
 }
@@ -427,7 +494,7 @@ export function amountChoices(view: HoldingView): AmountChoice[] {
     });
   }
   if (open.length > 1 || !out.length) {
-    out.push({ id: 'full', title: 'Full outstanding balance', hint: 'Pays off this investment in one go', amount: maxPayable(view) });
+    out.push({ id: 'full', title: 'Full outstanding balance', hint: isHome(view.holding) ? 'Pays off your home in one go' : 'Pays off this investment in one go', amount: maxPayable(view) });
   }
   out.push({ id: 'custom', title: 'Other amount', hint: `Any amount from ${formatTaka(Math.min(MIN_PART_PAYMENT, maxPayable(view)))}`, amount: 0 });
   return out;
@@ -508,6 +575,9 @@ export interface PortfolioView {
   /** the next unpaid installment across every holding */
   next: { view: HoldingView; installment: InstallmentView } | null;
   open_rounds: { round: ShareRound; project: InvestorProject }[];
+  /** BUYER-PORTAL-PLAN.md §5 — the same holdings, split by kind */
+  homes: HoldingView[];
+  shares: HoldingView[];
 }
 
 export function viewPortfolio(s: InvestorSnapshot): PortfolioView {
@@ -528,13 +598,15 @@ export function viewPortfolio(s: InvestorSnapshot): PortfolioView {
     open_rounds: s.rounds
       .filter((r) => r.is_open)
       .map((round) => ({ round, project: s.projects.find((p) => p.code === round.project_code)! })),
+    homes: holdings.filter((v) => isHome(v.holding)),
+    shares: holdings.filter((v) => !isHome(v.holding)),
   };
 }
 
 /** "Installment 4" or "Installment 4 (part)" — what one allocation paid for. */
 export function allocationLabel(view: HoldingView | undefined, a: PaymentAllocation): string {
   const inst = view?.schedule.find((i) => i.id === a.installment_id);
-  const label = installmentLabel(Number(a.installment_id.split('-').pop()));
+  const label = inst?.label ?? installmentLabel(Number(a.installment_id.split('-').pop()));
   if (a.principal === 0 && a.late_fee > 0) return `${label} late fee`;
   return inst && a.principal < inst.amount ? `${label} (part)` : label;
 }
@@ -557,7 +629,7 @@ export function buildNotifications(s: InvestorSnapshot, portfolio: PortfolioView
   const out: PortalNotification[] = [];
   for (const v of portfolio.holdings) {
     for (const i of v.schedule) {
-      const pay = `/investor/payments/checkout?holding=${v.holding.code}`;
+      const pay = `/customer/payments/checkout?holding=${v.holding.code}`;
       if (i.status === 'overdue') {
         out.push({
           id: `overdue-${i.id}-${i.remaining}`,
@@ -589,7 +661,7 @@ export function buildNotifications(s: InvestorSnapshot, portfolio: PortfolioView
       title: 'Payment received',
       body: `${formatTaka(p.total)} for ${project?.name ?? p.holding_code} by ${p.method_detail}. Receipt ${p.receipt_no}.`,
       date: localDay(p.paid_at),
-      href: `/investor/receipts/${p.receipt_no}`,
+      href: `/customer/receipts/${p.receipt_no}`,
     });
   }
   for (const { round, project } of portfolio.open_rounds) {
@@ -599,7 +671,7 @@ export function buildNotifications(s: InvestorSnapshot, portfolio: PortfolioView
       title: `${project.name}: Round ${round.round_no} is open`,
       body: `${round.shares_available} shares available at ${formatTaka(round.price_per_share)} each, until ${formatDay(round.closes_on)}.`,
       date: round.opens_on,
-      href: '/investor#opportunities',
+      href: '/customer#opportunities',
     });
   }
   for (const v of portfolio.holdings.filter((h) => h.project.construction_progress_pct < 100)) {
@@ -609,7 +681,7 @@ export function buildNotifications(s: InvestorSnapshot, portfolio: PortfolioView
       title: `${v.project.name}: construction update`,
       body: `Work has reached ${v.project.construction_progress_pct}% completion.`,
       date: v.project.valuation_date,
-      href: `/investor/investments/${v.holding.code}`,
+      href: holdingHref(v.holding),
     });
   }
   const rank: Record<NotificationKind, number> = { overdue: 0, reminder: 1, payment: 2, offering: 3, update: 4 };

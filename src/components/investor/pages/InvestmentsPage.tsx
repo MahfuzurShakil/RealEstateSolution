@@ -16,10 +16,10 @@ export function InvestmentsPage() {
 
       <div className="grid gap-px overflow-hidden rounded-3xl border border-site-line bg-site-line shadow-site-1 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          ['Projects', String(portfolio.holdings.length)],
-          ['Total investment', <Money key="t" amount={portfolio.total_invested} />],
-          ['Paid to date', <Money key="p" amount={portfolio.paid} />],
-          ['Outstanding balance', <Money key="o" amount={portfolio.outstanding} />],
+          ['Projects', String(portfolio.shares.length)],
+          ['Total investment', <Money key="t" amount={portfolio.shares.reduce((t, v) => t + v.holding.total_price, 0)} />],
+          ['Paid to date', <Money key="p" amount={portfolio.shares.reduce((t, v) => t + v.paid, 0)} />],
+          ['Outstanding balance', <Money key="o" amount={portfolio.shares.reduce((t, v) => t + v.outstanding, 0)} />],
         ].map(([label, value]) => (
           <div key={label as string} className="bg-white px-6 py-5">
             <p className="text-sm text-site-muted">{label}</p>
@@ -29,7 +29,7 @@ export function InvestmentsPage() {
       </div>
 
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-        {portfolio.holdings.map((v) => (
+        {portfolio.shares.map((v) => (
           <HoldingCard key={v.holding.code} view={v} />
         ))}
       </div>

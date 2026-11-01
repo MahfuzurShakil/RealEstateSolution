@@ -1,14 +1,14 @@
 import Link from 'next/link';
 import { ArrowUpRight, MapPin } from 'lucide-react';
-import { formatDay, formatPct, type HoldingView } from '@/lib/domain/investor-portal';
+import { formatDay, formatPct, holdingHref, isHome, type HoldingView } from '@/lib/domain/investor-portal';
 import { HealthPill, Money, ProgressBar } from './ui';
 
-/** One project the customer holds shares in: picture, ownership and how far the payments are. */
+/** One holding — shares in a project, or a flat or plot (BUYER-PORTAL-PLAN.md §5): picture, what is held and how far the payments are. */
 export function HoldingCard({ view }: { view: HoldingView }) {
   const { holding, project, next } = view;
   return (
     <Link
-      href={`/investor/investments/${holding.code}`}
+      href={holdingHref(holding)}
       className="group flex flex-col overflow-hidden rounded-3xl border border-site-line bg-white shadow-site-1 transition-[box-shadow,transform] duration-300 ease-site-out hover:-translate-y-0.5 hover:shadow-site-2"
     >
       <div className="relative aspect-[16/8] overflow-hidden bg-site-line">
@@ -28,14 +28,29 @@ export function HoldingCard({ view }: { view: HoldingView }) {
           <MapPin className="size-4 shrink-0" aria-hidden /> <span className="truncate">{project.location}</span>
         </p>
         <div className="mt-4 grid grid-cols-[auto_auto_1fr] gap-x-6 border-y border-site-line py-4">
-          <div>
-            <p className="text-xs text-site-muted">Shares</p>
-            <p className="tabular mt-0.5 font-semibold">{holding.shares}</p>
-          </div>
-          <div>
-            <p className="text-xs text-site-muted">Ownership</p>
-            <p className="tabular mt-0.5 font-semibold">{formatPct(holding.share_pct)}</p>
-          </div>
+          {isHome(holding) ? (
+            <>
+              <div>
+                <p className="text-xs text-site-muted">Unit</p>
+                <p className="tabular mt-0.5 font-semibold">{holding.home?.unit_code}</p>
+              </div>
+              <div>
+                <p className="text-xs text-site-muted">Booked</p>
+                <p className="tabular mt-0.5 font-semibold">{formatDay(holding.home?.booking_date)}</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <p className="text-xs text-site-muted">Shares</p>
+                <p className="tabular mt-0.5 font-semibold">{holding.shares}</p>
+              </div>
+              <div>
+                <p className="text-xs text-site-muted">Ownership</p>
+                <p className="tabular mt-0.5 font-semibold">{formatPct(holding.share_pct)}</p>
+              </div>
+            </>
+          )}
           <div>
             <p className="text-xs text-site-muted">Total price</p>
             <Money amount={holding.total_price} className="mt-0.5 block font-semibold" />

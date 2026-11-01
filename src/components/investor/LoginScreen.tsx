@@ -13,9 +13,9 @@ import { cn } from '@/lib/utils/cn';
 import { formatPhone } from '@/lib/utils/format';
 
 const FEATURES = [
-  { icon: PieChart, title: 'Your shares at a glance', body: 'Ownership, value and payment progress for every project you invest in.' },
+  { icon: PieChart, title: 'Your home and shares at a glance', body: 'Your flat or plot, your shares, and how much of each is paid.' },
   { icon: WalletCards, title: 'Pay installments online', body: 'bKash, Nagad or card through a secure payment gateway, with instant receipts.' },
-  { icon: FileCheck2, title: 'Documents any time', body: 'Agreement, deed, payment schedule and share certificate in one place.' },
+  { icon: FileCheck2, title: 'Documents any time', body: 'Agreements, payment schedules, receipts and certificates in one place.' },
 ];
 
 function CodeBoxes({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled: boolean }) {
@@ -82,7 +82,7 @@ export function LoginScreen({ next, signedOut }: { next: string | null; signedOu
   const [resendIn, setResendIn] = useState(0);
   const [notice, setNotice] = useState(signedOut);
   const isEmail = identifier.includes('@');
-  const target = next && next.startsWith('/investor') ? next : '/investor';
+  const target = next && next.startsWith('/customer') ? next : '/customer';
 
   // already signed in: straight to the portal
   useEffect(() => {
@@ -133,9 +133,9 @@ export function LoginScreen({ next, signedOut }: { next: string | null; signedOu
             <BrandMark company={company} tone="dark" />
           </Link>
           <div className="max-w-lg">
-            <p className="text-xs font-semibold tracking-[0.2em] text-site-brass uppercase">Customer Portal · Investor</p>
+            <p className="text-xs font-semibold tracking-[0.2em] text-site-brass uppercase">Customer Portal · Buyers &amp; Investors</p>
             <h2 className="mt-4 text-4xl leading-[1.1] font-semibold xl:text-5xl">
-              Your project shares, <span className="font-accent font-normal text-site-brass italic">in one secure place.</span>
+              Your home and your shares, <span className="font-accent font-normal text-site-brass italic">in one secure place.</span>
             </h2>
             <ul className="mt-10 space-y-6">
               {FEATURES.map(({ icon: Icon, title, body }) => (
@@ -169,7 +169,7 @@ export function LoginScreen({ next, signedOut }: { next: string | null; signedOu
             </Link>
             <p className="mt-7 text-[11px] font-semibold tracking-[0.2em] text-site-brass uppercase">Customer Portal</p>
             <p className="font-display mt-1.5 text-2xl leading-tight font-semibold">
-              Your project shares, <span className="font-accent font-normal text-site-brass italic">in one secure place.</span>
+              Your home and your shares, <span className="font-accent font-normal text-site-brass italic">in one secure place.</span>
             </p>
           </div>
         </div>
@@ -186,7 +186,7 @@ export function LoginScreen({ next, signedOut }: { next: string | null; signedOu
 
             <h1 className="mt-5 text-[28px] leading-tight font-semibold sm:text-[32px]">{step === 'id' ? 'Welcome back' : 'Check your phone'}</h1>
             <p className="mt-2 text-[15px] leading-relaxed text-site-muted">
-              {step === 'id' ? 'Sign in with the mobile number or email on your share agreement.' : 'Enter the 6-digit code we just sent you. It expires in 10 minutes.'}
+              {step === 'id' ? 'Sign in with the mobile number or email on your booking or share agreement.' : 'Enter the 6-digit code we just sent you. It expires in 10 minutes.'}
             </p>
 
             {notice && step === 'id' && !error && (
@@ -280,6 +280,24 @@ export function LoginScreen({ next, signedOut }: { next: string | null; signedOu
                 Fill in
               </button>
             </div>
+            {/* BUYER-PORTAL-PLAN.md §5 — a buyer signs in the same way */}
+            {step === 'id' && (
+              <div className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-dashed border-site-brass/50 bg-site-brass/5 px-3.5 py-2.5 text-[13px]">
+                <span className="min-w-0 text-site-muted">
+                  <span className="font-semibold text-site-brass-dark">Demo buyer</span> · <span className="tabular">{formatPhone(demo.buyer_phone)}</span>
+                </span>
+                <button
+                  type="button"
+                  className="shrink-0 font-semibold text-site-primary hover:underline"
+                  onClick={() => {
+                    setError(null);
+                    setIdentifier(formatPhone(demo.buyer_phone));
+                  }}
+                >
+                  Fill in
+                </button>
+              </div>
+            )}
           </div>
 
           <footer className="mx-auto mt-10 w-full max-w-[400px] space-y-2 text-center text-[13px] text-site-muted">

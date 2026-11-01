@@ -2,9 +2,16 @@
 
 import { db } from '../../db/database';
 import type {
+  Booking,
+  BookingInstallment,
   Customer,
   DocumentRecord,
+  Payment as BookingPayment,
+  PaymentMethod as BookingPaymentMethod,
   Project,
+  Tower,
+  Unit,
+  UnitDelivery,
   ShareInstallment,
   ShareOffering,
   SharePayment,
@@ -20,6 +27,7 @@ import {
   viewHolding,
   type AmountOption,
   type CustomerDocument,
+  PAYMENT_METHOD_LABEL,
   type CustomerUpload,
   type Installment,
   type InvestorCustomer,
@@ -33,6 +41,7 @@ import {
   type ShareRound,
   type UploadKind,
 } from '@/lib/domain/investor-portal';
+import { SALE_PAYMENT_MODE_LABEL } from '@/lib/domain/booking';
 import { PROJECT_TYPE_LABEL } from '@/lib/domain/project';
 import { SHARE_DOC_META, shareDocScope } from '@/lib/domain/share-documents';
 import { offeringAvailability, offeringState } from '@/lib/domain/share-sale';
@@ -40,6 +49,7 @@ import { newId, nextCode, nowIso } from '@/lib/utils/id';
 import { todayLocal } from '@/lib/utils/format';
 import { normalizePhone } from '../lead.repository';
 import { shareSaleRepository } from '../share-sale.repository';
+import { bookingRepository } from '../booking.repository';
 import { demoReference } from './gateway-reference';
 
 /*
@@ -163,10 +173,10 @@ const mask = (value: string | null | undefined, keep = 4) => {
 };
 
 /** `since`: the earlier of the record's creation and the customer's first purchase */
-function toCustomer(c: Customer, since: string): InvestorCustomer {
+function toCustomer(c: Customer, since: string, type: 'buyer' | 'investor' = 'investor'): InvestorCustomer {
   return {
     code: c.code,
-    customer_type: 'investor',
+    customer_type: type,
     full_name: c.name,
     father_or_spouse_name: c.father_or_spouse_name || null,
     email: c.email || null,
@@ -365,7 +375,132 @@ function documentsFor(s: ShareSale): CustomerDocument[] {
   ];
 }
 
-/** Customers who may sign in: type Investor, or anyone the office has sold shares to. */
+/* ------------------------------------------------- homes (BUYER-PORTAL-PLAN.md §5) */
+
+/** The bookings a buyer sees: every one not cancelled, on hold included. */
+const LIVE_BOOKING = (b: Booking) => b.status !== 'cancelled';
+
+const FROM_BOOKING_METHOD: Record<BookingPaymentMethod, PaymentMethod> = {
+  cash: 'cash',
+  bank: 'bank_transfer',
+  mfs: 'bkash',
+  cheque: 'cheque',
+  card: 'card',
+  online: 'internet_banking',
+};
+
+const TO_BOOKING_METHOD: Record<PaymentMethod, BookingPaymentMethod> = {
+  bkash: 'mfs',
+  nagad: 'mfs',
+  rocket: 'mfs',
+  card: 'card',
+  internet_banking: 'online',
+  bank_transfer: 'bank',
+  cheque: 'cheque',
+  cash: 'cash',
+};
+
+/** A buyer receipt has no code of its own; the portal shows "MR-" and the start of its id. */
+export function homeReceiptNo(p: Pick<BookingPayment, 'id'>): string {
+  return `MR-${p.id.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+}
+
+const DELIVERY_LABEL: Record<UnitDelivery['step'], string> = {
+  keys_handed_over: 'Keys handed over',
+  possession_given: 'Possession given',
+  share_certificate: 'Share certificate issued',
+  deed_registered: 'Sale deed registered',
+  mutation_done: 'Mutation done',
+};
+
+function unitLabel(u: Unit | undefined, t: Tower | undefined, type: string): string {
+  if (!u) return type;
+  const size = u.size_sqft ? `${Number(u.size_sqft).toLocaleString('en-IN')} sft` : u.land_size ? `${u.land_size} ${u.land_size_unit ?? ''}`.trim() : null;
+  const where = [t?.name, u.floor != null ? `floor ${u.floor}` : null].filter(Boolean).join(', ');
+  return [type, where || null, size].filter(Boolean).join(' · ');
+}
+
+function toHomeHolding(b: Booking, unit: Unit | undefined, tower: Tower | undefined, project: Project, rows: BookingInstallment[], deliveries: UnitDelivery[]): ShareHolding {
+  const installments = rows.filter((r) => r.kind !== 'booking_money');
+  return {
+    kind: 'home',
+    code: b.code,
+    project_code: project.code,
+    round_code: '',
+    agreement_no: b.agreement_no ?? '—',
+    agreement_date: b.agreement_date ?? b.booking_date,
+    shares: 0,
+    share_pct: 0,
+    price_per_share: 0,
+    total_price: Number(b.final_price) || 0,
+    down_payment: Number(b.booking_amount) || 0,
+    installment_count: installments.length,
+    frequency: 'monthly',
+    status: b.fully_paid_on ? 'fully_paid' : 'paying',
+    certificate_no: null,
+    fee_rule: b.late_fee_pct ? { late_fee_pct: Number(b.late_fee_pct), grace_days: Number(b.late_fee_grace_days) || 0 } : { late_fee_pct: 0, grace_days: 0 },
+    home: {
+      unit_code: unit?.code ?? '—',
+      unit_label: unitLabel(unit, tower, PROJECT_TYPE_LABEL[project.project_type]),
+      booking_date: b.booking_date,
+      booking_amount: Number(b.booking_amount) || 0,
+      payment_plan: b.payment_mode ? SALE_PAYMENT_MODE_LABEL[b.payment_mode] : null,
+      handover_date: b.handover_date ?? null,
+      fully_paid_on: b.fully_paid_on ?? null,
+      delivery: (['keys_handed_over', 'deed_registered', 'mutation_done'] as UnitDelivery['step'][]).map((step) => ({
+        label: DELIVERY_LABEL[step],
+        done_on: deliveries.find((d) => d.booking_id === b.id && d.step === step)?.event_date ?? null,
+      })),
+      on_hold: b.status === 'hold',
+    },
+    signing: b.signing
+      ? {
+          place: b.signing.place,
+          company_signatory: b.signing.company_signatory,
+          company_signatory_title: b.signing.company_signatory_title ?? null,
+          witnesses: b.signing.witnesses.map((w) => w.name),
+          stamp_value: b.signing.stamp_value ?? null,
+          notarized_on: b.signing.notarized_on ?? null,
+        }
+      : null,
+  };
+}
+
+function toHomePayment(p: BookingPayment, code: string, seqById: Map<string, number>): PaymentRecord {
+  const online = p.channel === 'online';
+  const method = FROM_BOOKING_METHOD[p.payment_method] ?? 'bank_transfer';
+  const fee = Number(p.late_fee) || 0;
+  return {
+    receipt_no: homeReceiptNo(p),
+    holding_code: code,
+    allocations: (p.allocations ?? []).map((a) => ({ installment_id: `${code}-${seqById.get(a.installment_id) ?? 0}`, principal: a.principal, late_fee: a.late_fee })),
+    principal: (Number(p.amount) || 0) - fee,
+    late_fee: fee,
+    total: Number(p.amount) || 0,
+    method,
+    method_detail: p.method_detail || (online ? 'Online payment' : p.payment_method === 'cash' ? 'Cash at our office' : `${PAYMENT_METHOD_LABEL[method]}, received by our office`),
+    channel: online ? 'online' : 'office',
+    reference: p.reference_no || homeReceiptNo(p),
+    paid_at: online && p.created_at.slice(0, 10) === p.payment_date ? p.created_at : `${p.payment_date}T10:00:00`,
+  };
+}
+
+function homeDocuments(b: Booking): CustomerDocument[] {
+  const issued = b.agreement_date ?? null;
+  return [
+    { id: `${b.code}-agreement`, holding_code: b.code, kind: 'agreement', title: 'Sale agreement', issued_on: issued, available: !!issued },
+    { id: `${b.code}-schedule`, holding_code: b.code, kind: 'schedule', title: 'Payment schedule', issued_on: issued ?? b.booking_date, available: true },
+  ];
+}
+
+/** The account online money lands in: the wallet merchant account for bKash and the like, else the first bank account. */
+async function gatewayAccount(method: PaymentMethod): Promise<string | null> {
+  const accounts = (await db.bank_accounts.toArray()).filter((a) => a.is_active);
+  const wallet = method === 'bkash' || method === 'nagad' || method === 'rocket';
+  return (wallet ? accounts.find((a) => a.type === 'mfs') : undefined)?.id ?? accounts.find((a) => a.type === 'bank')?.id ?? accounts[0]?.id ?? null;
+}
+
+/** Customers who may sign in: an investor or a buyer — anyone holding shares or a booking, or created as one. */
 async function findCustomer(identifier: string): Promise<Customer | undefined> {
   const raw = identifier.trim();
   if (!raw) return undefined;
@@ -374,16 +509,17 @@ async function findCustomer(identifier: string): Promise<Customer | undefined> {
     ? all.find((c) => c.email?.trim().toLowerCase() === raw.toLowerCase())
     : all.find((c) => normalizePhone(c.phone) === normalizePhone(raw));
   if (!match) return undefined;
-  if (match.customer_type === 'investor') return match;
+  if (match.customer_type === 'investor' || match.customer_type === 'buyer') return match;
   const sales = await db.share_sales.where('customer_id').equals(match.id).count();
-  return sales ? match : undefined;
+  const homes = (await db.bookings.where('customer_id').equals(match.id).toArray()).filter(LIVE_BOOKING).length;
+  return sales || homes ? match : undefined;
 }
 
 /* ---------------------------------------------------------------- reader */
 
 export const investorRepository = {
   /** shown on the sign-in page of the demo build */
-  demoLogin: { phone: '01711223344', email: 'farhana.rahman@example.com', otp: DEMO_OTP },
+  demoLogin: { phone: '01711223344', email: 'farhana.rahman@example.com', otp: DEMO_OTP, buyer_phone: '01855889900' },
 
   /** Step 1 of sign-in. Only customers the office has created can sign in. */
   async requestCode(identifier: string): Promise<{ ok: true; sent_to: string } | { ok: false; error: string }> {
@@ -392,7 +528,7 @@ export const investorRepository = {
     if (!c) {
       return {
         ok: false,
-        error: 'We could not find a customer account with these details. Accounts are opened by our office once your share agreement is signed.',
+        error: 'We could not find a customer account with these details. Accounts are opened by our office once you book a flat or plot, or sign a share agreement.',
       };
     }
     try {
@@ -469,7 +605,13 @@ export const investorRepository = {
     const listed = offerings.filter((o) => o.status !== 'draft' && o.status !== 'cancelled');
     // rounds the customer bought into, plus every round still on the market
     const roundOfferings = listed.filter((o) => sales.some((s) => s.offering_id === o.id) || offeringState(o, today) === 'open');
-    const projectIds = [...new Set(roundOfferings.map((o) => o.project_id))];
+    // the buyer's flats and plots, and the projects they stand in
+    const bookings = (await db.bookings.where('customer_id').equals(customer.id).toArray()).filter(LIVE_BOOKING);
+    const units = await db.units.bulkGet(bookings.map((b) => b.unit_id));
+    const homeTowers = await db.towers.bulkGet(units.map((u) => u?.tower_id ?? ''));
+    const projectIds = [
+      ...new Set([...roundOfferings.map((o) => o.project_id), ...homeTowers.map((t) => t?.project_id).filter((id): id is string => !!id)]),
+    ];
     const [projects, allSales, towers, installments, payments] = await Promise.all([
       db.projects.bulkGet(projectIds),
       db.share_sales.where('offering_id').anyOf(roundOfferings.map((o) => o.id)).toArray(),
@@ -492,6 +634,23 @@ export const investorRepository = {
     const holdings = sales.filter((s) => offeringById.has(s.offering_id) && projectById.has(s.project_id)).map((s) => toHolding(s, projectCode(s.project_id), offeringById.get(s.offering_id)!.code));
     const saleById = new Map(sales.map((s) => [s.id, s]));
     const instSeq = new Map(installments.map((i) => [i.id, i.seq]));
+
+    const [homeRows, homePays, deliveries] = await Promise.all([
+      db.booking_installments.where('booking_id').anyOf(bookings.map((b) => b.id)).toArray(),
+      db.payments.where('booking_id').anyOf(bookings.map((b) => b.id)).toArray(),
+      db.unit_deliveries.where('booking_id').anyOf(bookings.map((b) => b.id)).toArray(),
+    ]);
+    const homeSeq = new Map(homeRows.map((r) => [r.id, r.seq]));
+    const homes = bookings.flatMap((b, i) => {
+      const project = homeTowers[i] ? projectById.get(homeTowers[i]!.project_id) : undefined;
+      if (!project) return [];
+      return [toHomeHolding(b, units[i] ?? undefined, homeTowers[i] ?? undefined, project, homeRows.filter((r) => r.booking_id === b.id), deliveries)];
+    });
+    const bookingById = new Map(bookings.map((b) => [b.id, b]));
+    const roles: ('buyer' | 'investor')[] = [];
+    if (homes.length) roles.push('buyer');
+    if (sales.length || requests.length || customer.customer_type === 'investor') roles.push('investor');
+    if (!roles.length) roles.push(customer.customer_type ?? 'investor');
     const portalInstallments: Installment[] = installments.map((i: ShareInstallment) => {
       const code = saleById.get(i.sale_id)!.code;
       return { id: `${code}-${i.seq}`, holding_code: code, seq: i.seq, due_date: i.due_date, amount: i.amount };
@@ -499,13 +658,23 @@ export const investorRepository = {
     const local = loadLocal();
     return {
       today,
-      customer: toCustomer(customer, [customer.created_at.slice(0, 10), ...mySales.map((s) => s.reserved_on)].sort()[0]),
+      customer: toCustomer(customer, [customer.created_at.slice(0, 10), ...mySales.map((s) => s.reserved_on), ...bookings.map((b) => b.booking_date)].sort()[0], roles[0]),
+      roles,
       projects: portalProjects,
       rounds,
-      holdings,
-      installments: portalInstallments,
-      payments: payments.map((p) => toPayment(p, saleById.get(p.sale_id)!, instSeq)),
-      documents: sales.flatMap(documentsFor),
+      holdings: [...homes, ...holdings],
+      installments: [
+        ...homeRows.map((r) => {
+          const code = bookingById.get(r.booking_id)!.code;
+          return { id: `${code}-${r.seq}`, holding_code: code, seq: r.seq, label: r.label, due_date: r.due_date, amount: r.amount };
+        }),
+        ...portalInstallments,
+      ],
+      payments: [
+        ...homePays.map((p) => toHomePayment(p, bookingById.get(p.booking_id)!.code, homeSeq)),
+        ...payments.map((p) => toPayment(p, saleById.get(p.sale_id)!, instSeq)),
+      ],
+      documents: [...bookings.flatMap(homeDocuments), ...sales.flatMap(documentsFor)],
       read_notification_ids: local.read[customer.id] ?? [],
       share_requests: requests
         .filter((r) => r.status !== 'withdrawn' && offeringById.has(r.offering_id))
@@ -513,10 +682,19 @@ export const investorRepository = {
         .map((r) => toRequest(r, offeringById.get(r.offering_id)!.code)),
       // the customer's own papers, and those of purchases they can see (not a reservation's)
       uploads: uploads
-        .filter((u) => (u.sale_id ? saleById.has(u.sale_id) : true))
+        .filter((u) => (u.sale_id ? saleById.has(u.sale_id) : u.booking_id ? bookingById.has(u.booking_id) : true))
         .sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at))
-        .map((u) => toUpload(u, u.sale_id ? saleById.get(u.sale_id)!.code : null)),
+        .map((u) => toUpload(u, u.sale_id ? saleById.get(u.sale_id)!.code : u.booking_id ? bookingById.get(u.booking_id)!.code : null)),
     };
+  },
+
+  /** The signed-in customer's booking with this code, or an error. */
+  async ownBooking(code: string): Promise<Booking> {
+    const session = this.session();
+    if (!session) throw new Error('Please sign in again.');
+    const booking = await db.bookings.where('code').equals(code).first();
+    if (!booking || booking.customer_id !== session.customer_id || !LIVE_BOOKING(booking)) throw new Error('This booking could not be found.');
+    return booking;
   },
 
   /** The signed-in customer's purchase with this code, or an error. */
@@ -601,6 +779,34 @@ export const investorRepository = {
       return intent;
     }
     const reference = demoReference(method, `${intent.id}${now.getTime()}`);
+    // a flat or plot: the money goes on the booking, into the gateway's account, through the same ledger
+    if (await db.bookings.where('code').equals(intent.holding_code).count()) {
+      try {
+        const booking = await this.ownBooking(intent.holding_code);
+        const before = new Set((await db.payments.where('booking_id').equals(booking.id).toArray()).map((p) => p.id));
+        await bookingRepository.recordPayment(booking.id, {
+          amount: intent.total,
+          payment_date: todayLocal(),
+          payment_method: TO_BOOKING_METHOD[method],
+          reference_no: reference,
+          notes: `Customer Portal order ${intent.id}`,
+          account_id: await gatewayAccount(method),
+          channel: 'online',
+          method_detail: methodDetail,
+        });
+        const paid = (await db.payments.where('booking_id').equals(booking.id).toArray()).find((p) => !before.has(p.id));
+        intent.status = 'paid';
+        intent.reference = reference;
+        intent.receipt_no = paid ? homeReceiptNo(paid) : null;
+        intent.late_fee = Number(paid?.late_fee) || 0;
+        intent.principal = intent.total - intent.late_fee;
+      } catch (e) {
+        intent.status = 'failed';
+        intent.failure_reason = `${e instanceof Error ? e.message : 'The payment could not be applied.'} No money has been taken.`;
+      }
+      saveLocal(state);
+      return intent;
+    }
     try {
       const sale = await this.ownSale(intent.holding_code);
       const payment = await shareSaleRepository.recordPayment(
@@ -711,15 +917,18 @@ export const investorRepository = {
     if (!session) throw new Error('Please sign in again.');
     const personal = shareDocScope(input.kind) === 'customer';
     let sale: ShareSale | null = null;
+    let booking: Booking | null = null;
     if (!personal) {
-      if (!input.holding_code) throw new Error('Choose the investment this paper is for.');
-      sale = await this.ownSale(input.holding_code);
+      if (!input.holding_code) throw new Error('Choose the home or investment this paper is for.');
+      if (await db.bookings.where('code').equals(input.holding_code).count()) booking = await this.ownBooking(input.holding_code);
+      else sale = await this.ownSale(input.holding_code);
     }
     const ts = nowIso();
     const row: CustomerUploadRow = {
       id: newId(),
       customer_id: session.customer_id,
       sale_id: sale?.id ?? null,
+      booking_id: booking?.id ?? null,
       source: 'customer',
       kind: input.kind,
       title: input.title.trim(),
@@ -740,7 +949,7 @@ export const investorRepository = {
       await db.customer_upload_files.add({ id: row.id, blob: input.file });
     });
     changed();
-    return toUpload(row, sale?.code ?? null);
+    return toUpload(row, sale?.code ?? booking?.code ?? null);
   },
 
   /** The customer's own uploaded file, to open or download. */

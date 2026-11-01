@@ -11,12 +11,13 @@ import {
   paymentDueRows,
   type DueState,
   type PaymentDueRow,
+  holdingTag,
 } from '@/lib/domain/investor-portal';
 import { cn } from '@/lib/utils/cn';
 import { useCustomerPortal } from '../CustomerPortalProvider';
 import { Money, PageHeading, ProgressBar } from '../ui';
 
-const checkoutHref = (r: PaymentDueRow) => `/investor/payments/checkout?holding=${r.view.holding.code}`;
+const checkoutHref = (r: PaymentDueRow) => `/customer/payments/checkout?holding=${r.view.holding.code}`;
 
 const STATE_STYLE: Record<DueState, { cls: string; Icon: LucideIcon }> = {
   overdue: { cls: 'bg-red-50 text-site-danger', Icon: AlertTriangle },
@@ -58,7 +59,7 @@ function PayButton({ r, compact = false }: { r: PaymentDueRow; compact?: boolean
   if (r.state === 'paid') {
     return (
       <Link
-        href={`/investor/investments/${r.view.holding.code}`}
+        href={`/customer/investments/${r.view.holding.code}`}
         onClick={(e) => e.stopPropagation()}
         className={cn('inline-flex h-9 items-center justify-center gap-1 rounded-full border border-site-line bg-white px-4 text-sm font-semibold transition-colors hover:border-site-primary hover:text-site-primary', compact && 'w-full')}
       >
@@ -190,7 +191,7 @@ export function PaymentsPage() {
             <tbody className="divide-y divide-site-line">
               {rows.map((r) => {
                 const overdue = r.state === 'overdue';
-                const href = r.state === 'paid' ? `/investor/investments/${r.view.holding.code}` : checkoutHref(r);
+                const href = r.state === 'paid' ? `/customer/investments/${r.view.holding.code}` : checkoutHref(r);
                 return (
                   <tr key={r.view.holding.code} onClick={() => router.push(href)} className={cn('cursor-pointer transition-colors hover:bg-site-ivory', r.state === 'paid' && 'text-site-muted')}>
                     <td className="py-3.5 pr-3 pl-5">
@@ -200,7 +201,7 @@ export function PaymentsPage() {
                         <span className="min-w-0">
                           <span title={r.view.project.name} className="block max-w-44 truncate font-semibold text-site-ink">{r.view.project.name}</span>
                           <span className="tabular block text-xs text-site-muted">
-                            {r.view.holding.code} · {r.view.holding.shares} shares
+                            {r.view.holding.code} · {holdingTag(r.view.holding)}
                           </span>
                         </span>
                       </span>
@@ -284,7 +285,7 @@ export function PaymentsPage() {
           const overdue = r.state === 'overdue';
           return (
             <li key={r.view.holding.code} className={cn('overflow-hidden rounded-3xl border bg-white shadow-site-1', overdue ? 'border-site-danger/30' : 'border-site-line')}>
-              <Link href={r.state === 'paid' ? `/investor/investments/${r.view.holding.code}` : checkoutHref(r)} className="flex items-center gap-3 p-4 pb-3">
+              <Link href={r.state === 'paid' ? `/customer/investments/${r.view.holding.code}` : checkoutHref(r)} className="flex items-center gap-3 p-4 pb-3">
                 {/* eslint-disable-next-line @next/next/no-img-element -- mock stock photo */}
                 <img src={r.view.project.image} alt="" className="size-11 shrink-0 rounded-xl object-cover" />
                 <span className="min-w-0 flex-1">

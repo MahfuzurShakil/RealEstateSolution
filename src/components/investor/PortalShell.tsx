@@ -16,6 +16,7 @@ import {
   UserRound,
   X,
   type LucideIcon,
+  Home,
 } from 'lucide-react';
 import { BrandMark } from '@/components/public/BrandMark';
 import { useCompanyInfo } from '@/components/public/useCompanyInfo';
@@ -23,14 +24,16 @@ import { CUSTOMER_TYPE_LABEL } from '@/lib/domain/investor-portal';
 import { cn } from '@/lib/utils/cn';
 import { useCustomerPortal } from './CustomerPortalProvider';
 
-const NAV: { href: string; label: string; icon: LucideIcon; exact?: boolean }[] = [
-  { href: '/investor', label: 'Overview', icon: LayoutDashboard, exact: true },
-  { href: '/investor/investments', label: 'My investments', icon: Briefcase },
-  { href: '/investor/payments', label: 'Make a payment', icon: CreditCard },
-  { href: '/investor/history', label: 'Payment history', icon: History },
-  { href: '/investor/documents', label: 'Documents', icon: FileText },
-  { href: '/investor/notifications', label: 'Notifications', icon: Bell },
-  { href: '/investor/profile', label: 'My profile', icon: UserRound },
+/** BUYER-PORTAL-PLAN.md §5 — `role` items show only to a customer who holds that kind of thing */
+const NAV: { href: string; label: string; icon: LucideIcon; exact?: boolean; role?: 'buyer' | 'investor' }[] = [
+  { href: '/customer', label: 'Overview', icon: LayoutDashboard, exact: true },
+  { href: '/customer/homes', label: 'My homes', icon: Home, role: 'buyer' },
+  { href: '/customer/investments', label: 'My investments', icon: Briefcase, role: 'investor' },
+  { href: '/customer/payments', label: 'Make a payment', icon: CreditCard },
+  { href: '/customer/history', label: 'Payment history', icon: History },
+  { href: '/customer/documents', label: 'Documents', icon: FileText },
+  { href: '/customer/notifications', label: 'Notifications', icon: Bell },
+  { href: '/customer/profile', label: 'My profile', icon: UserRound },
 ];
 
 function initials(name: string) {
@@ -52,14 +55,14 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <div className="flex h-full flex-col">
       <div className="px-6 pt-6 pb-5">
-        <Link href="/investor" onClick={onNavigate} className="block rounded-xl">
+        <Link href="/customer" onClick={onNavigate} className="block rounded-xl">
           <BrandMark company={company} tone="dark" />
         </Link>
         <p className="mt-3 text-xs font-semibold tracking-[0.18em] text-site-brass uppercase">Customer Portal</p>
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3" aria-label="Customer Portal">
-        {NAV.map(({ href, label, icon: Icon, exact }) => {
+        {NAV.filter((n) => !n.role || snapshot.roles.includes(n.role)).map(({ href, label, icon: Icon, exact }) => {
           const on = active(href, exact);
           return (
             <Link
@@ -75,7 +78,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
               {on && <span aria-hidden className="absolute top-1/2 left-0 h-6 w-1 -translate-y-1/2 rounded-r-full bg-site-brass" />}
               <Icon className={cn('size-5 shrink-0', on ? 'text-site-brass' : 'text-white/50 group-hover:text-white/80')} aria-hidden />
               {label}
-              {href === '/investor/notifications' && unread > 0 && (
+              {href === '/customer/notifications' && unread > 0 && (
                 <span className="tabular ml-auto rounded-full bg-site-brass px-2 py-0.5 text-xs font-bold text-site-night">{unread}</span>
               )}
             </Link>
@@ -151,11 +154,11 @@ export function PortalShell({ children }: { children: ReactNode }) {
       <div className="lg:pl-72 print:pl-0">
 
         <header className="print-hide sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-site-line bg-white/90 px-4 backdrop-blur-md lg:hidden">
-          <Link href="/investor" className="min-w-0">
+          <Link href="/customer" className="min-w-0">
             <BrandMark company={company} />
           </Link>
           <div className="flex items-center gap-2">
-            <Link href="/investor/notifications" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`} className="relative grid size-11 place-items-center rounded-full bg-site-soft">
+            <Link href="/customer/notifications" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`} className="relative grid size-11 place-items-center rounded-full bg-site-soft">
               <Bell className="size-5" />
               {unread > 0 && <span className="absolute top-2 right-2 size-2.5 rounded-full bg-site-danger ring-2 ring-white" />}
             </Link>

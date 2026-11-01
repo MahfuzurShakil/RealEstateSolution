@@ -6,7 +6,7 @@ import { ArrowLeft, CircleCheck, FileSearch, Printer } from 'lucide-react';
 import { BrandMark } from '@/components/public/BrandMark';
 import { Button } from '@/components/public/ui/Button';
 import { useCompanyInfo } from '@/components/public/useCompanyInfo';
-import { CUSTOMER_TYPE_LABEL, allocationLabel, formatDay, formatPct, takaInWords } from '@/lib/domain/investor-portal';
+import { CUSTOMER_TYPE_LABEL, allocationLabel, formatDay, formatPct, takaInWords, isHome } from '@/lib/domain/investor-portal';
 import { formatPhone } from '@/lib/utils/format';
 import { useCustomerPortal } from '../CustomerPortalProvider';
 import { EmptyNote, Money, Panel } from '../ui';
@@ -36,7 +36,7 @@ export function ReceiptPage({ receiptNo }: { receiptNo: string }) {
   return (
     <div className="mx-auto max-w-4xl">
       <div className="print-hide mb-6 flex flex-wrap items-center justify-between gap-3">
-        <Link href="/investor/history" className="inline-flex items-center gap-1.5 text-sm font-medium text-site-muted hover:text-site-primary">
+        <Link href="/customer/history" className="inline-flex items-center gap-1.5 text-sm font-medium text-site-muted hover:text-site-primary">
           <ArrowLeft className="size-4" aria-hidden /> Payment history
         </Link>
         <Button onClick={() => window.print()} icon={<Printer className="size-4" />}>
@@ -108,7 +108,8 @@ export function ReceiptPage({ receiptNo }: { receiptNo: string }) {
             <Label>Towards</Label>
             <p className="mt-2 font-semibold">{v.project.name}</p>
             <p className="mt-0.5 text-sm text-site-muted">
-              {v.holding.shares} shares ({formatPct(v.holding.share_pct)}) · Holding <span className="tabular">{v.holding.code}</span>
+              {isHome(v.holding) ? v.holding.home?.unit_label : `${v.holding.shares} shares (${formatPct(v.holding.share_pct)})`} · {isHome(v.holding) ? 'Booking' : 'Holding'}{' '}
+              <span className="tabular">{v.holding.code}</span>
             </p>
             <p className="text-sm text-site-muted">
               Agreement <span className="tabular">{v.holding.agreement_no}</span>

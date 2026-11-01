@@ -57,7 +57,7 @@ export function CustomerPortalProvider({ children, fallback }: { children: React
     if (snapshot === null) {
       // a session whose customer is gone would bounce between here and the sign-in page
       investorRepository.signOut();
-      router.replace(`/investor/login?next=${encodeURIComponent(pathname ?? '/investor')}`);
+      router.replace(`/customer/login?next=${encodeURIComponent(pathname ?? '/customer')}`);
     }
     // the guard follows the snapshot; page changes inside the portal keep the session
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -75,7 +75,7 @@ export function CustomerPortalProvider({ children, fallback }: { children: React
       unread: notifications.filter((n) => !read.has(n.id)).length,
       signOut: () => {
         investorRepository.signOut();
-        router.replace('/investor/login?signed_out=1');
+        router.replace('/customer/login?signed_out=1');
       },
     };
   }, [snapshot, router]);

@@ -57,7 +57,7 @@ export function HistoryPage() {
             <ul className="divide-y divide-site-line sm:hidden">
               {shown.map((p) => (
                 <li key={p.receipt_no}>
-                  <Link href={`/investor/receipts/${p.receipt_no}`} className="flex items-center gap-3 px-5 py-4 active:bg-site-ivory">
+                  <Link href={`/customer/receipts/${p.receipt_no}`} className="flex items-center gap-3 px-5 py-4 active:bg-site-ivory">
                     <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-site-primary-soft text-site-primary">
                       <Receipt className="size-5" aria-hidden />
                     </span>
@@ -108,7 +108,7 @@ export function HistoryPage() {
                     <tr key={p.receipt_no} className="transition-colors hover:bg-site-ivory">
                       <td className="tabular px-5 py-3.5 whitespace-nowrap sm:px-6">{formatDay(p.paid_at)}</td>
                       <td className="px-3 py-3.5">
-                        <Link href={`/investor/receipts/${p.receipt_no}`} className="tabular inline-flex items-center gap-1.5 font-semibold text-site-primary hover:underline">
+                        <Link href={`/customer/receipts/${p.receipt_no}`} className="tabular inline-flex items-center gap-1.5 font-semibold text-site-primary hover:underline">
                           <Receipt className="size-4" aria-hidden /> {p.receipt_no}
                         </Link>
                       </td>

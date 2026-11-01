@@ -5,7 +5,7 @@ import { allocatePayment, amountChoices, lateFeeFor, maxPayable, paymentDueRows,
 const TODAY = '2026-11-01';
 
 function snapshot(): InvestorSnapshot {
-  return { today: TODAY, ...buildDemoData(TODAY), read_notification_ids: [], share_requests: [], uploads: [] };
+  return { today: TODAY, ...buildDemoData(TODAY), roles: ['investor'], read_notification_ids: [], share_requests: [], uploads: [] };
 }
 const hotelOf = (s: InvestorSnapshot) => viewPortfolio(s).holdings.find((v) => v.holding.code === 'SHR-2026-0041')!;
 

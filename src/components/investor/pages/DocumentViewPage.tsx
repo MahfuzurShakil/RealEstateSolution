@@ -12,6 +12,7 @@ import {
   formatDay,
   formatPct,
   formatTaka,
+  isHome,
   takaInWords,
   type HoldingView,
   type InvestorCustomer,
@@ -41,6 +42,52 @@ function Clause({ n, title, children }: { n: number; title: string; children: Re
         {children}
       </span>
     </li>
+  );
+}
+
+/** BUYER-PORTAL-PLAN.md §5 — the sale agreement of a flat or plot, as the office recorded it. */
+function HomeAgreement({ v, c, owner }: { v: HoldingView; c: InvestorCustomer; owner: string }) {
+  const h = v.holding;
+  const home = h.home!;
+  const rows = v.schedule.filter((i) => i.seq > 0);
+  return (
+    <>
+      <p>
+        This Sale Agreement{h.agreement_no !== '—' && <> (No. <b className="tabular">{h.agreement_no}</b>)</>} is made on <b>{formatDay(h.agreement_date)}</b>
+        {h.signing && <> at {h.signing.place}</>} between <b>{owner}</b> (the “Developer”) and <b>{c.full_name}</b>
+        {c.father_or_spouse_name && <>, son/daughter/wife of {c.father_or_spouse_name}</>}, customer {c.code} (the “Buyer”).
+      </p>
+      <ol className="mt-5 space-y-3">
+        <Clause n={1} title="The unit">
+          Unit <b>{home.unit_code}</b> in <b>{v.project.name}</b>, {v.project.location} — {home.unit_label}, booked on {formatDay(home.booking_date)} (booking {h.code}).
+        </Clause>
+        <Clause n={2} title="Price">
+          The total price is <b>{formatTaka(h.total_price)}</b> ({takaInWords(h.total_price)}), of which <Money amount={home.booking_amount} /> is the booking money.
+        </Clause>
+        <Clause n={3} title="Payment">
+          {rows.length > 1
+            ? <>The balance is paid in {rows.length} monthly installments from {formatDay(rows[0].due_date)} to {formatDay(rows[rows.length - 1].due_date)}, as in the payment schedule.</>
+            : rows.length === 1
+              ? <>The balance of <Money amount={rows[0].amount} /> is paid by {formatDay(rows[0].due_date)}.</>
+              : <>The payment terms are as agreed with our office.</>}
+        </Clause>
+        <Clause n={4} title="Late payment">
+          {v.round.late_fee_pct
+            ? `An installment paid more than ${v.round.grace_days} days after its due date carries a late fee of ${v.round.late_fee_pct}% of that installment.`
+            : 'No late fee is set in this agreement.'}
+        </Clause>
+        <Clause n={5} title="Handover">
+          {home.handover_date ? <>The unit is to be handed over by <b>{formatDay(home.handover_date)}</b>.</> : <>The handover date is as agreed with our office.</>} The sale deed is registered in the Buyer’s name once the full price is paid.
+        </Clause>
+      </ol>
+      {h.signing && (
+        <p className="mt-6 text-sm text-site-muted">
+          Signed for the Developer by {h.signing.company_signatory}
+          {h.signing.company_signatory_title && <>, {h.signing.company_signatory_title}</>}; witnessed by {h.signing.witnesses.join(' and ')}.
+        </p>
+      )}
+      <Signatures left={`For ${owner}`} right={c.full_name} />
+    </>
   );
 }
 
@@ -172,7 +219,7 @@ export function DocumentViewPage({ id }: { id: string }) {
   return (
     <div className="mx-auto max-w-3xl">
       <div className="print-hide mb-5 flex flex-wrap items-center justify-between gap-3">
-        <Link href="/investor/documents" className="inline-flex items-center gap-1.5 text-sm font-medium text-site-muted hover:text-site-primary">
+        <Link href="/customer/documents" className="inline-flex items-center gap-1.5 text-sm font-medium text-site-muted hover:text-site-primary">
           <ArrowLeft className="size-4" aria-hidden /> Documents
         </Link>
         <Button onClick={() => window.print()} icon={<Printer className="size-4" />}>
@@ -195,7 +242,7 @@ export function DocumentViewPage({ id }: { id: string }) {
             </div>
           </header>
         )}
-        {doc.kind === 'agreement' && <Agreement v={v} c={c} owner={owner} />}
+        {doc.kind === 'agreement' && (isHome(v.holding) ? <HomeAgreement v={v} c={c} owner={owner} /> : <Agreement v={v} c={c} owner={owner} />)}
         {doc.kind === 'deed' && <Deed v={v} c={c} owner={owner} />}
         {doc.kind === 'schedule' && <Schedule v={v} />}
         {doc.kind === 'certificate' && <Certificate v={v} c={c} owner={owner} issued={doc.issued_on} />}

@@ -26,7 +26,7 @@ export function PaymentResultPage({ intentId }: { intentId: string }) {
   useEffect(() => {
     investorRepository.intent(intentId).then((i) => {
       // an unknown or unfinished checkout has no result to show
-      if (!i || i.status === 'pending') router.replace('/investor/payments');
+      if (!i || i.status === 'pending') router.replace('/customer/payments');
       else setIntent(i);
     });
   }, [intentId, router]);
@@ -39,7 +39,7 @@ export function PaymentResultPage({ intentId }: { intentId: string }) {
   const retry = async () => {
     setRetrying(true);
     const fresh = await investorRepository.createIntent(intent.holding_code, intent.total, intent.option);
-    router.push(`/investor/gateway/${fresh.id}`);
+    router.push(`/customer/gateway/${fresh.id}`);
   };
 
   return (
@@ -150,10 +150,10 @@ export function PaymentResultPage({ intentId }: { intentId: string }) {
           <div className="grid gap-3 sm:grid-cols-2">
             {ok ? (
               <>
-                <ButtonLink href={`/investor/receipts/${intent.receipt_no}`} icon={<Download className="size-4" />}>
+                <ButtonLink href={`/customer/receipts/${intent.receipt_no}`} icon={<Download className="size-4" />}>
                   Download receipt
                 </ButtonLink>
-                <ButtonLink href="/investor" variant="outline">
+                <ButtonLink href="/customer" variant="outline">
                   Back to overview
                 </ButtonLink>
               </>
@@ -162,7 +162,7 @@ export function PaymentResultPage({ intentId }: { intentId: string }) {
                 <Button onClick={retry} disabled={retrying} icon={retrying ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}>
                   Try again
                 </Button>
-                <ButtonLink href={`/investor/payments/checkout?holding=${intent.holding_code}`} variant="outline">
+                <ButtonLink href={`/customer/payments/checkout?holding=${intent.holding_code}`} variant="outline">
                   Change amount
                 </ButtonLink>
               </>

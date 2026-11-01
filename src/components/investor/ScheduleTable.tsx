@@ -52,7 +52,7 @@ export function ScheduleTable({ rows }: { rows: InstallmentView[] }) {
                 {r.payments.length ? (
                   <span className="flex flex-col items-end gap-0.5">
                     {r.payments.map((p) => (
-                      <Link key={p.receipt_no} href={`/investor/receipts/${p.receipt_no}`} className="tabular text-sm font-semibold text-site-primary hover:underline">
+                      <Link key={p.receipt_no} href={`/customer/receipts/${p.receipt_no}`} className="tabular text-sm font-semibold text-site-primary hover:underline">
                         {p.receipt_no}
                       </Link>
                     ))}

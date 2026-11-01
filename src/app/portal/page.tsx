@@ -51,12 +51,12 @@ const PORTALS: {
     },
   },
   {
-    href: '/investor/login',
+    href: '/customer/login',
     icon: CircleUserRound,
     title: 'Customer Portal',
-    who: 'For customers of type Investor',
-    body: 'Share owners sign in to see their investments, pay installments online and download receipts.',
-    points: ['Shares, ownership and value', 'Payment schedule and online payment', 'Receipts, documents and alerts'],
+    who: 'For buyers and investors',
+    body: 'Buyers of flats and plots, and share owners, sign in to follow their payments, pay installments online and download receipts.',
+    points: ['Homes, shares and what is paid', 'Payment schedule and online payment', 'Receipts, documents and alerts'],
     tone: {
       card: 'hover:border-site-brass',
       icon: 'bg-site-night text-site-brass',

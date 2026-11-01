@@ -117,7 +117,7 @@ export function CheckoutPage({ holdingFilter }: { holdingFilter: string | null }
   const pay = async () => {
     setBusy(true);
     const intent = await investorRepository.createIntent(view.holding.code, amount, option);
-    router.push(`/investor/gateway/${intent.id}`);
+    router.push(`/customer/gateway/${intent.id}`);
   };
 
   const c = snapshot.customer;
@@ -145,7 +145,7 @@ export function CheckoutPage({ holdingFilter }: { holdingFilter: string | null }
   return (
     <div className="space-y-6 pb-24 lg:pb-0">
       <div>
-        <Link href="/investor/payments" className="inline-flex items-center gap-1.5 text-sm font-semibold text-site-muted transition-colors hover:text-site-primary">
+        <Link href="/customer/payments" className="inline-flex items-center gap-1.5 text-sm font-semibold text-site-muted transition-colors hover:text-site-primary">
           <ArrowLeft className="size-4" aria-hidden /> All payments
         </Link>
         <h1 className="mt-1 text-[26px] leading-tight font-semibold sm:text-[30px]">Make a payment</h1>

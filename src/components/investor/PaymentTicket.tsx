@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { LockKeyhole } from 'lucide-react';
-import { formatTaka, type HoldingView, type PaymentAllocation } from '@/lib/domain/investor-portal';
+import { formatTaka, type HoldingView, type PaymentAllocation, holdingTag } from '@/lib/domain/investor-portal';
 import { cn } from '@/lib/utils/cn';
 import { AcceptedLogos } from './PaymentLogos';
 
@@ -39,7 +39,7 @@ export function PaymentTicket({
           </p>
           <p className="mt-2.5 truncate text-sm font-semibold">{view.project.name}</p>
           <p className="tabular text-xs text-white/60">
-            {view.holding.code} · {view.holding.shares} shares
+            {view.holding.code} · {holdingTag(view.holding)}
           </p>
         </div>
       </div>

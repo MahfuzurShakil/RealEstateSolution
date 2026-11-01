@@ -40,7 +40,7 @@ export function DocumentList({ docs, projectName }: { docs: CustomerDocument[]; 
         return (
           <li key={d.id}>
             {d.available ? (
-              <Link href={`/investor/documents/${d.id}`} className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-site-ivory sm:px-6">
+              <Link href={`/customer/documents/${d.id}`} className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-site-ivory sm:px-6">
                 {body}
               </Link>
             ) : (

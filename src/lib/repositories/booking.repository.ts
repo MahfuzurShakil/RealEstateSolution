@@ -569,6 +569,9 @@ class BookingRepository extends BaseRepository<Booking> {
       received_by?: string | null;
       /** Tier 3.5: the account this money landed in. */
       account_id?: string | null;
+      /** BUYER-PORTAL-PLAN.md §5 — paid by the buyer on the Customer Portal */
+      channel?: 'office' | 'online';
+      method_detail?: string | null;
     },
     createdBy: string | null = null,
   ): Promise<Booking | undefined> {
@@ -585,6 +588,8 @@ class BookingRepository extends BaseRepository<Booking> {
         reference_no: input.reference_no,
         received_by: input.received_by ?? current.booked_by ?? null,
         notes: input.notes,
+        channel: input.channel,
+        method_detail: input.method_detail,
       },
       createdBy,
     );

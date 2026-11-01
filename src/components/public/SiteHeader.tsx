@@ -234,7 +234,7 @@ export function SiteHeader() {
             its room from the company name and the hotline, never from spare space.
           */}
           <Link
-            href="/investor/login"
+            href="/customer/login"
             aria-label={t.customerLogin}
             title={t.customerLogin}
             className="grid size-10 shrink-0 place-items-center rounded-full border border-site-line bg-white text-site-ink transition-colors hover:border-site-primary hover:text-site-primary"
@@ -347,7 +347,7 @@ export function SiteHeader() {
           >
             {t.bookVisit}
           </Button>
-          <ButtonLink href="/investor/login" variant="ghost" icon={<CircleUserRound className="size-4" />} className="col-span-2 w-full" onClick={() => setOpen(false)}>
+          <ButtonLink href="/customer/login" variant="ghost" icon={<CircleUserRound className="size-4" />} className="col-span-2 w-full" onClick={() => setOpen(false)}>
             {t.customerLogin}
           </ButtonLink>
         </div>

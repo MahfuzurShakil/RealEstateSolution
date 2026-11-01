@@ -9,7 +9,7 @@ import { Money } from './ui';
 /** rows listed under the headline before "and N more" takes over */
 const MAX_ROWS = 3;
 
-const checkoutHref = (r: PaymentDueRow) => `/investor/payments/checkout?holding=${r.view.holding.code}`;
+const checkoutHref = (r: PaymentDueRow) => `/customer/payments/checkout?holding=${r.view.holding.code}`;
 
 function dueIn(days: number) {
   return days <= 0 ? 'Due today' : days === 1 ? 'Due tomorrow' : `Due in ${days} days`;
@@ -145,7 +145,7 @@ export function NextPaymentCard({ portfolio, today }: { portfolio: PortfolioView
         </div>
 
         <Link
-          href="/investor/payments"
+          href="/customer/payments"
           className={cn(
             'inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-white transition-[filter,transform] hover:brightness-110 active:scale-[0.98] sm:px-5',
             overdue ? 'bg-site-danger' : 'bg-site-primary',
@@ -176,7 +176,7 @@ export function NextPaymentCard({ portfolio, today }: { portfolio: PortfolioView
                 {listed.length} projects have installments coming up
               </span>
             )}
-            <Link href="/investor/payments" className="font-semibold text-site-primary hover:underline">
+            <Link href="/customer/payments" className="font-semibold text-site-primary hover:underline">
               {listed.length > MAX_ROWS ? `See all ${listed.length}` : 'All payments'}
             </Link>
           </div>

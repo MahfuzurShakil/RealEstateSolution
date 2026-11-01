@@ -146,11 +146,11 @@ export function GatewayScreen({ intentId }: { intentId: string }) {
 
   useEffect(() => {
     if (!investorRepository.session()) {
-      router.replace('/investor/login?next=/investor/payments');
+      router.replace('/customer/login?next=/investor/payments');
       return;
     }
     investorRepository.intent(intentId).then((i) => {
-      if (i && i.status !== 'pending') router.replace(`/investor/payments/result/${i.id}`);
+      if (i && i.status !== 'pending') router.replace(`/customer/payments/result/${i.id}`);
       else setIntent(i);
     });
     investorRepository.snapshot().then(setSnap);
@@ -166,15 +166,15 @@ export function GatewayScreen({ intentId }: { intentId: string }) {
     const done = await investorRepository.completeIntent(intentId, method, detail, result);
     if (done?.status === 'paid') {
       setPhase({ at: 'done', intent: done });
-      setTimeout(() => router.replace(`/investor/payments/result/${intentId}`), 3200);
+      setTimeout(() => router.replace(`/customer/payments/result/${intentId}`), 3200);
     } else {
-      router.replace(`/investor/payments/result/${intentId}`);
+      router.replace(`/customer/payments/result/${intentId}`);
     }
   };
 
   const expire = async () => {
     await investorRepository.intent(intentId);
-    router.replace(`/investor/payments/result/${intentId}`);
+    router.replace(`/customer/payments/result/${intentId}`);
   };
 
   const reset = () => {
@@ -195,7 +195,7 @@ export function GatewayScreen({ intentId }: { intentId: string }) {
       <div className="grid min-h-screen place-items-center bg-slate-100 p-6 text-center font-sans">
         <div>
           <p className="text-lg font-semibold text-slate-900">This payment session is no longer available.</p>
-          <button type="button" onClick={() => router.replace('/investor/payments')} className="mt-4 rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white">
+          <button type="button" onClick={() => router.replace('/customer/payments')} className="mt-4 rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white">
             Return to merchant
           </button>
         </div>
