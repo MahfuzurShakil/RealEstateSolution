@@ -288,6 +288,7 @@ export {
   type OwnershipRow,
   type PaymentInput as SharePaymentInput,
   type SignInput as ShareSignInput,
+  type PlanChange as SharePlanChange,
   type KycField,
   type ReserveInput,
   type SaleRow,

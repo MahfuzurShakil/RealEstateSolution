@@ -3253,6 +3253,39 @@ export interface ShareSale extends BaseEntity {
    * agreement is signed. Unindexed, so no new Dexie version.
    */
   signing?: ShareSigningRecord | null;
+  /**
+   * The signing as far as the office got with it (plan §4a): saved at every
+   * step, so the work can stop at any step and pick up later. Cleared once
+   * the agreement is signed. Unindexed.
+   */
+  sign_draft?: ShareSignDraft | null;
+}
+
+/** Everything the Sign agreement steps hold, as typed — strings, so a half-filled step saves as it is. */
+export interface ShareSignDraft {
+  /** the step the office was on, 0-based */
+  step: number;
+  agreement_date: string;
+  first_due_date: string;
+  /** the plan as agreed at the table; it may differ from the reservation */
+  shares: string;
+  down_payment_pct: string;
+  installment_count: string;
+  /** KYC as written on the agreement, keyed by customer field */
+  customer: Record<string, string>;
+  place: string;
+  company_signatory: string;
+  company_signatory_title: string;
+  attorney_name: string;
+  witnesses: { name: string; id_or_phone: string; address: string }[];
+  stamp_value: string;
+  stamp_serial: string;
+  notarized_on: string;
+  notary_name: string;
+  take_down_payment: boolean;
+  down_payment_method: SharePaymentMethod;
+  down_payment_reference: string;
+  saved_at: string;
 }
 
 export interface ShareWitness {

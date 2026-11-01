@@ -1,13 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { useState, type ReactNode } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
+import { Suspense, useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ArrowLeft, Award, FileSignature, HandCoins, IdCard, Undo2, XCircle } from 'lucide-react';
 import { DetailTabs, SaleBadge } from '@/components/admin/share-sale/bits';
 import { InvestorDetailsModal } from '@/components/admin/share-sale/InboxModals';
 import { ShareDocumentChecklist } from '@/components/admin/share-sale/ShareDocuments';
+import { SignAgreementWizard } from '@/components/admin/share-sale/SignAgreementWizard';
 import { ReasonModal, RecordPaymentModal } from '@/components/admin/share-sale/ShareSaleModals';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -30,12 +31,13 @@ function Line({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-type Tab = 'overview' | 'payments' | 'documents';
+type Tab = 'overview' | 'sign' | 'payments' | 'documents';
 type Dialog = 'pay' | 'release' | 'cancel' | 'undo' | 'certificate' | 'investor' | null;
 
 /** One customer's share purchase: the terms, the schedule, every payment and what to do next. */
-export default function ShareSaleDetailPage() {
+function ShareSaleDetail() {
   const { id } = useParams<{ id: string }>();
+  const params = useSearchParams();
   const { role } = useMockSession();
   const mayEdit = canEdit(role, 'share_sale');
   const data = useLiveQuery(() => shareSaleOverview(), []);
@@ -43,7 +45,7 @@ export default function ShareSaleDetailPage() {
   const uploads = useLiveQuery(() => (customerId ? customerUploadRepository.forCustomer(customerId) : Promise.resolve([])), [customerId]);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<Tab>(params.get('tab') === 'sign' ? 'sign' : 'overview');
 
   if (!data) return <p className="text-sm text-ink-muted">Loading…</p>;
   const v = data.sales.find((r) => r.sale.id === id);
@@ -95,11 +97,11 @@ export default function ShareSaleDetailPage() {
                 <Button variant="outline" onClick={() => setDialog('release')}>
                   Release shares
                 </Button>
-                <Link href={`/admin/share-sale/sales/${s.id}/sign`}>
-                  <Button>
-                    <FileSignature className="size-4" /> Sign agreement
+                {tab !== 'sign' && (
+                  <Button onClick={() => setTab('sign')}>
+                    <FileSignature className="size-4" /> {s.sign_draft ? 'Continue signing' : 'Sign agreement'}
                   </Button>
-                </Link>
+                )}
               </>
             )}
             {s.status === 'agreement_signed' && (
@@ -143,17 +145,22 @@ export default function ShareSaleDetailPage() {
         </p>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
+      <div className={tab === 'sign' ? 'grid gap-5' : 'grid gap-5 lg:grid-cols-[1fr_320px]'}>
         <div className="min-w-0 lg:order-1">
           <DetailTabs
             tabs={[
               { key: 'overview', label: 'Overview' },
+              ...(s.status === 'reserved' && mayEdit
+                ? [{ key: 'sign' as Tab, label: s.sign_draft ? `Sign agreement · step ${Math.min(s.sign_draft.step, 4) + 1} of 5` : 'Sign agreement' }]
+                : []),
               { key: 'payments', label: v.schedule.length ? `Payments (${v.paid_count}/${v.schedule.length})` : 'Payments' },
               { key: 'documents', label: docsLabel },
             ]}
             active={tab}
             onChange={setTab}
           />
+
+          {tab === 'sign' && s.status === 'reserved' && mayEdit && uploads && v.customer && <SignAgreementWizard row={v} uploads={uploads} onExit={() => setTab('overview')} />}
 
           {tab === 'overview' && (
             <div className="space-y-5">
@@ -329,7 +336,7 @@ export default function ShareSaleDetailPage() {
           )}
         </div>
 
-        <aside className="min-w-0 space-y-5 lg:order-2">
+        <aside className={tab === 'sign' ? 'hidden' : 'min-w-0 space-y-5 lg:order-2'}>
           <Card>
             <CardHeader title="Money" subtitle={v.schedule.length ? `${v.paid_count} of ${v.schedule.length} payments made` : 'The schedule is written when the agreement is signed'} />
             <dl className="divide-y divide-hairline">
@@ -372,5 +379,13 @@ export default function ShareSaleDetailPage() {
         onCancel={() => setDialog(null)}
       />
     </>
+  );
+}
+
+export default function ShareSaleDetailPage() {
+  return (
+    <Suspense>
+      <ShareSaleDetail />
+    </Suspense>
   );
 }

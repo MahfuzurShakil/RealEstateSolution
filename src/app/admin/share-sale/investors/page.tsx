@@ -136,7 +136,13 @@ function InvestorsPage() {
       header: 'Next due',
       cell: (r) => {
         const next = r.schedule.find((i) => i.status === 'due' || i.status === 'upcoming');
-        if (r.sale.status === 'reserved') return <span className={cn('text-xs', r.sale.hold_until < today ? 'text-amber-700' : 'text-ink-muted')}>Hold until {formatDate(r.sale.hold_until)}</span>;
+        if (r.sale.status === 'reserved')
+          return (
+            <span className="block text-xs">
+              <span className={cn('block', r.sale.hold_until < today ? 'text-amber-700' : 'text-ink-muted')}>Hold until {formatDate(r.sale.hold_until)}</span>
+              {r.sale.sign_draft && <span className="block text-admin-700">Signing · step {Math.min(r.sale.sign_draft.step, 4) + 1} of 5</span>}
+            </span>
+          );
         return next ? (
           <span className="block tabular-nums">
             <span className="block">{formatBdt(next.remaining)}</span>

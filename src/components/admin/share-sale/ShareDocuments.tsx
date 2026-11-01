@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { CheckCircle2, Circle, Download, FileText, Trash2, Upload, UploadCloud, X } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, Clock3, Download, FileCheck2, FilePlus2, FileText, Loader2, Plus, Trash2, Upload, UploadCloud, X } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Field, SelectInput, TextInput } from '@/components/ui/Field';
@@ -175,10 +175,174 @@ function FileRow({ u, mayEdit, onReject }: { u: CustomerUpload; mayEdit: boolean
   );
 }
 
+/** What one paper's row says about it. */
+function paperState(i: ChecklistItem): { label: string; tone: 'green' | 'amber' | 'red' | 'neutral'; icon: typeof CheckCircle2; box: string } {
+  if (i.files.some((f) => f.status === 'accepted')) return { label: 'On file', tone: 'green', icon: FileCheck2, box: 'bg-emerald-50 text-emerald-600' };
+  if (i.files.some((f) => f.status === 'under_review')) return { label: 'To review', tone: 'amber', icon: Clock3, box: 'bg-blue-50 text-blue-600' };
+  if (i.files.length) return { label: 'Sent back', tone: 'red', icon: AlertTriangle, box: 'bg-red-50 text-red-600' };
+  return { label: 'Missing', tone: 'neutral', icon: FileText, box: 'bg-slate-100 text-slate-400' };
+}
+
+/** One paper, the way the land Legal DD list shows a paper: status, guidance, files, upload. */
+function PaperCard({ item, sale, mayEdit, onReject }: { item: ChecklistItem; sale: Pick<ShareSale, 'id' | 'customer_id'>; mayEdit: boolean; onReject: (u: CustomerUpload) => void }) {
+  const { userId } = useMockSession();
+  const input = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+  const state = paperState(item);
+  const Icon = state.icon;
+  const toReview = item.files.find((f) => f.status === 'under_review');
+
+  async function upload(picked: FileList | null) {
+    if (!picked?.length) return;
+    setError('');
+    setUploading(true);
+    try {
+      for (const file of Array.from(picked)) {
+        await customerUploadRepository.officeUpload({ customer_id: sale.customer_id, sale_id: sale.id, kind: item.kind, file, file_name: file.name }, userId);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'The upload did not go through.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <li className={cn('rounded-xl border bg-white', state.label === 'On file' ? 'border-emerald-200' : state.label === 'Sent back' ? 'border-red-200' : 'border-hairline')}>
+      <div className="flex flex-wrap items-start gap-3 p-3">
+        <span className={cn('grid size-8 shrink-0 place-items-center rounded-lg', state.box)}>
+          <Icon className="size-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
+            {item.meta.label}
+            <Badge tone={state.tone}>{state.label}</Badge>
+          </p>
+          <p className="mt-0.5 text-xs text-ink-muted">{item.meta.hint}</p>
+        </div>
+        {mayEdit && (
+          <div className="flex w-full flex-wrap items-center justify-end gap-1.5 sm:w-auto">
+            <Button size="sm" variant="outline" disabled={uploading} onClick={() => input.current?.click()}>
+              {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />} Upload
+            </Button>
+            {toReview && (
+              <>
+                <Button size="sm" variant="outline" onClick={() => customerUploadRepository.accept(toReview.id)}>
+                  <Check className="size-4" /> Accept
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => onReject(toReview)}>
+                  Send back
+                </Button>
+              </>
+            )}
+          </div>
+        )}
+        <input
+          ref={input}
+          type="file"
+          multiple
+          accept=".pdf,.jpg,.jpeg,.png,.webp"
+          className="hidden"
+          onChange={(e) => {
+            void upload(e.target.files);
+            e.target.value = '';
+          }}
+        />
+      </div>
+      {(item.files.length > 0 || error) && (
+        <div className="space-y-2 border-t border-hairline px-3 py-2.5">
+          {item.files.length > 0 && (
+            <ul className="flex flex-wrap gap-1.5">
+              {item.files.map((f) => (
+                <li key={f.id} className={cn('flex max-w-full items-center gap-1 rounded-lg border pr-1 pl-2 text-xs', f.status === 'rejected' ? 'border-red-200 bg-red-50' : 'border-hairline bg-slate-50')}>
+                  <button type="button" onClick={() => openUpload(f.id)} className="flex min-w-0 items-center gap-1.5 py-1 text-ink hover:text-admin-700">
+                    <FileText className="size-3.5 shrink-0 text-admin-600" />
+                    <span className="truncate">{f.file_name}</span>
+                    <span className="shrink-0 text-ink-muted">
+                      · {f.source === 'office' ? 'office' : 'customer'} · {formatDate(f.uploaded_at)}
+                    </span>
+                  </button>
+                  {mayEdit && f.source === 'office' && (
+                    <button type="button" aria-label={`Remove ${f.file_name}`} onClick={() => customerUploadRepository.removeOfficeUpload(f.id)} className="rounded p-0.5 text-slate-400 hover:bg-red-50 hover:text-red-600">
+                      <X className="size-3" />
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {item.files
+            .filter((f) => f.status === 'rejected' && f.review_note)
+            .map((f) => (
+              <p key={f.id} className="text-sm text-red-700">
+                <span className="font-medium">Sent back: </span>
+                {f.review_note}
+              </p>
+            ))}
+          {error && <p className="text-sm text-red-600">{error}</p>}
+        </div>
+      )}
+    </li>
+  );
+}
+
+/** Picks optional papers to add to the list, like "Add paper" on the land Legal DD list. */
+function AddPapersDialog({ kinds, onAdd, onClose }: { kinds: ChecklistItem[]; onAdd: (k: CustomerUploadKind[]) => void; onClose: () => void }) {
+  const [picked, setPicked] = useState<CustomerUploadKind[]>([]);
+  const toggle = (k: CustomerUploadKind) => setPicked((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
+  return (
+    <Modal
+      open
+      title="Add papers"
+      subtitle="Papers this purchase also needs; each one gets its own row to upload into."
+      icon={FilePlus2}
+      size="md"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            disabled={!picked.length}
+            onClick={() => {
+              onAdd(picked);
+              onClose();
+            }}
+          >
+            <Plus className="size-4" /> Add {picked.length || ''} paper{picked.length === 1 ? '' : 's'}
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-1.5 sm:grid-cols-2">
+        {kinds.map((i) => {
+          const on = picked.includes(i.kind);
+          return (
+            <button
+              key={i.kind}
+              type="button"
+              onClick={() => toggle(i.kind)}
+              className={cn('flex items-start gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors', on ? 'border-admin-300 bg-admin-50' : 'border-hairline bg-white hover:border-admin-200')}
+            >
+              <span className={cn('mt-0.5 grid size-4 shrink-0 place-items-center rounded border', on ? 'border-admin-500 bg-admin-500 text-white' : 'border-slate-300')}>{on && <Check className="size-3" />}</span>
+              <span className="min-w-0">
+                <span className="block text-sm text-ink">{i.meta.label}</span>
+                <span className="block text-xs text-ink-muted">{i.meta.hint}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </Modal>
+  );
+}
+
 /**
- * One purchase's paper checklist: every paper a share buyer's file holds,
- * what is on file (from the office or the customer), and what is still
- * needed to sign. Each row can take an upload.
+ * One purchase's papers, laid out like the land Legal DD list: a progress
+ * header, the papers required to sign, then other papers added as needed.
+ * Customer papers (NID, photo …) serve every purchase of the customer.
  */
 export function ShareDocumentChecklist({
   uploads,
@@ -186,75 +350,98 @@ export function ShareDocumentChecklist({
   hasNominee,
   byAttorney,
   mayEdit,
-  sales,
-  compact = false,
 }: {
   uploads: CustomerUpload[];
   sale: Pick<ShareSale, 'id' | 'code' | 'customer_id'>;
   hasNominee: boolean;
   byAttorney: boolean;
   mayEdit: boolean;
-  sales: Pick<ShareSale, 'id' | 'code'>[];
-  /** only the required and the filed rows */
-  compact?: boolean;
+  /** kept for callers; papers go to this purchase or the customer */
+  sales?: Pick<ShareSale, 'id' | 'code'>[];
 }) {
-  const [upload, setUpload] = useState<CustomerUploadKind | null>(null);
+  const [added, setAdded] = useState<CustomerUploadKind[]>([]);
+  const [adding, setAdding] = useState(false);
   const [reject, setReject] = useState<CustomerUpload | null>(null);
   const all = shareDocChecklist(uploads, sale.id, { has_nominee: hasNominee, by_attorney: byAttorney });
+  const required = all.filter((i) => i.required);
+  const extra = all.filter((i) => !i.required && (i.files.length > 0 || added.includes(i.kind)));
+  const addable = all.filter((i) => !i.required && !extra.includes(i));
+  const done = required.filter((i) => i.done).length;
+  const clear = done === required.length;
+  const pct = required.length ? Math.round((done / required.length) * 100) : 100;
   const others = uploads.filter((u) => u.kind === 'other' && u.sale_id === sale.id);
-  const list = compact ? all.filter((i) => i.required || i.files.length) : all;
-
-  const group = (title: string, items: ChecklistItem[]) => (
-    <div>
-      <p className="mb-1 text-xs font-semibold tracking-wide text-ink-muted uppercase">{title}</p>
-      <ul className="divide-y divide-hairline">
-        {items.map((i) => (
-          <li key={i.kind} className="py-2.5">
-            <div className="flex items-start gap-2.5">
-              {i.done ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-admin-600" /> : <Circle className={cn('mt-0.5 size-4 shrink-0', i.required ? 'text-red-400' : 'text-slate-300')} />}
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-ink">
-                  {i.meta.label}
-                  {i.required && <span className={cn('ml-1.5 text-xs font-normal', i.done ? 'text-ink-muted' : 'text-red-600')}>required</span>}
-                </p>
-                <p className="text-xs text-ink-muted">{i.meta.hint}</p>
-                {i.files.length > 0 && (
-                  <ul>
-                    {i.files.map((u) => (
-                      <FileRow key={u.id} u={u} mayEdit={mayEdit} onReject={setReject} />
-                    ))}
-                  </ul>
-                )}
-              </div>
-              {mayEdit && (
-                <Button size="sm" variant={i.required && !i.done ? 'primary' : 'outline'} onClick={() => setUpload(i.kind)}>
-                  <Upload className="size-3.5" /> {i.files.length ? 'Add' : 'Upload'}
-                </Button>
-              )}
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
 
   return (
-    <div className="space-y-5">
-      {group('Customer papers — kept once, used for every purchase', list.filter((i) => i.meta.scope === 'customer'))}
-      {group(`Purchase papers — ${sale.code}`, list.filter((i) => i.meta.scope === 'purchase'))}
-      {others.length > 0 && (
-        <div>
-          <p className="mb-1 text-xs font-semibold tracking-wide text-ink-muted uppercase">Other</p>
-          <ul>
-            {others.map((u) => (
-              <FileRow key={u.id} u={u} mayEdit={mayEdit} onReject={setReject} />
-            ))}
-          </ul>
+    <>
+      <div className={cn('mb-5 rounded-xl border px-4 py-3', clear ? 'border-emerald-200 bg-emerald-50' : 'border-hairline bg-slate-50')}>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className={cn('grid size-9 shrink-0 place-items-center rounded-xl', clear ? 'bg-emerald-100 text-emerald-700' : 'bg-admin-50 text-admin-600')}>
+            {clear ? <FileCheck2 className="size-5" /> : <FileText className="size-5" />}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className={cn('text-sm font-medium', clear ? 'text-emerald-900' : 'text-ink')}>
+              {clear ? 'All required papers are on file — the agreement can be signed.' : `${done} of ${required.length} required papers on file`}
+            </p>
+            <p className={cn('text-xs', clear ? 'text-emerald-800' : 'text-ink-muted')}>
+              {extra.length ? `${extra.length} other paper${extra.length === 1 ? '' : 's'} on the list` : 'No other papers added'} · {sale.code}
+            </p>
+          </div>
+          <span className="text-sm font-semibold text-ink tabular-nums">{pct}%</span>
         </div>
-      )}
-      {upload && <OfficeUploadModal customerId={sale.customer_id} sales={sales} kind={upload} saleId={sale.id} onClose={() => setUpload(null)} />}
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white">
+          <div className={cn('h-full rounded-full transition-all', clear ? 'bg-emerald-500' : 'bg-admin-500')} style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+
+      <section>
+        <h4 className="mb-2 text-xs font-semibold tracking-wide text-ink-muted uppercase">Required papers</h4>
+        <ul className="space-y-2">
+          {required.map((i) => (
+            <PaperCard key={i.kind} item={i} sale={sale} mayEdit={mayEdit} onReject={setReject} />
+          ))}
+        </ul>
+      </section>
+
+      <section className="mt-6">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h4 className="text-xs font-semibold tracking-wide text-ink-muted uppercase">Other papers</h4>
+          {mayEdit && addable.length > 0 && (
+            <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
+              <Plus className="size-4" /> Add paper
+            </Button>
+          )}
+        </div>
+        {extra.length === 0 && others.length === 0 ? (
+          <button
+            type="button"
+            disabled={!mayEdit}
+            onClick={() => setAdding(true)}
+            className="flex w-full flex-col items-center gap-1.5 rounded-xl border-2 border-dashed border-hairline bg-white px-4 py-5 text-center transition-colors hover:border-admin-300 hover:bg-admin-50/40"
+          >
+            <FilePlus2 className="size-5 text-admin-600" />
+            <span className="text-sm font-medium text-ink">Add a paper this purchase needs</span>
+            <span className="text-xs text-ink-muted">e.g. allotment letter, deed of share ownership, e-TIN, post-dated cheques, source of funds declaration</span>
+          </button>
+        ) : (
+          <ul className="space-y-2">
+            {extra.map((i) => (
+              <PaperCard key={i.kind} item={i} sale={sale} mayEdit={mayEdit} onReject={setReject} />
+            ))}
+            {others.length > 0 && (
+              <PaperCard
+                item={{ kind: 'other', meta: SHARE_DOC_META.other, required: false, files: others, done: others.some((f) => f.status !== 'rejected') }}
+                sale={sale}
+                mayEdit={mayEdit}
+                onReject={setReject}
+              />
+            )}
+          </ul>
+        )}
+      </section>
+
+      {adding && <AddPapersDialog kinds={addable} onAdd={(k) => setAdded((a) => [...a, ...k])} onClose={() => setAdding(false)} />}
       {reject && <RejectUploadModal upload={reject} onClose={() => setReject(null)} />}
-    </div>
+    </>
   );
 }
 

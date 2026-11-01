@@ -12,6 +12,7 @@ import type {
   SharePaymentMethod,
   ShareRequest,
   ShareSale,
+  ShareSignDraft,
   ShareSigningRecord,
 } from '../db/types';
 import { SHARE_DOC_META, missingToSign, shareDocChecklist, shareDocScope } from '../domain/share-documents';
@@ -214,6 +215,38 @@ export interface SignInput {
   customer?: Partial<Pick<Customer, KycField>>;
   /** the down payment was handed over at the signing */
   down_payment?: { method: SharePaymentMethod; reference?: string | null } | null;
+  /** the plan as agreed at the table, when it differs from the reservation */
+  terms?: PlanChange | null;
+}
+
+export interface PlanChange {
+  shares: number;
+  down_payment_pct: number;
+  installment_count: number;
+}
+
+/**
+ * Checks a plan against the offering's limits and what is still free, counting
+ * this purchase's own shares as free (they are being re-agreed, not added).
+ */
+async function checkPlan(sale: ShareSale, t: PlanChange): Promise<Pick<ShareSale, 'shares' | 'share_pct' | 'total_price' | 'down_payment' | 'installment_count'>> {
+  const o = await db.share_offerings.get(sale.offering_id);
+  if (!o) throw new Error('The offering behind this purchase no longer exists.');
+  const shares = Math.floor(Number(t.shares) || 0);
+  const pct = Number(t.down_payment_pct);
+  const n = Math.floor(Number(t.installment_count));
+  if (shares < o.min_shares || shares > o.max_shares) throw new Error(`A customer may take ${o.min_shares} to ${o.max_shares} shares in this offering.`);
+  if (!(pct >= o.min_down_payment_pct && pct <= 100)) throw new Error(`The down payment must be at least ${o.min_down_payment_pct}%.`);
+  if (!(n >= 0 && n <= o.max_installments)) throw new Error(`This offering allows up to ${o.max_installments} installments.`);
+  if (n === 0 && pct < 100) throw new Error('With no installments the whole price is paid at signing \u2014 set the down payment to 100%.');
+  if (n > 0 && pct >= 100) throw new Error('A 100% down payment leaves nothing for installments \u2014 choose 0 installments.');
+  const sales = (await db.share_sales.where('offering_id').equals(o.id).toArray()).filter((x) => x.id !== sale.id);
+  const free = offeringAvailability(o, sales).available;
+  if (shares > free) throw new Error(`Only ${free} share${free === 1 ? '' : 's'} can go to this purchase.`);
+  const held = sales.filter((x) => x.customer_id === sale.customer_id && SALE_HOLDS_SHARES[x.status]).reduce((a, x) => a + x.shares, 0);
+  if (held + shares > o.max_shares) throw new Error(`The customer already holds ${held} share${held === 1 ? '' : 's'} here; the most one customer may take is ${o.max_shares}.`);
+  const total = shares * sale.price_per_share;
+  return { shares, share_pct: shares * o.share_pct, total_price: total, down_payment: Math.round((total * pct) / 100), installment_count: n };
 }
 
 const KYC_FIELDS = [
@@ -357,6 +390,7 @@ class ShareSaleRepository extends BaseRepository<ShareSale> {
       }),
     );
     if (missing.length) throw new Error(`Put these on file before signing: ${missing.map((m) => m.meta.label).join(', ')}.`);
+    if (input.terms) Object.assign(sale, await checkPlan(sale, input.terms));
     const first = sale.installment_count > 0 ? input.first_due_date || addMonths(input.agreement_date, sale.installment_frequency === 'monthly' ? 1 : 3) : input.agreement_date;
     if (sale.installment_count > 0 && first <= input.agreement_date) throw new Error('The first installment has to fall after the signing day.');
     const rows = buildSchedule({ ...sale, agreement_date: input.agreement_date, first_due_date: first });
@@ -371,6 +405,12 @@ class ShareSaleRepository extends BaseRepository<ShareSale> {
         agreement_date: input.agreement_date,
         first_due_date: first,
         signing,
+        sign_draft: null,
+        shares: sale.shares,
+        share_pct: sale.share_pct,
+        total_price: sale.total_price,
+        down_payment: sale.down_payment,
+        installment_count: sale.installment_count,
         updated_at: ts,
       });
     });
@@ -382,6 +422,18 @@ class ShareSaleRepository extends BaseRepository<ShareSale> {
       );
     }
     return (await db.share_sales.get(id))!;
+  }
+
+  /** Keeps the signing as far as it got, so the office can leave at any step and come back. */
+  async saveSignDraft(id: string, draft: ShareSignDraft): Promise<void> {
+    const sale = await db.share_sales.get(id);
+    if (!sale || sale.status !== 'reserved') throw new Error('Only a reservation is being signed.');
+    await db.share_sales.update(id, { sign_draft: { ...draft, saved_at: nowIso() }, updated_at: nowIso() });
+  }
+
+  /** Throws the saved signing away and starts again from the reservation. */
+  async discardSignDraft(id: string): Promise<void> {
+    await db.share_sales.update(id, { sign_draft: null, updated_at: nowIso() });
   }
 
   /** Corrects the signing record after the fact (a witness's address, the notary date). */

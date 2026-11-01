@@ -39,6 +39,14 @@ a three-project portfolio for the demo login 01711223344 / 123456.
 
 Signing (plan §4a): a full Sign agreement page records the customer's details as named, the nominee, the payout bank, the signatory, two witnesses, the stamp and the notary, and optionally the down payment. It also holds a papers checklist; the required papers (NID, photo, signed agreement) must be on file before signing. The same papers show on the admin purchase page, on the admin customer page (Documents tab, under "Investor file"), and on the portal Profile and Documents pages.
 
+Signing flow v2 (2026-11-01): signing is a tab on the purchase page, in 5 steps (agreement & plan, customer, witnesses & stamp, papers, review & sign). Every step is saved on the purchase (`share_sales.sign_draft`), so the office can leave at any step ("Save and exit") and continue later. The plan (shares, down payment %, installments) can still change at signing; it is re-checked against the offering. The papers step uses the land Legal DD layout.
+
+To do — these work today with a button and a reason, which is not enough:
+- **Release reserved shares:** pick a reason from a list (customer withdrew, hold expired, failed KYC, moved to another round); refund or carry forward any token money; tell the customer (portal notice / SMS); put any linked portal request back to "declined" with the reason; keep a release log on the purchase.
+- **Undo a payment:** never delete; record a reversal entry (receipt cancelled, with reason, who, when); allow it only for recent entries or with a manager's approval; void the receipt the customer may already have on the portal; re-work late fees from the reversal date; keep both entries in the history.
+- **Cancel a signed purchase:** work out what is refunded vs forfeited per the agreement (paid principal, late fees, cancellation charge); record the refund (date, method, reference) and post it to the bank account; return the shares to the offering, or to the owner if the round is closed; mark the agreement cancelled on the portal and keep the papers; notice letter as a document.
+- **Change the plan after signing** (reschedule): today only possible before signing.
+
 Still open:
 - Papers are stored as Blobs in this browser's IndexedDB; real file storage comes with the server phase.
 - Sign-in codes are fixed (123456) — a real SMS/email OTP needs a server.
