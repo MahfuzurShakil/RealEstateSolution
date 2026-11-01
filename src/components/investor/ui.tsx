@@ -1,5 +1,6 @@
+import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { AlertTriangle, CheckCircle2, CircleDashed, Clock3, ShieldCheck, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, ArrowUpRight, CheckCircle2, CircleDashed, Clock3, ShieldCheck, type LucideIcon } from 'lucide-react';
 import {
   CUSTOMER_TYPE_LABEL,
   HOLDING_HEALTH_LABEL,
@@ -53,14 +54,26 @@ export function Panel({ title, action, children, className, padded = true }: { t
   );
 }
 
-export function StatCard({ label, value, hint, icon: Icon, tone = 'default' }: { label: string; value: ReactNode; hint?: ReactNode; icon: LucideIcon; tone?: 'default' | 'danger' | 'primary' }) {
-  return (
-    <div
-      className={cn(
-        'rounded-3xl border bg-white p-5 shadow-site-1',
-        tone === 'danger' ? 'border-site-danger/30' : 'border-site-line',
-      )}
-    >
+/** A headline figure. With `href` the whole card is a link, and says where it goes. */
+export function StatCard({
+  label,
+  value,
+  hint,
+  icon: Icon,
+  tone = 'default',
+  href,
+  linkLabel,
+}: {
+  label: string;
+  value: ReactNode;
+  hint?: ReactNode;
+  icon: LucideIcon;
+  tone?: 'default' | 'danger' | 'primary';
+  href?: string;
+  linkLabel?: string;
+}) {
+  const body = (
+    <>
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm font-medium text-site-muted">{label}</p>
         <span
@@ -74,7 +87,20 @@ export function StatCard({ label, value, hint, icon: Icon, tone = 'default' }: {
       </div>
       <p className={cn('font-display mt-3 text-2xl font-semibold tracking-tight', tone === 'danger' && 'text-site-danger')}>{value}</p>
       {hint && <p className="mt-1 text-[13px] text-site-muted">{hint}</p>}
-    </div>
+      {href && (
+        <p className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-site-primary">
+          {linkLabel ?? 'View'} <ArrowUpRight className="size-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" aria-hidden />
+        </p>
+      )}
+    </>
+  );
+  const cls = cn('rounded-3xl border bg-white p-5 shadow-site-1', tone === 'danger' ? 'border-site-danger/30' : 'border-site-line');
+  return href ? (
+    <Link href={href} className={cn(cls, 'group block transition-[box-shadow,border-color,transform] duration-300 ease-site-out hover:-translate-y-0.5 hover:border-site-primary/40 hover:shadow-site-2')}>
+      {body}
+    </Link>
+  ) : (
+    <div className={cls}>{body}</div>
   );
 }
 

@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { buildDemoData } from '@/lib/repositories/investor/investor-demo.data';
-import { allocatePayment, amountChoices, lateFeeFor, maxPayable, takaInWords, viewPortfolio, type InvestorSnapshot } from './investor-portal';
+import { allocatePayment, amountChoices, lateFeeFor, maxPayable, paymentDueRows, takaInWords, viewPortfolio, type InvestorSnapshot } from './investor-portal';
 
 const TODAY = '2026-11-01';
 
 function snapshot(): InvestorSnapshot {
-  return { today: TODAY, ...buildDemoData(TODAY), read_notification_ids: [], interested_round_codes: [] };
+  return { today: TODAY, ...buildDemoData(TODAY), read_notification_ids: [], share_requests: [], uploads: [] };
 }
 const hotelOf = (s: InvestorSnapshot) => viewPortfolio(s).holdings.find((v) => v.holding.code === 'SHR-2026-0041')!;
 
@@ -72,5 +72,23 @@ describe('Customer Portal rules', () => {
     expect(takaInWords(204_000)).toBe('Taka Two Lakh Four Thousand Only');
     expect(takaInWords(50_00_000)).toBe('Taka Fifty Lakh Only');
     expect(takaInWords(12_34_56_789)).toBe('Taka Twelve Crore Thirty Four Lakh Fifty Six Thousand Seven Hundred Eighty Nine Only');
+  });
+});
+
+describe('Payment landing rows', () => {
+  it('lists both overdue projects first, the longest late at the top, fully paid last', () => {
+    const s = snapshot();
+    const rows = paymentDueRows(viewPortfolio(s), TODAY);
+    expect(rows.map((r) => r.state)).toEqual(['overdue', 'overdue', 'paid']);
+    expect(rows[0].view.holding.code).toBe('SHR-2026-0041');
+    expect(rows[0].due_now).toBe(204_000);
+    expect(rows[0].late_fee).toBe(4_000);
+    expect(rows[0].paid_count).toBe(4);
+    expect(rows[0].total_count).toBe(21);
+    // the resort's part-paid installment is late but still inside the grace days
+    expect(rows[1].overdue_amount).toBe(125_000);
+    expect(rows[1].late_fee).toBe(0);
+    expect(rows[1].next?.seq).toBe(3);
+    expect(rows[2].pay_amount).toBe(0);
   });
 });

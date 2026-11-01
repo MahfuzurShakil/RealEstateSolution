@@ -73,6 +73,14 @@ export interface ShareRound {
   opens_on: string;
   closes_on: string;
   is_open: boolean;
+  /** what one customer may buy in this round */
+  min_shares: number;
+  max_shares: number;
+  /** the least down payment the round accepts, in % of the price */
+  down_payment_pct: number;
+  /** the longest installment plan the round offers */
+  max_installments: number;
+  frequency: PaymentFrequency;
 }
 
 export interface ShareHolding {
@@ -135,6 +143,42 @@ export interface CustomerDocument {
   available: boolean;
 }
 
+/** A customer's request to buy shares in an open round; the office follows up with the agreement. */
+export interface ShareRequest {
+  id: string;
+  round_code: string;
+  shares: number;
+  installments: number;
+  note: string;
+  requested_at: string;
+}
+
+export type UploadKind = 'id_document' | 'tin' | 'payment_proof' | 'signed_copy' | 'other';
+export const UPLOAD_KIND_LABEL: Record<UploadKind, string> = {
+  id_document: 'NID / passport copy',
+  tin: 'TIN certificate',
+  payment_proof: 'Payment slip or bank deposit proof',
+  signed_copy: 'Signed agreement copy',
+  other: 'Other document',
+};
+/** The largest file a customer may upload. */
+export const UPLOAD_MAX_MB = 10;
+export const UPLOAD_ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp';
+
+/** A file the customer sent us against one investment. The office reviews it. */
+export interface CustomerUpload {
+  id: string;
+  holding_code: string;
+  kind: UploadKind;
+  title: string;
+  note: string;
+  file_name: string;
+  file_type: string;
+  file_size: number;
+  uploaded_at: string;
+  status: 'under_review' | 'accepted';
+}
+
 /** Everything the portal reads for one signed-in customer. */
 export interface InvestorSnapshot {
   today: string;
@@ -146,7 +190,8 @@ export interface InvestorSnapshot {
   payments: PaymentRecord[];
   documents: CustomerDocument[];
   read_notification_ids: string[];
-  interested_round_codes: string[];
+  share_requests: ShareRequest[];
+  uploads: CustomerUpload[];
 }
 
 /* ------------------------------------------------------------------ rules */
@@ -359,6 +404,68 @@ export function amountChoices(view: HoldingView): AmountChoice[] {
   return out;
 }
 
+/* ------------------------------------------------------------ what is due */
+
+export type DueState = 'overdue' | 'due' | 'upcoming' | 'paid';
+export const DUE_STATE_LABEL: Record<DueState, string> = {
+  overdue: 'Overdue',
+  due: 'Due soon',
+  upcoming: 'On schedule',
+  paid: 'Fully paid',
+};
+
+/** One investment on the "Make a payment" landing grid: what is late, what is next. */
+export interface PaymentDueRow {
+  view: HoldingView;
+  state: DueState;
+  overdue_count: number;
+  /** overdue principal, without late fees */
+  overdue_amount: number;
+  late_fee: number;
+  /** overdue principal plus late fees: what brings the account up to date */
+  due_now: number;
+  /** the oldest unpaid installment that is late */
+  oldest_overdue: InstallmentView | null;
+  /** the first unpaid installment that is not late yet */
+  next: InstallmentView | null;
+  /** days the oldest overdue installment is late; days until `next` when nothing is late */
+  days: number;
+  paid_count: number;
+  total_count: number;
+  /** what the Pay button asks for: everything overdue, or else the next installment */
+  pay_amount: number;
+}
+
+export function paymentDueRow(view: HoldingView, today: string): PaymentDueRow {
+  const open = view.schedule.filter((i) => i.status !== 'paid');
+  const late = open.filter((i) => i.status === 'overdue');
+  const next = open.find((i) => i.status !== 'overdue') ?? null;
+  const state: DueState = !open.length ? 'paid' : late.length ? 'overdue' : next?.status === 'due' ? 'due' : 'upcoming';
+  const oldest = late[0] ?? null;
+  return {
+    view,
+    state,
+    overdue_count: late.length,
+    overdue_amount: view.overdue_amount,
+    late_fee: view.late_fees,
+    due_now: view.due_now,
+    oldest_overdue: oldest,
+    next,
+    days: oldest ? oldest.days_late : next ? daysBetween(today, next.due_date) : 0,
+    paid_count: view.paid_count,
+    total_count: view.schedule.length,
+    pay_amount: view.due_now > 0 ? view.due_now : next ? next.remaining + next.late_fee_due : 0,
+  };
+}
+
+/** Overdue first (longest late at the top), then by the next due date; fully paid last. */
+export function paymentDueRows(portfolio: PortfolioView, today: string): PaymentDueRow[] {
+  const rank: Record<DueState, number> = { overdue: 0, due: 1, upcoming: 2, paid: 3 };
+  return portfolio.holdings
+    .map((v) => paymentDueRow(v, today))
+    .sort((a, b) => rank[a.state] - rank[b.state] || (a.state === 'overdue' ? b.days - a.days : a.days - b.days));
+}
+
 /* --------------------------------------------------------------- portfolio */
 
 export interface PortfolioView {
@@ -421,7 +528,7 @@ export function buildNotifications(s: InvestorSnapshot, portfolio: PortfolioView
   const out: PortalNotification[] = [];
   for (const v of portfolio.holdings) {
     for (const i of v.schedule) {
-      const pay = `/investor/payments?holding=${v.holding.code}`;
+      const pay = `/investor/payments/checkout?holding=${v.holding.code}`;
       if (i.status === 'overdue') {
         out.push({
           id: `overdue-${i.id}-${i.remaining}`,
@@ -463,7 +570,7 @@ export function buildNotifications(s: InvestorSnapshot, portfolio: PortfolioView
       title: `${project.name}: Round ${round.round_no} is open`,
       body: `${round.shares_available} shares available at ${formatTaka(round.price_per_share)} each, until ${formatDay(round.closes_on)}.`,
       date: round.opens_on,
-      href: '/investor',
+      href: '/investor#opportunities',
     });
   }
   for (const v of portfolio.holdings.filter((h) => h.project.construction_progress_pct < 100)) {

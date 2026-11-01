@@ -162,7 +162,7 @@ export function PaymentResultPage({ intentId }: { intentId: string }) {
                 <Button onClick={retry} disabled={retrying} icon={retrying ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}>
                   Try again
                 </Button>
-                <ButtonLink href={`/investor/payments?holding=${intent.holding_code}`} variant="outline">
+                <ButtonLink href={`/investor/payments/checkout?holding=${intent.holding_code}`} variant="outline">
                   Change amount
                 </ButtonLink>
               </>

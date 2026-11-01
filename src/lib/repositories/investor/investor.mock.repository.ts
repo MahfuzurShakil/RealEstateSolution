@@ -1,12 +1,17 @@
+import Dexie, { type EntityTable } from 'dexie';
 import {
+  UPLOAD_MAX_MB,
   allocatePayment,
   maxPayable,
   viewHolding,
   type AmountOption,
+  type CustomerUpload,
   type InvestorSnapshot,
   type PaymentAllocation,
   type PaymentMethod,
   type PaymentRecord,
+  type ShareRequest,
+  type UploadKind,
 } from '@/lib/domain/investor-portal';
 import { todayLocal } from '@/lib/utils/format';
 import { buildDemoData, demoReference, DEMO_LOGIN } from './investor-demo.data';
@@ -59,9 +64,18 @@ interface StoredState {
   payments: PaymentRecord[];
   intents: PaymentIntent[];
   read: string[];
-  interests: string[];
+  requests: ShareRequest[];
+  uploads: CustomerUpload[];
   receipt_seq: number;
 }
+
+/**
+ * Uploaded files are too big for localStorage, so the demo keeps them in a
+ * small IndexedDB of their own — not the platform database, which stays
+ * untouched until the admin side takes these uploads over.
+ */
+const files = new Dexie('customer-portal-files') as Dexie & { files: EntityTable<{ id: string; blob: Blob }, 'id'> };
+files.version(1).stores({ files: 'id' });
 
 interface Session {
   customer_code: string;
@@ -69,7 +83,7 @@ interface Session {
   expires_at: string;
 }
 
-const EMPTY: StoredState = { payments: [], intents: [], read: [], interests: [], receipt_seq: 20480 };
+const EMPTY: StoredState = { payments: [], intents: [], read: [], requests: [], uploads: [], receipt_seq: 20480 };
 
 const FAILURE: Record<Exclude<GatewayOutcome, 'success'>, string> = {
   declined: 'Your bank or wallet declined the payment. No money has been taken from your account.',
@@ -167,7 +181,8 @@ export const investorRepository = {
       ...demo,
       payments: [...demo.payments, ...state.payments],
       read_notification_ids: state.read,
-      interested_round_codes: state.interests,
+      share_requests: state.requests,
+      uploads: state.uploads,
     };
   },
 
@@ -267,15 +282,67 @@ export const investorRepository = {
     save(state);
   },
 
-  async registerInterest(roundCode: string) {
-    await latency();
+  /**
+   * Asks to buy shares in an open round. Nothing is reserved yet: the office
+   * calls, agrees the plan and prepares the agreement (plan §4, step 3).
+   */
+  async requestShares(input: { round_code: string; shares: number; installments: number; note: string }): Promise<ShareRequest> {
+    await latency(700);
     const state = load();
-    state.interests = [...new Set([...state.interests, roundCode])];
+    const request: ShareRequest = { id: `REQ-${Date.now().toString(36).toUpperCase()}`, ...input, note: input.note.trim(), requested_at: new Date().toISOString() };
+    state.requests = [...state.requests.filter((r) => r.round_code !== input.round_code), request];
+    save(state);
+    return request;
+  },
+
+  async withdrawRequest(roundCode: string) {
+    await latency(300);
+    const state = load();
+    state.requests = state.requests.filter((r) => r.round_code !== roundCode);
+    save(state);
+  },
+
+  /** Sends a document to the office against one investment. */
+  async uploadDocument(input: { holding_code: string; kind: UploadKind; title: string; note: string; file: File }): Promise<CustomerUpload> {
+    if (input.file.size > UPLOAD_MAX_MB * 1024 * 1024) throw new Error(`The file is larger than ${UPLOAD_MAX_MB} MB.`);
+    await latency(900);
+    const upload: CustomerUpload = {
+      id: `UPL-${Date.now().toString(36).toUpperCase()}`,
+      holding_code: input.holding_code,
+      kind: input.kind,
+      title: input.title.trim(),
+      note: input.note.trim(),
+      file_name: input.file.name,
+      file_type: input.file.type,
+      file_size: input.file.size,
+      uploaded_at: new Date().toISOString(),
+      status: 'under_review',
+    };
+    await files.files.put({ id: upload.id, blob: input.file });
+    const state = load();
+    state.uploads = [upload, ...state.uploads];
+    save(state);
+    return upload;
+  },
+
+  /** The uploaded file itself, to open or download; null when this browser no longer has it. */
+  async uploadFile(id: string): Promise<Blob | null> {
+    return (await files.files.get(id))?.blob ?? null;
+  },
+
+  /** A customer may take back a file the office has not reviewed yet. */
+  async deleteUpload(id: string) {
+    const state = load();
+    const u = state.uploads.find((x) => x.id === id);
+    if (!u || u.status !== 'under_review') return;
+    state.uploads = state.uploads.filter((x) => x.id !== id);
+    await files.files.delete(id);
     save(state);
   },
 
   /** Puts the demo back to its starting point (keeps the visitor signed in). */
   resetDemo() {
+    void files.files.clear();
     save({ ...EMPTY });
   },
 };

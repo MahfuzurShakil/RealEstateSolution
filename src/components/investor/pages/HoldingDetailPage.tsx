@@ -13,8 +13,8 @@ import {
 } from '@/lib/domain/investor-portal';
 import { cn } from '@/lib/utils/cn';
 import { useCustomerPortal } from '../CustomerPortalProvider';
-import { DocumentList } from '../DocumentList';
 import { ScheduleTable } from '../ScheduleTable';
+import { HoldingDocuments } from './DocumentsPage';
 import { DetailList, EmptyNote, HealthPill, Money, Panel, ProgressBar, StatusPill } from '../ui';
 
 const TABS = [
@@ -87,7 +87,7 @@ function OverviewTab({ v }: { v: HoldingView }) {
               </p>
               <Money amount={v.due_now} className="font-display mt-1 block text-xl font-semibold text-site-danger" />
               {v.late_fees > 0 && <p className="text-xs text-site-danger">includes <Money amount={v.late_fees} /> late fee</p>}
-              <ButtonLink href={`/investor/payments?holding=${holding.code}`} className="mt-3 w-full bg-site-danger hover:bg-site-danger hover:brightness-110" icon={<CreditCard className="size-4" />}>
+              <ButtonLink href={`/investor/payments/checkout?holding=${holding.code}`} className="mt-3 w-full bg-site-danger hover:bg-site-danger hover:brightness-110" icon={<CreditCard className="size-4" />}>
                 Pay now
               </ButtonLink>
             </div>
@@ -99,7 +99,7 @@ function OverviewTab({ v }: { v: HoldingView }) {
                 <StatusPill status={v.next.status} />
               </p>
               <p className="text-sm text-site-muted">{v.next.label} · due {formatDay(v.next.due_date)}</p>
-              <ButtonLink href={`/investor/payments?holding=${holding.code}`} variant="outline" className="mt-3 w-full" icon={<CreditCard className="size-4" />}>
+              <ButtonLink href={`/investor/payments/checkout?holding=${holding.code}`} variant="outline" className="mt-3 w-full" icon={<CreditCard className="size-4" />}>
                 Pay in advance
               </ButtonLink>
             </div>
@@ -207,7 +207,7 @@ export function HoldingDetailPage({ code }: { code: string }) {
         {tab === 'schedule' && (
           <Panel
             title="Payment schedule"
-            action={v.next && <ButtonLink href={`/investor/payments?holding=${holding.code}`} size="sm" icon={<CreditCard className="size-4" />}>Pay</ButtonLink>}
+            action={v.next && <ButtonLink href={`/investor/payments/checkout?holding=${holding.code}`} size="sm" icon={<CreditCard className="size-4" />}>Pay</ButtonLink>}
             padded={false}
           >
             <ScheduleTable rows={v.schedule} />
@@ -241,7 +241,7 @@ export function HoldingDetailPage({ code }: { code: string }) {
         )}
         {tab === 'documents' && (
           <Panel title="Documents" padded={false}>
-            <DocumentList docs={v.documents} />
+            <HoldingDocuments v={v} holdings={portfolio.holdings} />
           </Panel>
         )}
       </div>
