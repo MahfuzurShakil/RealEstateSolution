@@ -1675,6 +1675,20 @@ export interface Customer extends BaseEntity {
   lead_id?: UUID | null;
   /** v43 — Share Sale: `investor` for share buyers; unset means a unit/plot buyer */
   customer_type?: CustomerType | null;
+  /**
+   * Investor KYC kept for the Customer Portal profile (share buyers only).
+   * Unindexed, so no new Dexie version. All optional: the portal shows
+   * "not on file" for anything the office has not filled in.
+   */
+  date_of_birth?: ISODate | null;
+  tin?: string | null;
+  kyc_verified_on?: ISODate | null;
+  nominee_name?: string | null;
+  nominee_relation?: string | null;
+  nominee_phone?: string | null;
+  bank_name?: string | null;
+  bank_branch?: string | null;
+  bank_account?: string | null;
 }
 
 /**
@@ -3250,4 +3264,63 @@ export interface SharePayment extends BaseEntity {
   /** late fees first, then the oldest installment (plan §7) */
   allocations: SharePaymentAllocation[];
   notes?: string | null;
+  /** v44 — paid by the customer on the Customer Portal's gateway, or recorded by the office */
+  channel?: 'office' | 'online' | null;
+  /** v44 — "bKash 01711•••344", "Visa •••• 4242": what the gateway reported */
+  method_detail?: string | null;
+}
+
+/* ------------------------------------------------- Customer Portal → office */
+
+/**
+ * v44 — a customer's request, sent from the Customer Portal, to buy shares in
+ * an open offering. Nothing is held until the office reserves the shares
+ * (PROJECT-SHARE-SALE-PLAN.md §4 step 3); the request then points at the
+ * reservation it became.
+ */
+export const SHARE_REQUEST_STATUSES = ['new', 'contacted', 'reserved', 'declined', 'withdrawn'] as const;
+export type ShareRequestStatus = (typeof SHARE_REQUEST_STATUSES)[number];
+
+export interface ShareRequest extends BaseEntity {
+  code: string;                       // SRQ-2026-001
+  offering_id: UUID;
+  project_id: UUID;
+  customer_id: UUID;
+  shares: number;
+  installments: number;
+  note?: string | null;
+  requested_at: string;
+  status: ShareRequestStatus;
+  /** the reservation the office made from it */
+  sale_id?: UUID | null;
+  /** what the office told the customer (declined) or noted (contacted) */
+  office_note?: string | null;
+}
+
+/** v44 — a file a customer uploads on the Customer Portal against one purchase. */
+export const CUSTOMER_UPLOAD_KINDS = ['id_document', 'tin', 'payment_proof', 'signed_copy', 'other'] as const;
+export type CustomerUploadKind = (typeof CUSTOMER_UPLOAD_KINDS)[number];
+export const CUSTOMER_UPLOAD_STATUSES = ['under_review', 'accepted', 'rejected'] as const;
+export type CustomerUploadStatus = (typeof CUSTOMER_UPLOAD_STATUSES)[number];
+
+export interface CustomerUpload extends BaseEntity {
+  customer_id: UUID;
+  sale_id: UUID;
+  kind: CustomerUploadKind;
+  title: string;
+  note?: string | null;
+  file_name: string;
+  file_type: string;
+  file_size: number;
+  uploaded_at: string;
+  status: CustomerUploadStatus;
+  reviewed_on?: ISODate | null;
+  /** why it was turned down, shown to the customer */
+  review_note?: string | null;
+}
+
+/** v44 — the bytes of a CustomerUpload, kept apart so lists stay light. */
+export interface CustomerUploadFile {
+  id: UUID;
+  blob: Blob;
 }

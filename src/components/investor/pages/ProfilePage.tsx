@@ -1,10 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { BadgeCheck, Check, FlaskConical, Landmark, LockKeyhole, Mail, RotateCcw, UserRound, Users } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { BadgeCheck, Check, FlaskConical, Landmark, LockKeyhole, Mail, UserRound, Users } from 'lucide-react';
 import { Button } from '@/components/public/ui/Button';
 import { CUSTOMER_TYPE_LABEL, formatDay } from '@/lib/domain/investor-portal';
-import { investorRepository } from '@/lib/repositories/investor/investor.mock.repository';
 import { formatPhone } from '@/lib/utils/format';
 import { useCustomerPortal } from '../CustomerPortalProvider';
 import { CustomerTypeBadge, DetailList, PageHeading, Panel } from '../ui';
@@ -12,8 +11,10 @@ import { CustomerTypeBadge, DetailList, PageHeading, Panel } from '../ui';
 export function ProfilePage() {
   const { snapshot } = useCustomerPortal();
   const [requested, setRequested] = useState(false);
-  const [resetDone, setResetDone] = useState(false);
   const c = snapshot.customer;
+  /** what the office has not recorded yet */
+  const missing = <span className="text-site-muted">Not on file yet</span>;
+  const or = (v: string | null | undefined, node?: ReactNode) => (v ? (node ?? v) : missing);
 
   return (
     <div className="space-y-8">
@@ -49,9 +50,13 @@ export function ProfilePage() {
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <CustomerTypeBadge type={c.customer_type} className="bg-site-brass/20 text-site-brass" />
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold">
-              <BadgeCheck className="size-3.5 text-site-brass" aria-hidden /> KYC verified {formatDay(c.kyc_verified_on)}
-            </span>
+            {c.kyc_verified_on ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold">
+                <BadgeCheck className="size-3.5 text-site-brass" aria-hidden /> KYC verified {formatDay(c.kyc_verified_on)}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white/75">KYC check pending</span>
+            )}
           </div>
         </div>
       </section>
@@ -62,9 +67,9 @@ export function ProfilePage() {
             rows={[
               ['Full name', c.full_name],
               ['Customer type', CUSTOMER_TYPE_LABEL[c.customer_type]],
-              ['Date of birth', formatDay(c.date_of_birth)],
-              ['National ID', <span key="n" className="tabular">{c.nid_masked}</span>],
-              ['TIN', <span key="t" className="tabular">{c.tin_masked}</span>],
+              ['Date of birth', or(c.date_of_birth, formatDay(c.date_of_birth))],
+              ['National ID', or(c.nid_masked, <span className="tabular">{c.nid_masked}</span>)],
+              ['TIN', or(c.tin_masked, <span className="tabular">{c.tin_masked}</span>)],
             ]}
           />
         </Panel>
@@ -72,29 +77,37 @@ export function ProfilePage() {
           <DetailList
             rows={[
               ['Mobile', <span key="m" className="tabular">{formatPhone(c.phone)}</span>],
-              ['Email', c.email],
-              ['Address', c.address],
+              ['Email', or(c.email)],
+              ['Address', or(c.address)],
             ]}
           />
         </Panel>
         <Panel title={<span className="inline-flex items-center gap-2"><Users className="size-5 text-site-primary" aria-hidden /> Nominee</span>}>
-          <DetailList
-            rows={[
-              ['Name', c.nominee.name],
-              ['Relation', c.nominee.relation],
-              ['Mobile', <span key="m" className="tabular">{formatPhone(c.nominee.phone)}</span>],
-              ['Share of entitlement', `${c.nominee.share_pct}%`],
-            ]}
-          />
+          {c.nominee ? (
+            <DetailList
+              rows={[
+                ['Name', c.nominee.name],
+                ['Relation', or(c.nominee.relation)],
+                ['Mobile', or(c.nominee.phone, <span className="tabular">{formatPhone(c.nominee.phone ?? '')}</span>)],
+                ['Share of entitlement', `${c.nominee.share_pct}%`],
+              ]}
+            />
+          ) : (
+            <p className="text-sm text-site-muted">No nominee on file yet. Use “Request a change” and our office will add one.</p>
+          )}
         </Panel>
         <Panel title={<span className="inline-flex items-center gap-2"><Landmark className="size-5 text-site-primary" aria-hidden /> Bank account for payouts</span>}>
-          <DetailList
-            rows={[
-              ['Bank', c.bank.bank_name],
-              ['Branch', c.bank.branch],
-              ['Account', <span key="a" className="tabular">{c.bank.account_masked}</span>],
-            ]}
-          />
+          {c.bank ? (
+            <DetailList
+              rows={[
+                ['Bank', c.bank.bank_name],
+                ['Branch', or(c.bank.branch)],
+                ['Account', or(c.bank.account_masked, <span className="tabular">{c.bank.account_masked}</span>)],
+              ]}
+            />
+          ) : (
+            <p className="text-sm text-site-muted">No bank account on file yet. Use “Request a change” and our office will add it.</p>
+          )}
         </Panel>
       </div>
 
@@ -110,26 +123,9 @@ export function ProfilePage() {
         <p className="flex gap-2.5 text-site-muted">
           <FlaskConical className="mt-0.5 size-4 shrink-0 text-site-brass-dark" aria-hidden />
           <span>
-            <span className="font-semibold text-site-brass-dark">Demo mode.</span> Sample data and a sandbox payment gateway — no real money moves.
+            <span className="font-semibold text-site-brass-dark">Demo mode.</span> Your investments come from our office records; payments go through a sandbox gateway, so no real money moves.
           </span>
         </p>
-        {resetDone ? (
-          <span className="inline-flex items-center gap-1.5 font-semibold text-site-primary-dark" role="status">
-            <Check className="size-4" aria-hidden /> Demo reset
-          </span>
-        ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            icon={<RotateCcw className="size-4" />}
-            onClick={() => {
-              investorRepository.resetDemo();
-              setResetDone(true);
-            }}
-          >
-            Reset demo
-          </Button>
-        )}
       </div>
     </div>
   );

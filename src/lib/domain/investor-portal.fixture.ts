@@ -9,9 +9,12 @@ import type {
   ShareRound,
 } from '@/lib/domain/investor-portal';
 
+import { demoReference } from '@/lib/repositories/investor/gateway-reference';
+
 /*
- * Mock data for the Customer Portal demo. Nothing here touches Dexie or the
- * admin side. Dates are laid out relative to "today" so the demo always shows
+ * A fixed snapshot for the Customer Portal rule tests (investor-portal.test.ts).
+ * The portal itself reads the admin Share Sale tables; this file only keeps
+ * the proposal's worked example stable for the tests. Dates are laid out relative to "today" so the demo always shows
  * two projects overdue (one with a late fee, one part-paid inside the grace
  * days), more coming due and one fully paid holding — the
  * numbers match PROJECT-SHARE-SALE-PLAN.md §7 (5 shares, ৳50 lakh, ৳2 lakh a month).
@@ -19,7 +22,7 @@ import type {
 
 const unsplash = (id: string) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=1400&q=70`;
 
-export const DEMO_LOGIN = { phone: '01711223344', email: 'farhana.rahman@example.com', otp: '123456' };
+const DEMO_LOGIN = { phone: '01711223344', email: 'farhana.rahman@example.com' };
 
 const LAKH = 100_000;
 const CRORE = 10_000_000;
@@ -40,40 +43,8 @@ const METHOD_DETAIL: Record<PaymentMethod, string> = {
   internet_banking: 'Eastern Bank PLC internet banking',
   bank_transfer: 'Deposit at Eastern Bank PLC',
   cheque: 'Cheque, Eastern Bank PLC',
+  cash: 'Cash at office',
 };
-
-/** A stable, provider-looking transaction ID from a seed string. */
-export function demoReference(method: PaymentMethod, seed: string): string {
-  let h = 2166136261;
-  for (const ch of seed) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
-  const alnum = (len: number) => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let s = '';
-    let x = h;
-    for (let i = 0; i < len; i++) {
-      x = Math.imul(x ^ (x >>> 13), 1274126177) >>> 0;
-      s += chars[x % chars.length];
-    }
-    return s;
-  };
-  const digits = (len: number) => String(h).padStart(len, '7').slice(-len);
-  switch (method) {
-    case 'bkash':
-      return alnum(10);
-    case 'nagad':
-      return `7${alnum(7)}`;
-    case 'rocket':
-      return digits(10);
-    case 'card':
-      return `AUTH ${digits(6)}`;
-    case 'internet_banking':
-      return `IB${digits(10)}`;
-    case 'cheque':
-      return `CHQ ${digits(7)}`;
-    default:
-      return `DEP-${digits(8)}`;
-  }
-}
 
 export interface DemoData {
   customer: InvestorCustomer;
@@ -152,11 +123,11 @@ export function buildDemoData(today: string): DemoData {
   ];
 
   const rounds: ShareRound[] = [
-    { code: 'RND-2026-007-1', project_code: 'PRJ-2026-007', round_no: 1, valuation: 100 * CRORE, offered_pct: 50, total_shares: 500, share_pct: 0.1, price_per_share: 10 * LAKH, shares_available: 0, opens_on: at(-7, 1), closes_on: at(-2, 0), is_open: false, min_shares: 1, max_shares: 25, down_payment_pct: 20, max_installments: 20, frequency: 'monthly' },
-    { code: 'RND-2026-007-2', project_code: 'PRJ-2026-007', round_no: 2, valuation: 120 * CRORE, offered_pct: 20, total_shares: 200, share_pct: 0.1, price_per_share: 12 * LAKH, shares_available: 143, opens_on: at(-1, 15), closes_on: at(3, 0), is_open: true, min_shares: 1, max_shares: 20, down_payment_pct: 20, max_installments: 24, frequency: 'monthly' },
-    { code: 'RND-2026-011-1', project_code: 'PRJ-2026-011', round_no: 1, valuation: 60 * CRORE, offered_pct: 40, total_shares: 400, share_pct: 0.1, price_per_share: 6 * LAKH, shares_available: 86, opens_on: at(-7, 1), closes_on: at(2, 0), is_open: true, min_shares: 1, max_shares: 15, down_payment_pct: 25, max_installments: 8, frequency: 'quarterly' },
-    { code: 'RND-2026-015-1', project_code: 'PRJ-2026-015', round_no: 1, valuation: 45 * CRORE, offered_pct: 40, total_shares: 400, share_pct: 0.1, price_per_share: 4.5 * LAKH, shares_available: 312, opens_on: at(0, 1), closes_on: at(0, 31), is_open: true, min_shares: 1, max_shares: 20, down_payment_pct: 20, max_installments: 12, frequency: 'monthly' },
-    { code: 'RND-2025-004-1', project_code: 'PRJ-2025-004', round_no: 1, valuation: 80 * CRORE, offered_pct: 30, total_shares: 300, share_pct: 0.1, price_per_share: 8 * LAKH, shares_available: 0, opens_on: at(-18, 1), closes_on: at(-15, 0), is_open: false, min_shares: 1, max_shares: 10, down_payment_pct: 50, max_installments: 4, frequency: 'quarterly' },
+    { code: 'RND-2026-007-1', project_code: 'PRJ-2026-007', round_no: 1, valuation: 100 * CRORE, offered_pct: 50, total_shares: 500, share_pct: 0.1, price_per_share: 10 * LAKH, shares_available: 0, opens_on: at(-7, 1), closes_on: at(-2, 0), is_open: false, min_shares: 1, max_shares: 25, down_payment_pct: 20, max_installments: 20, frequency: 'monthly', late_fee_pct: 2, grace_days: 7 },
+    { code: 'RND-2026-007-2', project_code: 'PRJ-2026-007', round_no: 2, valuation: 120 * CRORE, offered_pct: 20, total_shares: 200, share_pct: 0.1, price_per_share: 12 * LAKH, shares_available: 143, opens_on: at(-1, 15), closes_on: at(3, 0), is_open: true, min_shares: 1, max_shares: 20, down_payment_pct: 20, max_installments: 24, frequency: 'monthly', late_fee_pct: 2, grace_days: 7 },
+    { code: 'RND-2026-011-1', project_code: 'PRJ-2026-011', round_no: 1, valuation: 60 * CRORE, offered_pct: 40, total_shares: 400, share_pct: 0.1, price_per_share: 6 * LAKH, shares_available: 86, opens_on: at(-7, 1), closes_on: at(2, 0), is_open: true, min_shares: 1, max_shares: 15, down_payment_pct: 25, max_installments: 8, frequency: 'quarterly', late_fee_pct: 2, grace_days: 7 },
+    { code: 'RND-2026-015-1', project_code: 'PRJ-2026-015', round_no: 1, valuation: 45 * CRORE, offered_pct: 40, total_shares: 400, share_pct: 0.1, price_per_share: 4.5 * LAKH, shares_available: 312, opens_on: at(0, 1), closes_on: at(0, 31), is_open: true, min_shares: 1, max_shares: 20, down_payment_pct: 20, max_installments: 12, frequency: 'monthly', late_fee_pct: 2, grace_days: 7 },
+    { code: 'RND-2025-004-1', project_code: 'PRJ-2025-004', round_no: 1, valuation: 80 * CRORE, offered_pct: 30, total_shares: 300, share_pct: 0.1, price_per_share: 8 * LAKH, shares_available: 0, opens_on: at(-18, 1), closes_on: at(-15, 0), is_open: false, min_shares: 1, max_shares: 10, down_payment_pct: 50, max_installments: 4, frequency: 'quarterly', late_fee_pct: 2, grace_days: 7 },
   ];
 
   const holdings: ShareHolding[] = [

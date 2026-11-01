@@ -27,12 +27,20 @@ Share Sale menu — offerings (NAV + premium valuation, % offered, share count,
 validity days, installment limits), reservations, agreements with generated
 schedules, offline payments, certificates, Investors & Dues (Dexie v43).
 
+Connected (Dexie v44): the Customer Portal now reads the admin Share Sale
+tables through `src/lib/repositories/investor/investor.repository.ts`, which
+whitelists field by field (test: `investor.repository.test.ts`). Gateway
+payments are recorded on the purchase (channel `online`); "Buy shares"
+requests and uploaded documents land in Share Sale → Customer Requests
+(reserve / called / decline; accept / send back), and the office's answer
+shows on the portal. Investor KYC, nominee and payout bank are edited from
+the purchase page ("Investor details"). Demo: three share-only projects and
+a three-project portfolio for the demo login 01711223344 / 123456.
+
 Still open:
-- The Customer Portal still reads its own mock repository. Next: a public
-  investor repository over `share_sales` / `share_installments` /
-  `share_payments` so the portal shows what admin records.
-- Purchase requests and document uploads from the portal do not reach admin
-  yet (needs the above, plus a review inbox for uploads).
+- Sign-in codes are fixed (123456) — a real SMS/email OTP needs a server.
+- Read notifications and open gateway checkouts are kept per browser.
+- "Request a change" on the portal profile is not stored yet.
 - Share payments are not posted to a bank account or the Fund ledger.
 - Reminders / late-fee notices (plan §4 step 8) and share transfer are later phases.
 - Cancelling a signed purchase records no refund; refunds stay outside the screen.

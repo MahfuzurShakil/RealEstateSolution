@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { CalendarClock, Check, CircleX, Copy, Download, Loader2, RotateCcw } from 'lucide-react';
 import { Button, ButtonLink } from '@/components/public/ui/Button';
 import { allocationLabel, formatDay } from '@/lib/domain/investor-portal';
-import { investorRepository, type PaymentIntent } from '@/lib/repositories/investor/investor.mock.repository';
+import { investorRepository, type PaymentIntent } from '@/lib/repositories/investor/investor.repository';
 import { CheckoutSteps } from '../CheckoutSteps';
 import { useCustomerPortal } from '../CustomerPortalProvider';
 import { Money, PortalSkeleton, ProgressBar } from '../ui';

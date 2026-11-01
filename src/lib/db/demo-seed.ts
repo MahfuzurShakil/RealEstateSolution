@@ -2837,6 +2837,9 @@ export async function clearDemoData(): Promise<void> {
     db.share_sales.clear(),
     db.share_installments.clear(),
     db.share_payments.clear(),
+    db.share_requests.clear(),
+    db.customer_uploads.clear(),
+    db.customer_upload_files.clear(),
   ]);
   forgetDemoWebsiteContent();
   setClearedFlag(true);

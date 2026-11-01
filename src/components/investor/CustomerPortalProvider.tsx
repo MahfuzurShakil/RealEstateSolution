@@ -1,7 +1,8 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import {
   buildNotifications,
   viewPortfolio,
@@ -9,7 +10,7 @@ import {
   type PortalNotification,
   type PortfolioView,
 } from '@/lib/domain/investor-portal';
-import { CUSTOMER_PORTAL_CHANGED, investorRepository } from '@/lib/repositories/investor/investor.mock.repository';
+import { CUSTOMER_PORTAL_CHANGED, investorRepository } from '@/lib/repositories/investor/investor.repository';
 
 interface CustomerPortal {
   snapshot: InvestorSnapshot;
@@ -30,32 +31,37 @@ export function useCustomerPortal(): CustomerPortal {
 
 /**
  * Guards the portal (no session → sign-in page) and keeps one snapshot of the
- * customer's data, reloaded whenever the repository reports a change.
+ * customer's data. It is a live query over the platform database, so a
+ * payment the office records or a request it answers shows up here at once,
+ * even from another tab; the event covers what is kept per browser (read
+ * notifications, open checkouts).
  */
 export function CustomerPortalProvider({ children, fallback }: { children: ReactNode; fallback: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [snapshot, setSnapshot] = useState<InvestorSnapshot | null>(null);
-
-  const reload = useCallback(() => {
-    investorRepository.snapshot().then(setSnapshot);
-  }, []);
+  const [tick, setTick] = useState(0);
+  const snapshot: InvestorSnapshot | null | undefined = useLiveQuery(() => investorRepository.snapshot(), [tick]);
 
   useEffect(() => {
-    if (!investorRepository.session()) {
-      router.replace(`/investor/login?next=${encodeURIComponent(pathname ?? '/investor')}`);
-      return;
-    }
-    reload();
+    const reload = () => setTick((t) => t + 1);
     window.addEventListener(CUSTOMER_PORTAL_CHANGED, reload);
     window.addEventListener('storage', reload);
     return () => {
       window.removeEventListener(CUSTOMER_PORTAL_CHANGED, reload);
       window.removeEventListener('storage', reload);
     };
-    // the guard runs once per mount; page changes inside the portal keep the session
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // signed out, session expired, or the customer record is gone
+  useEffect(() => {
+    if (snapshot === null) {
+      // a session whose customer is gone would bounce between here and the sign-in page
+      investorRepository.signOut();
+      router.replace(`/investor/login?next=${encodeURIComponent(pathname ?? '/investor')}`);
+    }
+    // the guard follows the snapshot; page changes inside the portal keep the session
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshot]);
 
   const value = useMemo<CustomerPortal | null>(() => {
     if (!snapshot) return null;

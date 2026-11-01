@@ -8,7 +8,7 @@ import { BrandMark } from '@/components/public/BrandMark';
 import { HERO_IMAGE } from '@/components/public/stock-images';
 import { Button } from '@/components/public/ui/Button';
 import { useCompanyInfo } from '@/components/public/useCompanyInfo';
-import { investorRepository } from '@/lib/repositories/investor/investor.mock.repository';
+import { investorRepository } from '@/lib/repositories/investor/investor.repository';
 import { cn } from '@/lib/utils/cn';
 import { formatPhone } from '@/lib/utils/format';
 

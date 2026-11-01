@@ -3,12 +3,14 @@
 import { db } from '../db/database';
 import type {
   Customer,
+  CustomerUpload,
   Project,
   ShareFrequency,
   ShareInstallment,
   ShareOffering,
   SharePayment,
   SharePaymentMethod,
+  ShareRequest,
   ShareSale,
 } from '../db/types';
 import {
@@ -209,6 +211,9 @@ export interface PaymentInput {
   method: SharePaymentMethod;
   reference?: string | null;
   notes?: string | null;
+  /** set by the Customer Portal's gateway; the office's own entries leave it out */
+  channel?: 'office' | 'online';
+  method_detail?: string | null;
 }
 
 async function ruleFor(sale: ShareSale) {
@@ -368,6 +373,8 @@ class ShareSaleRepository extends BaseRepository<ShareSale> {
         reference: input.reference?.trim() || null,
         allocations,
         notes: input.notes?.trim() || null,
+        channel: input.channel ?? 'office',
+        method_detail: input.method_detail ?? null,
       },
       userId,
     );
@@ -533,3 +540,113 @@ export async function projectOwnership(projectId: string): Promise<{ rows: Owner
   const customers = rows.reduce((t, r) => t + r.sold_pct, 0);
   return { rows, customers_pct: customers, owner_pct: 100 - customers };
 }
+
+/* ------------------------------------------- from the Customer Portal */
+
+export interface RequestRow {
+  request: ShareRequest;
+  offering: ShareOffering | undefined;
+  project: Project | undefined;
+  customer: Customer | undefined;
+  sale: ShareSale | undefined;
+}
+
+export interface UploadRow {
+  upload: CustomerUpload;
+  sale: ShareSale | undefined;
+  project: Project | undefined;
+  customer: Customer | undefined;
+}
+
+/** What customers sent from the Customer Portal: purchase requests and documents, newest first. */
+export async function customerPortalInbox(): Promise<{ requests: RequestRow[]; uploads: UploadRow[] }> {
+  const [requests, uploads, offerings, sales, projects, customers] = await Promise.all([
+    db.share_requests.toArray(),
+    db.customer_uploads.toArray(),
+    db.share_offerings.toArray(),
+    db.share_sales.toArray(),
+    db.projects.toArray(),
+    db.customers.toArray(),
+  ]);
+  const by = <T extends { id: string }>(rows: T[]) => new Map(rows.map((r) => [r.id, r]));
+  const o = by(offerings);
+  const s = by(sales);
+  const p = by(projects);
+  const c = by(customers);
+  return {
+    requests: requests
+      .map((r) => ({ request: r, offering: o.get(r.offering_id), project: p.get(r.project_id), customer: c.get(r.customer_id), sale: r.sale_id ? s.get(r.sale_id) : undefined }))
+      .sort((a, b) => b.request.requested_at.localeCompare(a.request.requested_at)),
+    uploads: uploads
+      .map((u) => {
+        const sale = s.get(u.sale_id);
+        return { upload: u, sale, project: sale ? p.get(sale.project_id) : undefined, customer: c.get(u.customer_id) };
+      })
+      .sort((a, b) => b.upload.uploaded_at.localeCompare(a.upload.uploaded_at)),
+  };
+}
+
+class ShareRequestRepository extends BaseRepository<ShareRequest> {
+  constructor() {
+    super(() => db.share_requests);
+  }
+
+  private async live(id: string): Promise<ShareRequest> {
+    const r = await db.share_requests.get(id);
+    if (!r) throw new Error('This request no longer exists.');
+    if (r.status !== 'new' && r.status !== 'contacted') throw new Error('This request has already been dealt with.');
+    return r;
+  }
+
+  /** The office called the customer; the note is shown to them on the portal. */
+  async markContacted(id: string, note: string): Promise<void> {
+    await this.live(id);
+    await this.update(id, { status: 'contacted', office_note: note.trim() || null });
+  }
+
+  /** Turns a request down; the reason is shown to the customer. */
+  async decline(id: string, note: string): Promise<void> {
+    await this.live(id);
+    if (!note.trim()) throw new Error('Say why, so the customer knows.');
+    await this.update(id, { status: 'declined', office_note: note.trim() });
+  }
+
+  /** Reserves the shares the customer asked for — the usual reservation, with the plan agreed on the call. */
+  async reserve(id: string, plan: { shares: number; down_payment_pct: number; installment_count: number }, userId: string | null): Promise<ShareSale> {
+    const r = await this.live(id);
+    const sale = await shareSaleRepository.reserve(
+      { offering_id: r.offering_id, customer_id: r.customer_id, ...plan, notes: `From Customer Portal request ${r.code}${r.note ? `: “${r.note}”` : ''}` },
+      userId,
+    );
+    await this.update(id, { status: 'reserved', sale_id: sale.id, office_note: null });
+    return sale;
+  }
+}
+
+export const shareRequestRepository = new ShareRequestRepository();
+
+class CustomerUploadRepository extends BaseRepository<CustomerUpload> {
+  constructor() {
+    super(() => db.customer_uploads);
+  }
+
+  async forSale(saleId: string): Promise<CustomerUpload[]> {
+    return (await db.customer_uploads.where('sale_id').equals(saleId).toArray()).sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at));
+  }
+
+  async file(id: string): Promise<Blob | null> {
+    return (await db.customer_upload_files.get(id))?.blob ?? null;
+  }
+
+  async accept(id: string): Promise<void> {
+    await this.update(id, { status: 'accepted', reviewed_on: todayLocal(), review_note: null });
+  }
+
+  /** Turns a file down; the reason is shown to the customer, who can upload again. */
+  async reject(id: string, note: string): Promise<void> {
+    if (!note.trim()) throw new Error('Say what is wrong with the file, so the customer can send a better one.');
+    await this.update(id, { status: 'rejected', reviewed_on: todayLocal(), review_note: note.trim() });
+  }
+}
+
+export const customerUploadRepository = new CustomerUploadRepository();

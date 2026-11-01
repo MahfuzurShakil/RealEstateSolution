@@ -22,11 +22,11 @@ import {
 import { customerRepository, shareOfferingRepository, shareSaleRepository } from '@/lib/repositories';
 import { formatBdt, formatDate, todayLocal } from '@/lib/utils/format';
 
-function ErrorNote({ error }: { error: string }) {
+export function ErrorNote({ error }: { error: string }) {
   return error ? <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null;
 }
 
-function useAction() {
+export function useAction() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const run = async (fn: () => Promise<unknown>, done: () => void) => {

@@ -8,6 +8,9 @@ import type {
   ShareInstallment,
   ShareOffering,
   SharePayment,
+  ShareRequest,
+  CustomerUpload,
+  CustomerUploadFile,
   ShareSale,
   LandOffer,
   FaqItem,
@@ -192,6 +195,9 @@ export class AppDatabase extends Dexie {
   share_sales!: EntityTable<ShareSale, 'id'>;
   share_installments!: EntityTable<ShareInstallment, 'id'>;
   share_payments!: EntityTable<SharePayment, 'id'>;
+  share_requests!: EntityTable<ShareRequest, 'id'>;
+  customer_uploads!: EntityTable<CustomerUpload, 'id'>;
+  customer_upload_files!: EntityTable<CustomerUploadFile, 'id'>;
 
   constructor() {
     super('realestate_platform');
@@ -974,6 +980,18 @@ export class AppDatabase extends Dexie {
       share_sales: 'id, &code, offering_id, project_id, customer_id, status',
       share_installments: 'id, sale_id, due_date',
       share_payments: 'id, &code, sale_id, paid_on',
+    });
+
+    /*
+     * v44 — the Customer Portal reads and writes the platform database
+     * (PROJECT-SHARE-SALE-PLAN.md): purchase requests customers send from
+     * "New opportunities", and documents they upload against a purchase,
+     * reviewed by the office. File bytes sit in their own table.
+     */
+    this.version(44).stores({
+      share_requests: 'id, &code, offering_id, project_id, customer_id, status',
+      customer_uploads: 'id, customer_id, sale_id, status',
+      customer_upload_files: 'id',
     });
   }
 }

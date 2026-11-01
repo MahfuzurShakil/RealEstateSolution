@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { AlertTriangle, Banknote, PieChart, Plus, Store, Wallet } from 'lucide-react';
+import { AlertTriangle, Banknote, Inbox, PieChart, Plus, Store, Wallet } from 'lucide-react';
 import { AvailabilityBar, Kpi, OfferingBadge } from '@/components/admin/share-sale/bits';
 import { Card } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/Button';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { canEdit } from '@/lib/domain/access';
 import { formatCrore, formatSharePct } from '@/lib/domain/share-sale';
-import { shareSaleOverview, type OfferingRow } from '@/lib/repositories';
+import { customerPortalInbox, shareSaleOverview, type OfferingRow } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
@@ -30,6 +30,7 @@ export default function ShareOfferingsPage() {
   const { role } = useMockSession();
   const mayEdit = canEdit(role, 'share_sale');
   const data = useLiveQuery(() => shareSaleOverview(), []);
+  const inbox = useLiveQuery(() => customerPortalInbox(), []);
   const [filter, setFilter] = useState<Filter>('all');
 
   if (!data) return <p className="text-sm text-ink-muted">Loading…</p>;
@@ -139,6 +140,25 @@ export default function ShareOfferingsPage() {
           href="/admin/share-sale/investors?show=overdue"
         />
       </div>
+
+      {inbox && (() => {
+        const requests = inbox.requests.filter((r) => r.request.status === 'new').length;
+        const docs = inbox.uploads.filter((u) => u.upload.status === 'under_review').length;
+        if (!requests && !docs) return null;
+        return (
+          <Link
+            href={requests ? '/admin/share-sale/requests' : '/admin/share-sale/requests?tab=documents'}
+            className="mb-5 flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 hover:border-amber-300"
+          >
+            <Inbox className="size-5 shrink-0" />
+            <span className="flex-1">
+              From the Customer Portal:{' '}
+              {[requests && `${requests} new purchase request${requests > 1 ? 's' : ''}`, docs && `${docs} document${docs > 1 ? 's' : ''} to review`].filter(Boolean).join(' and ')}
+            </span>
+            <span className="font-medium">Open Customer Requests →</span>
+          </Link>
+        );
+      })()}
 
       <Card className="p-0">
         <div className="flex flex-wrap gap-1 border-b border-hairline px-5 pt-3">

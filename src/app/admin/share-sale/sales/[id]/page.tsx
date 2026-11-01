@@ -4,8 +4,9 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, Award, FileSignature, HandCoins, Undo2, XCircle } from 'lucide-react';
+import { ArrowLeft, Award, Check, Download, FileSignature, FileText, HandCoins, IdCard, Undo2, X, XCircle } from 'lucide-react';
 import { SaleBadge } from '@/components/admin/share-sale/bits';
+import { InvestorDetailsModal, RejectUploadModal, UPLOAD_KIND_LABEL, openUpload } from '@/components/admin/share-sale/InboxModals';
 import { ReasonModal, RecordPaymentModal, SignAgreementModal } from '@/components/admin/share-sale/ShareSaleModals';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -15,7 +16,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { canEdit } from '@/lib/domain/access';
 import { FREQUENCY_LABEL, SHARE_INSTALLMENT_STATUS_META, SHARE_PAYMENT_METHOD_LABEL, formatSharePct, installmentLabel } from '@/lib/domain/share-sale';
-import { shareSaleOverview, shareSaleRepository } from '@/lib/repositories';
+import type { CustomerUpload } from '@/lib/db/types';
+import { customerUploadRepository, shareSaleOverview, shareSaleRepository } from '@/lib/repositories';
 import { formatBdt, formatDate, formatPhone } from '@/lib/utils/format';
 
 function Line({ label, children }: { label: string; children: ReactNode }) {
@@ -27,7 +29,7 @@ function Line({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-type Dialog = 'sign' | 'pay' | 'release' | 'cancel' | 'undo' | 'certificate' | null;
+type Dialog = 'sign' | 'pay' | 'release' | 'cancel' | 'undo' | 'certificate' | 'investor' | null;
 
 /** One customer's share purchase: the terms, the schedule, every payment and what to do next. */
 export default function ShareSaleDetailPage() {
@@ -35,7 +37,9 @@ export default function ShareSaleDetailPage() {
   const { role } = useMockSession();
   const mayEdit = canEdit(role, 'share_sale');
   const data = useLiveQuery(() => shareSaleOverview(), []);
+  const uploads = useLiveQuery(() => customerUploadRepository.forSale(id), [id]);
   const [dialog, setDialog] = useState<Dialog>(null);
+  const [reject, setReject] = useState<CustomerUpload | null>(null);
   const [error, setError] = useState('');
 
   if (!data) return <p className="text-sm text-ink-muted">Loading…</p>;
@@ -157,12 +161,21 @@ export default function ShareSaleDetailPage() {
               <Line label="Phone">{formatPhone(v.customer.phone)}</Line>
               <Line label="Email">{v.customer.email || '—'}</Line>
               <Line label="NID">{v.customer.nid || '—'}</Line>
+              <Line label="KYC">{v.customer.kyc_verified_on ? `Checked ${formatDate(v.customer.kyc_verified_on)}` : <span className="text-amber-700">Not checked yet</span>}</Line>
+              <Line label="Nominee">{v.customer.nominee_name ? `${v.customer.nominee_name}${v.customer.nominee_relation ? ` (${v.customer.nominee_relation})` : ''}` : '—'}</Line>
             </dl>
           )}
           {v.customer && (
-            <Link href={`/admin/customers/${v.customer.id}`} className="mt-2 inline-block text-sm font-medium text-admin-700 hover:underline">
-              Open customer
-            </Link>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium">
+              {mayEdit && (
+                <button type="button" onClick={() => setDialog('investor')} className="inline-flex items-center gap-1 text-admin-700 hover:underline">
+                  <IdCard className="size-4" /> Investor details
+                </button>
+              )}
+              <Link href={`/admin/customers/${v.customer.id}`} className="text-admin-700 hover:underline">
+                Open customer
+              </Link>
+            </div>
           )}
         </Card>
         <Card>
@@ -239,11 +252,14 @@ export default function ShareSaleDetailPage() {
                 {v.payments.map((p) => (
                   <li key={p.id} className="px-5 py-3 text-sm">
                     <div className="flex items-baseline justify-between gap-3">
-                      <span className="font-medium text-ink">{p.code}</span>
+                      <span className="flex items-center gap-2 font-medium text-ink">
+                        {p.code}
+                        {p.channel === 'online' && <Badge tone="teal">Customer Portal</Badge>}
+                      </span>
                       <span className="font-semibold tabular-nums">{formatBdt(p.amount)}</span>
                     </div>
                     <p className="mt-0.5 text-xs text-ink-muted">
-                      {formatDate(p.paid_on)} · {SHARE_PAYMENT_METHOD_LABEL[p.method]}
+                      {formatDate(p.paid_on)} · {p.method_detail || SHARE_PAYMENT_METHOD_LABEL[p.method]}
                       {p.reference ? ` · ${p.reference}` : ''}
                     </p>
                     <p className="mt-0.5 text-xs text-ink-muted">
@@ -265,6 +281,49 @@ export default function ShareSaleDetailPage() {
         </div>
       )}
 
+      {uploads && uploads.length > 0 && (
+        <Card className="mt-5 p-0">
+          <div className="px-5 pt-5">
+            <CardHeader title="Customer documents" subtitle="Uploaded by the customer on the Customer Portal" />
+          </div>
+          <ul className="divide-y divide-hairline border-t border-hairline">
+            {uploads.map((u) => (
+              <li key={u.id} className="flex flex-wrap items-center gap-3 px-5 py-3 text-sm">
+                <FileText className="size-4 shrink-0 text-ink-muted" />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium text-ink">{u.title}</span>
+                  <span className="block text-xs text-ink-muted">
+                    {UPLOAD_KIND_LABEL[u.kind]} · {u.file_name} · {formatDate(u.uploaded_at)}
+                    {u.note ? ` · “${u.note}”` : ''}
+                  </span>
+                  {u.review_note && <span className="block text-xs text-red-600">Sent back: {u.review_note}</span>}
+                </span>
+                <Badge tone={u.status === 'accepted' ? 'green' : u.status === 'rejected' ? 'red' : 'amber'}>
+                  {u.status === 'accepted' ? 'Accepted' : u.status === 'rejected' ? 'Sent back' : 'To review'}
+                </Badge>
+                <span className="flex gap-1.5">
+                  <Button size="sm" variant="ghost" onClick={() => openUpload(u.id)}>
+                    <Download className="size-4" /> Open
+                  </Button>
+                  {mayEdit && u.status === 'under_review' && (
+                    <>
+                      <Button size="sm" variant="outline" onClick={() => customerUploadRepository.accept(u.id)}>
+                        <Check className="size-4" /> Accept
+                      </Button>
+                      <Button size="sm" variant="dangerGhost" onClick={() => setReject(u)}>
+                        <X className="size-4" /> Send back
+                      </Button>
+                    </>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {dialog === 'investor' && v.customer && <InvestorDetailsModal customer={v.customer} onClose={() => setDialog(null)} />}
+      {reject && <RejectUploadModal upload={reject} onClose={() => setReject(null)} />}
       {dialog === 'sign' && <SignAgreementModal sale={s} onClose={() => setDialog(null)} />}
       {dialog === 'pay' && <RecordPaymentModal view={v} onClose={() => setDialog(null)} />}
       {(dialog === 'release' || dialog === 'cancel') && <ReasonModal sale={s} kind={dialog} onClose={() => setDialog(null)} />}

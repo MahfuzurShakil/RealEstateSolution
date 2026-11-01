@@ -15,7 +15,7 @@ import {
   type AmountOption,
   type HoldingView,
 } from '@/lib/domain/investor-portal';
-import { investorRepository } from '@/lib/repositories/investor/investor.mock.repository';
+import { investorRepository } from '@/lib/repositories/investor/investor.repository';
 import { cn } from '@/lib/utils/cn';
 import { formatPhone, formatTakaWords } from '@/lib/utils/format';
 import { CheckoutSteps } from '../CheckoutSteps';

@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { AlertTriangle, BellOff, CheckCheck, CircleCheck, Clock3, HardHat, Landmark, MessageSquare, Smartphone, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/public/ui/Button';
 import { formatDay, type NotificationKind } from '@/lib/domain/investor-portal';
-import { investorRepository } from '@/lib/repositories/investor/investor.mock.repository';
+import { investorRepository } from '@/lib/repositories/investor/investor.repository';
 import { cn } from '@/lib/utils/cn';
 import { useCustomerPortal } from '../CustomerPortalProvider';
 import { EmptyNote, PageHeading, Panel } from '../ui';

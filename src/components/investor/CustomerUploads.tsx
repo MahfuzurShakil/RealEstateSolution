@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Clock3, Download, FileImage, FileText, Loader2, ShieldCheck, Trash2, Upload, UploadCloud, X } from 'lucide-react';
+import { CircleAlert, Clock3, Download, FileImage, FileText, Loader2, ShieldCheck, Trash2, Upload, UploadCloud, X } from 'lucide-react';
 import { Button } from '@/components/public/ui/Button';
 import {
   UPLOAD_ACCEPT,
@@ -12,7 +12,7 @@ import {
   type HoldingView,
   type UploadKind,
 } from '@/lib/domain/investor-portal';
-import { investorRepository } from '@/lib/repositories/investor/investor.mock.repository';
+import { investorRepository } from '@/lib/repositories/investor/investor.repository';
 import { cn } from '@/lib/utils/cn';
 import { PortalDialog } from './PortalDialog';
 
@@ -209,15 +209,20 @@ export function UploadList({ uploads }: { uploads: CustomerUpload[] }) {
                 {u.file_name} · {fileSize(u.file_size)} · {formatDay(u.uploaded_at)}
               </span>
               {u.note && <span className="block truncate text-xs text-site-muted italic">“{u.note}”</span>}
+              {u.status === 'rejected' && (
+                <span className="mt-0.5 block text-xs font-medium text-site-danger">
+                  Not accepted{u.review_note ? `: ${u.review_note}` : ''} — please upload a new copy.
+                </span>
+              )}
             </span>
             <span
               className={cn(
                 'hidden items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap sm:inline-flex',
-                u.status === 'accepted' ? 'bg-site-primary-soft text-site-primary-dark' : 'bg-site-booked-soft text-site-booked',
+                u.status === 'accepted' ? 'bg-site-primary-soft text-site-primary-dark' : u.status === 'rejected' ? 'bg-red-50 text-site-danger' : 'bg-site-booked-soft text-site-booked',
               )}
             >
-              {u.status === 'accepted' ? <ShieldCheck className="size-3.5" aria-hidden /> : <Clock3 className="size-3.5" aria-hidden />}
-              {u.status === 'accepted' ? 'Accepted' : 'Under review'}
+              {u.status === 'accepted' ? <ShieldCheck className="size-3.5" aria-hidden /> : u.status === 'rejected' ? <CircleAlert className="size-3.5" aria-hidden /> : <Clock3 className="size-3.5" aria-hidden />}
+              {u.status === 'accepted' ? 'Accepted' : u.status === 'rejected' ? 'Not accepted' : 'Under review'}
             </span>
             <span className="flex shrink-0 items-center">
               <button type="button" aria-label={`Open ${u.file_name}`} onClick={() => open(u)} className="grid size-9 place-items-center rounded-full text-site-primary hover:bg-site-primary-soft">

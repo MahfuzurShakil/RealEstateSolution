@@ -111,6 +111,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Share Offerings', href: '/admin/share-sale', module: 'share_sale' },
       { label: 'Investors & Dues', href: '/admin/share-sale/investors', module: 'share_sale' },
+      { label: 'Customer Requests', href: '/admin/share-sale/requests', module: 'share_sale' },
     ],
   },
   /*

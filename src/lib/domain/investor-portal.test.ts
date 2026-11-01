@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildDemoData } from '@/lib/repositories/investor/investor-demo.data';
+import { buildDemoData } from './investor-portal.fixture';
 import { allocatePayment, amountChoices, lateFeeFor, maxPayable, paymentDueRows, takaInWords, viewPortfolio, type InvestorSnapshot } from './investor-portal';
 
 const TODAY = '2026-11-01';

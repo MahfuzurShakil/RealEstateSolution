@@ -13,7 +13,7 @@ import {
   type ShareRequest,
   type ShareRound,
 } from '@/lib/domain/investor-portal';
-import { investorRepository } from '@/lib/repositories/investor/investor.mock.repository';
+import { investorRepository } from '@/lib/repositories/investor/investor.repository';
 import { cn } from '@/lib/utils/cn';
 import { todayLocal } from '@/lib/utils/format';
 import { PortalDialog } from './PortalDialog';
@@ -53,6 +53,7 @@ function BuySharesDialog({
   const [plan, setPlan] = useState(existing?.installments ?? round.max_installments);
   const [note, setNote] = useState(existing?.note ?? '');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const total = shares * round.price_per_share;
   const down = plan === 0 ? total : Math.round((total * round.down_payment_pct) / 100);
@@ -61,9 +62,15 @@ function BuySharesDialog({
 
   const send = async () => {
     setBusy(true);
-    await investorRepository.requestShares({ round_code: round.code, shares, installments: plan, note });
-    setBusy(false);
-    onClose();
+    setError(null);
+    try {
+      await investorRepository.requestShares({ round_code: round.code, shares, installments: plan, note });
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'The request could not be sent. Please try again.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -85,6 +92,11 @@ function BuySharesDialog({
       }
     >
       <div className="space-y-5">
+        {error && (
+          <p role="alert" className="rounded-2xl bg-site-danger/10 px-4 py-3 text-sm font-medium text-site-danger">
+            {error}
+          </p>
+        )}
         <div>
           <p className="mb-2 text-xs font-semibold tracking-[0.12em] text-site-muted uppercase">Number of shares</p>
           <div className="flex items-center gap-3">
@@ -191,6 +203,8 @@ export function OpportunityCard({ round, project, owned, request }: { round: Sha
   const [withdrawing, setWithdrawing] = useState(false);
   const soldPct = Math.round(((round.total_shares - round.shares_available) / round.total_shares) * 100);
   const left = daysBetween(todayLocal(), round.closes_on);
+  // a declined request leaves the way open for a new one
+  const active = request && (request.status === 'new' || request.status === 'contacted') ? request : undefined;
 
   return (
     <article className="flex flex-col overflow-hidden rounded-3xl border border-site-line bg-white shadow-site-1">
@@ -255,14 +269,23 @@ export function OpportunityCard({ round, project, owned, request }: { round: Sha
         </div>
 
         <div className="mt-auto pt-5">
-          {request ? (
+          {request?.status === 'reserved' ? (
             <div className="rounded-2xl bg-site-primary-soft/60 px-4 py-3">
               <p className="flex items-center gap-1.5 text-sm font-semibold text-site-primary-dark">
-                <Check className="size-4" aria-hidden /> Purchase request sent
+                <Check className="size-4" aria-hidden /> Shares reserved for you
+              </p>
+              <p className="mt-0.5 text-[13px] text-site-muted">Our office is preparing your agreement. It will appear under My investments once signed.</p>
+            </div>
+          ) : active ? (
+            <div className="rounded-2xl bg-site-primary-soft/60 px-4 py-3">
+              <p className="flex items-center gap-1.5 text-sm font-semibold text-site-primary-dark">
+                <Check className="size-4" aria-hidden /> {active.status === 'contacted' ? 'Our team is in touch' : 'Purchase request sent'}
               </p>
               <p className="mt-0.5 text-[13px] text-site-muted">
-                {request.shares} share{request.shares > 1 ? 's' : ''} · {planLabel(request.installments, round)} · our team will call you
+                {active.shares} share{active.shares > 1 ? 's' : ''} · {planLabel(active.installments, round)}
+                {active.status === 'new' && ' · our team will call you'}
               </p>
+              {active.office_note && <p className="mt-1 text-[13px] text-site-ink">“{active.office_note}”</p>}
               <div className="mt-2 flex gap-4 text-sm font-semibold">
                 <button type="button" onClick={() => setOpen(true)} className="text-site-primary hover:underline">
                   Change
@@ -282,14 +305,21 @@ export function OpportunityCard({ round, project, owned, request }: { round: Sha
               </div>
             </div>
           ) : (
-            <Button className="w-full" onClick={() => setOpen(true)} icon={<ShoppingBag className="size-4" />}>
-              {owned ? 'Buy more shares' : 'Buy shares'}
-            </Button>
+            <>
+              {request?.status === 'declined' && (
+                <p className="mb-3 rounded-2xl bg-site-soft px-4 py-3 text-[13px] text-site-muted">
+                  Your last request could not go ahead{request.office_note ? `: ${request.office_note}` : '.'} You can send a new one.
+                </p>
+              )}
+              <Button className="w-full" onClick={() => setOpen(true)} icon={<ShoppingBag className="size-4" />}>
+                {owned ? 'Buy more shares' : 'Buy shares'}
+              </Button>
+            </>
           )}
         </div>
       </div>
 
-      {open && <BuySharesDialog open onClose={() => setOpen(false)} round={round} project={project} existing={request} />}
+      {open && <BuySharesDialog open onClose={() => setOpen(false)} round={round} project={project} existing={active} />}
     </article>
   );
 }

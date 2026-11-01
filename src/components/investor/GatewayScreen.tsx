@@ -6,7 +6,7 @@ import { ArrowLeft, BadgeCheck, Building, CheckCircle2, ChevronDown, ChevronRigh
 import { CompanyEmblem } from '@/components/public/BrandMark';
 import { useCompanyInfo } from '@/components/public/useCompanyInfo';
 import { allocationLabel, formatTaka, viewHolding, type HoldingView, type InvestorSnapshot, type PaymentMethod } from '@/lib/domain/investor-portal';
-import { investorRepository, type GatewayOutcome, type PaymentIntent } from '@/lib/repositories/investor/investor.mock.repository';
+import { investorRepository, type GatewayOutcome, type PaymentIntent } from '@/lib/repositories/investor/investor.repository';
 import { cn } from '@/lib/utils/cn';
 import { PaymentLogo, type LogoName } from './PaymentLogos';
 

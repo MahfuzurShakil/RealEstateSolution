@@ -9,8 +9,6 @@ import { useCompanyInfo } from '@/components/public/useCompanyInfo';
 import {
   CUSTOMER_TYPE_LABEL,
   FREQUENCY_LABEL,
-  GRACE_DAYS,
-  LATE_FEE_RATE,
   formatDay,
   formatPct,
   formatTaka,
@@ -68,7 +66,9 @@ function Agreement({ v, c, owner }: { v: HoldingView; c: InvestorCustomer; owner
           dates in the attached payment schedule.
         </Clause>
         <Clause n={4} title="Late payment">
-          An installment paid more than {GRACE_DAYS} days after its due date carries a late fee of {LATE_FEE_RATE * 100}% of that installment.
+          {v.round.late_fee_pct
+            ? `An installment paid more than ${v.round.grace_days} days after its due date carries a late fee of ${v.round.late_fee_pct}% of that installment.`
+            : 'No late fee is charged on installments under this agreement.'}
         </Clause>
         <Clause n={5} title="Ownership">
           A share certificate is issued once the full price is paid. Until then the shares are held for the Customer under this agreement.
@@ -87,9 +87,12 @@ function Deed({ v, c, owner }: { v: HoldingView; c: InvestorCustomer; owner: str
         <b>{c.full_name}</b> ({c.code}) holds <b>{v.holding.shares} shares</b>, being <b>{formatPct(v.holding.share_pct)}</b> of the ownership of{' '}
         <b>{v.project.name}</b>, {v.project.location}, subject to the payment terms of that agreement.
       </p>
-      <p className="mt-4">
-        The nominee for these shares is <b>{c.nominee.name}</b> ({c.nominee.relation}).
-      </p>
+      {c.nominee && (
+        <p className="mt-4">
+          The nominee for these shares is <b>{c.nominee.name}</b>
+          {c.nominee.relation && ` (${c.nominee.relation})`}.
+        </p>
+      )}
       <Signatures left={`For ${owner}`} right={c.full_name} />
     </>
   );

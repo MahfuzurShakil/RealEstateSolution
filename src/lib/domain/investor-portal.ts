@@ -3,9 +3,9 @@
  *
  * Pure types and rules only: what a share holding is, how an installment's
  * status and late fee are worked out, how a payment (full or part) is applied
- * to the schedule, and how a portfolio is summed. The data is mock for now
- * (src/lib/repositories/investor/*); when the admin side is built, only the
- * repository changes and these rules stay.
+ * to the schedule, and how a portfolio is summed. The data comes from the
+ * admin Share Sale tables through the whitelisting repository in
+ * src/lib/repositories/investor/investor.repository.ts.
  */
 
 import { localDay } from '@/lib/utils/format';
@@ -19,7 +19,7 @@ export const FREQUENCY_LABEL: Record<PaymentFrequency, string> = { monthly: 'Mon
 /** Stored lifecycle of a holding (plan §6). "Overdue" is not stored: it is read off the schedule. */
 export type HoldingStatus = 'paying' | 'fully_paid' | 'confirmed';
 
-export type PaymentMethod = 'bkash' | 'nagad' | 'rocket' | 'card' | 'internet_banking' | 'bank_transfer' | 'cheque';
+export type PaymentMethod = 'bkash' | 'nagad' | 'rocket' | 'card' | 'internet_banking' | 'bank_transfer' | 'cheque' | 'cash';
 export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
   bkash: 'bKash',
   nagad: 'Nagad',
@@ -28,22 +28,24 @@ export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
   internet_banking: 'Internet banking',
   bank_transfer: 'Bank deposit',
   cheque: 'Cheque',
+  cash: 'Cash at office',
 };
 
 export interface InvestorCustomer {
   code: string;
   customer_type: CustomerType;
   full_name: string;
-  email: string;
+  email: string | null;
   phone: string;
-  nid_masked: string;
-  tin_masked: string;
-  date_of_birth: string;
-  address: string;
-  kyc_verified_on: string;
+  /** null where the office has not recorded it yet */
+  nid_masked: string | null;
+  tin_masked: string | null;
+  date_of_birth: string | null;
+  address: string | null;
+  kyc_verified_on: string | null;
   joined_on: string;
-  nominee: { name: string; relation: string; phone: string; share_pct: number };
-  bank: { bank_name: string; branch: string; account_masked: string };
+  nominee: { name: string; relation: string | null; phone: string | null; share_pct: number } | null;
+  bank: { bank_name: string; branch: string | null; account_masked: string | null } | null;
 }
 
 export interface InvestorProject {
@@ -81,6 +83,9 @@ export interface ShareRound {
   /** the longest installment plan the round offers */
   max_installments: number;
   frequency: PaymentFrequency;
+  /** late fee: this % of an installment once it is more than `grace_days` late */
+  late_fee_pct: number;
+  grace_days: number;
 }
 
 export interface ShareHolding {
@@ -143,6 +148,8 @@ export interface CustomerDocument {
   available: boolean;
 }
 
+export type ShareRequestStatus = 'new' | 'contacted' | 'reserved' | 'declined' | 'withdrawn';
+
 /** A customer's request to buy shares in an open round; the office follows up with the agreement. */
 export interface ShareRequest {
   id: string;
@@ -151,6 +158,9 @@ export interface ShareRequest {
   installments: number;
   note: string;
   requested_at: string;
+  status: ShareRequestStatus;
+  /** what the office said, when it declined or got in touch */
+  office_note: string | null;
 }
 
 export type UploadKind = 'id_document' | 'tin' | 'payment_proof' | 'signed_copy' | 'other';
@@ -176,7 +186,9 @@ export interface CustomerUpload {
   file_type: string;
   file_size: number;
   uploaded_at: string;
-  status: 'under_review' | 'accepted';
+  status: 'under_review' | 'accepted' | 'rejected';
+  /** why the office turned it down */
+  review_note: string | null;
 }
 
 /** Everything the portal reads for one signed-in customer. */
@@ -196,9 +208,15 @@ export interface InvestorSnapshot {
 
 /* ------------------------------------------------------------------ rules */
 
-/** Late fee: 2% of the installment once it is more than 7 days late (plan §7). */
-export const LATE_FEE_RATE = 0.02;
-export const GRACE_DAYS = 7;
+/**
+ * Late fee: a % of the installment once it is more than the grace days late
+ * (plan §7). Each offering sets its own; these are the plan's defaults.
+ */
+export interface LateFeeRule {
+  late_fee_pct: number;
+  grace_days: number;
+}
+export const DEFAULT_FEE_RULE: LateFeeRule = { late_fee_pct: 2, grace_days: 7 };
 /** An unpaid installment falling due within this many days shows as "Due". */
 export const DUE_WINDOW_DAYS = 30;
 /** The smallest part payment the gateway accepts. */
@@ -221,8 +239,8 @@ export function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 }
 
-export function lateFeeFor(amount: number, daysLate: number): number {
-  return daysLate > GRACE_DAYS ? Math.round(amount * LATE_FEE_RATE) : 0;
+export function lateFeeFor(amount: number, daysLate: number, rule: LateFeeRule = DEFAULT_FEE_RULE): number {
+  return daysLate > rule.grace_days ? Math.round((amount * rule.late_fee_pct) / 100) : 0;
 }
 
 export interface InstallmentView extends Installment {
@@ -240,7 +258,7 @@ export interface InstallmentView extends Installment {
   payments: PaymentRecord[];
 }
 
-export function viewInstallments(installments: Installment[], payments: PaymentRecord[], today: string): InstallmentView[] {
+export function viewInstallments(installments: Installment[], payments: PaymentRecord[], today: string, rule: LateFeeRule = DEFAULT_FEE_RULE): InstallmentView[] {
   return installments
     .slice()
     .sort((a, b) => a.seq - b.seq)
@@ -257,7 +275,7 @@ export function viewInstallments(installments: Installment[], payments: PaymentR
       else if (-days <= DUE_WINDOW_DAYS) status = 'due';
       else status = 'upcoming';
       const daysLate = status === 'overdue' ? days : 0;
-      const feeCharged = status === 'overdue' ? lateFeeFor(inst.amount, daysLate) : feePaid;
+      const feeCharged = status === 'overdue' ? lateFeeFor(inst.amount, daysLate, rule) : feePaid;
       return {
         ...inst,
         label: installmentLabel(inst.seq),
@@ -309,6 +327,7 @@ export function viewHolding(s: InvestorSnapshot, holding: ShareHolding): Holding
     s.installments.filter((i) => i.holding_code === holding.code),
     payments,
     s.today,
+    round,
   );
   const sum = (rows: InstallmentView[], pick: (r: InstallmentView) => number) => rows.reduce((t, r) => t + pick(r), 0);
   const overdueRows = schedule.filter((r) => r.status === 'overdue');
@@ -535,7 +554,7 @@ export function buildNotifications(s: InvestorSnapshot, portfolio: PortfolioView
           kind: 'overdue',
           title: `${i.label} is overdue`,
           body: `${formatTaka(i.remaining)}${i.partial ? ' still owing' : ''} for ${v.project.name} was due on ${formatDay(i.due_date)}.${
-            i.late_fee_due ? ` A late fee of ${formatTaka(i.late_fee_due)} has been added.` : ` Please pay within ${GRACE_DAYS} days of the due date to avoid a late fee.`
+            i.late_fee_due ? ` A late fee of ${formatTaka(i.late_fee_due)} has been added.` : v.round.late_fee_pct ? ` Please pay within ${v.round.grace_days} days of the due date to avoid a late fee.` : ''
           }`,
           date: s.today,
           href: pay,
