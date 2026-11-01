@@ -8,7 +8,9 @@
  * src/lib/repositories/investor/investor.repository.ts.
  */
 
+import type { CustomerUploadKind } from '@/lib/db/types';
 import { localDay } from '@/lib/utils/format';
+import { SHARE_DOC_KINDS, SHARE_DOC_META } from './share-documents';
 
 export type CustomerType = 'investor';
 export const CUSTOMER_TYPE_LABEL: Record<CustomerType, string> = { investor: 'Investor' };
@@ -35,6 +37,8 @@ export interface InvestorCustomer {
   code: string;
   customer_type: CustomerType;
   full_name: string;
+  /** "daughter of …" / "wife of …", as the agreement names the customer */
+  father_or_spouse_name: string | null;
   email: string | null;
   phone: string;
   /** null where the office has not recorded it yet */
@@ -103,6 +107,15 @@ export interface ShareHolding {
   frequency: PaymentFrequency;
   status: HoldingStatus;
   certificate_no: string | null;
+  /** how the agreement was signed and witnessed; witness ID numbers stay with the office */
+  signing?: {
+    place: string;
+    company_signatory: string;
+    company_signatory_title: string | null;
+    witnesses: string[];
+    stamp_value: number | null;
+    notarized_on: string | null;
+  } | null;
 }
 
 export interface Installment {
@@ -163,14 +176,8 @@ export interface ShareRequest {
   office_note: string | null;
 }
 
-export type UploadKind = 'id_document' | 'tin' | 'payment_proof' | 'signed_copy' | 'other';
-export const UPLOAD_KIND_LABEL: Record<UploadKind, string> = {
-  id_document: 'NID / passport copy',
-  tin: 'TIN certificate',
-  payment_proof: 'Payment slip or bank deposit proof',
-  signed_copy: 'Signed agreement copy',
-  other: 'Other document',
-};
+export type UploadKind = CustomerUploadKind;
+export const UPLOAD_KIND_LABEL = Object.fromEntries(SHARE_DOC_KINDS.map((k) => [k, SHARE_DOC_META[k].label])) as Record<UploadKind, string>;
 /** The largest file a customer may upload. */
 export const UPLOAD_MAX_MB = 10;
 export const UPLOAD_ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp';
@@ -178,7 +185,10 @@ export const UPLOAD_ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp';
 /** A file the customer sent us against one investment. The office reviews it. */
 export interface CustomerUpload {
   id: string;
-  holding_code: string;
+  /** null for the customer's own papers (NID, photo …), which serve every investment */
+  holding_code: string | null;
+  /** sent by the customer, or put on file by the office (signed papers, scans) */
+  source: 'customer' | 'office';
   kind: UploadKind;
   title: string;
   note: string;

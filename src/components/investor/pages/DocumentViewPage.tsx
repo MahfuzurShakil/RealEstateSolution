@@ -50,8 +50,9 @@ function Agreement({ v, c, owner }: { v: HoldingView; c: InvestorCustomer; owner
   return (
     <>
       <p>
-        This Share Purchase Agreement (No. <b className="tabular">{h.agreement_no}</b>) is made on <b>{formatDay(h.agreement_date)}</b> between <b>{owner}</b>{' '}
-        (the “Owner”) and <b>{c.full_name}</b>, customer {c.code}, customer type {CUSTOMER_TYPE_LABEL[c.customer_type]} (the “Customer”).
+        This Share Purchase Agreement (No. <b className="tabular">{h.agreement_no}</b>) is made on <b>{formatDay(h.agreement_date)}</b>
+        {h.signing && <> at {h.signing.place}</>} between <b>{owner}</b> (the “Owner”) and <b>{c.full_name}</b>
+        {c.father_or_spouse_name && <>, son/daughter/wife of {c.father_or_spouse_name}</>}, customer {c.code}, customer type {CUSTOMER_TYPE_LABEL[c.customer_type]} (the “Customer”).
       </p>
       <ol className="mt-5 space-y-3">
         <Clause n={1} title="Shares">
@@ -74,7 +75,16 @@ function Agreement({ v, c, owner }: { v: HoldingView; c: InvestorCustomer; owner
           A share certificate is issued once the full price is paid. Until then the shares are held for the Customer under this agreement.
         </Clause>
       </ol>
-      <Signatures left={`For ${owner}`} right={c.full_name} />
+      <Signatures left={h.signing ? `${h.signing.company_signatory}${h.signing.company_signatory_title ? `, ${h.signing.company_signatory_title}` : ''}, for ${owner}` : `For ${owner}`} right={c.full_name} />
+      {h.signing && (
+        <>
+          <Signatures left={`Witness: ${h.signing.witnesses[0] ?? ''}`} right={`Witness: ${h.signing.witnesses[1] ?? ''}`} />
+          <p className="mt-6 text-xs text-site-muted">
+            {h.signing.stamp_value != null && `Executed on non-judicial stamp paper of ${formatTaka(h.signing.stamp_value)}. `}
+            {h.signing.notarized_on && `Notarized on ${formatDay(h.signing.notarized_on)}.`}
+          </p>
+        </>
+      )}
     </>
   );
 }

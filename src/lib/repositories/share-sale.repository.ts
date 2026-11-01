@@ -12,7 +12,9 @@ import type {
   SharePaymentMethod,
   ShareRequest,
   ShareSale,
+  ShareSigningRecord,
 } from '../db/types';
+import { SHARE_DOC_META, missingToSign, shareDocChecklist, shareDocScope } from '../domain/share-documents';
 import {
   SALE_HOLDS_SHARES,
   addDays,
@@ -204,6 +206,47 @@ export interface ReserveInput {
   notes?: string | null;
 }
 
+export interface SignInput {
+  agreement_date: string;
+  first_due_date?: string | null;
+  signing: ShareSigningRecord;
+  /** KYC as written on the agreement; saved on the customer */
+  customer?: Partial<Pick<Customer, KycField>>;
+  /** the down payment was handed over at the signing */
+  down_payment?: { method: SharePaymentMethod; reference?: string | null } | null;
+}
+
+const KYC_FIELDS = [
+  'email', 'nid', 'tin', 'date_of_birth', 'profession', 'address', 'permanent_address', 'father_or_spouse_name',
+  'nominee_name', 'nominee_relation', 'nominee_phone', 'nominee_nid', 'bank_name', 'bank_branch', 'bank_account', 'kyc_verified_on',
+] as const;
+export type KycField = (typeof KYC_FIELDS)[number];
+
+function cleanKyc(c: Partial<Pick<Customer, KycField>>): Partial<Pick<Customer, KycField>> {
+  return Object.fromEntries(KYC_FIELDS.map((k) => [k, typeof c[k] === 'string' ? (c[k] as string).trim() || null : (c[k] ?? null)]));
+}
+
+function cleanSigning(s: ShareSigningRecord): ShareSigningRecord {
+  const t = (v: string | null | undefined) => v?.trim() || null;
+  const witnesses = s.witnesses.map((w) => ({ name: w.name.trim(), id_or_phone: t(w.id_or_phone), address: t(w.address) })).filter((w) => w.name);
+  if (!s.place?.trim()) throw new Error('Enter where the agreement was signed.');
+  if (!s.company_signatory?.trim()) throw new Error('Enter who signed for the company.');
+  if (witnesses.length < 2) throw new Error('An agreement is witnessed by two people — enter both witnesses.');
+  const stamp = s.stamp_value != null && String(s.stamp_value) !== '' ? Number(s.stamp_value) : null;
+  if (stamp != null && !(stamp >= 0)) throw new Error('The stamp paper value cannot be negative.');
+  return {
+    place: s.place.trim(),
+    company_signatory: s.company_signatory.trim(),
+    company_signatory_title: t(s.company_signatory_title),
+    witnesses,
+    stamp_value: stamp,
+    stamp_serial: t(s.stamp_serial),
+    notarized_on: t(s.notarized_on),
+    notary_name: t(s.notary_name),
+    attorney_name: t(s.attorney_name),
+  };
+}
+
 export interface PaymentInput {
   sale_id: string;
   paid_on: string;
@@ -295,9 +338,25 @@ class ShareSaleRepository extends BaseRepository<ShareSale> {
    * The agreement is signed: the shares are sold and the schedule is written
    * — down payment on the signing day, installments from `first_due_date`.
    */
-  async signAgreement(id: string, input: { agreement_date: string; first_due_date?: string | null }, userId: string | null): Promise<ShareSale> {
+  async signAgreement(id: string, input: SignInput, userId: string | null): Promise<ShareSale> {
     const sale = await db.share_sales.get(id);
     if (!sale || sale.status !== 'reserved') throw new Error('Only a reservation can be signed.');
+    if (!input.agreement_date) throw new Error('Enter the day the agreement was signed.');
+    if (input.agreement_date > todayLocal()) throw new Error('The signing day cannot be in the future.');
+    const signing = cleanSigning(input.signing);
+    const customer = await db.customers.get(sale.customer_id);
+    if (!customer) throw new Error('The customer on this reservation no longer exists.');
+    const kyc = cleanKyc({ ...customer, ...input.customer });
+    if (!kyc.nid) throw new Error('Enter the customer’s NID or passport number — it is written on the agreement.');
+    if (!kyc.father_or_spouse_name) throw new Error('Enter the customer’s father’s or spouse’s name, as the agreement names them.');
+    if (!kyc.address) throw new Error('Enter the customer’s present address.');
+    const missing = missingToSign(
+      shareDocChecklist(await db.customer_uploads.where('customer_id').equals(customer.id).toArray(), id, {
+        has_nominee: !!kyc.nominee_name,
+        by_attorney: !!signing.attorney_name,
+      }),
+    );
+    if (missing.length) throw new Error(`Put these on file before signing: ${missing.map((m) => m.meta.label).join(', ')}.`);
     const first = sale.installment_count > 0 ? input.first_due_date || addMonths(input.agreement_date, sale.installment_frequency === 'monthly' ? 1 : 3) : input.agreement_date;
     if (sale.installment_count > 0 && first <= input.agreement_date) throw new Error('The first installment has to fall after the signing day.');
     const rows = buildSchedule({ ...sale, agreement_date: input.agreement_date, first_due_date: first });
@@ -311,10 +370,25 @@ class ShareSaleRepository extends BaseRepository<ShareSale> {
         agreement_no: nextCode('AGR', codes),
         agreement_date: input.agreement_date,
         first_due_date: first,
+        signing,
         updated_at: ts,
       });
     });
+    await db.customers.update(customer.id, { ...kyc, customer_type: 'investor', updated_at: ts });
+    if (input.down_payment && sale.down_payment > 0) {
+      await this.recordPayment(
+        { sale_id: id, paid_on: input.agreement_date, amount: sale.down_payment, method: input.down_payment.method, reference: input.down_payment.reference, notes: 'Down payment received at signing' },
+        userId,
+      );
+    }
     return (await db.share_sales.get(id))!;
+  }
+
+  /** Corrects the signing record after the fact (a witness's address, the notary date). */
+  async updateSigning(id: string, signing: ShareSigningRecord): Promise<ShareSale> {
+    const sale = await db.share_sales.get(id);
+    if (!sale || !sale.agreement_no) throw new Error('Only a signed agreement has a signing record.');
+    return (await this.update(id, { signing: cleanSigning(signing) }))!;
   }
 
   /** Gives reserved shares back to the offering (hold ran out, customer stepped back). */
@@ -577,9 +651,11 @@ export async function customerPortalInbox(): Promise<{ requests: RequestRow[]; u
     requests: requests
       .map((r) => ({ request: r, offering: o.get(r.offering_id), project: p.get(r.project_id), customer: c.get(r.customer_id), sale: r.sale_id ? s.get(r.sale_id) : undefined }))
       .sort((a, b) => b.request.requested_at.localeCompare(a.request.requested_at)),
+    // the office's own filings are not something it has to review
     uploads: uploads
+      .filter((u) => u.source !== 'office')
       .map((u) => {
-        const sale = s.get(u.sale_id);
+        const sale = u.sale_id ? s.get(u.sale_id) : undefined;
         return { upload: u, sale, project: sale ? p.get(sale.project_id) : undefined, customer: c.get(u.customer_id) };
       })
       .sort((a, b) => b.upload.uploaded_at.localeCompare(a.upload.uploaded_at)),
@@ -630,8 +706,60 @@ class CustomerUploadRepository extends BaseRepository<CustomerUpload> {
     super(() => db.customer_uploads);
   }
 
-  async forSale(saleId: string): Promise<CustomerUpload[]> {
-    return (await db.customer_uploads.where('sale_id').equals(saleId).toArray()).sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at));
+  /** Everything on the customer's file: their own papers and every purchase's. */
+  async forCustomer(customerId: string): Promise<CustomerUpload[]> {
+    return (await db.customer_uploads.where('customer_id').equals(customerId).toArray()).sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at));
+  }
+
+  /**
+   * The office puts a paper on the customer's file — scanned at the signing,
+   * or brought in later. It is accepted as it goes in, and the customer sees
+   * it on the portal. Customer papers are kept without a purchase.
+   */
+  async officeUpload(
+    input: { customer_id: string; sale_id: string | null; kind: CustomerUpload['kind']; title?: string | null; note?: string | null; file: Blob; file_name: string },
+    userId: string | null,
+  ): Promise<CustomerUpload> {
+    if (input.file.size > 10 * 1024 * 1024) throw new Error('The file is larger than 10 MB.');
+    if (!/\.(pdf|jpe?g|png|webp)$/i.test(input.file_name)) throw new Error('Upload a PDF, JPG, PNG or WEBP file.');
+    const scope = shareDocScope(input.kind);
+    const saleId = scope === 'customer' ? null : input.sale_id;
+    if (scope === 'purchase' && !saleId) throw new Error('Pick the purchase this paper belongs to.');
+    const ts = nowIso();
+    const row: CustomerUpload = {
+      id: newId(),
+      customer_id: input.customer_id,
+      sale_id: saleId,
+      source: 'office',
+      kind: input.kind,
+      title: input.title?.trim() || SHARE_DOC_META[input.kind].label,
+      note: input.note?.trim() || null,
+      file_name: input.file_name,
+      file_type: input.file.type || 'application/octet-stream',
+      file_size: input.file.size,
+      uploaded_at: ts,
+      status: 'accepted',
+      reviewed_on: todayLocal(),
+      review_note: null,
+      created_at: ts,
+      updated_at: ts,
+      created_by: userId,
+    };
+    await db.transaction('rw', db.customer_uploads, db.customer_upload_files, async () => {
+      await db.customer_uploads.add(row);
+      await db.customer_upload_files.add({ id: row.id, blob: input.file });
+    });
+    return row;
+  }
+
+  /** Takes a paper the office filed off the record (the wrong file went in). */
+  async removeOfficeUpload(id: string): Promise<void> {
+    const u = await db.customer_uploads.get(id);
+    if (!u || u.source !== 'office') throw new Error('Only a paper the office filed can be removed here.');
+    await db.transaction('rw', db.customer_uploads, db.customer_upload_files, async () => {
+      await db.customer_uploads.delete(id);
+      await db.customer_upload_files.delete(id);
+    });
   }
 
   async file(id: string): Promise<Blob | null> {
@@ -650,3 +778,12 @@ class CustomerUploadRepository extends BaseRepository<CustomerUpload> {
 }
 
 export const customerUploadRepository = new CustomerUploadRepository();
+
+/** A customer's share purchases and every paper on their investor file. */
+export async function customerShareFile(customerId: string): Promise<{ sales: ShareSale[]; uploads: CustomerUpload[] }> {
+  const [sales, uploads] = await Promise.all([
+    db.share_sales.where('customer_id').equals(customerId).toArray(),
+    customerUploadRepository.forCustomer(customerId),
+  ]);
+  return { sales: sales.sort((a, b) => a.code.localeCompare(b.code)), uploads };
+}

@@ -34,6 +34,7 @@ import {
   type UploadKind,
 } from '@/lib/domain/investor-portal';
 import { PROJECT_TYPE_LABEL } from '@/lib/domain/project';
+import { SHARE_DOC_META, shareDocScope } from '@/lib/domain/share-documents';
 import { offeringAvailability, offeringState } from '@/lib/domain/share-sale';
 import { newId, nextCode, nowIso } from '@/lib/utils/id';
 import { todayLocal } from '@/lib/utils/format';
@@ -167,6 +168,7 @@ function toCustomer(c: Customer, since: string): InvestorCustomer {
     code: c.code,
     customer_type: 'investor',
     full_name: c.name,
+    father_or_spouse_name: c.father_or_spouse_name || null,
     email: c.email || null,
     phone: normalizePhone(c.phone),
     nid_masked: mask(c.nid),
@@ -258,6 +260,16 @@ function toHolding(s: ShareSale, projectCode: string, roundCode: string): ShareH
     frequency: s.installment_frequency,
     status: s.certificate_no ? 'confirmed' : s.status === 'fully_paid' ? 'fully_paid' : 'paying',
     certificate_no: s.certificate_no ?? null,
+    signing: s.signing
+      ? {
+          place: s.signing.place,
+          company_signatory: s.signing.company_signatory,
+          company_signatory_title: s.signing.company_signatory_title ?? null,
+          witnesses: s.signing.witnesses.map((w) => w.name),
+          stamp_value: s.signing.stamp_value ?? null,
+          notarized_on: s.signing.notarized_on ?? null,
+        }
+      : null,
   };
 }
 
@@ -326,10 +338,11 @@ function toRequest(r: ShareRequestRow, offeringCode: string): ShareRequest {
   };
 }
 
-function toUpload(u: CustomerUploadRow, saleCode: string): CustomerUpload {
+function toUpload(u: CustomerUploadRow, saleCode: string | null): CustomerUpload {
   return {
     id: u.id,
     holding_code: saleCode,
+    source: u.source === 'office' ? 'office' : 'customer',
     kind: u.kind,
     title: u.title,
     note: u.note ?? '',
@@ -498,10 +511,11 @@ export const investorRepository = {
         .filter((r) => r.status !== 'withdrawn' && offeringById.has(r.offering_id))
         .sort((a, b) => b.requested_at.localeCompare(a.requested_at))
         .map((r) => toRequest(r, offeringById.get(r.offering_id)!.code)),
+      // the customer's own papers, and those of purchases they can see (not a reservation's)
       uploads: uploads
-        .filter((u) => saleById.has(u.sale_id))
+        .filter((u) => (u.sale_id ? saleById.has(u.sale_id) : true))
         .sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at))
-        .map((u) => toUpload(u, saleById.get(u.sale_id)!.code)),
+        .map((u) => toUpload(u, u.sale_id ? saleById.get(u.sale_id)!.code : null)),
     };
   },
 
@@ -684,16 +698,29 @@ export const investorRepository = {
     changed();
   },
 
-  /** Sends a document to the office against one investment; it lands in Share Sale → Customer Requests. */
-  async uploadDocument(input: { holding_code: string; kind: UploadKind; title: string; note: string; file: File }): Promise<CustomerUpload> {
+  /**
+   * Sends a paper to the office. Personal papers (NID, photo, TIN …) go on
+   * the customer's file and serve every investment; the rest belong to the
+   * investment given. It lands in Share Sale → Customer Requests.
+   */
+  async uploadDocument(input: { holding_code: string | null; kind: UploadKind; title: string; note: string; file: File }): Promise<CustomerUpload> {
     if (input.file.size > UPLOAD_MAX_MB * 1024 * 1024) throw new Error(`The file is larger than ${UPLOAD_MAX_MB} MB.`);
+    if (!SHARE_DOC_META[input.kind].customer_may_upload) throw new Error('Our office files this paper for you.');
     await latency(900);
-    const sale = await this.ownSale(input.holding_code);
+    const session = this.session();
+    if (!session) throw new Error('Please sign in again.');
+    const personal = shareDocScope(input.kind) === 'customer';
+    let sale: ShareSale | null = null;
+    if (!personal) {
+      if (!input.holding_code) throw new Error('Choose the investment this paper is for.');
+      sale = await this.ownSale(input.holding_code);
+    }
     const ts = nowIso();
     const row: CustomerUploadRow = {
       id: newId(),
-      customer_id: sale.customer_id,
-      sale_id: sale.id,
+      customer_id: session.customer_id,
+      sale_id: sale?.id ?? null,
+      source: 'customer',
       kind: input.kind,
       title: input.title.trim(),
       note: input.note.trim() || null,
@@ -713,7 +740,7 @@ export const investorRepository = {
       await db.customer_upload_files.add({ id: row.id, blob: input.file });
     });
     changed();
-    return toUpload(row, sale.code);
+    return toUpload(row, sale?.code ?? null);
   },
 
   /** The customer's own uploaded file, to open or download. */
@@ -728,7 +755,7 @@ export const investorRepository = {
   async deleteUpload(id: string) {
     const session = this.session();
     const u = await db.customer_uploads.get(id);
-    if (!session || !u || u.customer_id !== session.customer_id || u.status !== 'under_review') return;
+    if (!session || !u || u.customer_id !== session.customer_id || u.status !== 'under_review' || u.source === 'office') return;
     await db.transaction('rw', db.customer_uploads, db.customer_upload_files, async () => {
       await db.customer_uploads.delete(id);
       await db.customer_upload_files.delete(id);

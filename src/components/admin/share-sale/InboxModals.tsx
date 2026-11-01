@@ -7,18 +7,14 @@ import { Field, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { Customer, CustomerUpload, ShareOffering, ShareRequest } from '@/lib/db/types';
+import { SHARE_DOC_KINDS, SHARE_DOC_META } from '@/lib/domain/share-documents';
 import { FREQUENCY_LABEL } from '@/lib/domain/share-sale';
 import { customerRepository, customerUploadRepository, shareRequestRepository } from '@/lib/repositories';
 import { formatBdt, todayLocal } from '@/lib/utils/format';
 import { ErrorNote, useAction } from './ShareSaleModals';
 
-export const UPLOAD_KIND_LABEL: Record<CustomerUpload['kind'], string> = {
-  id_document: 'NID / passport copy',
-  tin: 'TIN certificate',
-  payment_proof: 'Payment slip / deposit proof',
-  signed_copy: 'Signed agreement copy',
-  other: 'Other document',
-};
+/** "NID / passport copy" … — one label per paper, from the shared checklist. */
+export const UPLOAD_KIND_LABEL = Object.fromEntries(SHARE_DOC_KINDS.map((k) => [k, SHARE_DOC_META[k].label])) as Record<CustomerUpload['kind'], string>;
 
 /** Opens a customer's file in a new tab. */
 export async function openUpload(id: string) {

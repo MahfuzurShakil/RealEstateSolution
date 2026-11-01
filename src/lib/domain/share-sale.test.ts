@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import type { CustomerUpload } from '../db/types';
+import { missingToSign, shareDocChecklist } from './share-documents';
 import type { ShareInstallment, SharePayment, ShareSale } from '../db/types';
 import { allocateSharePayment, buildSchedule, closesOn, offeringMath, viewSale } from './share-sale';
 
@@ -79,5 +81,26 @@ describe('Share purchase schedule and payments', () => {
     expect(v.late_fees).toBe(0);
     expect(v.health).toBe('overdue');
     expect(v.progress_pct).toBe(32);
+  });
+});
+
+describe('signing papers (plan §4a)', () => {
+  const up = (kind: CustomerUpload['kind'], sale_id: string | null, status: CustomerUpload['status'] = 'accepted') =>
+    ({ id: kind + sale_id, customer_id: 'c', sale_id, kind, status, uploaded_at: '2026-01-01' }) as CustomerUpload;
+
+  it('needs NID, photo and the signed agreement; customer papers count from any purchase', () => {
+    const list = shareDocChecklist([up('id_document', 'other-sale'), up('signed_copy', 's1', 'rejected')], 's1', { has_nominee: false, by_attorney: false });
+    expect(missingToSign(list).map((i) => i.kind)).toEqual(['photo', 'signed_copy']);
+  });
+
+  it('asks for the nominee ID and the power of attorney only when they apply', () => {
+    const base = [up('id_document', null), up('photo', null), up('signed_copy', 's1')];
+    expect(missingToSign(shareDocChecklist(base, 's1', { has_nominee: false, by_attorney: false }))).toEqual([]);
+    expect(missingToSign(shareDocChecklist(base, 's1', { has_nominee: true, by_attorney: true })).map((i) => i.kind)).toEqual(['nominee_id', 'power_of_attorney']);
+  });
+
+  it('does not count another purchase’s signed agreement', () => {
+    const list = shareDocChecklist([up('id_document', null), up('photo', null), up('signed_copy', 's2')], 's1', { has_nominee: false, by_attorney: false });
+    expect(missingToSign(list).map((i) => i.kind)).toEqual(['signed_copy']);
   });
 });

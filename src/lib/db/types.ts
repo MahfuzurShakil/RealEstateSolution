@@ -1689,6 +1689,10 @@ export interface Customer extends BaseEntity {
   bank_name?: string | null;
   bank_branch?: string | null;
   bank_account?: string | null;
+  /** as agreements name a person: "daughter of …" / "wife of …" */
+  father_or_spouse_name?: string | null;
+  permanent_address?: string | null;
+  nominee_nid?: string | null;
 }
 
 /**
@@ -3233,6 +3237,33 @@ export interface ShareSale extends BaseEntity {
   /** why it was released or cancelled */
   status_note?: string | null;
   notes?: string | null;
+  /**
+   * The signing record (PROJECT-SHARE-SALE-PLAN.md §4a), written when the
+   * agreement is signed. Unindexed, so no new Dexie version.
+   */
+  signing?: ShareSigningRecord | null;
+}
+
+export interface ShareWitness {
+  name: string;
+  /** NID or phone, as written on the agreement */
+  id_or_phone?: string | null;
+  address?: string | null;
+}
+
+export interface ShareSigningRecord {
+  place: string;
+  /** who signed for the company, and as what */
+  company_signatory: string;
+  company_signatory_title?: string | null;
+  witnesses: ShareWitness[];
+  /** non-judicial stamp paper the agreement is printed on */
+  stamp_value?: number | null;
+  stamp_serial?: string | null;
+  notarized_on?: ISODate | null;
+  notary_name?: string | null;
+  /** set when someone signed for the customer under a power of attorney */
+  attorney_name?: string | null;
 }
 
 export interface ShareInstallment extends BaseEntity {
@@ -3298,14 +3329,37 @@ export interface ShareRequest extends BaseEntity {
 }
 
 /** v44 — a file a customer uploads on the Customer Portal against one purchase. */
-export const CUSTOMER_UPLOAD_KINDS = ['id_document', 'tin', 'payment_proof', 'signed_copy', 'other'] as const;
+/**
+ * What a share buyer's file holds (PROJECT-SHARE-SALE-PLAN.md §4a). The
+ * first six belong to the customer and serve every purchase; the rest
+ * belong to one purchase. `shareDocScope` in domain/share-sale.ts says which.
+ */
+export const CUSTOMER_UPLOAD_KINDS = [
+  'id_document',
+  'photo',
+  'tin',
+  'address_proof',
+  'nominee_id',
+  'bank_proof',
+  'signed_copy',
+  'allotment_letter',
+  'deed',
+  'payment_proof',
+  'pdc',
+  'source_of_funds',
+  'power_of_attorney',
+  'other',
+] as const;
 export type CustomerUploadKind = (typeof CUSTOMER_UPLOAD_KINDS)[number];
 export const CUSTOMER_UPLOAD_STATUSES = ['under_review', 'accepted', 'rejected'] as const;
 export type CustomerUploadStatus = (typeof CUSTOMER_UPLOAD_STATUSES)[number];
 
 export interface CustomerUpload extends BaseEntity {
   customer_id: UUID;
-  sale_id: UUID;
+  /** null for the customer's own papers (NID, photo …), which serve every purchase */
+  sale_id: UUID | null;
+  /** who put it on file: the customer on the portal, or the office (accepted on upload) */
+  source?: 'customer' | 'office' | null;
   kind: CustomerUploadKind;
   title: string;
   note?: string | null;

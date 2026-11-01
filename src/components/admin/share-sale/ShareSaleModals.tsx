@@ -2,19 +2,17 @@
 
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { CalendarPlus, FileSignature, HandCoins, Ticket } from 'lucide-react';
+import { CalendarPlus, HandCoins, Ticket } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Combobox } from '@/components/ui/Combobox';
 import { Field, MoneyInput, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { SHARE_PAYMENT_METHODS, type SharePaymentMethod, type ShareOffering, type ShareSale } from '@/lib/db/types';
-import { addMonths } from '@/lib/domain/booking';
 import {
   FREQUENCY_LABEL,
   SHARE_PAYMENT_METHOD_LABEL,
   allocateSharePayment,
-  buildSchedule,
   formatSharePct,
   maxSharePayable,
   type SaleView,
@@ -186,70 +184,6 @@ export function ReserveModal({ offering, available, onClose }: { offering: Share
           ))}
         </div>
         <p className="text-xs text-ink-muted">The shares are held for {offering.hold_days} days. Sign the agreement before then, or release them back to the offering.</p>
-      </div>
-      <ErrorNote error={error} />
-    </Modal>
-  );
-}
-
-/** Signing writes the schedule: down payment on the day, installments from the first due date. */
-export function SignAgreementModal({ sale, onClose }: { sale: ShareSale; onClose: () => void }) {
-  const { userId } = useMockSession();
-  const today = todayLocal();
-  const step = sale.installment_frequency === 'monthly' ? 1 : 3;
-  const [date, setDate] = useState(today);
-  const [first, setFirst] = useState(addMonths(today, step));
-  const { error, busy, run } = useAction();
-  const rows = sale.installment_count > 0 && first > date ? buildSchedule({ ...sale, agreement_date: date, first_due_date: first }) : [];
-
-  return (
-    <Modal
-      open
-      title="Sign the agreement"
-      subtitle={`${sale.code} · ${sale.shares} shares · ${formatBdt(sale.total_price)}`}
-      icon={FileSignature}
-      onClose={onClose}
-      footer={
-        <>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button disabled={busy} onClick={() => run(() => shareSaleRepository.signAgreement(sale.id, { agreement_date: date, first_due_date: first }, userId), onClose)}>
-            {busy ? 'Saving…' : 'Agreement signed'}
-          </Button>
-        </>
-      }
-    >
-      <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Signed on" required hint="The down payment falls due this day">
-          <TextInput
-            type="date"
-            value={date}
-            max={today}
-            onChange={(e) => {
-              setDate(e.target.value);
-              if (e.target.value) setFirst(addMonths(e.target.value, step));
-            }}
-          />
-        </Field>
-        {sale.installment_count > 0 && (
-          <Field label="First installment due" required>
-            <TextInput type="date" value={first} min={date} onChange={(e) => setFirst(e.target.value)} />
-          </Field>
-        )}
-      </div>
-      <div className="mt-4 rounded-xl border border-hairline bg-white p-4 text-sm">
-        <p className="font-semibold text-ink">The schedule this writes</p>
-        <p className="mt-1 text-ink-muted">
-          Down payment {formatBdt(sale.down_payment)} on {formatDate(date)}
-          {rows.length > 1 && (
-            <>
-              , then {sale.installment_count} {FREQUENCY_LABEL[sale.installment_frequency].toLowerCase()} installments of {formatBdt(rows[1].amount)} from {formatDate(rows[1].due_date)} to{' '}
-              {formatDate(rows[rows.length - 1].due_date)}.
-            </>
-          )}
-        </p>
-        <p className="mt-2 text-xs text-ink-muted">An agreement number (AGR-…) is assigned. The shares count as sold from now on.</p>
       </div>
       <ErrorNote error={error} />
     </Modal>

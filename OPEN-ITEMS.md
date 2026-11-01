@@ -37,7 +37,10 @@ shows on the portal. Investor KYC, nominee and payout bank are edited from
 the purchase page ("Investor details"). Demo: three share-only projects and
 a three-project portfolio for the demo login 01711223344 / 123456.
 
+Signing (plan §4a): a full Sign agreement page records the customer's details as named, the nominee, the payout bank, the signatory, two witnesses, the stamp and the notary, and optionally the down payment. It also holds a papers checklist; the required papers (NID, photo, signed agreement) must be on file before signing. The same papers show on the admin purchase page, on the admin customer page (Documents tab, under "Investor file"), and on the portal Profile and Documents pages.
+
 Still open:
+- Papers are stored as Blobs in this browser's IndexedDB; real file storage comes with the server phase.
 - Sign-in codes are fixed (123456) — a real SMS/email OTP needs a server.
 - Read notifications and open gateway checkouts are kept per browser.
 - "Request a change" on the portal profile is not stored yet.

@@ -198,6 +198,40 @@ The agreement is recorded in the platform with:
 
 Once signed, the reserved shares become **sold** to that customer.
 
+#### Step 4a — What is collected at the signing
+
+The agreement is signed on non-judicial stamp paper, in front of two witnesses, and notarized. At that meeting the office records:
+
+| Recorded | Details |
+|---|---|
+| Customer as named on the agreement | Full name, father's or spouse's name, NID or passport number, date of birth, present and permanent address, e-TIN, profession |
+| Nominee | Name, relation, mobile and NID |
+| Payout bank account | Bank, branch and account number |
+| Signing | Date and place, who signed for the company and their designation, and the attorney's name when someone signs for the customer |
+| Witnesses | Two witnesses: name, NID or mobile, address |
+| Stamp and notary | Stamp paper value and serial number, notarization date and notary |
+| Down payment | When handed over at the table: method and cheque, pay order or deposit reference |
+
+Papers are kept on the customer's file. **Customer papers** are kept once and serve every purchase. **Purchase papers** belong to one agreement.
+
+| Paper | Kept for | Needed to sign |
+|---|---|---|
+| NID / passport copy | Customer | Yes |
+| Passport-size photograph | Customer | Yes |
+| e-TIN certificate | Customer | — |
+| Proof of address | Customer | — |
+| Nominee NID & photo | Customer | When a nominee is named |
+| Bank account proof (cheque leaf or statement) | Customer | — |
+| Signed share purchase agreement | Purchase | Yes |
+| Share allotment letter | Purchase | — |
+| Deed of share ownership (signed) | Purchase | — |
+| Payment receipt / deposit slip | Purchase | — |
+| Post-dated cheques (copies) | Purchase | — |
+| Source of funds declaration | Purchase | — |
+| Power of attorney | Purchase | When someone signs for the customer |
+
+The agreement cannot be marked signed until the required papers are on file. The office scans papers at the signing. The customer can also send their own papers from the Customer Portal, and the office accepts them or sends them back with a reason. Every paper on file appears in the admin portal and on the customer's portal: personal papers under **My profile**, and purchase papers under **Documents**.
+
 ---
 
 ### Step 5 — Customer profile and login

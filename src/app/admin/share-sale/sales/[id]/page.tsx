@@ -4,10 +4,11 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, Award, Check, Download, FileSignature, FileText, HandCoins, IdCard, Undo2, X, XCircle } from 'lucide-react';
+import { ArrowLeft, Award, FileSignature, HandCoins, IdCard, Undo2, XCircle } from 'lucide-react';
 import { SaleBadge } from '@/components/admin/share-sale/bits';
-import { InvestorDetailsModal, RejectUploadModal, UPLOAD_KIND_LABEL, openUpload } from '@/components/admin/share-sale/InboxModals';
-import { ReasonModal, RecordPaymentModal, SignAgreementModal } from '@/components/admin/share-sale/ShareSaleModals';
+import { InvestorDetailsModal } from '@/components/admin/share-sale/InboxModals';
+import { ShareDocumentChecklist } from '@/components/admin/share-sale/ShareDocuments';
+import { ReasonModal, RecordPaymentModal } from '@/components/admin/share-sale/ShareSaleModals';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -16,7 +17,6 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { canEdit } from '@/lib/domain/access';
 import { FREQUENCY_LABEL, SHARE_INSTALLMENT_STATUS_META, SHARE_PAYMENT_METHOD_LABEL, formatSharePct, installmentLabel } from '@/lib/domain/share-sale';
-import type { CustomerUpload } from '@/lib/db/types';
 import { customerUploadRepository, shareSaleOverview, shareSaleRepository } from '@/lib/repositories';
 import { formatBdt, formatDate, formatPhone } from '@/lib/utils/format';
 
@@ -29,7 +29,7 @@ function Line({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-type Dialog = 'sign' | 'pay' | 'release' | 'cancel' | 'undo' | 'certificate' | 'investor' | null;
+type Dialog = 'pay' | 'release' | 'cancel' | 'undo' | 'certificate' | 'investor' | null;
 
 /** One customer's share purchase: the terms, the schedule, every payment and what to do next. */
 export default function ShareSaleDetailPage() {
@@ -37,9 +37,9 @@ export default function ShareSaleDetailPage() {
   const { role } = useMockSession();
   const mayEdit = canEdit(role, 'share_sale');
   const data = useLiveQuery(() => shareSaleOverview(), []);
-  const uploads = useLiveQuery(() => customerUploadRepository.forSale(id), [id]);
+  const customerId = data?.sales.find((r) => r.sale.id === id)?.sale.customer_id;
+  const uploads = useLiveQuery(() => (customerId ? customerUploadRepository.forCustomer(customerId) : Promise.resolve([])), [customerId]);
   const [dialog, setDialog] = useState<Dialog>(null);
-  const [reject, setReject] = useState<CustomerUpload | null>(null);
   const [error, setError] = useState('');
 
   if (!data) return <p className="text-sm text-ink-muted">Loading…</p>;
@@ -90,9 +90,11 @@ export default function ShareSaleDetailPage() {
                 <Button variant="outline" onClick={() => setDialog('release')}>
                   Release shares
                 </Button>
-                <Button onClick={() => setDialog('sign')}>
-                  <FileSignature className="size-4" /> Sign agreement
-                </Button>
+                <Link href={`/admin/share-sale/sales/${s.id}/sign`}>
+                  <Button>
+                    <FileSignature className="size-4" /> Sign agreement
+                  </Button>
+                </Link>
               </>
             )}
             {s.status === 'agreement_signed' && (
@@ -281,50 +283,41 @@ export default function ShareSaleDetailPage() {
         </div>
       )}
 
-      {uploads && uploads.length > 0 && (
-        <Card className="mt-5 p-0">
-          <div className="px-5 pt-5">
-            <CardHeader title="Customer documents" subtitle="Uploaded by the customer on the Customer Portal" />
-          </div>
-          <ul className="divide-y divide-hairline border-t border-hairline">
-            {uploads.map((u) => (
-              <li key={u.id} className="flex flex-wrap items-center gap-3 px-5 py-3 text-sm">
-                <FileText className="size-4 shrink-0 text-ink-muted" />
-                <span className="min-w-0 flex-1">
-                  <span className="block font-medium text-ink">{u.title}</span>
-                  <span className="block text-xs text-ink-muted">
-                    {UPLOAD_KIND_LABEL[u.kind]} · {u.file_name} · {formatDate(u.uploaded_at)}
-                    {u.note ? ` · “${u.note}”` : ''}
-                  </span>
-                  {u.review_note && <span className="block text-xs text-red-600">Sent back: {u.review_note}</span>}
-                </span>
-                <Badge tone={u.status === 'accepted' ? 'green' : u.status === 'rejected' ? 'red' : 'amber'}>
-                  {u.status === 'accepted' ? 'Accepted' : u.status === 'rejected' ? 'Sent back' : 'To review'}
-                </Badge>
-                <span className="flex gap-1.5">
-                  <Button size="sm" variant="ghost" onClick={() => openUpload(u.id)}>
-                    <Download className="size-4" /> Open
-                  </Button>
-                  {mayEdit && u.status === 'under_review' && (
-                    <>
-                      <Button size="sm" variant="outline" onClick={() => customerUploadRepository.accept(u.id)}>
-                        <Check className="size-4" /> Accept
-                      </Button>
-                      <Button size="sm" variant="dangerGhost" onClick={() => setReject(u)}>
-                        <X className="size-4" /> Send back
-                      </Button>
-                    </>
-                  )}
-                </span>
-              </li>
+      {s.signing && (
+        <Card className="mt-5">
+          <CardHeader title="Signing record" subtitle={`Agreement ${s.agreement_no} · signed ${formatDate(s.agreement_date)} at ${s.signing.place}`} />
+          <dl className="grid gap-x-8 divide-y divide-hairline md:grid-cols-2 md:divide-y-0">
+            <Line label="For the company">{[s.signing.company_signatory, s.signing.company_signatory_title].filter(Boolean).join(', ')}</Line>
+            <Line label="For the customer">{s.signing.attorney_name ? `${s.signing.attorney_name} (power of attorney)` : v.customer?.name}</Line>
+            {s.signing.witnesses.map((w, i) => (
+              <Line key={i} label={`Witness ${i + 1}`}>
+                {[w.name, w.id_or_phone, w.address].filter(Boolean).join(' · ')}
+              </Line>
             ))}
-          </ul>
+            <Line label="Stamp paper">{s.signing.stamp_value != null ? `${formatBdt(s.signing.stamp_value)}${s.signing.stamp_serial ? ` · no. ${s.signing.stamp_serial}` : ''}` : '—'}</Line>
+            <Line label="Notarized">{s.signing.notarized_on ? `${formatDate(s.signing.notarized_on)}${s.signing.notary_name ? ` · ${s.signing.notary_name}` : ''}` : '—'}</Line>
+          </dl>
+        </Card>
+      )}
+
+      {uploads && v.customer && (
+        <Card className="mt-5">
+          <CardHeader
+            title="Papers on file"
+            subtitle={`Filed by the office or sent by the customer from the portal. ${s.status === 'reserved' ? 'Required ones are needed to sign.' : 'The customer sees these on their portal.'}`}
+          />
+          <ShareDocumentChecklist
+            uploads={uploads}
+            sale={s}
+            hasNominee={!!v.customer.nominee_name}
+            byAttorney={!!s.signing?.attorney_name}
+            mayEdit={mayEdit}
+            sales={data.sales.filter((r) => r.sale.customer_id === s.customer_id).map((r) => r.sale)}
+          />
         </Card>
       )}
 
       {dialog === 'investor' && v.customer && <InvestorDetailsModal customer={v.customer} onClose={() => setDialog(null)} />}
-      {reject && <RejectUploadModal upload={reject} onClose={() => setReject(null)} />}
-      {dialog === 'sign' && <SignAgreementModal sale={s} onClose={() => setDialog(null)} />}
       {dialog === 'pay' && <RecordPaymentModal view={v} onClose={() => setDialog(null)} />}
       {(dialog === 'release' || dialog === 'cancel') && <ReasonModal sale={s} kind={dialog} onClose={() => setDialog(null)} />}
       <ConfirmDialog

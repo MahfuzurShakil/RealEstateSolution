@@ -11,7 +11,8 @@ import {
   type OfferingInput,
 } from '../repositories';
 import { getDb } from './database';
-import type { Customer, ProjectStatus, SharePaymentMethod } from './types';
+import type { Customer, CustomerUploadKind, ProjectStatus, SharePaymentMethod } from './types';
+import { SHARE_DOC_META } from '../domain/share-documents';
 import { newId, nextCode, nowIso } from '../utils/id';
 import { todayLocal } from '../utils/format';
 
@@ -53,6 +54,24 @@ interface DemoBuyer {
   /** a part payment on the next installment, [amount, days ago] */
   part?: [number, number];
 }
+
+/** father's or spouse's name and present address, as the agreements name the buyers */
+const FAMILY: Record<string, string> = {
+  '01711223344': 'Arif Rahman',
+  '01819001122': 'Mosharraf Hossain',
+  '01915224466': 'Abdul Jalil',
+  '01552778899': 'Fazlul Karim',
+  '01712908070': 'Nurul Hasan',
+  '01913407788': 'Jahangir Alam',
+};
+const ADDRESS: Record<string, string> = {
+  '01711223344': 'House 27, Road 104, Gulshan 2, Dhaka 1212',
+  '01819001122': 'Flat 6B, House 12, Road 7, Dhanmondi, Dhaka 1205',
+  '01915224466': 'House 45, Sector 7, Uttara, Dhaka 1230',
+  '01552778899': 'Holding 112, College Road, Gazipur',
+  '01712908070': 'House 9, Road 11, Banani, Dhaka 1213',
+  '01913407788': 'House 3, Block C, Bashundhara R/A, Dhaka 1229',
+};
 
 const FARHANA = { name: 'Farhana Rahman', phone: '01711223344', email: 'farhana.rahman@example.com' };
 
@@ -170,6 +189,24 @@ export async function seedDemoShareSale(projectIds: Map<string, string>, created
 
   /** customers by phone, so a buyer in several rounds stays one customer */
   const customers = new Map<string, string>();
+  const filed = new Set<string>();
+
+  /** A scanned paper the office put on the file that day. */
+  async function file(customerId: string, saleId: string | null, kind: CustomerUploadKind, on: string) {
+    const label = SHARE_DOC_META[kind].label;
+    const row = await customerUploadRepository.officeUpload(
+      { customer_id: customerId, sale_id: saleId, kind, file: samplePdf(label), file_name: `${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.pdf` },
+      createdBy,
+    );
+    await getDb().customer_uploads.update(row.id, { uploaded_at: `${on}T11:00:00.000Z`, reviewed_on: on });
+  }
+
+  /** Customer papers are filed once and serve every purchase. */
+  async function fileOnce(customerId: string, kind: CustomerUploadKind, on: string) {
+    if (filed.has(`${customerId}:${kind}`)) return;
+    filed.add(`${customerId}:${kind}`);
+    await file(customerId, null, kind, on);
+  }
 
   async function sell(offeringId: string, buyers: DemoBuyer[]) {
     for (const b of buyers) {
@@ -187,8 +224,39 @@ export async function seedDemoShareSale(projectIds: Map<string, string>, created
         createdBy,
       );
       customers.set(b.phone, sale.customer_id);
-      if (b.signed_ago === null) continue;
-      await shareSaleRepository.signAgreement(sale.id, { agreement_date: ago(b.signed_ago), first_due_date: addDays(ago(b.signed_ago), 30) }, createdBy);
+      if (b.signed_ago === null) {
+        // a reservation half filed: the NID is in, the photo and the signed agreement are not
+        await fileOnce(sale.customer_id, 'id_document', ago(b.reserved_ago));
+        continue;
+      }
+      // what the office scans at the signing table (plan §4a)
+      const signedOn = ago(b.signed_ago);
+      await fileOnce(sale.customer_id, 'id_document', signedOn);
+      await fileOnce(sale.customer_id, 'photo', signedOn);
+      await file(sale.customer_id, sale.id, 'signed_copy', signedOn);
+      await file(sale.customer_id, sale.id, 'allotment_letter', signedOn);
+      await shareSaleRepository.signAgreement(
+        sale.id,
+        {
+          agreement_date: signedOn,
+          first_due_date: addDays(signedOn, 30),
+          customer: { father_or_spouse_name: FAMILY[b.phone] ?? 'Abdul Karim', nid: `19${b.phone.slice(-11)}`, address: ADDRESS[b.phone] ?? 'Dhaka', kyc_verified_on: signedOn },
+          signing: {
+            place: 'Company office, Gulshan Avenue, Dhaka',
+            company_signatory: 'Mahfuzur Rahman',
+            company_signatory_title: 'Managing Director',
+            witnesses: [
+              { name: 'Shirin Sultana', id_or_phone: '01711-556600', address: 'Company office, Gulshan' },
+              { name: 'Kamal Hossain', id_or_phone: '01819-447700', address: 'Banani, Dhaka' },
+            ],
+            stamp_value: 300,
+            stamp_serial: `NJ-${sale.code.slice(-3)}${b.signed_ago}`,
+            notarized_on: signedOn,
+            notary_name: 'Adv. Rafiqul Islam, Notary Public, Dhaka',
+          },
+        },
+        createdBy,
+      );
       const view = await shareSaleRepository.view(sale.id);
       for (const i of view!.schedule.filter((x) => x.seq <= b.paid_through && x.due_date <= today)) {
         const online = i.seq > 0 && (b.method === 'bkash' || b.method === 'nagad');
@@ -216,6 +284,7 @@ export async function seedDemoShareSale(projectIds: Map<string, string>, created
         const last = (await shareSaleRepository.view(sale.id))!.schedule.at(-1)!.due_date;
         const issued = addDays(last, 5);
         await shareSaleRepository.issueCertificate(sale.id, issued < today ? issued : today);
+        await file(sale.customer_id, sale.id, 'deed', issued < today ? issued : today);
       }
     }
   }
@@ -356,15 +425,16 @@ async function seedPortalActivity(
   await shareRequestRepository.reserve(reserved.id, { shares: 4, down_payment_pct: 20, installment_count: 20 }, createdBy);
 
   // documents: the demo login's NID accepted; a payment slip waiting for review
-  const upload = async (phone: string, saleOffering: string, kind: 'id_document' | 'payment_proof', title: string, note: string | null, daysAgo: number, accepted: boolean) => {
+  const upload = async (phone: string, saleOffering: string | null, kind: CustomerUploadKind, title: string, note: string | null, daysAgo: number, accepted: boolean) => {
     const customerId = customers.get(phone)!;
-    const sale = (await db.share_sales.where('customer_id').equals(customerId).toArray()).find((s) => s.offering_id === saleOffering)!;
+    const sale = saleOffering ? (await db.share_sales.where('customer_id').equals(customerId).toArray()).find((s) => s.offering_id === saleOffering)! : null;
     const ts = `${ago(daysAgo)}T09:15:00.000Z`;
     const id = newId();
     await db.customer_uploads.add({
       id,
       customer_id: customerId,
-      sale_id: sale.id,
+      sale_id: sale?.id ?? null,
+      source: 'customer',
       kind,
       title,
       note,
@@ -384,7 +454,7 @@ async function seedPortalActivity(
     await db.customer_uploads.update(id, { file_size: blob.size });
     if (accepted) await customerUploadRepository.accept(id);
   };
-  await upload(FARHANA.phone, rounds.round1, 'id_document', 'NID copy', 'Both sides on one page.', 120, true);
+  await upload(FARHANA.phone, null, 'tin', 'e-TIN certificate', 'Downloaded from the NBR site.', 3, false);
   await upload('01819001122', rounds.round1, 'payment_proof', 'Bank deposit slip', 'Installment 4 paid at City Bank, Gulshan.', 2, false);
 }
 

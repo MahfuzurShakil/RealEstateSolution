@@ -63,6 +63,7 @@ export function buildDemoData(today: string): DemoData {
     code: 'CUS-2026-0148',
     customer_type: 'investor',
     full_name: 'Farhana Rahman',
+    father_or_spouse_name: 'Arif Rahman',
     email: DEMO_LOGIN.email,
     phone: DEMO_LOGIN.phone,
     nid_masked: '•••• •••• 4821',

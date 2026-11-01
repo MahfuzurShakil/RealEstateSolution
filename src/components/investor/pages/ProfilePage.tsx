@@ -7,6 +7,7 @@ import { CUSTOMER_TYPE_LABEL, formatDay } from '@/lib/domain/investor-portal';
 import { formatPhone } from '@/lib/utils/format';
 import { useCustomerPortal } from '../CustomerPortalProvider';
 import { CustomerTypeBadge, DetailList, PageHeading, Panel } from '../ui';
+import { PersonalDocuments } from './DocumentsPage';
 
 export function ProfilePage() {
   const { snapshot } = useCustomerPortal();
@@ -66,6 +67,7 @@ export function ProfilePage() {
           <DetailList
             rows={[
               ['Full name', c.full_name],
+              ['Father’s / spouse’s name', or(c.father_or_spouse_name)],
               ['Customer type', CUSTOMER_TYPE_LABEL[c.customer_type]],
               ['Date of birth', or(c.date_of_birth, formatDay(c.date_of_birth))],
               ['National ID', or(c.nid_masked, <span className="tabular">{c.nid_masked}</span>)],
@@ -110,6 +112,8 @@ export function ProfilePage() {
           )}
         </Panel>
       </div>
+
+      <PersonalDocuments />
 
       <div className="flex gap-3 rounded-2xl bg-site-soft p-5 text-sm text-site-muted">
         <LockKeyhole className="mt-0.5 size-5 shrink-0 text-site-primary" aria-hidden />

@@ -15,6 +15,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
+import { CustomerShareFile } from '@/components/admin/share-sale/ShareDocuments';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -24,7 +25,9 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { BOOKING_STATUS_META } from '@/lib/domain/booking';
 import { LEAD_STATUS_META } from '@/lib/domain/lead';
-import { customerRepository } from '@/lib/repositories';
+import { useMockSession } from '@/lib/auth/mock-session';
+import { canEdit } from '@/lib/domain/access';
+import { customerRepository, customerShareFile } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate, formatPhone } from '@/lib/utils/format';
 
@@ -48,6 +51,8 @@ export default function CustomerDetailPage() {
   const [deleteError, setDeleteError] = useState('');
 
   const customer = useLiveQuery(() => customerRepository.getWithRelations(id), [id]);
+  const shareFile = useLiveQuery(() => customerShareFile(id), [id]);
+  const { role } = useMockSession();
 
   if (customer === undefined) return <p className="text-sm text-ink-muted">Loading…</p>;
   if (!customer) {
@@ -244,6 +249,13 @@ export default function CustomerDetailPage() {
                   ))}
                 </ul>
               )}
+            </Card>
+          )}
+
+          {tab === 'documents' && shareFile && (shareFile.sales.length > 0 || shareFile.uploads.length > 0 || customer.customer_type === 'investor') && (
+            <Card className="mb-5">
+              <CardHeader title="Investor file" subtitle="Share purchase papers — the customer sees these on their Customer Portal." />
+              <CustomerShareFile customerId={customer.id} uploads={shareFile.uploads} sales={shareFile.sales} mayEdit={canEdit(role, 'share_sale')} />
             </Card>
           )}
 

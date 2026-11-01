@@ -57,6 +57,11 @@ beforeAll(async () => {
     offering_id: 'o1', project_id: 'p1', shares: 5, share_pct: 0.5, price_per_share: 1_554, total_price: 7_770, down_payment: 1_554, installment_count: 4,
     installment_frequency: 'monthly', reserved_on: '2025-12-02', hold_until: '2025-12-09', agreement_no: 'AGR-2026-001', agreement_date: '2025-12-05',
     first_due_date: '2026-01-05', status: 'agreement_signed', status_note: 'LEAK-status-note', notes: 'LEAK-sale-notes',
+    signing: {
+      place: 'Gulshan office', company_signatory: 'Signatory', company_signatory_title: null, stamp_value: 300, stamp_serial: 'LEAK-stamp-serial',
+      notarized_on: '2025-12-05', notary_name: 'LEAK-notary', attorney_name: null,
+      witnesses: [{ name: 'Witness One', id_or_phone: 'LEAK-777321', address: 'LEAK-witness-address' }, { name: 'Witness Two', id_or_phone: null, address: null }],
+    },
   };
   await db.share_sales.bulkAdd(rows([
     { ...base('s1'), code: 'SHR-2026-001', customer_id: 'c1', ...sale },
@@ -76,6 +81,8 @@ beforeAll(async () => {
   ]));
   await db.customer_uploads.bulkAdd(rows([
     { ...base('u1'), customer_id: 'c1', sale_id: 's1', kind: 'id_document', title: 'NID copy', note: null, file_name: 'nid.pdf', file_type: 'application/pdf', file_size: 10, uploaded_at: NOW, status: 'accepted', review_note: 'LEAK-review' },
+    { ...base('u2'), customer_id: 'c1', sale_id: null, source: 'office', kind: 'photo', title: 'Photograph', note: null, file_name: 'photo.pdf', file_type: 'application/pdf', file_size: 10, uploaded_at: NOW, status: 'accepted', review_note: null },
+    { ...base('u3'), customer_id: 'c2', sale_id: null, source: 'office', kind: 'photo', title: 'LEAK-other-customer-photo', note: null, file_name: 'x.pdf', file_type: 'application/pdf', file_size: 10, uploaded_at: NOW, status: 'accepted', review_note: null },
   ]));
 });
 
@@ -97,6 +104,8 @@ describe('Customer Portal repository', () => {
     expect(snap.rounds[0].valuation).toBe(1_554_003);
     expect(snap.share_requests[0].office_note).toBeNull();
     expect(viewPortfolio(snap).paid).toBe(1_554);
+    expect(snap.holdings[0].signing?.witnesses).toEqual(['Witness One', 'Witness Two']);
+    expect(snap.uploads.find((u) => u.id === 'u2')).toMatchObject({ holding_code: null, source: 'office' });
     expect(JSON.stringify(snap)).not.toMatch(LEAK);
   });
 });
