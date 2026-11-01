@@ -114,6 +114,15 @@ export {
 } from './payment.repository';
 export { bookingLedgerRepository } from './booking-ledger.repository';
 export {
+  customerPortfolioRepository,
+  type CustomerPaymentRow,
+  type CustomerPortfolio,
+  type CustomerRole,
+  type HomeHolding,
+  type MoneyTotals,
+  type ShareHolding,
+} from './customer-portfolio.repository';
+export {
   towerWorkItemRepository,
   siteProgressUpdateRepository,
   materialRequestRepository,

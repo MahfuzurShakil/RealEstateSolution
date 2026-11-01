@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { BriefcaseBusiness, Mail, Phone, Plus, Search, UserRound } from 'lucide-react';
+import { BriefcaseBusiness, Building2, Mail, PieChart, Phone, Plus, Search, UserRound } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -13,11 +13,17 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Pagination, usePagination } from '@/components/ui/Pagination';
 import { ResultCard } from '@/components/ui/ResultCard';
 import { ResultsLayout, ViewToggle, type ViewMode } from '@/components/ui/ViewToggle';
-import { BOOKING_STATUS_META } from '@/lib/domain/booking';
-import { bookingRepository, customerRepository } from '@/lib/repositories';
+import { customerPortfolioRepository, customerRepository, type CustomerRole } from '@/lib/repositories';
+import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate, formatPhone } from '@/lib/utils/format';
 
 type SortKey = 'newest' | 'oldest' | 'name' | 'value_high' | 'bookings';
+type TypeTab = 'all' | CustomerRole;
+
+const ROLE_BADGE: Record<CustomerRole, { label: string; tone: 'teal' | 'blue' }> = {
+  buyer: { label: 'Buyer', tone: 'teal' },
+  investor: { label: 'Investor', tone: 'blue' },
+};
 type BookingState = 'any' | 'none' | 'active' | 'confirmed';
 
 const EMPTY_FILTERS = {
@@ -28,8 +34,16 @@ const EMPTY_FILTERS = {
   booking_state: 'any' as BookingState,
 };
 
-/** Customer list — Design Reference A.7, profile-style cards (A.10). */
+/**
+ * Customer list — Design Reference A.7, profile-style cards (A.10).
+ *
+ * BUYER-PORTAL-PLAN.md §4: both kinds of customer in one list, with a tab per
+ * type. A customer is a Buyer while they hold a booking and an Investor while
+ * they hold shares — someone with both shows under both tabs — and each tab's
+ * cards show the money of that kind of holding.
+ */
 export default function CustomersListPage() {
+  const [tab, setTab] = useState<TypeTab>('all');
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [sort, setSort] = useState<SortKey>('newest');
   const [view, setView] = useState<ViewMode>('grid');
@@ -44,27 +58,29 @@ export default function CustomersListPage() {
     [filters.name, filters.phone, filters.nid, filters.profession, filters.booking_state],
   );
   const allCustomers = useLiveQuery(() => customerRepository.getAll(), []);
-  const bookings = useLiveQuery(() => bookingRepository.getAll(), []);
+  const portfolios = useLiveQuery(() => customerPortfolioRepository.all(), []);
 
-  /** Booking roll-up per customer, so a card can show what they hold. */
-  const statsByCustomer = useMemo(() => {
-    const map = new Map<string, { count: number; value: number; confirmed: number }>();
-    for (const booking of bookings ?? []) {
-      const entry = map.get(booking.customer_id) ?? { count: 0, value: 0, confirmed: 0 };
-      if (booking.status !== 'cancelled') {
-        entry.count += 1;
-        entry.value += Number(booking.final_price) || 0;
-        if (booking.status === 'confirmed') entry.confirmed += 1;
-      }
-      map.set(booking.customer_id, entry);
-    }
-    return map;
-  }, [bookings]);
+  const counts = useMemo(() => {
+    const c = { all: customers?.length ?? 0, buyer: 0, investor: 0 };
+    for (const x of customers ?? []) for (const r of portfolios?.get(x.id)?.roles ?? []) c[r] += 1;
+    return c;
+  }, [customers, portfolios]);
+
+  /** the money a card and the sort read: the tab's kind of holding, or both */
+  const moneyOf = (id: string) => {
+    const p = portfolios?.get(id);
+    if (!p) return undefined;
+    return tab === 'buyer' ? p.homes : tab === 'investor' ? p.shares : p.total;
+  };
 
   const rows = useMemo(() => {
-    const list = [...(customers ?? [])];
-    const value = (id: string) => statsByCustomer.get(id)?.value ?? 0;
-    const count = (id: string) => statsByCustomer.get(id)?.count ?? 0;
+    const list = (customers ?? []).filter((c) => tab === 'all' || portfolios?.get(c.id)?.roles.includes(tab));
+    const pick = (id: string) => {
+      const p = portfolios?.get(id);
+      return tab === 'buyer' ? p?.homes : tab === 'investor' ? p?.shares : p?.total;
+    };
+    const value = (id: string) => pick(id)?.value ?? 0;
+    const count = (id: string) => pick(id)?.count ?? 0;
     switch (sort) {
       case 'oldest':
         return list.sort((a, b) => a.created_at.localeCompare(b.created_at));
@@ -77,7 +93,7 @@ export default function CustomersListPage() {
       default:
         return list.sort((a, b) => b.created_at.localeCompare(a.created_at));
     }
-  }, [customers, sort, statsByCustomer]);
+  }, [customers, sort, portfolios, tab]);
 
   const paged = usePagination(rows);
 
@@ -91,7 +107,7 @@ export default function CustomersListPage() {
     <>
       <PageHeader
         title="Customers"
-        subtitle="Buyers converted from leads, with the units they hold."
+        subtitle="Buyers of flats and plots, and investors holding project shares — one person can be both."
         action={
           <Link href="/admin/customers/new">
             <Button>
@@ -170,6 +186,28 @@ export default function CustomersListPage() {
         </aside>
 
         <section className="min-w-0">
+          <div className="mb-4 flex flex-wrap gap-1 rounded-xl border border-hairline bg-white p-1">
+            {(
+              [
+                ['all', 'All customers'],
+                ['buyer', 'Buyers'],
+                ['investor', 'Investors'],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setTab(key)}
+                className={cn(
+                  'rounded-lg px-4 py-2 text-sm font-medium transition-colors',
+                  tab === key ? 'bg-admin-500 text-white' : 'text-ink-muted hover:bg-admin-50 hover:text-admin-700',
+                )}
+              >
+                {label} <span className={cn('ml-1 text-xs', tab === key ? 'text-white/80' : 'text-ink-muted')}>{counts[key]}</span>
+              </button>
+            ))}
+          </div>
+
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-ink-muted">
               {loading
@@ -186,8 +224,8 @@ export default function CustomersListPage() {
                 <option value="newest">Newest first</option>
                 <option value="oldest">Oldest first</option>
                 <option value="name">Name A–Z</option>
-                <option value="value_high">Booking value</option>
-                <option value="bookings">Most bookings</option>
+                <option value="value_high">Highest value</option>
+                <option value="bookings">Most holdings</option>
               </SelectInput>
             </div>
           </div>
@@ -228,7 +266,8 @@ export default function CustomersListPage() {
             <>
               <ResultsLayout view={view}>
                 {paged.pageRows.map((customer) => {
-                  const stats = statsByCustomer.get(customer.id);
+                  const p = portfolios?.get(customer.id);
+                  const m = moneyOf(customer.id);
                   return (
                     <ResultCard
                       key={customer.id}
@@ -251,18 +290,26 @@ export default function CustomersListPage() {
                       }
                       leading={
                         <span className="grid size-11 shrink-0 place-items-center rounded-full bg-admin-50 text-admin-600">
-                          <UserRound className="size-5" />
+                          {p?.roles.length === 1 && p.roles[0] === 'investor' ? (
+                            <PieChart className="size-5" />
+                          ) : p?.roles.length === 1 && p.roles[0] === 'buyer' ? (
+                            <Building2 className="size-5" />
+                          ) : (
+                            <UserRound className="size-5" />
+                          )}
                         </span>
                       }
                       status={
-                        stats && stats.count > 0 ? (
-                          <Badge tone={BOOKING_STATUS_META.confirmed.tone}>
-                            {stats.confirmed > 0
-                              ? `${stats.confirmed} confirmed`
-                              : `${stats.count} booking${stats.count === 1 ? '' : 's'}`}
-                          </Badge>
+                        p && p.roles.length > 0 ? (
+                          <span className="flex flex-wrap gap-1">
+                            {p.roles.map((r) => (
+                              <Badge key={r} tone={ROLE_BADGE[r].tone}>
+                                {ROLE_BADGE[r].label}
+                              </Badge>
+                            ))}
+                          </span>
                         ) : (
-                          <Badge tone="amber">No active booking</Badge>
+                          <Badge tone="amber">Nothing held yet</Badge>
                         )
                       }
                       footer={`Added ${formatDate(customer.created_at)}`}
@@ -281,12 +328,18 @@ export default function CustomersListPage() {
                             </Badge>
                           )}
                           {customer.nid && <Badge>NID {customer.nid}</Badge>}
-                          {stats && stats.count > 0 && (
+                          {m && m.count > 0 && (
                             <>
                               <Badge tone="teal">
-                                {stats.count} booking{stats.count === 1 ? '' : 's'}
+                                {tab === 'investor'
+                                  ? `${p?.shares.shares ?? 0} shares · ${m.count} purchase${m.count === 1 ? '' : 's'}`
+                                  : tab === 'buyer'
+                                    ? `${m.count} unit${m.count === 1 ? '' : 's'}`
+                                    : `${m.count} holding${m.count === 1 ? '' : 's'}`}
                               </Badge>
-                              <Badge>{formatBdt(stats.value )}</Badge>
+                              <Badge>{formatBdt(m.value)}</Badge>
+                              <Badge tone="green">{formatBdt(m.received)} paid</Badge>
+                              {m.overdue > 0.5 && <Badge tone="red">{formatBdt(m.overdue)} overdue</Badge>}
                             </>
                           )}
                         </>

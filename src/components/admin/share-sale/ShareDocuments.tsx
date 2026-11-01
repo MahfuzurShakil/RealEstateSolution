@@ -456,8 +456,20 @@ export function ShareDocumentChecklist({
   );
 }
 
-/** A customer's whole investor file, grouped: their own papers, then each purchase's. */
-export function CustomerShareFile({ customerId, uploads, sales, mayEdit }: { customerId: string; uploads: CustomerUpload[]; sales: Pick<ShareSale, 'id' | 'code'>[]; mayEdit: boolean }) {
+/** A customer's whole file, grouped: their own papers, each share purchase's, then each booking's (BUYER-PORTAL-PLAN.md §4). */
+export function CustomerShareFile({
+  customerId,
+  uploads,
+  sales,
+  bookings = [],
+  mayEdit,
+}: {
+  customerId: string;
+  uploads: CustomerUpload[];
+  sales: Pick<ShareSale, 'id' | 'code'>[];
+  bookings?: { id: string; code: string }[];
+  mayEdit: boolean;
+}) {
   const [adding, setAdding] = useState(false);
   const [reject, setReject] = useState<CustomerUpload | null>(null);
   const own = uploads.filter((u) => shareDocScope(u.kind) === 'customer');
@@ -491,6 +503,7 @@ export function CustomerShareFile({ customerId, uploads, sales, mayEdit }: { cus
       )}
       {block('Customer papers', own)}
       {sales.map((s) => block(`Purchase ${s.code}`, uploads.filter((u) => u.sale_id === s.id && shareDocScope(u.kind) === 'purchase')))}
+      {bookings.map((b) => block(`Booking ${b.code}`, uploads.filter((u) => u.booking_id === b.id && shareDocScope(u.kind) === 'purchase')))}
       {adding && <OfficeUploadModal customerId={customerId} sales={sales} kind={sales.length ? 'signed_copy' : 'id_document'} onClose={() => setAdding(false)} />}
       {reject && <RejectUploadModal upload={reject} onClose={() => setReject(null)} />}
     </div>
