@@ -270,3 +270,18 @@ export {
 } from './website-content.repository';
 export { landOfferRepository } from './land-offer.repository';
 export { blogRepository, DuplicateSlugError, slugify } from './blog.repository';
+export {
+  shareOfferingRepository,
+  shareSaleRepository,
+  sharePaymentRepository,
+  shareInstallmentRepository,
+  shareSaleOverview,
+  projectOwnership,
+  type OfferingInput,
+  type OfferingRow,
+  type OwnershipRow,
+  type PaymentInput as SharePaymentInput,
+  type ReserveInput,
+  type SaleRow,
+  type ShareSaleOverview,
+} from './share-sale.repository';

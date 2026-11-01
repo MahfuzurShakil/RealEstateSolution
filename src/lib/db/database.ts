@@ -5,6 +5,10 @@ import { backfillMaterialItems } from './backfill-material-items';
 import type {
   Award,
   BlogPost,
+  ShareInstallment,
+  ShareOffering,
+  SharePayment,
+  ShareSale,
   LandOffer,
   FaqItem,
   TeamMember,
@@ -182,6 +186,12 @@ export class AppDatabase extends Dexie {
   faq_items!: EntityTable<FaqItem, 'id'>;
   land_offers!: EntityTable<LandOffer, 'id'>;
   blog_posts!: EntityTable<BlogPost, 'id'>;
+
+  // Share Sale (PROJECT-SHARE-SALE-PLAN.md) — v43
+  share_offerings!: EntityTable<ShareOffering, 'id'>;
+  share_sales!: EntityTable<ShareSale, 'id'>;
+  share_installments!: EntityTable<ShareInstallment, 'id'>;
+  share_payments!: EntityTable<SharePayment, 'id'>;
 
   constructor() {
     super('realestate_platform');
@@ -952,6 +962,18 @@ export class AppDatabase extends Dexie {
     // v42 — blog posts (Public Portal v2.0 §2.3, W9): slug unique, status and date indexed
     this.version(42).stores({
       blog_posts: 'id, &slug, status, published_at',
+    });
+
+    /*
+     * v43 — Share Sale (PROJECT-SHARE-SALE-PLAN.md, Phase 1): offerings with
+     * their valuation (NAV + premium), each customer's purchase, its
+     * installment schedule and the payments recorded against it.
+     */
+    this.version(43).stores({
+      share_offerings: 'id, &code, project_id, status',
+      share_sales: 'id, &code, offering_id, project_id, customer_id, status',
+      share_installments: 'id, sale_id, due_date',
+      share_payments: 'id, &code, sale_id, paid_on',
     });
   }
 }

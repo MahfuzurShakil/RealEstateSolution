@@ -7,6 +7,7 @@ import {
   Globe,
   HardHat,
   LayoutDashboard,
+  PieChart,
   Map,
   Package,
   UserRound,
@@ -98,6 +99,18 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Customers', href: '/admin/customers', module: 'booking' },
       // SALES-FLOW-PLAN.md S5 — who owes what against their agreement, in every purchase mode
       { label: 'Collections', href: '/admin/collections', module: 'finance_collection' },
+    ],
+  },
+  /*
+   * PROJECT-SHARE-SALE-PLAN.md: once a project is set up, the owner sells part
+   * of it as shares — offerings first, then each customer's purchase.
+   */
+  {
+    label: 'Share Sale',
+    icon: PieChart,
+    items: [
+      { label: 'Share Offerings', href: '/admin/share-sale', module: 'share_sale' },
+      { label: 'Investors & Dues', href: '/admin/share-sale/investors', module: 'share_sale' },
     ],
   },
   /*

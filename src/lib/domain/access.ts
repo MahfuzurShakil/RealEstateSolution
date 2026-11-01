@@ -124,6 +124,7 @@ export const MODULE_KEYS = [
   'master_data',
   'user_management',
   'website',
+  'share_sale',
 ] as const;
 export type ModuleKey = (typeof MODULE_KEYS)[number];
 
@@ -143,6 +144,7 @@ export const MODULE_LABEL: Record<ModuleKey, string> = {
   master_data: 'Master Data / Settings',
   user_management: 'User Management',
   website: 'Website (content & blog)',
+  share_sale: 'Share Sale (offerings & investors)',
 };
 
 const F: Permission = { level: 'full' };
@@ -255,6 +257,16 @@ export const PERMISSION_MATRIX: Record<ModuleKey, Record<UserRole, Permission>> 
     sales_executive: N, sales_manager: N, head_of_sales: N,
     site_manager: N, procurement: N, accounts: N,
   },
+  /*
+   * PROJECT-SHARE-SALE-PLAN.md: management values the project and opens
+   * offerings; sales reserves shares and signs customers; accounts records
+   * their payments.
+   */
+  share_sale: {
+    super_admin: F, management: F, land_team: N, project_manager: V,
+    sales_executive: V, sales_manager: F, head_of_sales: F,
+    site_manager: N, procurement: N, accounts: F,
+  },
 };
 
 export function permissionFor(role: UserRole, module: ModuleKey): Permission {
@@ -352,6 +364,7 @@ const ROUTE_MODULES: Array<[string, ModuleKey]> = [
   ['/admin/leads', 'crm'],
   ['/admin/bookings', 'booking'],
   ['/admin/customers', 'booking'],
+  ['/admin/share-sale', 'share_sale'],
   ['/admin/site-progress', 'site_progress'],
   ['/admin/material-requests', 'material_request'],
   ['/admin/purchase-orders', 'procurement'],

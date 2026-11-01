@@ -19,6 +19,24 @@ full defect list is in `ANALYSIS-REPORT_2026-09-02.md`.
 
 ---
 
+## 0t. Share Sale — admin module and Customer Portal feedback (2026-11-01)
+
+Built: Customer Portal feedback (multi-project due card, payment landing grid,
+New opportunities with Buy shares requests, customer uploads) and the admin
+Share Sale menu — offerings (NAV + premium valuation, % offered, share count,
+validity days, installment limits), reservations, agreements with generated
+schedules, offline payments, certificates, Investors & Dues (Dexie v43).
+
+Still open:
+- The Customer Portal still reads its own mock repository. Next: a public
+  investor repository over `share_sales` / `share_installments` /
+  `share_payments` so the portal shows what admin records.
+- Purchase requests and document uploads from the portal do not reach admin
+  yet (needs the above, plus a review inbox for uploads).
+- Share payments are not posted to a bank account or the Fund ledger.
+- Reminders / late-fee notices (plan §4 step 8) and share transfer are later phases.
+- Cancelling a signed purchase records no refund; refunds stay outside the screen.
+
 ## 0s. Platform replan, Phase 1 — Project & Land (2026-10-07)
 
 `PLATFORM-REPLAN.md` reorganises the platform into one project-centred

@@ -1673,6 +1673,8 @@ export interface Customer extends BaseEntity {
   profession?: string | null;
   /** which lead this customer was converted from, for traceability */
   lead_id?: UUID | null;
+  /** v43 — Share Sale: `investor` for share buyers; unset means a unit/plot buyer */
+  customer_type?: CustomerType | null;
 }
 
 /**
@@ -3121,3 +3123,131 @@ export interface BlogPost extends BaseEntity {
 
 /** Document types for entity_type = 'blog_post' (§2.3) */
 export const BLOG_POST_DOCUMENT_TYPES = ['cover_image', 'content_image', 'other'] as const;
+
+/* ------------------------------------------------------------------ *
+ * Share Sale (PROJECT-SHARE-SALE-PLAN.md, Phase 1) — v43
+ *
+ * After a project is set up, the owner sells part of it as equal shares.
+ * An offering (a "round") fixes the valuation — net asset value plus a
+ * premium — the % of the project going to the market, how many shares that
+ * is split into, how many days the offer stays open and the longest
+ * installment plan a buyer may take. Each customer's purchase is a sale with
+ * its own schedule; payments are recorded against it.
+ * ------------------------------------------------------------------ */
+
+/** `investor` = a customer who buys project shares (plan §2); `buyer` = units and plots. */
+export const CUSTOMER_TYPES = ['buyer', 'investor'] as const;
+export type CustomerType = (typeof CUSTOMER_TYPES)[number];
+
+export const SHARE_OFFERING_STATUSES = ['draft', 'open', 'closed', 'cancelled'] as const;
+export type ShareOfferingStatus = (typeof SHARE_OFFERING_STATUSES)[number];
+
+export const SHARE_FREQUENCIES = ['monthly', 'quarterly'] as const;
+export type ShareFrequency = (typeof SHARE_FREQUENCIES)[number];
+
+export interface ShareOffering extends BaseEntity {
+  code: string;                       // SHO-2026-001
+  project_id: UUID;
+  /** 1 for the project's first offering, then 2, 3… */
+  round_no: number;
+  /** what the project's assets are worth less what it owes */
+  net_asset_value: number;
+  /** what the owner adds on top: brand, location, expected income */
+  premium_value: number;
+  /** NAV + premium — the value of 100% of the project in this offering */
+  valuation: number;
+  valuation_date: ISODate;
+  /** % of the whole project offered to the market */
+  offered_pct: number;
+  /** how many equal shares the offered % is split into */
+  total_shares: number;
+  /** ownership one share carries, in % (offered_pct ÷ total_shares) */
+  share_pct: number;
+  /** valuation × share_pct, rounded to the taka */
+  price_per_share: number;
+  /** how many days the offer stays open once opened */
+  validity_days: number;
+  opens_on?: ISODate | null;
+  /** opens_on + validity_days; set when the offering is opened */
+  closes_on?: ISODate | null;
+  /** per customer */
+  min_shares: number;
+  max_shares: number;
+  /** the least down payment accepted, % of the price */
+  min_down_payment_pct: number;
+  /** the longest installment plan offered after the down payment */
+  max_installments: number;
+  installment_frequency: ShareFrequency;
+  /** % of an installment charged once it is more than `grace_days` late */
+  late_fee_pct: number;
+  grace_days: number;
+  /** how long reserved shares are held for a customer before the agreement */
+  hold_days: number;
+  status: ShareOfferingStatus;
+  notes?: string | null;
+}
+
+/**
+ * Stored stages of one purchase (plan §6). "Paying" and "overdue" are read
+ * off the schedule, not stored.
+ */
+export const SHARE_SALE_STATUSES = ['reserved', 'agreement_signed', 'fully_paid', 'released', 'cancelled'] as const;
+export type ShareSaleStatus = (typeof SHARE_SALE_STATUSES)[number];
+
+export interface ShareSale extends BaseEntity {
+  code: string;                       // SHR-2026-001
+  offering_id: UUID;
+  project_id: UUID;
+  customer_id: UUID;
+  shares: number;
+  share_pct: number;
+  price_per_share: number;
+  total_price: number;
+  down_payment: number;
+  /** after the down payment; 0 = the whole price at signing */
+  installment_count: number;
+  installment_frequency: ShareFrequency;
+  reserved_on: ISODate;
+  hold_until: ISODate;
+  agreement_no?: string | null;       // AGR-2026-001
+  agreement_date?: ISODate | null;
+  /** the first installment's due date; later ones follow by the frequency */
+  first_due_date?: ISODate | null;
+  certificate_no?: string | null;     // CRT-2026-001
+  certificate_date?: ISODate | null;
+  status: ShareSaleStatus;
+  /** why it was released or cancelled */
+  status_note?: string | null;
+  notes?: string | null;
+}
+
+export interface ShareInstallment extends BaseEntity {
+  sale_id: UUID;
+  /** 0 = down payment */
+  seq: number;
+  due_date: ISODate;
+  amount: number;
+}
+
+export const SHARE_PAYMENT_METHODS = ['bank_transfer', 'cheque', 'cash', 'bkash', 'nagad', 'card', 'online'] as const;
+export type SharePaymentMethod = (typeof SHARE_PAYMENT_METHODS)[number];
+
+export interface SharePaymentAllocation {
+  installment_id: UUID;
+  principal: number;
+  late_fee: number;
+}
+
+export interface SharePayment extends BaseEntity {
+  code: string;                       // SRC-2026-001 (receipt)
+  sale_id: UUID;
+  paid_on: ISODate;
+  amount: number;
+  principal: number;
+  late_fee: number;
+  method: SharePaymentMethod;
+  reference?: string | null;
+  /** late fees first, then the oldest installment (plan §7) */
+  allocations: SharePaymentAllocation[];
+  notes?: string | null;
+}

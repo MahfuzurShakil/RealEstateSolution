@@ -78,6 +78,7 @@ import { DEMO_BOOKINGS, DEMO_CUSTOMERS } from './demo-bookings';
 import { addMonths } from '../domain/booking';
 import { DEMO_LEADS, DEMO_USER_JOINED_DAYS_AGO, DEMO_USERS } from './demo-leads';
 import { DEMO_PROJECTS } from './demo-projects';
+import { seedDemoShareSale } from './demo-share-sale';
 import { templateForItem, towerBasements, workTypeDef } from '../domain/construction-cost';
 import { DEMO_MATERIAL_REQUESTS, DEMO_TOWER_PROGRESS } from './demo-site-progress';
 import { DEMO_EXPENSES, DEMO_REFUNDS } from './demo-finance';
@@ -1037,6 +1038,8 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
   // after the fund: payments need the accounts and the money in them
   await seedDemoSitePayments(createdBy);
   await seedDemoUserAccess(projectIds, userIds, createdBy);
+  // PROJECT-SHARE-SALE-PLAN.md: a project's shares offered, bought and paid
+  await seedDemoShareSale(projectIds, createdBy);
 
   setClearedFlag(false);
 }
@@ -2830,6 +2833,10 @@ export async function clearDemoData(): Promise<void> {
     db.faq_items.clear(),
     db.land_offers.clear(),
     db.blog_posts.clear(),
+    db.share_offerings.clear(),
+    db.share_sales.clear(),
+    db.share_installments.clear(),
+    db.share_payments.clear(),
   ]);
   forgetDemoWebsiteContent();
   setClearedFlag(true);

@@ -6,7 +6,7 @@
 |---|---|
 | **Prepared for** | [Client name] |
 | **Prepared by** | [Company name] |
-| **Version** | 1.1 (draft for review) |
+| **Version** | 1.2 (valuation and offer terms updated after the 1 Nov 2026 review) |
 | **Date** | 31 October 2026 |
 | **Purpose** | To describe how the platform will let the owner sell ownership shares of a project to many customers (type: Investor), manage agreements and installment payments, and give every customer a secure online portal. This document covers the business flow only; technical design follows after sign-off. |
 
@@ -118,9 +118,17 @@ flowchart TD
 **Who:** Owner / admin
 
 The admin records the project (name, location, type, photos, description) and sets its
-**valuation** — the value of the whole project.
+**valuation** — the value of the whole project:
 
-> **Example:** A 5-star hotel is valued at **৳100 crore**. This equals 100% ownership.
+**Valuation = Net Asset Value (NAV) + Premium**
+
+- **Net Asset Value** — what the project's land, building and other assets are worth, less what
+  it owes. The platform shows the project's book cost to date as a starting point.
+- **Premium** — what the owner adds on top: brand, location, expected income. Entered as an
+  amount or as a % of NAV.
+
+> **Example:** A 5-star hotel has a NAV of **৳75 crore** and a premium of **৳25 crore**, so it is
+> valued at **৳100 crore**. This equals 100% ownership.
 
 The valuation is kept with its date. If the project is revalued later, the new value is added as
 a new entry, so the history is never lost.
@@ -149,11 +157,11 @@ Rules set for each round:
 
 | Setting | Example |
 |---|---|
-| Round open and close dates | 1 Dec 2026 – 31 Mar 2027 |
+| How many days the offer is valid (sets the close date when opened) | 120 days: 1 Dec 2026 – 30 Mar 2027 |
 | Minimum shares per customer | 1 |
 | Maximum shares per customer | 25 |
-| Down payment | 20% |
-| Number of installments | 20 monthly |
+| Minimum down payment | 20% |
+| Maximum installment plan | up to 20 monthly (each agreement may choose fewer) |
 | Late fee rule | 2% of the overdue installment after 7 days' grace |
 
 The round always shows **shares sold, reserved and still available**, so the same share can never
