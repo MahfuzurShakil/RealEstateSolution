@@ -40,7 +40,9 @@ export type EntityType =
   | 'supplier_voucher'
   | 'supplier_bill'
   | 'direct_purchase'
-  | 'blog_post';
+  | 'blog_post'
+  /** a Share Sale offering: valuation report, board resolution, offer document */
+  | 'share_offering';
 
 export interface DocumentRecord extends BaseEntity {
   entity_type: EntityType;
@@ -2296,6 +2298,15 @@ export interface FundAllocation extends BaseEntity {
   allocation_date: ISODate;
   notes?: string | null;
 }
+
+/** Document types for entity_type = 'share_offering' (PROJECT-SHARE-SALE-PLAN.md §4) */
+export const SHARE_OFFERING_DOCUMENT_TYPES = [
+  'valuation_report',
+  'board_resolution',
+  'offer_document',
+  'brochure',
+  'other',
+] as const;
 
 /** Document types for entity_type = 'direct_purchase' */
 export const DIRECT_PURCHASE_DOCUMENT_TYPES = [

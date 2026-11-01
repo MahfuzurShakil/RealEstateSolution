@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ArrowLeft, Award, FileSignature, HandCoins, IdCard, Undo2, XCircle } from 'lucide-react';
-import { SaleBadge } from '@/components/admin/share-sale/bits';
+import { DetailTabs, SaleBadge } from '@/components/admin/share-sale/bits';
 import { InvestorDetailsModal } from '@/components/admin/share-sale/InboxModals';
 import { ShareDocumentChecklist } from '@/components/admin/share-sale/ShareDocuments';
 import { ReasonModal, RecordPaymentModal } from '@/components/admin/share-sale/ShareSaleModals';
@@ -16,6 +16,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { canEdit } from '@/lib/domain/access';
+import { missingToSign, shareDocChecklist } from '@/lib/domain/share-documents';
 import { FREQUENCY_LABEL, SHARE_INSTALLMENT_STATUS_META, SHARE_PAYMENT_METHOD_LABEL, formatSharePct, installmentLabel } from '@/lib/domain/share-sale';
 import { customerUploadRepository, shareSaleOverview, shareSaleRepository } from '@/lib/repositories';
 import { formatBdt, formatDate, formatPhone } from '@/lib/utils/format';
@@ -29,6 +30,7 @@ function Line({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+type Tab = 'overview' | 'payments' | 'documents';
 type Dialog = 'pay' | 'release' | 'cancel' | 'undo' | 'certificate' | 'investor' | null;
 
 /** One customer's share purchase: the terms, the schedule, every payment and what to do next. */
@@ -41,6 +43,7 @@ export default function ShareSaleDetailPage() {
   const uploads = useLiveQuery(() => (customerId ? customerUploadRepository.forCustomer(customerId) : Promise.resolve([])), [customerId]);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [error, setError] = useState('');
+  const [tab, setTab] = useState<Tab>('overview');
 
   if (!data) return <p className="text-sm text-ink-muted">Loading…</p>;
   const v = data.sales.find((r) => r.sale.id === id);
@@ -48,6 +51,8 @@ export default function ShareSaleDetailPage() {
   const s = v.sale;
   const o = v.offering;
   const each = v.schedule.find((i) => i.seq === 1)?.amount;
+  const missing = uploads && v.customer ? missingToSign(shareDocChecklist(uploads, s.id, { has_nominee: !!v.customer.nominee_name, by_attorney: !!s.signing?.attorney_name })).length : 0;
+  const docsLabel = s.status === 'reserved' && missing ? `Documents (${missing} needed)` : 'Documents';
   const act = async (fn: () => Promise<unknown>) => {
     setError('');
     try {
@@ -138,184 +143,212 @@ export default function ShareSaleDetailPage() {
         </p>
       )}
 
-      <div className="mb-5 grid gap-5 lg:grid-cols-3">
-        <Card>
-          <CardHeader title="Purchase" subtitle={s.agreement_no ? `Agreement ${s.agreement_no} · signed ${formatDate(s.agreement_date)}` : `Reserved ${formatDate(s.reserved_on)}, held until ${formatDate(s.hold_until)}`} />
-          <dl className="divide-y divide-hairline">
-            <Line label="Shares">
-              {s.shares} · {formatSharePct(s.share_pct)} of the project
-            </Line>
-            <Line label="Price per share">{formatBdt(s.price_per_share)}</Line>
-            <Line label="Total price">{formatBdt(s.total_price)}</Line>
-            <Line label="Down payment">{formatBdt(s.down_payment)}</Line>
-            <Line label="Installments">
-              {s.installment_count ? `${s.installment_count} × ${FREQUENCY_LABEL[s.installment_frequency].toLowerCase()}${each ? ` of ${formatBdt(each)}` : ''}` : 'None — paid in full'}
-            </Line>
-            {s.certificate_no && <Line label="Share certificate">{`${s.certificate_no} · ${formatDate(s.certificate_date)}`}</Line>}
-          </dl>
-        </Card>
-        <Card>
-          <CardHeader title="Customer" subtitle={v.customer?.code} />
-          {v.customer && (
-            <dl className="divide-y divide-hairline">
-              <Line label="Name">{v.customer.name}</Line>
-              <Line label="Customer type">{v.customer.customer_type === 'investor' ? <Badge tone="teal">Investor</Badge> : 'Buyer'}</Line>
-              <Line label="Phone">{formatPhone(v.customer.phone)}</Line>
-              <Line label="Email">{v.customer.email || '—'}</Line>
-              <Line label="NID">{v.customer.nid || '—'}</Line>
-              <Line label="KYC">{v.customer.kyc_verified_on ? `Checked ${formatDate(v.customer.kyc_verified_on)}` : <span className="text-amber-700">Not checked yet</span>}</Line>
-              <Line label="Nominee">{v.customer.nominee_name ? `${v.customer.nominee_name}${v.customer.nominee_relation ? ` (${v.customer.nominee_relation})` : ''}` : '—'}</Line>
-            </dl>
-          )}
-          {v.customer && (
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium">
-              {mayEdit && (
-                <button type="button" onClick={() => setDialog('investor')} className="inline-flex items-center gap-1 text-admin-700 hover:underline">
-                  <IdCard className="size-4" /> Investor details
-                </button>
-              )}
-              <Link href={`/admin/customers/${v.customer.id}`} className="text-admin-700 hover:underline">
-                Open customer
-              </Link>
-            </div>
-          )}
-        </Card>
-        <Card>
-          <CardHeader title="Money" subtitle={v.schedule.length ? `${v.paid_count} of ${v.schedule.length} payments made` : 'The schedule is written when the agreement is signed'} />
-          <dl className="divide-y divide-hairline">
-            <Line label="Paid">
-              {formatBdt(v.paid)} · {v.progress_pct}%
-            </Line>
-            <Line label="Still to pay">{formatBdt(v.outstanding)}</Line>
-            <Line label="Overdue">{v.overdue_amount ? <span className="text-red-600">{formatBdt(v.overdue_amount)}</span> : '—'}</Line>
-            <Line label="Late fee owing">{v.late_fees ? <span className="text-red-600">{formatBdt(v.late_fees)}</span> : '—'}</Line>
-            <Line label="Next due">{v.next ? `${formatBdt(v.next.remaining)} · ${formatDate(v.next.due_date)}` : '—'}</Line>
-          </dl>
-          {v.schedule.length > 0 && (
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-              <div className={`h-full ${v.health === 'overdue' ? 'bg-red-500' : 'bg-admin-500'}`} style={{ width: `${v.progress_pct}%` }} />
-            </div>
-          )}
-        </Card>
-      </div>
+      <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
+        <div className="min-w-0 lg:order-1">
+          <DetailTabs
+            tabs={[
+              { key: 'overview', label: 'Overview' },
+              { key: 'payments', label: v.schedule.length ? `Payments (${v.paid_count}/${v.schedule.length})` : 'Payments' },
+              { key: 'documents', label: docsLabel },
+            ]}
+            active={tab}
+            onChange={setTab}
+          />
 
-      {v.schedule.length > 0 && (
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-          <Card className="p-0">
-            <div className="px-5 pt-5">
-              <CardHeader title="Payment schedule" subtitle={o ? `Late fee ${o.late_fee_pct}% of an installment after ${o.grace_days} days` : undefined} />
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[600px] text-sm">
-                <thead>
-                  <tr className="border-y border-hairline bg-canvas/60 text-left text-xs text-ink-muted">
-                    <th className="px-5 py-2 font-medium">Payment</th>
-                    <th className="px-3 py-2 font-medium">Due</th>
-                    <th className="px-3 py-2 text-right font-medium">Amount</th>
-                    <th className="px-3 py-2 text-right font-medium">Paid</th>
-                    <th className="px-3 py-2 text-right font-medium">Late fee</th>
-                    <th className="px-5 py-2 font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-hairline">
-                  {v.schedule.map((i) => (
-                    <tr key={i.id} className={i.status === 'overdue' ? 'bg-red-50/40' : ''}>
-                      <td className="px-5 py-2">{i.label}</td>
-                      <td className="px-3 py-2 tabular-nums">
-                        {formatDate(i.due_date)}
-                        {i.days_late > 0 && <span className="block text-xs text-red-600">{i.days_late} days late</span>}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">{formatBdt(i.amount)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {i.paid_amount ? formatBdt(i.paid_amount) : '—'}
-                        {i.paid_on && <span className="block text-xs text-ink-muted">{formatDate(i.paid_on)}</span>}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {i.late_fee_due ? <span className="text-red-600">{formatBdt(i.late_fee_due)}</span> : i.late_fee_paid ? <span className="text-ink-muted">{formatBdt(i.late_fee_paid)} paid</span> : '—'}
-                      </td>
-                      <td className="px-5 py-2">
-                        <Badge tone={SHARE_INSTALLMENT_STATUS_META[i.status].tone}>
-                          {i.paid_amount > 0 && i.remaining > 0 ? 'Part paid' : SHARE_INSTALLMENT_STATUS_META[i.status].label}
-                        </Badge>
-                      </td>
-                    </tr>
+          {tab === 'overview' && (
+            <div className="space-y-5">
+              <Card>
+                <CardHeader title="Purchase" subtitle={s.agreement_no ? `Agreement ${s.agreement_no} · signed ${formatDate(s.agreement_date)}` : `Reserved ${formatDate(s.reserved_on)}, held until ${formatDate(s.hold_until)}`} />
+                <dl className="divide-y divide-hairline">
+                  <Line label="Shares">
+                    {s.shares} · {formatSharePct(s.share_pct)} of the project
+                  </Line>
+                  <Line label="Price per share">{formatBdt(s.price_per_share)}</Line>
+                  <Line label="Total price">{formatBdt(s.total_price)}</Line>
+                  <Line label="Down payment">{formatBdt(s.down_payment)}</Line>
+                  <Line label="Installments">
+                    {s.installment_count ? `${s.installment_count} × ${FREQUENCY_LABEL[s.installment_frequency].toLowerCase()}${each ? ` of ${formatBdt(each)}` : ''}` : 'None — paid in full'}
+                  </Line>
+                  {s.certificate_no && <Line label="Share certificate">{`${s.certificate_no} · ${formatDate(s.certificate_date)}`}</Line>}
+                </dl>
+              </Card>
+              <Card>
+                <CardHeader title="Customer" subtitle={v.customer?.code} />
+                {v.customer && (
+                  <dl className="divide-y divide-hairline">
+                    <Line label="Name">{v.customer.name}</Line>
+                    <Line label="Customer type">{v.customer.customer_type === 'investor' ? <Badge tone="teal">Investor</Badge> : 'Buyer'}</Line>
+                    <Line label="Phone">{formatPhone(v.customer.phone)}</Line>
+                    <Line label="Email">{v.customer.email || '—'}</Line>
+                    <Line label="Father’s / spouse’s name">{v.customer.father_or_spouse_name || '—'}</Line>
+                    <Line label="NID">{v.customer.nid || '—'}</Line>
+                    <Line label="e-TIN">{v.customer.tin || '—'}</Line>
+                    <Line label="Address">{v.customer.address || '—'}</Line>
+                    <Line label="KYC">{v.customer.kyc_verified_on ? `Checked ${formatDate(v.customer.kyc_verified_on)}` : <span className="text-amber-700">Not checked yet</span>}</Line>
+                    <Line label="Nominee">{v.customer.nominee_name ? `${v.customer.nominee_name}${v.customer.nominee_relation ? ` (${v.customer.nominee_relation})` : ''}` : '—'}</Line>
+                    <Line label="Payout bank">{v.customer.bank_name ? `${v.customer.bank_name}${v.customer.bank_account ? ` · ${v.customer.bank_account}` : ''}` : '—'}</Line>
+                  </dl>
+                )}
+                {v.customer && (
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium">
+                    {mayEdit && (
+                      <button type="button" onClick={() => setDialog('investor')} className="inline-flex items-center gap-1 text-admin-700 hover:underline">
+                        <IdCard className="size-4" /> Investor details
+                      </button>
+                    )}
+                    <Link href={`/admin/customers/${v.customer.id}`} className="text-admin-700 hover:underline">
+                      Open customer
+                    </Link>
+                  </div>
+                )}
+              </Card>
+            {s.signing && (
+              <Card>
+                <CardHeader title="Signing record" subtitle={`Agreement ${s.agreement_no} · signed ${formatDate(s.agreement_date)} at ${s.signing.place}`} />
+                <dl className="grid gap-x-8 divide-y divide-hairline md:grid-cols-2 md:divide-y-0">
+                  <Line label="For the company">{[s.signing.company_signatory, s.signing.company_signatory_title].filter(Boolean).join(', ')}</Line>
+                  <Line label="For the customer">{s.signing.attorney_name ? `${s.signing.attorney_name} (power of attorney)` : v.customer?.name}</Line>
+                  {s.signing.witnesses.map((w, i) => (
+                    <Line key={i} label={`Witness ${i + 1}`}>
+                      {[w.name, w.id_or_phone, w.address].filter(Boolean).join(' · ')}
+                    </Line>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+                  <Line label="Stamp paper">{s.signing.stamp_value != null ? `${formatBdt(s.signing.stamp_value)}${s.signing.stamp_serial ? ` · no. ${s.signing.stamp_serial}` : ''}` : '—'}</Line>
+                  <Line label="Notarized">{s.signing.notarized_on ? `${formatDate(s.signing.notarized_on)}${s.signing.notary_name ? ` · ${s.signing.notary_name}` : ''}` : '—'}</Line>
+                </dl>
+              </Card>
+            )}
 
-          <Card className="p-0">
-            <div className="px-5 pt-5">
-              <CardHeader title="Payments received" subtitle={`${v.payments.length} receipt${v.payments.length === 1 ? '' : 's'}`} />
             </div>
-            {v.payments.length ? (
-              <ul className="divide-y divide-hairline border-t border-hairline">
-                {v.payments.map((p) => (
-                  <li key={p.id} className="px-5 py-3 text-sm">
-                    <div className="flex items-baseline justify-between gap-3">
-                      <span className="flex items-center gap-2 font-medium text-ink">
-                        {p.code}
-                        {p.channel === 'online' && <Badge tone="teal">Customer Portal</Badge>}
-                      </span>
-                      <span className="font-semibold tabular-nums">{formatBdt(p.amount)}</span>
-                    </div>
-                    <p className="mt-0.5 text-xs text-ink-muted">
-                      {formatDate(p.paid_on)} · {p.method_detail || SHARE_PAYMENT_METHOD_LABEL[p.method]}
-                      {p.reference ? ` · ${p.reference}` : ''}
-                    </p>
-                    <p className="mt-0.5 text-xs text-ink-muted">
-                      {p.allocations
-                        .map((a) => {
-                          const i = v.schedule.find((x) => x.id === a.installment_id);
-                          const label = i ? installmentLabel(i.seq) : '—';
-                          return a.principal === 0 ? `${label} late fee` : `${label}${i && a.principal < i.amount ? ' (part)' : ''}${a.late_fee ? ' + late fee' : ''}`;
-                        })
-                        .join(', ')}
-                    </p>
-                  </li>
-                ))}
-              </ul>
+          )}
+
+          {tab === 'payments' &&
+            (v.schedule.length ? (
+              <div className="space-y-5">
+                <Card className="p-0">
+                  <div className="px-5 pt-5">
+                    <CardHeader title="Payment schedule" subtitle={o ? `Late fee ${o.late_fee_pct}% of an installment after ${o.grace_days} days` : undefined} />
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[600px] text-sm">
+                      <thead>
+                        <tr className="border-y border-hairline bg-canvas/60 text-left text-xs text-ink-muted">
+                          <th className="px-5 py-2 font-medium">Payment</th>
+                          <th className="px-3 py-2 font-medium">Due</th>
+                          <th className="px-3 py-2 text-right font-medium">Amount</th>
+                          <th className="px-3 py-2 text-right font-medium">Paid</th>
+                          <th className="px-3 py-2 text-right font-medium">Late fee</th>
+                          <th className="px-5 py-2 font-medium">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-hairline">
+                        {v.schedule.map((i) => (
+                          <tr key={i.id} className={i.status === 'overdue' ? 'bg-red-50/40' : ''}>
+                            <td className="px-5 py-2">{i.label}</td>
+                            <td className="px-3 py-2 tabular-nums">
+                              {formatDate(i.due_date)}
+                              {i.days_late > 0 && <span className="block text-xs text-red-600">{i.days_late} days late</span>}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">{formatBdt(i.amount)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">
+                              {i.paid_amount ? formatBdt(i.paid_amount) : '—'}
+                              {i.paid_on && <span className="block text-xs text-ink-muted">{formatDate(i.paid_on)}</span>}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">
+                              {i.late_fee_due ? <span className="text-red-600">{formatBdt(i.late_fee_due)}</span> : i.late_fee_paid ? <span className="text-ink-muted">{formatBdt(i.late_fee_paid)} paid</span> : '—'}
+                            </td>
+                            <td className="px-5 py-2">
+                              <Badge tone={SHARE_INSTALLMENT_STATUS_META[i.status].tone}>
+                                {i.paid_amount > 0 && i.remaining > 0 ? 'Part paid' : SHARE_INSTALLMENT_STATUS_META[i.status].label}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+
+                <Card className="p-0">
+                  <div className="px-5 pt-5">
+                    <CardHeader title="Payments received" subtitle={`${v.payments.length} receipt${v.payments.length === 1 ? '' : 's'}`} />
+                  </div>
+                  {v.payments.length ? (
+                    <ul className="divide-y divide-hairline border-t border-hairline">
+                      {v.payments.map((p) => (
+                        <li key={p.id} className="px-5 py-3 text-sm">
+                          <div className="flex items-baseline justify-between gap-3">
+                            <span className="flex items-center gap-2 font-medium text-ink">
+                              {p.code}
+                              {p.channel === 'online' && <Badge tone="teal">Customer Portal</Badge>}
+                            </span>
+                            <span className="font-semibold tabular-nums">{formatBdt(p.amount)}</span>
+                          </div>
+                          <p className="mt-0.5 text-xs text-ink-muted">
+                            {formatDate(p.paid_on)} · {p.method_detail || SHARE_PAYMENT_METHOD_LABEL[p.method]}
+                            {p.reference ? ` · ${p.reference}` : ''}
+                          </p>
+                          <p className="mt-0.5 text-xs text-ink-muted">
+                            {p.allocations
+                              .map((a) => {
+                                const i = v.schedule.find((x) => x.id === a.installment_id);
+                                const label = i ? installmentLabel(i.seq) : '—';
+                                return a.principal === 0 ? `${label} late fee` : `${label}${i && a.principal < i.amount ? ' (part)' : ''}${a.late_fee ? ' + late fee' : ''}`;
+                              })
+                              .join(', ')}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="border-t border-hairline px-5 py-6 text-center text-sm text-ink-muted">No payment recorded yet.</p>
+                  )}
+                </Card>
+              </div>
             ) : (
-              <p className="border-t border-hairline px-5 py-6 text-center text-sm text-ink-muted">No payment recorded yet.</p>
+              <Card>
+                <EmptyState icon={FileSignature} title="No schedule yet" description="The payment schedule is written when the agreement is signed." />
+              </Card>
+            ))}
+
+          {tab === 'documents' && uploads && v.customer && (
+            <Card>
+              <CardHeader
+                title="Papers on file"
+                subtitle={`Filed by the office or sent by the customer from the portal. ${s.status === 'reserved' ? 'Required ones are needed to sign.' : 'The customer sees these on their portal.'}`}
+              />
+              <ShareDocumentChecklist
+                uploads={uploads}
+                sale={s}
+                hasNominee={!!v.customer.nominee_name}
+                byAttorney={!!s.signing?.attorney_name}
+                mayEdit={mayEdit}
+                sales={data.sales.filter((r) => r.sale.customer_id === s.customer_id).map((r) => r.sale)}
+              />
+            </Card>
+          )}
+        </div>
+
+        <aside className="min-w-0 space-y-5 lg:order-2">
+          <Card>
+            <CardHeader title="Money" subtitle={v.schedule.length ? `${v.paid_count} of ${v.schedule.length} payments made` : 'The schedule is written when the agreement is signed'} />
+            <dl className="divide-y divide-hairline">
+              <Line label="Paid">
+                {formatBdt(v.paid)} · {v.progress_pct}%
+              </Line>
+              <Line label="Still to pay">{formatBdt(v.outstanding)}</Line>
+              <Line label="Overdue">{v.overdue_amount ? <span className="text-red-600">{formatBdt(v.overdue_amount)}</span> : '—'}</Line>
+              <Line label="Late fee owing">{v.late_fees ? <span className="text-red-600">{formatBdt(v.late_fees)}</span> : '—'}</Line>
+              <Line label="Next due">{v.next ? `${formatBdt(v.next.remaining)} · ${formatDate(v.next.due_date)}` : '—'}</Line>
+            </dl>
+            {v.schedule.length > 0 && (
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className={`h-full ${v.health === 'overdue' ? 'bg-red-500' : 'bg-admin-500'}`} style={{ width: `${v.progress_pct}%` }} />
+              </div>
             )}
           </Card>
-        </div>
-      )}
-
-      {s.signing && (
-        <Card className="mt-5">
-          <CardHeader title="Signing record" subtitle={`Agreement ${s.agreement_no} · signed ${formatDate(s.agreement_date)} at ${s.signing.place}`} />
-          <dl className="grid gap-x-8 divide-y divide-hairline md:grid-cols-2 md:divide-y-0">
-            <Line label="For the company">{[s.signing.company_signatory, s.signing.company_signatory_title].filter(Boolean).join(', ')}</Line>
-            <Line label="For the customer">{s.signing.attorney_name ? `${s.signing.attorney_name} (power of attorney)` : v.customer?.name}</Line>
-            {s.signing.witnesses.map((w, i) => (
-              <Line key={i} label={`Witness ${i + 1}`}>
-                {[w.name, w.id_or_phone, w.address].filter(Boolean).join(' · ')}
-              </Line>
-            ))}
-            <Line label="Stamp paper">{s.signing.stamp_value != null ? `${formatBdt(s.signing.stamp_value)}${s.signing.stamp_serial ? ` · no. ${s.signing.stamp_serial}` : ''}` : '—'}</Line>
-            <Line label="Notarized">{s.signing.notarized_on ? `${formatDate(s.signing.notarized_on)}${s.signing.notary_name ? ` · ${s.signing.notary_name}` : ''}` : '—'}</Line>
-          </dl>
-        </Card>
-      )}
-
-      {uploads && v.customer && (
-        <Card className="mt-5">
-          <CardHeader
-            title="Papers on file"
-            subtitle={`Filed by the office or sent by the customer from the portal. ${s.status === 'reserved' ? 'Required ones are needed to sign.' : 'The customer sees these on their portal.'}`}
-          />
-          <ShareDocumentChecklist
-            uploads={uploads}
-            sale={s}
-            hasNominee={!!v.customer.nominee_name}
-            byAttorney={!!s.signing?.attorney_name}
-            mayEdit={mayEdit}
-            sales={data.sales.filter((r) => r.sale.customer_id === s.customer_id).map((r) => r.sale)}
-          />
-        </Card>
-      )}
+        </aside>
+      </div>
 
       {dialog === 'investor' && v.customer && <InvestorDetailsModal customer={v.customer} onClose={() => setDialog(null)} />}
       {dialog === 'pay' && <RecordPaymentModal view={v} onClose={() => setDialog(null)} />}

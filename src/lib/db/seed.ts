@@ -24,6 +24,7 @@ import {
   PROJECT_DOCUMENT_TYPES,
   EXPENSE_DOCUMENT_TYPES,
   DIRECT_PURCHASE_DOCUMENT_TYPES,
+  SHARE_OFFERING_DOCUMENT_TYPES,
   WORK_ITEM_TYPE_OPTIONS,
   PURCHASE_ORDER_DOCUMENT_TYPES,
   REFUND_DOCUMENT_TYPES,
@@ -75,6 +76,7 @@ async function runSeed(): Promise<void> {
   await ensureOptions('document_type', 'direct_purchase', [...DIRECT_PURCHASE_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'refund', [...REFUND_DOCUMENT_TYPES]);
   await ensureOptions('document_type', 'blog_post', [...BLOG_POST_DOCUMENT_TYPES]);
+  await ensureOptions('document_type', 'share_offering', [...SHARE_OFFERING_DOCUMENT_TYPES]);
   await ensureOptions('land_size_unit', null, [...LAND_SIZE_UNITS]);
   // BRD LAND-001. Both vary by district, so neither is an ENUM in code.
   await ensureOptions('land_classification', null, [...LAND_CLASSIFICATION_OPTIONS]);

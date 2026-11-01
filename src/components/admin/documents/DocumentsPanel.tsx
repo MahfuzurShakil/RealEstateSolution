@@ -68,6 +68,7 @@ const EMPTY_HINT: Partial<Record<EntityType, string>> & { default: string } = {
   supplier_voucher: 'Upload the payment receipt or a copy of the cheque.',
   expense: 'Upload the receipt, voucher or invoice this cost was paid against.',
   refund: 'Upload the signed refund voucher.',
+  share_offering: 'Upload the valuation report, the board resolution approving the offer, or the offer document shown to customers.',
   default: 'Upload the paperwork that belongs to this record.',
 };
 

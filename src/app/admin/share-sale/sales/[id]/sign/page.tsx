@@ -4,11 +4,12 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, CheckCircle2, Circle, FileSignature, XCircle } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, Circle, FileSignature, XCircle } from 'lucide-react';
 import { ShareDocumentChecklist } from '@/components/admin/share-sale/ShareDocuments';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { WizardStepper, type WizardStep } from '@/components/ui/WizardStepper';
 import { Field, MoneyInput, SelectInput, TextInput } from '@/components/ui/Field';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { SHARE_PAYMENT_METHODS, type Customer, type SharePaymentMethod } from '@/lib/db/types';
@@ -20,6 +21,9 @@ import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate, todayLocal } from '@/lib/utils/format';
 
 type Kyc = Record<KycField, string>;
+
+const READY_LABEL = ['Signing day, place and schedule', 'NID, father’s / spouse’s name, address', 'Company signatory and two witnesses', 'Required papers on file'];
+const STEP_HINT = ['Fill in the signing day and place.', 'NID, father’s / spouse’s name and present address are needed.', 'Enter who signed for the company and both witnesses.', 'Upload the required papers.'];
 const blankWitness = { name: '', id_or_phone: '', address: '' };
 
 function kycOf(c: Customer): Kyc {
@@ -92,6 +96,7 @@ function SignForm({ id }: { id: string }) {
   const [reference, setReference] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [at, setAt] = useState(0);
 
   if (!data || !uploads) return <p className="text-sm text-ink-muted">Loading…</p>;
   if (!row || !row.customer) return <EmptyState icon={XCircle} title="Purchase not found" action={<Link href="/admin/share-sale/investors">Back to investors</Link>} />;
@@ -108,14 +113,25 @@ function SignForm({ id }: { id: string }) {
   const missingDocs = missingToSign(checklist);
   const setW = (i: number, key: keyof typeof blankWitness, value: string) => setWitnesses(witnesses.map((w, j) => (j === i ? { ...w, [key]: value } : w)));
 
-  const ready: [string, boolean][] = [
-    ['Signing day and schedule', !!date && (s.installment_count === 0 || firstDue > date)],
-    ['NID, father’s / spouse’s name, address', !!(k.nid.trim() && k.father_or_spouse_name.trim() && k.address.trim())],
-    ['Place and company signatory', !!(place.trim() && signatory.trim())],
-    ['Two witnesses', witnesses.every((w) => w.name.trim())],
-    ['Required papers on file', missingDocs.length === 0],
+  const steps: WizardStep[] = [
+    { label: 'Agreement', done: !!date && !!place.trim() && (s.installment_count === 0 || firstDue > date) },
+    { label: 'Customer', done: !!(k.nid.trim() && k.father_or_spouse_name.trim() && k.address.trim()) },
+    { label: 'Witnesses & stamp', done: !!signatory.trim() && witnesses.every((w) => w.name.trim()) },
+    { label: 'Papers', done: missingDocs.length === 0, sub: missingDocs.length ? `${missingDocs.length} required missing` : undefined },
+    { label: 'Review & sign', done: false },
   ];
-  const allReady = ready.every(([, ok]) => ok);
+  const allReady = steps.slice(0, 4).every((x) => x.done);
+  const review: [string, string][] = [
+    ['Signed on', `${formatDate(date)} at ${place}`],
+    ['Schedule', rows.length > 1 ? `${formatBdt(s.down_payment)} down, ${s.installment_count} × ${formatBdt(rows[1].amount)} from ${formatDate(rows[1].due_date)}` : `${formatBdt(s.total_price)} in full`],
+    ['Customer', `${row.customer.name}, son/daughter/wife of ${k.father_or_spouse_name}`],
+    ['NID', k.nid],
+    ['Nominee', k.nominee_name ? `${k.nominee_name}${k.nominee_relation ? ` (${k.nominee_relation})` : ''}` : '—'],
+    ['For the company', [signatory, signatoryTitle].filter(Boolean).join(', ')],
+    ['Witnesses', witnesses.map((w) => w.name).join(' and ')],
+    ['Stamp paper', stampValue ? `${formatBdt(Number(stampValue))}${stampSerial ? ` · no. ${stampSerial}` : ''}` : '—'],
+    ['Papers on file', `${checklist.filter((c) => c.done).length} of ${checklist.length}`],
+  ];
 
   const sign = async () => {
     setBusy(true);
@@ -161,184 +177,226 @@ function SignForm({ id }: { id: string }) {
         </p>
       </div>
 
+      <div className="mb-5">
+        <WizardStepper steps={steps} active={at} onSelect={setAt} />
+      </div>
+
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-5">
-          <Step n={1} title="Agreement and schedule" subtitle="The signing day is when the down payment falls due; installments follow from the first due date.">
-            <div className="grid gap-4 md:grid-cols-3">
-              <Field label="Signed on" required>
-                <TextInput type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} />
-              </Field>
-              {s.installment_count > 0 && (
-                <Field label="First installment due" required>
-                  <TextInput type="date" value={firstDue} min={date} onChange={(e) => setFirst(e.target.value)} />
+          {at === 0 && (
+            <Step n={1} title="Agreement and schedule" subtitle="The signing day is when the down payment falls due; installments follow from the first due date.">
+              <div className="grid gap-4 md:grid-cols-3">
+                <Field label="Signed on" required>
+                  <TextInput type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} />
                 </Field>
-              )}
-              <Field label="Signed at" required>
-                <TextInput value={place} onChange={(e) => setPlace(e.target.value)} />
-              </Field>
-            </div>
-            <p className="mt-3 rounded-xl bg-slate-50 px-4 py-3 text-sm text-ink-muted">
-              Down payment <span className="font-medium text-ink">{formatBdt(s.down_payment)}</span> on {formatDate(date)}
-              {rows.length > 1 && (
-                <>
-                  , then {s.installment_count} {FREQUENCY_LABEL[s.installment_frequency].toLowerCase()} installments of <span className="font-medium text-ink">{formatBdt(rows[1].amount)}</span> from {formatDate(rows[1].due_date)} to{' '}
-                  {formatDate(rows[rows.length - 1].due_date)}
-                </>
-              )}
-              . An agreement number (AGR-…) is assigned when you sign.
-            </p>
-          </Step>
-
-          <Step n={2} title="Customer as named on the agreement" subtitle="Saved on the customer, shown on their Customer Portal profile.">
-            <div className="grid gap-4 md:grid-cols-3">
-              <Field label="Name">
-                <TextInput value={row.customer.name} disabled />
-              </Field>
-              <Field label="Father’s / spouse’s name" required>
-                <TextInput value={k.father_or_spouse_name} onChange={setK('father_or_spouse_name')} />
-              </Field>
-              <Field label="NID / passport no." required>
-                <TextInput value={k.nid} onChange={setK('nid')} />
-              </Field>
-              <Field label="Date of birth">
-                <TextInput type="date" value={k.date_of_birth} onChange={setK('date_of_birth')} />
-              </Field>
-              <Field label="e-TIN">
-                <TextInput value={k.tin} onChange={setK('tin')} />
-              </Field>
-              <Field label="Profession">
-                <TextInput value={k.profession} onChange={setK('profession')} />
-              </Field>
-              <Field label="Present address" required className="md:col-span-2">
-                <TextInput value={k.address} onChange={setK('address')} />
-              </Field>
-              <Field label="Email">
-                <TextInput type="email" value={k.email} onChange={setK('email')} />
-              </Field>
-              <Field label="Permanent address" className="md:col-span-2">
-                <TextInput value={k.permanent_address} onChange={setK('permanent_address')} placeholder="Village, upazila, district" />
-              </Field>
-              <Field label="KYC checked on" hint="once the papers are seen">
-                <TextInput type="date" value={k.kyc_verified_on} onChange={setK('kyc_verified_on')} />
-              </Field>
-            </div>
-            <p className="mt-5 mb-3 text-xs font-semibold tracking-wide text-ink-muted uppercase">Nominee</p>
-            <div className="grid gap-4 md:grid-cols-4">
-              <Field label="Name">
-                <TextInput value={k.nominee_name} onChange={setK('nominee_name')} />
-              </Field>
-              <Field label="Relation">
-                <TextInput value={k.nominee_relation} onChange={setK('nominee_relation')} placeholder="e.g. Spouse" />
-              </Field>
-              <Field label="Mobile">
-                <TextInput value={k.nominee_phone} onChange={setK('nominee_phone')} />
-              </Field>
-              <Field label="NID">
-                <TextInput value={k.nominee_nid} onChange={setK('nominee_nid')} />
-              </Field>
-            </div>
-            <p className="mt-5 mb-3 text-xs font-semibold tracking-wide text-ink-muted uppercase">Bank account for payouts</p>
-            <div className="grid gap-4 md:grid-cols-3">
-              <Field label="Bank">
-                <TextInput value={k.bank_name} onChange={setK('bank_name')} />
-              </Field>
-              <Field label="Branch">
-                <TextInput value={k.bank_branch} onChange={setK('bank_branch')} />
-              </Field>
-              <Field label="Account no.">
-                <TextInput value={k.bank_account} onChange={setK('bank_account')} />
-              </Field>
-            </div>
-          </Step>
-
-          <Step n={3} title="Signatures, witnesses and stamp" subtitle="As written at the foot of the agreement.">
-            <div className="grid gap-4 md:grid-cols-3">
-              <Field label="Signed for the company by" required>
-                <TextInput value={signatory} onChange={(e) => setSignatory(e.target.value)} placeholder="Full name" />
-              </Field>
-              <Field label="Designation">
-                <TextInput value={signatoryTitle} onChange={(e) => setSignatoryTitle(e.target.value)} />
-              </Field>
-              <Field label="Signed for the customer by" hint="only under a power of attorney">
-                <TextInput value={attorney} onChange={(e) => setAttorney(e.target.value)} placeholder="Attorney’s name" />
-              </Field>
-            </div>
-            {witnesses.map((w, i) => (
-              <div key={i} className="mt-4 grid gap-4 md:grid-cols-3">
-                <Field label={`Witness ${i + 1}`} required>
-                  <TextInput value={w.name} onChange={(e) => setW(i, 'name', e.target.value)} placeholder="Full name" />
-                </Field>
-                <Field label="NID or mobile">
-                  <TextInput value={w.id_or_phone} onChange={(e) => setW(i, 'id_or_phone', e.target.value)} />
-                </Field>
-                <Field label="Address">
-                  <TextInput value={w.address} onChange={(e) => setW(i, 'address', e.target.value)} />
+                {s.installment_count > 0 && (
+                  <Field label="First installment due" required>
+                    <TextInput type="date" value={firstDue} min={date} onChange={(e) => setFirst(e.target.value)} />
+                  </Field>
+                )}
+                <Field label="Signed at" required>
+                  <TextInput value={place} onChange={(e) => setPlace(e.target.value)} />
                 </Field>
               </div>
-            ))}
-            <div className="mt-4 grid gap-4 md:grid-cols-4">
-              <Field label="Stamp paper (BDT)" hint="non-judicial">
-                <MoneyInput value={stampValue} onChange={(e) => setStampValue(e.target.value)} />
-              </Field>
-              <Field label="Stamp serial no.">
-                <TextInput value={stampSerial} onChange={(e) => setStampSerial(e.target.value)} />
-              </Field>
-              <Field label="Notarized on">
-                <TextInput type="date" value={notarizedOn} min={date} onChange={(e) => setNotarizedOn(e.target.value)} />
-              </Field>
-              <Field label="Notary public">
-                <TextInput value={notary} onChange={(e) => setNotary(e.target.value)} />
-              </Field>
-            </div>
-          </Step>
-
-          <Step n={4} title="Papers on file" subtitle="Scan the signed agreement and anything handed over at the table. Papers the customer sent from the portal count too.">
-            <ShareDocumentChecklist uploads={uploads} sale={s} hasNominee={!!k.nominee_name.trim()} byAttorney={!!attorney.trim()} mayEdit sales={customerSales} />
-          </Step>
-
-          {s.down_payment > 0 && (
-            <Step n={5} title="Down payment" subtitle="Record it now if it was handed over at the signing.">
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={takeDown} onChange={(e) => setTakeDown(e.target.checked)} className="size-4 accent-admin-600" />
-                {formatBdt(s.down_payment)} received on {formatDate(date)}
-              </label>
-              {takeDown && (
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
-                  <Field label="Paid by">
-                    <SelectInput value={method} onChange={(e) => setMethod(e.target.value as SharePaymentMethod)}>
-                      {SHARE_PAYMENT_METHODS.filter((m) => m !== 'online').map((m) => (
-                        <option key={m} value={m}>
-                          {SHARE_PAYMENT_METHOD_LABEL[m]}
-                        </option>
-                      ))}
-                    </SelectInput>
-                  </Field>
-                  <Field label="Reference" hint="cheque, pay order or deposit slip no.">
-                    <TextInput value={reference} onChange={(e) => setReference(e.target.value)} />
-                  </Field>
-                </div>
-              )}
+              <p className="mt-3 rounded-xl bg-slate-50 px-4 py-3 text-sm text-ink-muted">
+                Down payment <span className="font-medium text-ink">{formatBdt(s.down_payment)}</span> on {formatDate(date)}
+                {rows.length > 1 && (
+                  <>
+                    , then {s.installment_count} {FREQUENCY_LABEL[s.installment_frequency].toLowerCase()} installments of <span className="font-medium text-ink">{formatBdt(rows[1].amount)}</span> from {formatDate(rows[1].due_date)} to{' '}
+                    {formatDate(rows[rows.length - 1].due_date)}
+                  </>
+                )}
+                . An agreement number (AGR-…) is assigned when you sign.
+              </p>
             </Step>
           )}
+
+          {at === 1 && (
+            <Step n={2} title="Customer as named on the agreement" subtitle="Saved on the customer, shown on their Customer Portal profile.">
+              <div className="grid gap-4 md:grid-cols-3">
+                <Field label="Name">
+                  <TextInput value={row.customer.name} disabled />
+                </Field>
+                <Field label="Father’s / spouse’s name" required>
+                  <TextInput value={k.father_or_spouse_name} onChange={setK('father_or_spouse_name')} />
+                </Field>
+                <Field label="NID / passport no." required>
+                  <TextInput value={k.nid} onChange={setK('nid')} />
+                </Field>
+                <Field label="Date of birth">
+                  <TextInput type="date" value={k.date_of_birth} onChange={setK('date_of_birth')} />
+                </Field>
+                <Field label="e-TIN">
+                  <TextInput value={k.tin} onChange={setK('tin')} />
+                </Field>
+                <Field label="Profession">
+                  <TextInput value={k.profession} onChange={setK('profession')} />
+                </Field>
+                <Field label="Present address" required className="md:col-span-2">
+                  <TextInput value={k.address} onChange={setK('address')} />
+                </Field>
+                <Field label="Email">
+                  <TextInput type="email" value={k.email} onChange={setK('email')} />
+                </Field>
+                <Field label="Permanent address" className="md:col-span-2">
+                  <TextInput value={k.permanent_address} onChange={setK('permanent_address')} placeholder="Village, upazila, district" />
+                </Field>
+                <Field label="KYC checked on" hint="once the papers are seen">
+                  <TextInput type="date" value={k.kyc_verified_on} onChange={setK('kyc_verified_on')} />
+                </Field>
+              </div>
+              <p className="mt-5 mb-3 text-xs font-semibold tracking-wide text-ink-muted uppercase">Nominee</p>
+              <div className="grid gap-4 md:grid-cols-4">
+                <Field label="Name">
+                  <TextInput value={k.nominee_name} onChange={setK('nominee_name')} />
+                </Field>
+                <Field label="Relation">
+                  <TextInput value={k.nominee_relation} onChange={setK('nominee_relation')} placeholder="e.g. Spouse" />
+                </Field>
+                <Field label="Mobile">
+                  <TextInput value={k.nominee_phone} onChange={setK('nominee_phone')} />
+                </Field>
+                <Field label="NID">
+                  <TextInput value={k.nominee_nid} onChange={setK('nominee_nid')} />
+                </Field>
+              </div>
+              <p className="mt-5 mb-3 text-xs font-semibold tracking-wide text-ink-muted uppercase">Bank account for payouts</p>
+              <div className="grid gap-4 md:grid-cols-3">
+                <Field label="Bank">
+                  <TextInput value={k.bank_name} onChange={setK('bank_name')} />
+                </Field>
+                <Field label="Branch">
+                  <TextInput value={k.bank_branch} onChange={setK('bank_branch')} />
+                </Field>
+                <Field label="Account no.">
+                  <TextInput value={k.bank_account} onChange={setK('bank_account')} />
+                </Field>
+              </div>
+            </Step>
+          )}
+
+          {at === 2 && (
+            <Step n={3} title="Signatures, witnesses and stamp" subtitle="As written at the foot of the agreement.">
+              <div className="grid gap-4 md:grid-cols-3">
+                <Field label="Signed for the company by" required>
+                  <TextInput value={signatory} onChange={(e) => setSignatory(e.target.value)} placeholder="Full name" />
+                </Field>
+                <Field label="Designation">
+                  <TextInput value={signatoryTitle} onChange={(e) => setSignatoryTitle(e.target.value)} />
+                </Field>
+                <Field label="Signed for the customer by" hint="only under a power of attorney">
+                  <TextInput value={attorney} onChange={(e) => setAttorney(e.target.value)} placeholder="Attorney’s name" />
+                </Field>
+              </div>
+              {witnesses.map((w, i) => (
+                <div key={i} className="mt-4 grid gap-4 md:grid-cols-3">
+                  <Field label={`Witness ${i + 1}`} required>
+                    <TextInput value={w.name} onChange={(e) => setW(i, 'name', e.target.value)} placeholder="Full name" />
+                  </Field>
+                  <Field label="NID or mobile">
+                    <TextInput value={w.id_or_phone} onChange={(e) => setW(i, 'id_or_phone', e.target.value)} />
+                  </Field>
+                  <Field label="Address">
+                    <TextInput value={w.address} onChange={(e) => setW(i, 'address', e.target.value)} />
+                  </Field>
+                </div>
+              ))}
+              <div className="mt-4 grid gap-4 md:grid-cols-4">
+                <Field label="Stamp paper (BDT)" hint="non-judicial">
+                  <MoneyInput value={stampValue} onChange={(e) => setStampValue(e.target.value)} />
+                </Field>
+                <Field label="Stamp serial no.">
+                  <TextInput value={stampSerial} onChange={(e) => setStampSerial(e.target.value)} />
+                </Field>
+                <Field label="Notarized on">
+                  <TextInput type="date" value={notarizedOn} min={date} onChange={(e) => setNotarizedOn(e.target.value)} />
+                </Field>
+                <Field label="Notary public">
+                  <TextInput value={notary} onChange={(e) => setNotary(e.target.value)} />
+                </Field>
+              </div>
+            </Step>
+          )}
+
+          {at === 3 && (
+            <Step n={4} title="Papers on file" subtitle="Scan the signed agreement and anything handed over at the table. Papers the customer sent from the portal count too.">
+              <ShareDocumentChecklist uploads={uploads} sale={s} hasNominee={!!k.nominee_name.trim()} byAttorney={!!attorney.trim()} mayEdit sales={customerSales} />
+            </Step>
+          )}
+
+          {at === 4 && (
+            <Step n={5} title="Review and sign" subtitle="Check what goes on the agreement, then mark it signed.">
+              <dl className="mb-5 grid gap-x-8 md:grid-cols-2">
+                {review.map(([label, value]) => (
+                  <div key={label} className="flex items-baseline justify-between gap-4 border-b border-hairline py-2 text-sm">
+                    <dt className="shrink-0 text-ink-muted">{label}</dt>
+                    <dd className="min-w-0 text-right font-medium [overflow-wrap:anywhere]">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+              {s.down_payment > 0 && (
+                <>
+                  <p className="mb-2 text-sm font-semibold text-ink">Down payment</p>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={takeDown} onChange={(e) => setTakeDown(e.target.checked)} className="size-4 accent-admin-600" />
+                    {formatBdt(s.down_payment)} received on {formatDate(date)}
+                  </label>
+                  {takeDown && (
+                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                      <Field label="Paid by">
+                        <SelectInput value={method} onChange={(e) => setMethod(e.target.value as SharePaymentMethod)}>
+                          {SHARE_PAYMENT_METHODS.filter((m) => m !== 'online').map((m) => (
+                            <option key={m} value={m}>
+                              {SHARE_PAYMENT_METHOD_LABEL[m]}
+                            </option>
+                          ))}
+                        </SelectInput>
+                      </Field>
+                      <Field label="Reference" hint="cheque, pay order or deposit slip no.">
+                        <TextInput value={reference} onChange={(e) => setReference(e.target.value)} />
+                      </Field>
+                    </div>
+                  )}
+                </>
+              )}
+              {error && <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+            </Step>
+          )}
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Button variant="outline" disabled={at === 0} onClick={() => setAt(at - 1)}>
+              <ArrowLeft className="size-4" /> Back
+            </Button>
+            {at < 4 ? (
+              <div className="flex items-center gap-3">
+                {!steps[at].done && <span className="text-xs text-ink-muted">{STEP_HINT[at]}</span>}
+                <Button disabled={!steps[at].done} onClick={() => setAt(at + 1)}>
+                  Next: {steps[at + 1].label} <ArrowRight className="size-4" />
+                </Button>
+              </div>
+            ) : (
+              <Button disabled={!allReady || busy} onClick={sign}>
+                <FileSignature className="size-4" /> {busy ? 'Signing…' : 'Agreement signed'}
+              </Button>
+            )}
+          </div>
         </div>
 
         <aside className="xl:sticky xl:top-20">
           <Card>
             <CardHeader title="Ready to sign?" />
-            <ul className="space-y-2 text-sm">
-              {ready.map(([label, ok]) => (
-                <li key={label} className="flex items-start gap-2">
-                  {ok ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-admin-600" /> : <Circle className="mt-0.5 size-4 shrink-0 text-slate-300" />}
-                  <span className={cn(ok ? 'text-ink' : 'text-ink-muted')}>{label}</span>
+            <ul className="space-y-1 text-sm">
+              {steps.slice(0, 4).map((st, i) => (
+                <li key={st.label}>
+                  <button type="button" disabled={!steps.slice(0, i).every((x) => x.done)} onClick={() => setAt(i)} className="flex w-full items-start gap-2 rounded-lg px-1.5 py-1 text-left hover:bg-slate-50 disabled:hover:bg-transparent">
+                    {st.done ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-admin-600" /> : <Circle className="mt-0.5 size-4 shrink-0 text-slate-300" />}
+                    <span className={cn(st.done ? 'text-ink' : 'text-ink-muted')}>{READY_LABEL[i]}</span>
+                  </button>
                 </li>
               ))}
             </ul>
-            {missingDocs.length > 0 && <p className="mt-3 text-xs text-red-600">Still needed: {missingDocs.map((m) => m.meta.label).join(', ')}</p>}
-            {error && <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-            <Button className="mt-4 w-full" disabled={!allReady || busy} onClick={sign}>
-              <FileSignature className="size-4" /> {busy ? 'Signing…' : 'Agreement signed'}
-            </Button>
-            <p className="mt-2 text-xs text-ink-muted">The shares count as sold from now on, and the customer sees the agreement on their portal.</p>
+            {missingDocs.length > 0 && <p className="mt-3 text-xs text-red-600">Papers still needed: {missingDocs.map((m) => m.meta.label).join(', ')}</p>}
+            <p className="mt-3 text-xs text-ink-muted">{allReady ? 'All set — review and sign on the last step.' : 'Each step opens once the one before it is complete.'}</p>
           </Card>
         </aside>
       </div>

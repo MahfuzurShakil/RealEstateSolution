@@ -63,3 +63,31 @@ export function AvailabilityBar({ a, total, compact = false }: { a: OfferingAvai
     </div>
   );
 }
+
+/** The tab strip of a detail page — the same pill row the project page uses. */
+export function DetailTabs<T extends string>({ tabs, active, onChange }: { tabs: { key: T; label: string }[]; active: T; onChange: (key: T) => void }) {
+  return (
+    <div className="mb-4 flex flex-wrap gap-1 rounded-xl border border-hairline bg-white p-1">
+      {tabs.map((t) => (
+        <button
+          key={t.key}
+          type="button"
+          onClick={() => onChange(t.key)}
+          className={cn('rounded-lg px-4 py-2 text-sm font-medium transition-colors', active === t.key ? 'bg-admin-500 text-white' : 'text-ink-muted hover:bg-admin-50 hover:text-admin-700')}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** One label / value line in a detail card. */
+export function Row({ label, children, strong }: { label: string; children: ReactNode; strong?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 border-b border-hairline py-2.5 text-sm last:border-0">
+      <span className="shrink-0 text-ink-muted">{label}</span>
+      <span className={cn('min-w-0 text-right tabular-nums [overflow-wrap:anywhere]', strong ? 'font-semibold text-ink' : 'font-medium text-ink')}>{children}</span>
+    </div>
+  );
+}

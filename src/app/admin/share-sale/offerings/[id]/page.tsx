@@ -2,10 +2,11 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ArrowLeft, CalendarPlus, Lock, Pencil, PlayCircle, Ticket, Trash2, XCircle } from 'lucide-react';
-import { AvailabilityBar, OfferingBadge, SaleBadge } from '@/components/admin/share-sale/bits';
+import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
+import { AvailabilityBar, DetailTabs, OfferingBadge, Row, SaleBadge } from '@/components/admin/share-sale/bits';
 import { ExtendOfferingModal, OpenOfferingModal, ReserveModal } from '@/components/admin/share-sale/ShareSaleModals';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -18,16 +19,8 @@ import { FREQUENCY_LABEL, formatCrore, formatSharePct } from '@/lib/domain/share
 import { projectOwnership, shareOfferingRepository, shareSaleOverview, type SaleRow } from '@/lib/repositories';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
-function Line({ label, children, strong }: { label: string; children: ReactNode; strong?: boolean }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3 py-2 text-sm">
-      <dt className="text-ink-muted">{label}</dt>
-      <dd className={strong ? 'text-right font-semibold text-ink tabular-nums' : 'text-right font-medium tabular-nums'}>{children}</dd>
-    </div>
-  );
-}
-
 type Dialog = 'open' | 'reserve' | 'extend' | 'close' | 'cancel' | 'delete' | null;
+type Tab = 'overview' | 'purchases' | 'ownership' | 'documents';
 
 export default function OfferingDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -39,6 +32,7 @@ export default function OfferingDetailPage() {
   const ownership = useLiveQuery(() => (row ? projectOwnership(row.offering.project_id) : Promise.resolve(null)), [row?.offering.project_id, data]);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [error, setError] = useState('');
+  const [tab, setTab] = useState<Tab>('overview');
 
   if (!data) return <p className="text-sm text-ink-muted">Loading…</p>;
   if (!row) return <EmptyState icon={XCircle} title="Offering not found" action={<Link href="/admin/share-sale">Back to offerings</Link>} />;
@@ -168,135 +162,173 @@ export default function OfferingDetailPage() {
         </p>
       )}
 
-      <div className="mb-5 grid gap-5 lg:grid-cols-3">
-        <Card>
-          <CardHeader title="Valuation" subtitle="Net asset value + premium" />
-          <dl className="divide-y divide-hairline">
-            <Line label="Net asset value">{formatBdt(o.net_asset_value)}</Line>
-            <Line label="Premium">
-              {formatBdt(o.premium_value)}
-              <span className="ml-1 text-xs text-ink-muted">({Number(((o.premium_value / o.net_asset_value) * 100).toFixed(1))}%)</span>
-            </Line>
-            <Line label="Valuation (100%)" strong>
-              {formatBdt(o.valuation)}
-            </Line>
-          </dl>
-        </Card>
-        <Card>
-          <CardHeader title="Offered to the market" subtitle={`${formatSharePct(o.offered_pct)} of the project in ${o.total_shares} shares`} />
-          <dl className="divide-y divide-hairline">
-            <Line label="Ownership per share">{formatSharePct(o.share_pct)}</Line>
-            <Line label="Price per share" strong>
-              {formatBdt(o.price_per_share)}
-            </Line>
-            <Line label="Raises if all sell">{formatBdt(o.price_per_share * o.total_shares)}</Line>
-          </dl>
-        </Card>
-        <Card>
-          <CardHeader title="Terms" subtitle={o.status === 'draft' ? `Valid ${o.validity_days} days once opened` : `Valid ${o.validity_days} days`} />
-          <dl className="divide-y divide-hairline">
-            <Line label="Per customer">
-              {o.min_shares}–{o.max_shares} shares
-            </Line>
-            <Line label="Plan">
-              {o.min_down_payment_pct}%+ down, up to {o.max_installments} {FREQUENCY_LABEL[o.installment_frequency].toLowerCase()}
-            </Line>
-            <Line label="Late fee">
-              {o.late_fee_pct}% after {o.grace_days} days
-            </Line>
-            <Line label="Reservation hold">{o.hold_days} days</Line>
-          </dl>
-        </Card>
-      </div>
+      <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
+        <div className="min-w-0 lg:order-1">
+          <DetailTabs
+            tabs={[
+              { key: 'overview', label: 'Overview' },
+              { key: 'purchases', label: `Purchases (${sales.length})` },
+              { key: 'ownership', label: 'Ownership' },
+              { key: 'documents', label: 'Documents' },
+            ]}
+            active={tab}
+            onChange={setTab}
+          />
 
-      <div className="mb-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
-        <Card>
-          <CardHeader title="Shares" subtitle="Sold = agreement signed. Reserved shares are held while the agreement is prepared." />
-          <AvailabilityBar a={a} total={o.total_shares} />
-          <div className="mt-4 grid grid-cols-3 gap-px overflow-hidden rounded-xl border border-hairline bg-hairline text-sm">
-            {[
-              ['Sold value', formatBdt(row.sold_value)],
-              ['Collected', formatBdt(row.collected)],
-              ['Unsold', formatBdt(a.available * o.price_per_share)],
-            ].map(([k, v]) => (
-              <div key={k} className="bg-white px-3 py-2.5">
-                <p className="text-xs text-ink-muted">{k}</p>
-                <p className="mt-0.5 font-semibold tabular-nums">{v}</p>
-              </div>
-            ))}
-          </div>
-        </Card>
-        <Card className="p-0">
-          <div className="px-5 pt-5">
-            <CardHeader title="Ownership of the project" subtitle="Every opened offering; customers keep the price and terms of the round they bought in." />
-          </div>
-          {ownership && (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[520px] text-sm">
-                <thead>
-                  <tr className="border-y border-hairline bg-canvas/60 text-left text-xs text-ink-muted">
-                    <th className="px-5 py-2 font-medium">Round</th>
-                    <th className="px-3 py-2 text-right font-medium">Valuation</th>
-                    <th className="px-3 py-2 text-right font-medium">Price / share</th>
-                    <th className="px-3 py-2 text-right font-medium">Sold</th>
-                    <th className="px-5 py-2 text-right font-medium">Raised</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-hairline">
-                  {ownership.rows.map((r) => (
-                    <tr key={r.offering.id} className={r.offering.id === o.id ? 'bg-admin-50/40' : ''}>
-                      <td className="px-5 py-2">
-                        Round {r.offering.round_no} <span className="text-xs text-ink-muted">· {r.offering.code}</span>
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">{formatCrore(r.offering.valuation)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{formatBdt(r.offering.price_per_share)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {formatSharePct(r.sold_pct)}
-                        {r.reserved_pct > 0 && <span className="block text-xs text-amber-700">+{formatSharePct(r.reserved_pct)} reserved</span>}
-                      </td>
-                      <td className="px-5 py-2 text-right tabular-nums">{formatBdt(r.raised)}</td>
-                    </tr>
-                  ))}
-                  {!ownership.rows.length && (
-                    <tr>
-                      <td colSpan={5} className="px-5 py-4 text-center text-ink-muted">
-                        Nothing is opened yet — the owner holds 100%.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t border-hairline font-semibold">
-                    <td className="px-5 py-2.5" colSpan={3}>
-                      Customers {formatSharePct(ownership.customers_pct)} · Owner keeps {formatSharePct(ownership.owner_pct)}
-                    </td>
-                    <td className="px-5 py-2.5 text-right tabular-nums" colSpan={2}>
-                      {formatBdt(ownership.rows.reduce((t, r) => t + r.raised, 0))}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
+          {tab === 'overview' && (
+            <div className="space-y-5">
+              <Card>
+                <CardHeader title="Valuation" subtitle={`Net asset value + premium · valued ${formatDate(o.valuation_date)}`} />
+                <Row label="Net asset value">{formatBdt(o.net_asset_value)}</Row>
+                <Row label="Premium">
+                  {formatBdt(o.premium_value)}
+                  <span className="ml-1 text-xs text-ink-muted">({Number(((o.premium_value / o.net_asset_value) * 100).toFixed(1))}% of NAV)</span>
+                </Row>
+                <Row label="Project valuation (100%)" strong>
+                  {formatBdt(o.valuation)}
+                </Row>
+              </Card>
+              <Card>
+                <CardHeader title="Offered to the market" subtitle={`${formatSharePct(o.offered_pct)} of the project in ${o.total_shares} shares`} />
+                <Row label="Share of the project offered">{formatSharePct(o.offered_pct)}</Row>
+                <Row label="Number of shares">{o.total_shares}</Row>
+                <Row label="Ownership per share">{formatSharePct(o.share_pct)}</Row>
+                <Row label="Price per share" strong>
+                  {formatBdt(o.price_per_share)}
+                </Row>
+                <Row label="Raises if all sell">{formatBdt(o.price_per_share * o.total_shares)}</Row>
+              </Card>
+              <Card>
+                <CardHeader title="Terms for customers" subtitle={o.status === 'draft' ? `Valid ${o.validity_days} days once opened` : `Valid ${o.validity_days} days`} />
+                <Row label="Validity">{o.opens_on ? `${formatDate(o.opens_on)} – ${formatDate(o.closes_on)}` : `${o.validity_days} days from opening`}</Row>
+                <Row label="Shares per customer">
+                  {o.min_shares}–{o.max_shares}
+                </Row>
+                <Row label="Down payment">at least {o.min_down_payment_pct}%</Row>
+                <Row label="Installments">
+                  up to {o.max_installments}, {FREQUENCY_LABEL[o.installment_frequency].toLowerCase()}
+                </Row>
+                <Row label="Late fee">
+                  {o.late_fee_pct}% of the installment after {o.grace_days} days
+                </Row>
+                <Row label="Reservation hold">{o.hold_days} days</Row>
+              </Card>
+              {o.notes && (
+                <Card>
+                  <CardHeader title="Notes" />
+                  <p className="text-sm whitespace-pre-line text-ink">{o.notes}</p>
+                </Card>
+              )}
             </div>
           )}
-        </Card>
-      </div>
 
-      <Card>
-        <CardHeader title="Customer purchases" subtitle={`${sales.length} in this offering`} />
-        <DataTable
-          rows={sales}
-          columns={saleColumns}
-          label="purchases"
-          onRowClick={(r) => router.push(`/admin/share-sale/sales/${r.sale.id}`)}
-          emptyState={
-            <EmptyState
-              icon={Ticket}
-              title="No purchases yet"
-              description={row.state === 'open' ? 'Reserve shares for a customer once the number and plan are agreed.' : 'Open the offering to start selling.'}
-            />
-          }
-        />
-      </Card>
+          {tab === 'purchases' && (
+            <Card>
+              <CardHeader title="Customer purchases" subtitle={`${sales.length} in this offering`} />
+              <DataTable
+                rows={sales}
+                columns={saleColumns}
+                label="purchases"
+                onRowClick={(r) => router.push(`/admin/share-sale/sales/${r.sale.id}`)}
+                emptyState={
+                  <EmptyState
+                    icon={Ticket}
+                    title="No purchases yet"
+                    description={row.state === 'open' ? 'Reserve shares for a customer once the number and plan are agreed.' : 'Open the offering to start selling.'}
+                  />
+                }
+              />
+            </Card>
+          )}
+
+          {tab === 'ownership' && (
+            <Card className="p-0">
+              <div className="px-5 pt-5">
+                <CardHeader title="Ownership of the project" subtitle="Every opened offering; customers keep the price and terms of the round they bought in." />
+              </div>
+              {ownership && (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[520px] text-sm">
+                    <thead>
+                      <tr className="border-y border-hairline bg-canvas/60 text-left text-xs text-ink-muted">
+                        <th className="px-5 py-2 font-medium">Round</th>
+                        <th className="px-3 py-2 text-right font-medium">Valuation</th>
+                        <th className="px-3 py-2 text-right font-medium">Price / share</th>
+                        <th className="px-3 py-2 text-right font-medium">Sold</th>
+                        <th className="px-5 py-2 text-right font-medium">Raised</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-hairline">
+                      {ownership.rows.map((r) => (
+                        <tr key={r.offering.id} className={r.offering.id === o.id ? 'bg-admin-50/40' : ''}>
+                          <td className="px-5 py-2">
+                            Round {r.offering.round_no} <span className="text-xs text-ink-muted">· {r.offering.code}</span>
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums">{formatCrore(r.offering.valuation)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{formatBdt(r.offering.price_per_share)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">
+                            {formatSharePct(r.sold_pct)}
+                            {r.reserved_pct > 0 && <span className="block text-xs text-amber-700">+{formatSharePct(r.reserved_pct)} reserved</span>}
+                          </td>
+                          <td className="px-5 py-2 text-right tabular-nums">{formatBdt(r.raised)}</td>
+                        </tr>
+                      ))}
+                      {!ownership.rows.length && (
+                        <tr>
+                          <td colSpan={5} className="px-5 py-4 text-center text-ink-muted">
+                            Nothing is opened yet — the owner holds 100%.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-hairline font-semibold">
+                        <td className="px-5 py-2.5" colSpan={3}>
+                          Customers {formatSharePct(ownership.customers_pct)} · Owner keeps {formatSharePct(ownership.owner_pct)}
+                        </td>
+                        <td className="px-5 py-2.5 text-right tabular-nums" colSpan={2}>
+                          {formatBdt(ownership.rows.reduce((t, r) => t + r.raised, 0))}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </Card>
+          )}
+
+          {tab === 'documents' && (
+            <Card>
+              <CardHeader title="Documents" subtitle="The papers behind this offering — valuation report, board resolution, offer document." />
+              <DocumentsPanel entityType="share_offering" entityId={o.id} />
+            </Card>
+          )}
+        </div>
+
+        <aside className="min-w-0 space-y-5 lg:order-2">
+          <Card>
+            <CardHeader title="Shares" subtitle="Sold = agreement signed" />
+            <AvailabilityBar a={a} total={o.total_shares} />
+            <div className="mt-3">
+              <Row label="Sold value">{formatBdt(row.sold_value)}</Row>
+              <Row label="Collected">{formatBdt(row.collected)}</Row>
+              <Row label="Unsold">{formatBdt(a.available * o.price_per_share)}</Row>
+            </div>
+          </Card>
+          <Card>
+            <CardHeader title="At a glance" />
+            <Row label="Valuation">{formatCrore(o.valuation)}</Row>
+            <Row label="Price per share" strong>
+              {formatBdt(o.price_per_share)}
+            </Row>
+            <Row label="Offered">
+              {formatSharePct(o.offered_pct)} · {o.total_shares} shares
+            </Row>
+            <Row label={o.closes_on ? 'Valid until' : 'Validity'}>{o.closes_on ? formatDate(o.closes_on) : `${o.validity_days} days`}</Row>
+            <Row label="Customers">{new Set(sales.filter((x) => x.sale.status !== 'released' && x.sale.status !== 'cancelled').map((x) => x.sale.customer_id)).size}</Row>
+          </Card>
+        </aside>
+      </div>
 
       {dialog === 'open' && <OpenOfferingModal offering={o} onClose={() => setDialog(null)} />}
       {dialog === 'reserve' && <ReserveModal offering={o} available={a.available} onClose={() => setDialog(null)} />}
