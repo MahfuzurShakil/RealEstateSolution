@@ -1,13 +1,59 @@
+'use client';
+
 import Link from 'next/link';
+import { useState } from 'react';
 import { formatDay, type InstallmentView } from '@/lib/domain/investor-portal';
 import { cn } from '@/lib/utils/cn';
 import { Money, StatusPill } from './ui';
 
-/** The agreed payment schedule: one row per installment, part payments and late fees shown where they apply. */
+type Filter = 'open' | 'overdue' | 'paid' | 'all';
+const FILTERS: { key: Filter; label: string; match: (r: InstallmentView) => boolean }[] = [
+  { key: 'open', label: 'Due & upcoming', match: (r) => r.status !== 'paid' || r.late_fee_due > 0 },
+  { key: 'overdue', label: 'Overdue', match: (r) => r.status === 'overdue' },
+  { key: 'paid', label: 'Paid', match: (r) => r.status === 'paid' },
+  { key: 'all', label: 'All', match: () => true },
+];
+const PAGE = 12;
+
+/**
+ * The agreed payment schedule: one row per installment, part payments and late
+ * fees shown where they apply. A long plan (100 installments) is filtered and
+ * paged 12 at a time, starting at what is due (SHARE-SALE-FEEDBACK-PLAN.md D4).
+ */
 export function ScheduleTable({ rows }: { rows: InstallmentView[] }) {
+  const [filter, setFilter] = useState<Filter>(() => (rows.some((r) => r.status !== 'paid') ? 'open' : 'all'));
+  const [page, setPage] = useState(0);
   const total = rows.reduce((t, r) => t + r.amount, 0);
   const paid = rows.reduce((t, r) => t + r.paid_amount, 0);
+  const shown = rows.filter(FILTERS.find((f) => f.key === filter)!.match);
+  const pages = Math.max(1, Math.ceil(shown.length / PAGE));
+  const at = Math.min(page, pages - 1);
+  const pageRows = shown.slice(at * PAGE, at * PAGE + PAGE);
   return (
+    <div>
+      <div className="flex flex-wrap gap-2 px-5 pb-3 sm:px-6" role="tablist" aria-label="Show">
+        {FILTERS.map((f) => {
+          const on = f.key === filter;
+          return (
+            <button
+              key={f.key}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              onClick={() => {
+                setFilter(f.key);
+                setPage(0);
+              }}
+              className={cn(
+                'rounded-full border px-3 py-1 text-[13px] font-semibold transition-colors',
+                on ? 'border-site-primary bg-site-primary text-white' : 'border-site-line bg-white text-site-muted hover:border-site-primary hover:text-site-primary',
+              )}
+            >
+              {f.label} <span className="tabular opacity-75">{rows.filter(f.match).length}</span>
+            </button>
+          );
+        })}
+      </div>
     <div className="overflow-x-auto">
       <table className="w-full min-w-[720px] text-left text-[15px]">
         <thead>
@@ -21,7 +67,14 @@ export function ScheduleTable({ rows }: { rows: InstallmentView[] }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-site-line">
-          {rows.map((r) => (
+          {pageRows.length === 0 && (
+            <tr>
+              <td colSpan={6} className="px-5 py-6 text-center text-site-muted sm:px-6">
+                Nothing here.
+              </td>
+            </tr>
+          )}
+          {pageRows.map((r) => (
             <tr key={r.id} className={cn(r.status === 'overdue' && 'bg-red-50/60')}>
               <td className="px-5 py-3.5 font-medium sm:px-6">{r.label}</td>
               <td className="tabular px-3 py-3.5">{formatDay(r.due_date)}</td>
@@ -79,6 +132,22 @@ export function ScheduleTable({ rows }: { rows: InstallmentView[] }) {
           </tr>
         </tfoot>
       </table>
+    </div>
+      {pages > 1 && (
+        <div className="flex items-center justify-between gap-3 border-t border-site-line px-5 py-3 text-sm sm:px-6">
+          <span className="tabular text-site-muted">
+            {at * PAGE + 1}–{Math.min(at * PAGE + PAGE, shown.length)} of {shown.length}
+          </span>
+          <span className="flex gap-2">
+            <button type="button" disabled={at === 0} onClick={() => setPage(at - 1)} className="rounded-lg border border-site-line px-3 py-1.5 font-semibold disabled:opacity-40">
+              Previous
+            </button>
+            <button type="button" disabled={at >= pages - 1} onClick={() => setPage(at + 1)} className="rounded-lg border border-site-line px-3 py-1.5 font-semibold disabled:opacity-40">
+              Next
+            </button>
+          </span>
+        </div>
+      )}
     </div>
   );
 }

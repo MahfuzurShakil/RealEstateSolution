@@ -9,6 +9,7 @@ import { DetailTabs, SaleBadge } from '@/components/admin/share-sale/bits';
 import { InvestorDetailsModal } from '@/components/admin/share-sale/InboxModals';
 import { ShareDocumentChecklist } from '@/components/admin/share-sale/ShareDocuments';
 import { SignAgreementWizard } from '@/components/admin/share-sale/SignAgreementWizard';
+import { InstallmentSchedule } from '@/components/admin/payments/InstallmentSchedule';
 import { Facts, SigningFacts } from '@/components/admin/signing/SigningParts';
 import { ReasonModal, RecordPaymentModal } from '@/components/admin/share-sale/ShareSaleModals';
 import { Badge } from '@/components/ui/Badge';
@@ -19,7 +20,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { canEdit } from '@/lib/domain/access';
 import { missingToSign, shareDocChecklist } from '@/lib/domain/share-documents';
-import { FREQUENCY_LABEL, SHARE_INSTALLMENT_STATUS_META, SHARE_PAYMENT_METHOD_LABEL, formatSharePct, installmentLabel, lateFeeText } from '@/lib/domain/share-sale';
+import { FREQUENCY_LABEL, SHARE_PAYMENT_METHOD_LABEL, formatSharePct, lateFeeText } from '@/lib/domain/share-sale';
 import { customerUploadRepository, shareSaleOverview, shareSaleRepository } from '@/lib/repositories';
 import { formatBdt, formatDate, formatPhone } from '@/lib/utils/format';
 
@@ -271,87 +272,22 @@ function ShareSaleDetail() {
 
           {tab === 'payments' &&
             (v.schedule.length ? (
-              <div className="space-y-5">
-                <Card className="p-0">
-                  <div className="px-5 pt-5">
-                    <CardHeader title="Payment schedule" subtitle={o ? `Late fee: ${lateFeeText(o)}. None on the down payment.` : undefined} />
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[600px] text-sm">
-                      <thead>
-                        <tr className="border-y border-hairline bg-canvas/60 text-left text-xs text-ink-muted">
-                          <th className="px-5 py-2 font-medium">Payment</th>
-                          <th className="px-3 py-2 font-medium">Due</th>
-                          <th className="px-3 py-2 text-right font-medium">Amount</th>
-                          <th className="px-3 py-2 text-right font-medium">Paid</th>
-                          <th className="px-3 py-2 text-right font-medium">Late fee</th>
-                          <th className="px-5 py-2 font-medium">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-hairline">
-                        {v.schedule.map((i) => (
-                          <tr key={i.id} className={i.status === 'overdue' ? 'bg-red-50/40' : ''}>
-                            <td className="px-5 py-2">{i.label}</td>
-                            <td className="px-3 py-2 tabular-nums">
-                              {formatDate(i.due_date)}
-                              {i.days_late > 0 && <span className="block text-xs text-red-600">{i.days_late} days late</span>}
-                            </td>
-                            <td className="px-3 py-2 text-right tabular-nums">{formatBdt(i.amount)}</td>
-                            <td className="px-3 py-2 text-right tabular-nums">
-                              {i.paid_amount ? formatBdt(i.paid_amount) : '—'}
-                              {i.paid_on && <span className="block text-xs text-ink-muted">{formatDate(i.paid_on)}</span>}
-                            </td>
-                            <td className="px-3 py-2 text-right tabular-nums">
-                              {i.late_fee_due ? <span className="text-red-600">{formatBdt(i.late_fee_due)}</span> : i.late_fee_paid ? <span className="text-ink-muted">{formatBdt(i.late_fee_paid)} paid</span> : '—'}
-                            </td>
-                            <td className="px-5 py-2">
-                              <Badge tone={SHARE_INSTALLMENT_STATUS_META[i.status].tone}>
-                                {i.paid_amount > 0 && i.remaining > 0 ? 'Part paid' : SHARE_INSTALLMENT_STATUS_META[i.status].label}
-                              </Badge>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </Card>
-
-                <Card className="p-0">
-                  <div className="px-5 pt-5">
-                    <CardHeader title="Payments received" subtitle={`${v.payments.length} receipt${v.payments.length === 1 ? '' : 's'}`} />
-                  </div>
-                  {v.payments.length ? (
-                    <ul className="divide-y divide-hairline border-t border-hairline">
-                      {v.payments.map((p) => (
-                        <li key={p.id} className="px-5 py-3 text-sm">
-                          <div className="flex items-baseline justify-between gap-3">
-                            <span className="flex items-center gap-2 font-medium text-ink">
-                              {p.code}
-                              {p.channel === 'online' && <Badge tone="teal">Customer Portal</Badge>}
-                            </span>
-                            <span className="font-semibold tabular-nums">{formatBdt(p.amount)}</span>
-                          </div>
-                          <p className="mt-0.5 text-xs text-ink-muted">
-                            {formatDate(p.paid_on)} · {p.method_detail || SHARE_PAYMENT_METHOD_LABEL[p.method]}
-                            {p.reference ? ` · ${p.reference}` : ''}
-                          </p>
-                          <p className="mt-0.5 text-xs text-ink-muted">
-                            {p.allocations
-                              .map((a) => {
-                                const i = v.schedule.find((x) => x.id === a.installment_id);
-                                const label = i ? installmentLabel(i.seq) : '—';
-                                return a.principal === 0 ? `${label} late fee` : `${label}${i && a.principal < i.amount ? ' (part)' : ''}${a.late_fee ? ' + late fee' : ''}`;
-                              })
-                              .join(', ')}
-                          </p>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="border-t border-hairline px-5 py-6 text-center text-sm text-ink-muted">No payment recorded yet.</p>
-                  )}
-                </Card>
-              </div>
+              <Card>
+                <InstallmentSchedule
+                  rows={v.schedule}
+                  subtitle={o ? `Late fee: ${lateFeeText(o)}. None on the down payment.` : undefined}
+                  receipts={v.payments.map((p) => ({
+                    id: p.id,
+                    code: p.code,
+                    date: p.paid_on,
+                    amount: p.amount,
+                    method: p.method_detail || SHARE_PAYMENT_METHOD_LABEL[p.method],
+                    reference: p.reference,
+                    channel: p.channel === 'online' ? 'Customer Portal' : null,
+                    allocations: p.allocations,
+                  }))}
+                />
+              </Card>
             ) : (
               <Card>
                 <EmptyState icon={FileSignature} title="No schedule yet" description="The payment schedule is written when the agreement is signed." />

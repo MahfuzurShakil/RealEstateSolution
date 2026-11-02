@@ -11,7 +11,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { Booking, Payment } from '@/lib/db/types';
 import { PAYMENT_METHOD_LABEL, hasAgreement } from '@/lib/domain/booking';
-import { INSTALLMENT_STATUS_META } from '@/lib/domain/installment-ledger';
+import { InstallmentSchedule } from '@/components/admin/payments/InstallmentSchedule';
+import { homeReceiptNo } from '@/lib/repositories/investor/investor.repository';
 import {
   bankAccountRepository,
   bookingLedgerRepository,
@@ -109,57 +110,30 @@ export function PaymentPanel({ booking }: { booking: Booking }) {
 
       {ledger && ledger.schedule.length > 0 && (
         <div className="mb-6">
-          <p className="mb-2 text-sm font-semibold text-ink">Schedule</p>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead>
-                <tr className="border-b border-hairline text-left text-xs uppercase tracking-wide text-ink-muted">
-                  <th className="py-2 pr-3">Row</th>
-                  <th className="py-2 pr-3">Due</th>
-                  <th className="py-2 pr-3 text-right">Amount</th>
-                  <th className="py-2 pr-3 text-right">Paid</th>
-                  <th className="py-2 pr-3 text-right">Late fee</th>
-                  <th className="py-2 pr-3">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ledger.schedule.map((r) => (
-                  <tr
-                    key={r.id}
-                    className={`border-b border-hairline last:border-0 ${r.status === 'overdue' ? 'bg-red-50/60' : ''}`}
-                  >
-                    <td className="py-2 pr-3 text-ink">{r.label}</td>
-                    <td className="py-2 pr-3 text-ink-muted">{formatDate(r.due_date)}</td>
-                    <td className="py-2 pr-3 text-right tabular-nums">{formatBdt(r.amount)}</td>
-                    <td className="py-2 pr-3 text-right tabular-nums">
-                      {r.paid_amount > 0 ? formatBdt(r.paid_amount) : '—'}
-                    </td>
-                    <td className="py-2 pr-3 text-right tabular-nums">
-                      {r.late_fee_due > 0 ? (
-                        <span className="text-red-600">{formatBdt(r.late_fee_due)} due</span>
-                      ) : r.late_fee_paid > 0 ? (
-                        `${formatBdt(r.late_fee_paid)} paid`
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td className="py-2 pr-3">
-                      <Badge tone={INSTALLMENT_STATUS_META[r.status].tone}>
-                        {r.paid_amount > 0 && r.remaining > 0 ? 'Part paid' : INSTALLMENT_STATUS_META[r.status].label}
-                      </Badge>
-                      {r.status === 'overdue' && <span className="ml-1.5 text-xs text-red-600">{r.days_late} days</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {ledger.unallocated > 0.5 && (
-            <p className="mt-2 text-xs text-ink-muted">
-              {formatBdt(ledger.unallocated)} received beyond the rows above. It counts toward the price and moves onto
-              the installments once the agreement is recorded.
-            </p>
-          )}
+          {/* the same paged schedule as a share purchase (feedback D4) */}
+          <InstallmentSchedule
+            title="Schedule"
+            rows={ledger.schedule}
+            receipts={(payments ?? []).map((p) => ({
+              id: p.id,
+              code: homeReceiptNo(p),
+              date: p.payment_date,
+              amount: Number(p.amount) || 0,
+              method: PAYMENT_METHOD_LABEL[p.payment_method],
+              reference: p.reference_no,
+              channel: p.channel === 'online' ? 'Online' : null,
+              allocations: p.allocations ?? [],
+              printHref: `/admin/collections/receipt/${p.id}/print`,
+            }))}
+            footer={
+              ledger.unallocated > 0.5 ? (
+                <p className="mt-2 text-xs text-ink-muted">
+                  {formatBdt(ledger.unallocated)} received beyond the rows above. It counts toward the price and moves onto
+                  the installments once the agreement is recorded.
+                </p>
+              ) : undefined
+            }
+          />
         </div>
       )}
 
