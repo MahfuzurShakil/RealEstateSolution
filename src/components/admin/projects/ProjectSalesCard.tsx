@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { Checkbox } from '@/components/ui/Field';
+import { Checkbox, Field, TextInput } from '@/components/ui/Field';
 import type { Land, Project, ProjectSalesStatus } from '@/lib/db/types';
 import {
   PROJECT_SALES_STATUS_META,
@@ -194,6 +194,7 @@ export function ProjectSalesCard({ project, lands }: { project: Project; lands: 
           )}
         </div>
         {website && website.length > 0 && <WebsiteChecklist items={website} published={project.is_public} />}
+        {!isShare && <LateFeeDefault key={project.updated_at} project={project} />}
       </Card>
 
       <ConfirmDialog
@@ -282,6 +283,50 @@ function WebsiteChecklist({ items, published }: { items: WebsiteReadinessItem[];
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * BUYER-PORTAL-PLAN.md §10 F7 — the late fee a new sale agreement on this
+ * project starts from. Each agreement can still change it; agreements
+ * already signed keep their own.
+ */
+function LateFeeDefault({ project }: { project: Project }) {
+  const [pct, setPct] = useState(project.default_late_fee_pct ? String(project.default_late_fee_pct) : '');
+  const [grace, setGrace] = useState(project.default_late_fee_pct ? String(project.default_late_fee_grace_days ?? 0) : '');
+  const [error, setError] = useState('');
+  const dirty =
+    pct !== (project.default_late_fee_pct ? String(project.default_late_fee_pct) : '') ||
+    grace !== (project.default_late_fee_pct ? String(project.default_late_fee_grace_days ?? 0) : '');
+
+  async function save() {
+    const p = pct.trim() ? Number(pct) : 0;
+    const g = grace.trim() ? Number(grace) : 0;
+    if (!(p >= 0 && p <= 100)) return setError('The late fee is a percentage from 0 to 100.');
+    if (!(Number.isInteger(g) && g >= 0)) return setError('Grace days are whole days, 0 or more.');
+    setError('');
+    await projectRepository.update(project.id, { default_late_fee_pct: p > 0 ? p : null, default_late_fee_grace_days: p > 0 ? g : null });
+  }
+
+  return (
+    <div className="mt-4 border-t border-hairline pt-4">
+      <p className="text-sm font-medium text-ink">Late fee on buyer installments</p>
+      <p className="mb-3 text-xs text-ink-muted">What a new sale agreement starts from — it can be changed on each agreement.</p>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Late fee (%)">
+          <TextInput inputMode="decimal" value={pct} onChange={(e) => setPct(e.target.value.replace(/[^\d.]/g, ''))} placeholder="None" />
+        </Field>
+        <Field label="Grace days">
+          <TextInput inputMode="numeric" value={grace} onChange={(e) => setGrace(e.target.value.replace(/\D/g, ''))} placeholder="0" />
+        </Field>
+      </div>
+      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+      {dirty && (
+        <Button size="sm" className="mt-3" onClick={save}>
+          Save late fee
+        </Button>
+      )}
     </div>
   );
 }

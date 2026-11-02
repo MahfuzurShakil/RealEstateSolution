@@ -1,8 +1,11 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { CircleUserRound, Sparkles } from 'lucide-react';
 import { OpportunityCard } from '@/components/investor/OpportunityCard';
+import { isHome } from '@/lib/domain/investor-portal';
+import { CUSTOMER_PORTAL_CHANGED, investorRepository } from '@/lib/repositories/investor/investor.repository';
 import { publicShareOfferRepository } from '@/lib/repositories/public/share-offer.public.repository';
 import { en } from '../i18n/en';
 import { Reveal } from '../motion';
@@ -15,13 +18,23 @@ import { useCompanyInfo } from '../useCompanyInfo';
  * /invest (BUYER-PORTAL-PLAN.md §6): the open Share Sale offerings, as the
  * same cards the Customer Portal shows, with a request a visitor can send
  * without an account. The page and its menu item exist only while Settings →
- * Website "Show share offerings on the website" is on.
+ * Website "Show share offerings on the website" is on. A visitor signed in to
+ * the Customer Portal asks from their account instead (§10, F2): no name or
+ * phone to type, and the request shows on their portal.
  */
 const t = en.investPage;
 
 export function InvestPage() {
   const company = useCompanyInfo();
   const offers = useLiveQuery(() => publicShareOfferRepository.openOffers(), []);
+  // the portal snapshot when signed in; null for a visitor
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const reload = () => setTick((t) => t + 1);
+    window.addEventListener(CUSTOMER_PORTAL_CHANGED, reload);
+    return () => window.removeEventListener(CUSTOMER_PORTAL_CHANGED, reload);
+  }, []);
+  const me = useLiveQuery(() => (investorRepository.session() ? investorRepository.snapshot() : null), [tick]);
 
   if (company && !company.show_share_sale) {
     return (
@@ -34,9 +47,15 @@ export function InvestPage() {
   return (
     <>
       <PageHero eyebrow={t.eyebrow} title={t.title} accent={t.accent} lead={t.lead}>
-        <ButtonLink href="/customer/login" variant="outline" icon={<CircleUserRound className="size-4.5" />}>
-          {t.signIn}
-        </ButtonLink>
+        {me ? (
+          <ButtonLink href="/customer" variant="outline" icon={<CircleUserRound className="size-4.5" />}>
+            {t.signedIn.replace('{name}', me.customer.full_name.split(' ')[0])}
+          </ButtonLink>
+        ) : (
+          <ButtonLink href="/customer/login?next=/invest" variant="outline" icon={<CircleUserRound className="size-4.5" />}>
+            {t.signIn}
+          </ButtonLink>
+        )}
       </PageHero>
 
       <Container className="mt-20">
@@ -50,7 +69,15 @@ export function InvestPage() {
         ) : (
           <div className="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             {offers.map(({ round, project }) => (
-              <OpportunityCard key={round.code} round={round} project={project} owned={false} request={undefined} visitor />
+              <div key={round.code} id={round.code} className="scroll-mt-28">
+                <OpportunityCard
+                  round={round}
+                  project={project}
+                  owned={!!me?.holdings.some((h) => !isHome(h) && h.project_code === project.code)}
+                  request={me?.share_requests.find((r) => r.round_code === round.code)}
+                  visitor={!me}
+                />
+              </div>
             ))}
           </div>
         )}

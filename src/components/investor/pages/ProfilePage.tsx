@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from 'react';
 import { BadgeCheck, Check, FlaskConical, Landmark, LockKeyhole, Mail, UserRound, Users } from 'lucide-react';
 import { Button } from '@/components/public/ui/Button';
-import { CUSTOMER_TYPE_LABEL, formatDay } from '@/lib/domain/investor-portal';
+import { customerTypeLabel, formatDay } from '@/lib/domain/investor-portal';
 import { formatPhone } from '@/lib/utils/format';
 import { useCustomerPortal } from '../CustomerPortalProvider';
 import { CustomerTypeBadge, DetailList, PageHeading, Panel } from '../ui';
@@ -50,7 +50,7 @@ export function ProfilePage() {
             Customer {c.code} · since {formatDay(c.joined_on)}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <CustomerTypeBadge type={c.customer_type} className="bg-site-brass/20 text-site-brass" />
+            <CustomerTypeBadge type={c.customer_type} label={customerTypeLabel(snapshot.roles)} className="bg-site-brass/20 text-site-brass" />
             {c.kyc_verified_on ? (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold">
                 <BadgeCheck className="size-3.5 text-site-brass" aria-hidden /> KYC verified {formatDay(c.kyc_verified_on)}
@@ -68,7 +68,7 @@ export function ProfilePage() {
             rows={[
               ['Full name', c.full_name],
               ['Father’s / spouse’s name', or(c.father_or_spouse_name)],
-              ['Customer type', CUSTOMER_TYPE_LABEL[c.customer_type]],
+              ['Customer type', customerTypeLabel(snapshot.roles)],
               ['Date of birth', or(c.date_of_birth, formatDay(c.date_of_birth))],
               ['National ID', or(c.nid_masked, <span className="tabular">{c.nid_masked}</span>)],
               ['TIN', or(c.tin_masked, <span className="tabular">{c.tin_masked}</span>)],

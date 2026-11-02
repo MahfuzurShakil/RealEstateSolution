@@ -324,7 +324,7 @@ function BookingDetailPage() {
             </div>
           )}
 
-          {tab === 'agreement' && <AgreementPanel booking={booking} />}
+          {tab === 'agreement' && <AgreementPanel booking={booking} project={booking.project} />}
 
           {tab === 'payments' && (
             <Card>

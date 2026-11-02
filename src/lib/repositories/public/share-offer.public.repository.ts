@@ -169,4 +169,9 @@ async function requestShares(input: VisitorShareRequest): Promise<{ code: string
   return { code: row.code };
 }
 
-export const publicShareOfferRepository = { openOffers, requestShares };
+/** The open offering of one project, for the strip on its website page (BUYER-PORTAL-PLAN.md §10, F1). */
+async function offerForProject(projectCode: string): Promise<PublicShareOffer | null> {
+  return (await openOffers()).find((o) => o.project.code === projectCode) ?? null;
+}
+
+export const publicShareOfferRepository = { openOffers, offerForProject, requestShares };

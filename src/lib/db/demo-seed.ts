@@ -4,6 +4,7 @@ import { resetCodeMarks } from '../utils/id';
 import {
   bookingRepository,
   customerRepository,
+  customerUploadRepository,
   documentRepository,
   landProjectMappingRepository,
   leadActivityRepository,
@@ -58,6 +59,7 @@ import {
   projectCostingRepository,
   refundRepository,
   userProjectAssignmentRepository,
+  type AgreementInput,
 } from '../repositories';
 import type {
   DeliveryStep,
@@ -78,7 +80,7 @@ import { DEMO_BOOKINGS, DEMO_CUSTOMERS } from './demo-bookings';
 import { addMonths } from '../domain/booking';
 import { DEMO_LEADS, DEMO_USER_JOINED_DAYS_AGO, DEMO_USERS } from './demo-leads';
 import { DEMO_PROJECTS } from './demo-projects';
-import { seedDemoShareSale } from './demo-share-sale';
+import { samplePdf, seedDemoShareSale } from './demo-share-sale';
 import { templateForItem, towerBasements, workTypeDef } from '../domain/construction-cost';
 import { DEMO_MATERIAL_REQUESTS, DEMO_TOWER_PROGRESS } from './demo-site-progress';
 import { DEMO_EXPENSES, DEMO_REFUNDS } from './demo-finance';
@@ -1520,6 +1522,10 @@ async function seedDemoBookings(
   const db = getDb();
   const bookingIds = new Map<string, string>();
 
+  // BUYER-PORTAL-PLAN.md §10 F7 — one project shows a default late fee new agreements start from
+  const greenId = projectIds.get('Nokshi Green Residence');
+  if (greenId) await projectRepository.update(greenId, { default_late_fee_pct: 2, default_late_fee_grace_days: 30 });
+
   const customerIds = new Map<string, string>();
   for (const demo of DEMO_CUSTOMERS) {
     const saved = await customerRepository.create(
@@ -1606,7 +1612,7 @@ async function seedDemoBookings(
     if (demo.installment_count && paidIn >= demo.booking_amount && !demo.cancel) {
       const signed = daysFromToday(-Math.max(demo.days_ago - 5, 0)).slice(0, 10);
       const full = demo.installment_count <= 6;
-      await bookingRepository.saveAgreement(booking.id, {
+      const agreement: AgreementInput = {
         agreement_date: signed,
         agreement_no: `AGR-${booking.code.slice(-3)}`,
         payment_mode: full ? 'full' : 'installment',
@@ -1618,7 +1624,37 @@ async function seedDemoBookings(
         agreement_terms: full
           ? 'Full price within the agreed date; registration cost borne by the buyer.'
           : 'Monthly installment by the 10th; 2% late fee after 30 days. Utility connection charged at cost.',
-      });
+      };
+      if (demo.signed_with_papers) {
+        // §10 F10 — signed the way the wizard signs: the buyer's papers first, then KYC, witnesses and stamp
+        const file = (kind: 'id_document' | 'photo' | 'signed_copy', label: string) =>
+          customerUploadRepository.officeUpload(
+            { customer_id: booking.customer_id, sale_id: null, booking_id: kind === 'signed_copy' ? booking.id : null, kind, file: samplePdf(label), file_name: `${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.pdf` },
+            createdBy,
+          );
+        await file('id_document', 'NID copy');
+        await file('photo', 'Photograph');
+        await file('signed_copy', `Sale agreement ${booking.code}`);
+        await bookingRepository.signAgreement(booking.id, {
+          agreement,
+          customer: { father_or_spouse_name: demo.signed_with_papers.father_or_spouse_name, kyc_verified_on: signed },
+          signing: {
+            place: 'Company office, Gulshan Avenue, Dhaka',
+            company_signatory: 'Mahfuzur Rahman',
+            company_signatory_title: 'Managing Director',
+            witnesses: [
+              { name: 'Shirin Sultana', id_or_phone: '01711-556600', address: 'Company office, Gulshan' },
+              { name: 'Kamal Hossain', id_or_phone: '01819-447700', address: 'Banani, Dhaka' },
+            ],
+            stamp_value: 300,
+            stamp_serial: `NJ-${booking.code.slice(-3)}`,
+            notarized_on: signed,
+            notary_name: 'Adv. Rafiqul Islam, Notary Public, Dhaka',
+          },
+        });
+      } else {
+        await bookingRepository.saveAgreement(booking.id, agreement);
+      }
     }
 
     if (demo.cancel) {

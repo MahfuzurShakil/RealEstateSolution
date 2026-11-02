@@ -8,7 +8,7 @@ import { Field, SelectInput, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { useMockSession } from '@/lib/auth/mock-session';
 import type { CustomerUpload, CustomerUploadKind, ShareSale } from '@/lib/db/types';
-import { SHARE_DOC_KINDS, SHARE_DOC_META, docMeta, paperChecklist, shareDocScope, type ChecklistItem, type PaperOwner } from '@/lib/domain/share-documents';
+import { SHARE_DOC_KINDS, docMeta, paperChecklist, shareDocScope, type ChecklistItem, type PaperOwner } from '@/lib/domain/share-documents';
 import { customerUploadRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatDate } from '@/lib/utils/format';
@@ -25,6 +25,7 @@ const STATUS: Record<CustomerUpload['status'], { label: string; tone: 'green' | 
 export function OfficeUploadModal({
   customerId,
   sales,
+  bookings = [],
   kind: initialKind,
   saleId: initialSale,
   onClose,
@@ -32,6 +33,8 @@ export function OfficeUploadModal({
   customerId: string;
   /** the customer's purchases a purchase paper can go to */
   sales: Pick<ShareSale, 'id' | 'code'>[];
+  /** BUYER-PORTAL-PLAN.md §10 F9 — and their bookings */
+  bookings?: { id: string; code: string }[];
   kind?: CustomerUploadKind;
   saleId?: string | null;
   onClose: () => void;
@@ -39,18 +42,23 @@ export function OfficeUploadModal({
   const { userId } = useMockSession();
   const input = useRef<HTMLInputElement>(null);
   const [kind, setKind] = useState<CustomerUploadKind>(initialKind ?? 'signed_copy');
-  const [saleId, setSaleId] = useState(initialSale ?? sales[0]?.id ?? '');
+  // "sale:<id>" or "booking:<id>" — one list for both kinds of holding
+  const [target, setTarget] = useState(
+    initialSale ? `sale:${initialSale}` : sales[0] ? `sale:${sales[0].id}` : bookings[0] ? `booking:${bookings[0].id}` : '',
+  );
+  const [targetKind, targetId] = target.split(':') as ['sale' | 'booking' | '', string];
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const { error, busy, run } = useAction();
   const purchase = shareDocScope(kind) === 'purchase';
+  const meta = docMeta(kind, targetKind === 'booking' ? 'booking' : 'sale');
 
   return (
     <Modal
       open
       title="Add a paper to the file"
-      subtitle={SHARE_DOC_META[kind].hint}
+      subtitle={meta.hint}
       icon={UploadCloud}
       size="md"
       onClose={onClose}
@@ -63,7 +71,20 @@ export function OfficeUploadModal({
             disabled={busy || !file}
             onClick={() =>
               run(
-                () => customerUploadRepository.officeUpload({ customer_id: customerId, sale_id: purchase ? saleId : null, kind, title, note, file: file!, file_name: file!.name }, userId),
+                () =>
+                  customerUploadRepository.officeUpload(
+                    {
+                      customer_id: customerId,
+                      sale_id: purchase && targetKind === 'sale' ? targetId : null,
+                      booking_id: purchase && targetKind === 'booking' ? targetId : null,
+                      kind,
+                      title,
+                      note,
+                      file: file!,
+                      file_name: file!.name,
+                    },
+                    userId,
+                  ),
                 onClose,
               )
             }
@@ -79,34 +100,47 @@ export function OfficeUploadModal({
             <optgroup label="Customer papers (every purchase)">
               {SHARE_DOC_KINDS.filter((k) => shareDocScope(k) === 'customer').map((k) => (
                 <option key={k} value={k}>
-                  {SHARE_DOC_META[k].label}
+                  {docMeta(k, targetKind === 'booking' ? 'booking' : 'sale').label}
                 </option>
               ))}
             </optgroup>
-            <optgroup label="Purchase papers">
+            <optgroup label="Purchase / booking papers">
               {SHARE_DOC_KINDS.filter((k) => shareDocScope(k) === 'purchase').map((k) => (
                 <option key={k} value={k}>
-                  {SHARE_DOC_META[k].label}
+                  {docMeta(k, targetKind === 'booking' ? 'booking' : 'sale').label}
                 </option>
               ))}
             </optgroup>
           </SelectInput>
         </Field>
         {purchase ? (
-          <Field label="Purchase" required>
-            <SelectInput value={saleId} onChange={(e) => setSaleId(e.target.value)}>
-              {sales.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.code}
-                </option>
-              ))}
+          <Field label="For" required>
+            <SelectInput value={target} onChange={(e) => setTarget(e.target.value)}>
+              {sales.length > 0 && (
+                <optgroup label="Share purchases">
+                  {sales.map((s) => (
+                    <option key={s.id} value={`sale:${s.id}`}>
+                      {s.code}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {bookings.length > 0 && (
+                <optgroup label="Bookings">
+                  {bookings.map((b) => (
+                    <option key={b.id} value={`booking:${b.id}`}>
+                      {b.code}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </SelectInput>
           </Field>
         ) : (
           <p className="self-end pb-2 text-xs text-ink-muted">Kept on the customer and used for every purchase.</p>
         )}
         <Field label="Title" hint="optional" className="sm:col-span-2">
-          <TextInput value={title} onChange={(e) => setTitle(e.target.value)} placeholder={SHARE_DOC_META[kind].label} />
+          <TextInput value={title} onChange={(e) => setTitle(e.target.value)} placeholder={meta.label} />
         </Field>
         <Field label="File" required hint="PDF, JPG, PNG or WEBP, up to 10 MB" className="sm:col-span-2">
           {file ? (
@@ -504,7 +538,15 @@ export function CustomerShareFile({
       {block('Customer papers', own)}
       {sales.map((s) => block(`Purchase ${s.code}`, uploads.filter((u) => u.sale_id === s.id && shareDocScope(u.kind) === 'purchase')))}
       {bookings.map((b) => block(`Booking ${b.code}`, uploads.filter((u) => u.booking_id === b.id && shareDocScope(u.kind) === 'purchase')))}
-      {adding && <OfficeUploadModal customerId={customerId} sales={sales} kind={sales.length ? 'signed_copy' : 'id_document'} onClose={() => setAdding(false)} />}
+      {adding && (
+        <OfficeUploadModal
+          customerId={customerId}
+          sales={sales}
+          bookings={bookings}
+          kind={sales.length || bookings.length ? 'signed_copy' : 'id_document'}
+          onClose={() => setAdding(false)}
+        />
+      )}
       {reject && <RejectUploadModal upload={reject} onClose={() => setReject(null)} />}
     </div>
   );

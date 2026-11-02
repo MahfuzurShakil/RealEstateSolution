@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
-import { ArrowLeft, ArrowRight, CheckCircle2, Circle, FileSignature } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { ArrowLeft, ArrowRight, CheckCircle2, Circle, FileSignature, LogOut, RotateCcw, Save } from 'lucide-react';
 import { ShareDocumentChecklist } from '@/components/admin/share-sale/ShareDocuments';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Field, MoneyInput, TextInput } from '@/components/ui/Field';
 import { WizardStepper, type WizardStep } from '@/components/ui/WizardStepper';
-import type { Booking, Customer, CustomerUpload } from '@/lib/db/types';
+import type { Booking, BookingSignDraft, Customer, CustomerUpload } from '@/lib/db/types';
 import { bookingScheduleRows } from '@/lib/domain/booking';
 import { missingToSign, paperChecklist } from '@/lib/domain/share-documents';
 import { KYC_FIELDS, type KycField } from '@/lib/domain/signing';
@@ -20,6 +20,7 @@ import {
   agreementInput,
   validateAgreement,
   type AgreementForm,
+  type LateFeeDefaults,
 } from './AgreementFields';
 
 const STEP_LABEL = ['Terms', 'Buyer', 'Witnesses & stamp', 'Papers', 'Review & sign'];
@@ -55,41 +56,112 @@ function Section({ n, title, subtitle, children }: { n: number; title: string; s
  * Signing a flat or plot sale agreement the way a share purchase is signed
  * (BUYER-PORTAL-PLAN.md §2.7): terms, the buyer as named on the paper, the
  * signatures and witnesses, the papers on file, then review. The schedule is
- * written from the terms when it is signed. Unlike a share signing it keeps
- * no draft — it is one sitting at the table.
+ * written from the terms when it is signed. Like a share signing, every step
+ * is saved on the booking as it is left (§10 F8), so the office can stop at
+ * any step — "Save and exit" — and pick up later where it was.
  */
+
+/** what decides whether there is anything unsaved: the draft without its time stamp */
+const draftKey = (d: BookingSignDraft) => JSON.stringify({ ...d, step: 0, saved_at: '' });
+
+function ago(iso: string): string {
+  const mins = Math.round((Date.now() - Date.parse(iso)) / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const h = Math.round(mins / 60);
+  return h < 24 ? `${h} h ago` : formatDate(iso);
+}
 export function SignBookingWizard({
   booking,
   customer,
   uploads,
+  project,
   onDone,
+  onRestart,
+  freshStart = false,
 }: {
+  /** after "Start over": ignore a draft the page may still hold for a moment */
+  freshStart?: boolean;
+  /** start over from the booking: the page remounts the wizard */
+  onRestart?: () => void;
   booking: Booking;
   customer: Customer;
+  /** for the late fee a new agreement starts from */
+  project?: LateFeeDefaults | null;
   uploads: CustomerUpload[];
   onDone: () => void;
 }) {
   const today = todayLocal();
-  const [at, setAt] = useState(0);
-  const [terms, setTerms] = useState<AgreementForm>(() => agreementFromBooking(booking, today));
+  // a saved draft wins over what the booking and the customer hold
+  const draft = booking.signing || freshStart ? null : (booking.sign_draft ?? null);
+  const [at, setAt] = useState(Math.min(draft?.step ?? 0, 4));
+  const [terms, setTerms] = useState<AgreementForm>(() => (draft?.terms as unknown as AgreementForm) ?? agreementFromBooking(booking, today, project));
   const [kyc, setKyc] = useState<Record<KycField, string>>(
-    () => Object.fromEntries(KYC_FIELDS.map((k) => [k, (customer[k] as string | null | undefined) ?? ''])) as Record<KycField, string>,
+    () =>
+      (draft?.kyc as Record<KycField, string>) ??
+      (Object.fromEntries(KYC_FIELDS.map((k) => [k, (customer[k] as string | null | undefined) ?? ''])) as Record<KycField, string>),
   );
-  const [place, setPlace] = useState(booking.signing?.place ?? 'Company office, Gulshan, Dhaka');
-  const [signatory, setSignatory] = useState(booking.signing?.company_signatory ?? '');
-  const [signatoryTitle, setSignatoryTitle] = useState(booking.signing?.company_signatory_title ?? 'Managing Director');
-  const [attorney, setAttorney] = useState(booking.signing?.attorney_name ?? '');
+  const [place, setPlace] = useState(draft?.place ?? booking.signing?.place ?? 'Company office, Gulshan, Dhaka');
+  const [signatory, setSignatory] = useState(draft?.company_signatory ?? booking.signing?.company_signatory ?? '');
+  const [signatoryTitle, setSignatoryTitle] = useState(draft?.company_signatory_title ?? booking.signing?.company_signatory_title ?? 'Managing Director');
+  const [attorney, setAttorney] = useState(draft?.attorney_name ?? booking.signing?.attorney_name ?? '');
   const [witnesses, setWitnesses] = useState<Witness[]>(() => {
+    if (draft?.witnesses?.length) return draft.witnesses;
     const w = (booking.signing?.witnesses ?? []).map((x) => ({ name: x.name, id_or_phone: x.id_or_phone ?? '', address: x.address ?? '' }));
     while (w.length < 2) w.push({ name: '', id_or_phone: '', address: '' });
     return w;
   });
-  const [stampValue, setStampValue] = useState(String(booking.signing?.stamp_value ?? 300));
-  const [stampSerial, setStampSerial] = useState(booking.signing?.stamp_serial ?? '');
-  const [notarizedOn, setNotarizedOn] = useState(booking.signing?.notarized_on ?? '');
-  const [notary, setNotary] = useState(booking.signing?.notary_name ?? '');
+  const [stampValue, setStampValue] = useState(draft?.stamp_value ?? String(booking.signing?.stamp_value ?? 300));
+  const [stampSerial, setStampSerial] = useState(draft?.stamp_serial ?? booking.signing?.stamp_serial ?? '');
+  const [notarizedOn, setNotarizedOn] = useState(draft?.notarized_on ?? booking.signing?.notarized_on ?? '');
+  const [notary, setNotary] = useState(draft?.notary_name ?? booking.signing?.notary_name ?? '');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  /* ---------------------------------------------------------------- draft */
+  const current: BookingSignDraft = {
+    step: at,
+    terms: terms as unknown as Record<string, string>,
+    kyc,
+    place,
+    company_signatory: signatory,
+    company_signatory_title: signatoryTitle,
+    attorney_name: attorney,
+    witnesses,
+    stamp_value: stampValue,
+    stamp_serial: stampSerial,
+    notarized_on: notarizedOn,
+    notary_name: notary,
+    saved_at: '',
+  };
+  const [savedAt, setSavedAt] = useState(draft?.saved_at ?? '');
+  const [savedKey, setSavedKey] = useState(() => draftKey(current));
+  const dirty = draftKey(current) !== savedKey;
+  const latest = useRef({ current, dirty });
+  useEffect(() => {
+    latest.current = { current, dirty };
+  });
+
+  const save = async (step = at) => {
+    if (booking.signing) return;
+    const next = { ...latest.current.current, step };
+    await bookingRepository.saveSignDraft(booking.id, next);
+    setSavedKey(draftKey(next));
+    setSavedAt(new Date().toISOString());
+  };
+  const go = (step: number) => {
+    setAt(step);
+    void save(step);
+  };
+
+  // a step left half-typed is kept when the page is left
+  useEffect(
+    () => () => {
+      if (latest.current.dirty && !booking.signing) void bookingRepository.saveSignDraft(booking.id, latest.current.current).catch(() => undefined);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   const k = (key: KycField) => kyc[key] ?? '';
   const setK = (key: KycField) => (e: { target: { value: string } }) => setKyc((x) => ({ ...x, [key]: e.target.value }));
@@ -161,7 +233,46 @@ export function SignBookingWizard({
 
   return (
     <div className="space-y-5">
-      <WizardStepper steps={steps} active={at} onSelect={setAt} />
+      <WizardStepper steps={steps} active={at} onSelect={go} />
+
+      {!booking.signing && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-hairline bg-white px-4 py-2.5 text-sm">
+          <span className="text-ink-muted">
+            {dirty
+              ? 'Changes not saved yet'
+              : savedAt
+                ? `Progress saved ${ago(savedAt)} — you can leave at any step and continue later.`
+                : 'Progress is saved at every step — you can leave at any step and continue later.'}
+          </span>
+          <span className="flex gap-1.5">
+            {(booking.sign_draft || savedAt) && onRestart && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={async () => {
+                  await bookingRepository.discardSignDraft(booking.id);
+                  onRestart();
+                }}
+              >
+                <RotateCcw className="size-4" /> Start over
+              </Button>
+            )}
+            <Button size="sm" variant="outline" disabled={!dirty} onClick={() => void save()}>
+              <Save className="size-4" /> Save
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                await save();
+                onDone();
+              }}
+            >
+              <LogOut className="size-4" /> Save and exit
+            </Button>
+          </span>
+        </div>
+      )}
 
       <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
         <div className="space-y-5">
@@ -305,13 +416,13 @@ export function SignBookingWizard({
           )}
 
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <Button variant="outline" disabled={at === 0} onClick={() => setAt(at - 1)}>
+            <Button variant="outline" disabled={at === 0} onClick={() => go(at - 1)}>
               <ArrowLeft className="size-4" /> Back
             </Button>
             {at < 4 ? (
               <div className="flex items-center gap-3">
                 {!steps[at].done && <span className="text-xs text-ink-muted">{STEP_HINT[at]}</span>}
-                <Button disabled={!steps[at].done} onClick={() => setAt(at + 1)}>
+                <Button disabled={!steps[at].done} onClick={() => go(at + 1)}>
                   Next: {STEP_LABEL[at + 1]} <ArrowRight className="size-4" />
                 </Button>
               </div>
@@ -331,7 +442,7 @@ export function SignBookingWizard({
                 <button
                   type="button"
                   disabled={!steps.slice(0, i).every((x) => x.done)}
-                  onClick={() => setAt(i)}
+                  onClick={() => go(i)}
                   className="flex w-full items-start gap-2 rounded-lg px-1.5 py-1 text-left hover:bg-slate-50 disabled:hover:bg-transparent"
                 >
                   {st.done ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-admin-600" /> : <Circle className="mt-0.5 size-4 shrink-0 text-slate-300" />}

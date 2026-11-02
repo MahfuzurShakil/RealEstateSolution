@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { BrandMark } from '@/components/public/BrandMark';
 import { useCompanyInfo } from '@/components/public/useCompanyInfo';
-import { CUSTOMER_TYPE_LABEL } from '@/lib/domain/investor-portal';
+import { customerTypeLabel } from '@/lib/domain/investor-portal';
 import { cn } from '@/lib/utils/cn';
 import { useCustomerPortal } from './CustomerPortalProvider';
 
@@ -94,7 +94,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
           <span className="min-w-0 leading-tight">
             <span className="block truncate text-sm font-semibold text-white">{c.full_name}</span>
             <span className="block truncate text-xs text-white/55">
-              {c.code} · {CUSTOMER_TYPE_LABEL[c.customer_type]}
+              {c.code} · {customerTypeLabel(snapshot.roles)}
             </span>
           </span>
         </div>

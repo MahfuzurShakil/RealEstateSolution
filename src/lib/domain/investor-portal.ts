@@ -15,6 +15,12 @@ import { SHARE_DOC_KINDS, SHARE_DOC_META } from './share-documents';
 export type CustomerType = 'investor' | 'buyer';
 export const CUSTOMER_TYPE_LABEL: Record<CustomerType, string> = { investor: 'Investor', buyer: 'Buyer' };
 
+/** "Buyer & Investor" for someone holding both (BUYER-PORTAL-PLAN.md §10, F4). */
+export function customerTypeLabel(roles: CustomerType[]): string {
+  const order: CustomerType[] = ['buyer', 'investor'];
+  return order.filter((r) => roles.includes(r)).map((r) => CUSTOMER_TYPE_LABEL[r]).join(' & ') || CUSTOMER_TYPE_LABEL.investor;
+}
+
 export type PaymentFrequency = 'monthly' | 'quarterly';
 export const FREQUENCY_LABEL: Record<PaymentFrequency, string> = { monthly: 'Monthly', quarterly: 'Quarterly' };
 

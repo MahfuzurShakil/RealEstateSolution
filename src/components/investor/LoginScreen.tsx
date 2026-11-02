@@ -82,7 +82,8 @@ export function LoginScreen({ next, signedOut }: { next: string | null; signedOu
   const [resendIn, setResendIn] = useState(0);
   const [notice, setNotice] = useState(signedOut);
   const isEmail = identifier.includes('@');
-  const target = next && next.startsWith('/customer') ? next : '/customer';
+  // back to the portal, or to the website's Invest page a visitor signed in from
+  const target = next && (next.startsWith('/customer') || next === '/invest') ? next : '/customer';
 
   // already signed in: straight to the portal
   useEffect(() => {
@@ -280,24 +281,30 @@ export function LoginScreen({ next, signedOut }: { next: string | null; signedOu
                 Fill in
               </button>
             </div>
-            {/* BUYER-PORTAL-PLAN.md §5 — a buyer signs in the same way */}
-            {step === 'id' && (
-              <div className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-dashed border-site-brass/50 bg-site-brass/5 px-3.5 py-2.5 text-[13px]">
-                <span className="min-w-0 text-site-muted">
-                  <span className="font-semibold text-site-brass-dark">Demo buyer</span> · <span className="tabular">{formatPhone(demo.buyer_phone)}</span>
-                </span>
-                <button
-                  type="button"
-                  className="shrink-0 font-semibold text-site-primary hover:underline"
-                  onClick={() => {
-                    setError(null);
-                    setIdentifier(formatPhone(demo.buyer_phone));
-                  }}
-                >
-                  Fill in
-                </button>
-              </div>
-            )}
+            {/* BUYER-PORTAL-PLAN.md §5 and §10 F10 — a buyer, and a customer who is both, sign in the same way */}
+            {step === 'id' &&
+              (
+                [
+                  ['Demo buyer', demo.buyer_phone],
+                  ['Buyer & investor', demo.both_phone],
+                ] as const
+              ).map(([who, phone]) => (
+                <div key={who} className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-dashed border-site-brass/50 bg-site-brass/5 px-3.5 py-2.5 text-[13px]">
+                  <span className="min-w-0 text-site-muted">
+                    <span className="font-semibold text-site-brass-dark">{who}</span> · <span className="tabular">{formatPhone(phone)}</span>
+                  </span>
+                  <button
+                    type="button"
+                    className="shrink-0 font-semibold text-site-primary hover:underline"
+                    onClick={() => {
+                      setError(null);
+                      setIdentifier(formatPhone(phone));
+                    }}
+                  >
+                    Fill in
+                  </button>
+                </div>
+              ))}
           </div>
 
           <footer className="mx-auto mt-10 w-full max-w-[400px] space-y-2 text-center text-[13px] text-site-muted">

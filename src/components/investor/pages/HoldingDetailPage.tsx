@@ -90,8 +90,8 @@ function HomeOverviewTab({ v }: { v: HoldingView }) {
         <Panel title="Your home">
           <DetailList
             rows={[
-              ['Booking number', <span key="c" className="tabular">{holding.code}</span>],
-              ['Unit', <span key="u" className="tabular">{home.unit_code}</span>],
+              ['Booking number', <span key="c" className="tabular whitespace-nowrap">{holding.code}</span>],
+              ['Unit', <span key="u" className="tabular whitespace-nowrap">{home.unit_code}</span>],
               ['Details', home.unit_label],
               ['Booked on', formatDay(home.booking_date)],
               ['Total price', <Money key="t" amount={holding.total_price} />],
@@ -107,7 +107,7 @@ function HomeOverviewTab({ v }: { v: HoldingView }) {
         <Panel title="Agreement and payment plan">
           <DetailList
             rows={[
-              ['Agreement number', <span key="a" className="tabular">{holding.agreement_no}</span>],
+              ['Agreement number', <span key="a" className="tabular whitespace-nowrap">{holding.agreement_no}</span>],
               ['Signed on', home.payment_plan ? formatDay(holding.agreement_date) : 'Not signed yet'],
               ['How you pay', home.payment_plan ?? 'Set when the agreement is signed'],
               ...(rows.length > 1
@@ -181,12 +181,12 @@ function OverviewTab({ v }: { v: HoldingView }) {
         <Panel title="Agreement and payment plan">
           <DetailList
             rows={[
-              ['Agreement number', <span key="a" className="tabular">{holding.agreement_no}</span>],
+              ['Agreement number', <span key="a" className="tabular whitespace-nowrap">{holding.agreement_no}</span>],
               ['Signed on', formatDay(holding.agreement_date)],
               ['Down payment', <Money key="d" amount={holding.down_payment} />],
               ['Installments', `${holding.installment_count} × ${FREQUENCY_LABEL[holding.frequency].toLowerCase()}`],
               ['Each installment', <Money key="e" amount={each} />],
-              ['Late fee', '2% of the installment after 7 days’ grace'],
+              ['Late fee', round.late_fee_pct ? `${round.late_fee_pct}% of the installment after ${round.grace_days} days’ grace` : 'None'],
               ['Share certificate', holding.certificate_no ?? 'Issued once every installment is paid'],
             ]}
           />

@@ -519,7 +519,7 @@ async function findCustomer(identifier: string): Promise<Customer | undefined> {
 
 export const investorRepository = {
   /** shown on the sign-in page of the demo build */
-  demoLogin: { phone: '01711223344', email: 'farhana.rahman@example.com', otp: DEMO_OTP, buyer_phone: '01855889900' },
+  demoLogin: { phone: '01711223344', email: 'farhana.rahman@example.com', otp: DEMO_OTP, buyer_phone: '01855889900', both_phone: '01966445566' },
 
   /** Step 1 of sign-in. Only customers the office has created can sign in. */
   async requestCode(identifier: string): Promise<{ ok: true; sent_to: string } | { ok: false; error: string }> {

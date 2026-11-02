@@ -269,3 +269,35 @@ Each batch: browser-verified once, demo seed updated, pushed.
   on the website" is on (default off). Visitor requests carry `source: 'website'` and prospect
   name/phone/email with `customer_id` null; reserving one finds the customer by phone or creates an
   Investor. The public repository maps every field by hand and sends no valuation figures.
+
+---
+
+## 10. Follow-ups (2 Nov 2026) — analysis and plan
+
+| # | Item | What the code shows today | Plan |
+|---|---|---|---|
+| F1 | "Invest in this project" on the project page | Only `/invest` lists offerings; the public project page knows nothing of them | `publicShareOfferRepository.offerForProject(code)`; a strip on the project page, only while the website switch is on |
+| F2 | Signed-in customer on `/invest` | Always treated as a visitor — asked for name and phone again | When a Customer Portal session exists, the cards use the portal request (shows "Request sent", Change, Withdraw) |
+| F3 | Hard-coded late fee on the portal's share page | `'2% … 7 days’ grace'` typed in `HoldingDetailPage` | Read the offering's own rule |
+| F4 | Customer type on the portal | One label (`customer_type`) — a buyer who also holds shares reads "Buyer" | Label from `snapshot.roles`: "Buyer & Investor" |
+| F5 | Old investor receipts without an account | Already assignable from Cash Position → movements without an account (`share_receipt` handled) | Nothing to build; a reseed gives every demo receipt an account |
+| F6 | Old demo text "Monthly kisti…" | Lives in an existing browser database only | Cleared by a demo reseed (seed already says "installment") |
+| F7 | Project default late fee | Late fee is typed per agreement | `default_late_fee_pct` / `default_late_fee_grace_days` on the project (Sales card); new agreements start from it |
+| F8 | Booking signing draft | Wizard state lives only in the page | `Booking.sign_draft` saved on every step, "Save", "Start over" — as Share Sale |
+| F9 | Booking papers from the customer page | Office upload dialog lists share purchases only | Dialog lists bookings too and files with `booking_id` |
+| F10 | Seed | No signed booking; no customer who is both | Two bookings signed with papers; Afsana Karim (BOOK-2026-009) also buys hotel shares → Buyer & Investor; demo login hint for her |
+| F11 | Mobile | Portal buyer pages not checked at phone width | Browser pass at 375 px |
+
+Phase B (Postgres + API) stays for later.
+
+### 10.1 As built (2 Nov 2026)
+
+All of F1–F11 done and browser-checked after a demo reseed. Notes:
+- F1: the strip shows only on a project that is published on the website. None of the demo's
+  share-sale projects is published, so the demo does not show it until one is.
+- F2: `/customer/login?next=/invest` brings a visitor back to the Invest page after signing in.
+- F10: Afsana Karim (01966 445566) holds BOOK-2026-009 (signed with papers), BOOK-2026-014 and
+  hotel shares SHR-2026-011, as one customer; demo login hint "Buyer & investor". Share signing no
+  longer overwrites a customer type that is already set.
+- Found on the way: a booking signed today failed between midnight and 6 am (the signing date was
+  compared with the UTC date). Now compared with the local date, as Share Sale does.

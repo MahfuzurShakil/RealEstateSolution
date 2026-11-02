@@ -179,6 +179,11 @@ export interface DemoBooking {
    * installments from the month after booking. Absent = no agreement recorded yet.
    */
   installment_count?: number;
+  /**
+   * BUYER-PORTAL-PLAN.md §10 F10 — signed through the signing wizard's rules:
+   * KYC, witnesses and the papers on file. Absent = terms recorded only.
+   */
+  signed_with_papers?: { father_or_spouse_name: string };
   /** receipts taken against this booking; empty means nothing received yet */
   payments?: Array<{
     amount: number;
@@ -226,6 +231,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     customer_key: 'nusrat',
     project_name: 'Nokshi Dhanmondi Court',
     unit_code: 'D-7A',
+    signed_with_papers: { father_or_spouse_name: 'Jahangir Alam' },
     booked_by_key: 'arif',
     days_ago: 2,
     floor_premium: 350000,
@@ -437,6 +443,7 @@ export const DEMO_BOOKINGS: DemoBooking[] = [
     customer_key: 'afsana',
     project_name: 'Nokshi Green Residence',
     unit_code: 'A-5B',
+    signed_with_papers: { father_or_spouse_name: 'Abdul Karim' },
     booked_by_key: 'rakib',
     days_ago: 39,
     floor_premium: 350000,

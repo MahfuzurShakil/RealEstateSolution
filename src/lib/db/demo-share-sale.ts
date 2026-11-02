@@ -90,6 +90,8 @@ const HOTEL_BUYERS: DemoBuyer[] = [
   { name: 'Mahmudul Hasan', phone: '01712908070', email: 'mahmudul.hasan@example.com', shares: 20, down_pct: 30, installments: 12, reserved_ago: 175, signed_ago: 170, paid_through: 5, method: 'bank_transfer' },
   { name: 'Sabina Yasmin', phone: '01913407788', email: 'sabina.yasmin@example.com', shares: 8, down_pct: 20, installments: 20, reserved_ago: 150, signed_ago: 146, paid_through: 4, method: 'nagad' },
   { name: 'Tanvir Hossain', phone: '01819001122', email: 'tanvir.h@example.com', shares: 6, down_pct: 100, installments: 0, reserved_ago: 140, signed_ago: 138, paid_through: 0, method: 'cheque' },
+  // BUYER-PORTAL-PLAN.md §10 F10 — a flat buyer (BOOK-2026-009) who also holds shares: Buyer & Investor
+  { name: 'Afsana Karim', phone: '01966445566', email: 'afsana.karim@gmail.com', shares: 3, down_pct: 20, installments: 20, reserved_ago: 160, signed_ago: 156, paid_through: 4, method: 'bkash' },
 ];
 
 const TOWER_BUYERS: DemoBuyer[] = [
@@ -210,7 +212,8 @@ export async function seedDemoShareSale(projectIds: Map<string, string>, created
 
   async function sell(offeringId: string, buyers: DemoBuyer[]) {
     for (const b of buyers) {
-      const known = customers.get(b.phone);
+      // a customer already on file — a flat buyer, say — buys as themselves, not as a second record
+      const known = customers.get(b.phone) ?? (await customerRepository.findByPhone(b.phone))?.id;
       const sale = await shareSaleRepository.reserve(
         {
           offering_id: offeringId,
@@ -240,7 +243,16 @@ export async function seedDemoShareSale(projectIds: Map<string, string>, created
         {
           agreement_date: signedOn,
           first_due_date: addDays(signedOn, 30),
-          customer: { father_or_spouse_name: FAMILY[b.phone] ?? 'Abdul Karim', nid: `19${b.phone.slice(-11)}`, address: ADDRESS[b.phone] ?? 'Dhaka', kyc_verified_on: signedOn },
+          // what is already on the customer (a buyer's NID and address) stays as it is
+          customer: await (async () => {
+            const c = await getDb().customers.get(sale.customer_id);
+            return {
+              father_or_spouse_name: c?.father_or_spouse_name || FAMILY[b.phone] || 'Abdul Karim',
+              nid: c?.nid || `19${b.phone.slice(-11)}`,
+              address: c?.address || ADDRESS[b.phone] || 'Dhaka',
+              kyc_verified_on: c?.kyc_verified_on || signedOn,
+            };
+          })(),
           signing: {
             place: 'Company office, Gulshan Avenue, Dhaka',
             company_signatory: 'Mahfuzur Rahman',
@@ -464,7 +476,7 @@ async function seedPortalActivity(
 }
 
 /** A one-page PDF with a line of text, so a demo upload opens like a real one. */
-function samplePdf(text: string): Blob {
+export function samplePdf(text: string): Blob {
   const line = `Sample document: ${text}`.replace(/[()\\]/g, '');
   const stream = `BT /F1 18 Tf 72 720 Td (${line}) Tj ET`;
   const objects = [

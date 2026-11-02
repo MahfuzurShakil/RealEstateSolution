@@ -1300,6 +1300,12 @@ export interface Project extends BaseEntity {
   succeeds_project_id?: UUID | null;
   /** v29 — absent on rows written before it; read a missing value as `not_open` */
   sales_status?: ProjectSalesStatus;
+  /**
+   * BUYER-PORTAL-PLAN.md §10 F7 — the late fee a new sale agreement on this
+   * project starts from; each agreement can still change it. Null = none.
+   */
+  default_late_fee_pct?: number | null;
+  default_late_fee_grace_days?: number | null;
   /** v29 — land_share only: what happens to the land after the shares sell */
   construction_after_sale?: ConstructionAfterSale | null;
   /**
@@ -1817,6 +1823,25 @@ export interface Booking extends BaseEntity {
   fully_paid_on?: ISODate | null;
   /** v46 — who signed, the witnesses and the stamp, as on a Share Sale agreement */
   signing?: ShareSigningRecord | null;
+  /** BUYER-PORTAL-PLAN.md §10 F8 — a signing left part way, picked up where it stopped */
+  sign_draft?: BookingSignDraft | null;
+}
+
+/** Everything typed in the booking signing wizard so far, kept as typed (strings). */
+export interface BookingSignDraft {
+  step: number;
+  terms: Record<string, string>;
+  kyc: Record<string, string>;
+  place: string;
+  company_signatory: string;
+  company_signatory_title: string;
+  attorney_name: string;
+  witnesses: { name: string; id_or_phone: string; address: string }[];
+  stamp_value: string;
+  stamp_serial: string;
+  notarized_on: string;
+  notary_name: string;
+  saved_at: string;
 }
 
 /*

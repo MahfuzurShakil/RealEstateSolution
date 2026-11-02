@@ -8,6 +8,7 @@ import type {
   Lead,
   Project,
   Tower,
+  BookingSignDraft,
   PaymentMethod,
   ShareSigningRecord,
   Unit,
@@ -17,6 +18,7 @@ import { derivedStatus, finalPrice } from '../domain/booking';
 import { missingToSign, paperChecklist } from '../domain/share-documents';
 import { cleanKyc, cleanSigning, type KycField } from '../domain/signing';
 import { nextCode, nowIso } from '../utils/id';
+import { todayLocal } from '../utils/format';
 import { BaseRepository, type NewRecord } from './base.repository';
 import { documentRepository } from './document.repository';
 import { leadActivityRepository, normalizePhone } from './lead.repository';
@@ -523,7 +525,7 @@ class BookingRepository extends BaseRepository<Booking> {
     const booking = await this.getById(id);
     if (!booking || booking.status === 'cancelled') throw new Error('A cancelled booking cannot be signed.');
     if (!input.agreement.agreement_date) throw new Error('Enter the day the agreement was signed.');
-    if (input.agreement.agreement_date > nowIso().slice(0, 10)) throw new Error('The signing day cannot be in the future.');
+    if (input.agreement.agreement_date > todayLocal()) throw new Error('The signing day cannot be in the future.');
     const signing = cleanSigning(input.signing);
     const customer = await db.customers.get(booking.customer_id);
     if (!customer) throw new Error('The buyer on this booking no longer exists.');
@@ -539,8 +541,20 @@ class BookingRepository extends BaseRepository<Booking> {
     );
     if (missing.length) throw new Error(`Put these on file before signing: ${missing.map((m) => m.meta.label).join(', ')}.`);
     await db.customers.update(customer.id, { ...kyc, customer_type: customer.customer_type ?? 'buyer', updated_at: nowIso() });
-    await this.update(id, { signing });
+    await this.update(id, { signing, sign_draft: null });
     return this.saveAgreement(id, input.agreement);
+  }
+
+  /** Keeps the signing as far as it got, so the office can leave at any step and come back. */
+  async saveSignDraft(id: string, draft: BookingSignDraft): Promise<void> {
+    const booking = await this.getById(id);
+    if (!booking || booking.status === 'cancelled' || booking.signing) throw new Error('Only an unsigned booking is being signed.');
+    await this.update(id, { sign_draft: { ...draft, saved_at: nowIso() } });
+  }
+
+  /** Throws the saved signing away and starts again from the booking. */
+  async discardSignDraft(id: string): Promise<void> {
+    await this.update(id, { sign_draft: null });
   }
 
   /** Corrects the signing record after the fact (a witness's address, the notary date). */

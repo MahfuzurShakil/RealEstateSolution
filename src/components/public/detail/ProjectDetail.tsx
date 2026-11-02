@@ -38,6 +38,7 @@ import {
 import { cn } from '@/lib/utils/cn';
 import { Button } from '../ui/Button';
 import { InstalmentPlanner } from '../home/InstalmentPlanner';
+import { ShareOfferStrip } from './ShareOfferStrip';
 import { Reveal, useInView } from '../motion';
 import { ProjectCard, Taka } from '../ProjectCard';
 import { COVER_FALLBACK } from '../stock-images';
@@ -554,6 +555,9 @@ export function ProjectDetail({ code }: { code: string }) {
               <InstalmentPlanner startingPrice={project.price_from} />
             </Section>
           )}
+
+          {/* BUYER-PORTAL-PLAN.md §10 F1 — only while a share offering is open and the website shows them */}
+          <ShareOfferStrip projectCode={project.code} />
 
           <Section id="papers" title={td.papers.title}>
             <Papers kind={project.container_kind} />

@@ -13,6 +13,7 @@ import {
   AgreementFields,
   agreementInput,
   emptyAgreement,
+  withLateFeeDefaults,
   validateAgreement,
   type AgreementForm,
 } from './AgreementFields';
@@ -386,6 +387,8 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
               onChange={(e) => {
                 set('project_id', e.target.value);
                 set('unit_id', '');
+                // a new agreement starts from the project's late fee
+                setAgreement((a) => withLateFeeDefaults(a, projects.find((p) => p.id === e.target.value)));
               }}
             >
               <option value="">Pick a project</option>
@@ -619,7 +622,10 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
               <Checkbox
                 label="Signed now"
                 checked={form.with_agreement}
-                onChange={(e) => set('with_agreement', e.target.checked)}
+                onChange={(e) => {
+                  set('with_agreement', e.target.checked);
+                  setAgreement((a) => withLateFeeDefaults(a, selectedProject));
+                }}
               />
             }
           />

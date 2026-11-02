@@ -27,6 +27,7 @@ import {
   agreementInput,
   validateAgreement,
   type AgreementForm,
+  type LateFeeDefaults,
 } from './AgreementFields';
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
@@ -43,7 +44,7 @@ function Row({ label, value }: { label: string; value: ReactNode }) {
  * expect and when, and the signed copy. Recorded with the booking or any time
  * after — the booking's status never waits on it.
  */
-export function AgreementPanel({ booking }: { booking: Booking }) {
+export function AgreementPanel({ booking, project }: { booking: Booking; project?: LateFeeDefaults | null }) {
   const [editing, setEditing] = useState(false);
   const received = useLiveQuery(() => paymentRepository.totalForBooking(booking.id), [booking.id]);
   const today = todayLocal();
@@ -224,13 +225,13 @@ export function AgreementPanel({ booking }: { booking: Booking }) {
         <DocumentsPanel entityType="booking" entityId={booking.id} />
       </Card>
 
-      {editing && <AgreementModal booking={booking} onClose={() => setEditing(false)} />}
+      {editing && <AgreementModal booking={booking} defaults={project} onClose={() => setEditing(false)} />}
     </div>
   );
 }
 
-function AgreementModal({ booking, onClose }: { booking: Booking; onClose: () => void }) {
-  const [form, setForm] = useState<AgreementForm>(() => agreementFromBooking(booking, todayLocal()));
+function AgreementModal({ booking, defaults, onClose }: { booking: Booking; defaults?: LateFeeDefaults | null; onClose: () => void }) {
+  const [form, setForm] = useState<AgreementForm>(() => agreementFromBooking(booking, todayLocal(), defaults));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 

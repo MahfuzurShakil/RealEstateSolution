@@ -387,7 +387,8 @@ class ShareSaleRepository extends BaseRepository<ShareSale> {
         updated_at: ts,
       });
     });
-    await db.customers.update(customer.id, { ...kyc, customer_type: 'investor', updated_at: ts });
+    // a buyer who also buys shares keeps the type they were created as; roles come from their records
+    await db.customers.update(customer.id, { ...kyc, customer_type: customer.customer_type ?? 'investor', updated_at: ts });
     if (input.down_payment && sale.down_payment > 0) {
       await this.recordPayment(
         { sale_id: id, paid_on: input.agreement_date, amount: sale.down_payment, method: input.down_payment.method, reference: input.down_payment.reference, account_id: input.down_payment.account_id, notes: 'Down payment received at signing' },

@@ -134,11 +134,11 @@ export function HealthPill({ health, className }: { health: HoldingHealth; class
   );
 }
 
-export function CustomerTypeBadge({ type, className }: { type: CustomerType; className?: string }) {
+export function CustomerTypeBadge({ type, label, className }: { type: CustomerType; label?: string; className?: string }) {
   return (
     <span className={cn('inline-flex items-center gap-1.5 rounded-full bg-site-brass/15 px-3 py-1 text-xs font-semibold text-site-brass-dark', className)}>
       <ShieldCheck className="size-3.5" aria-hidden />
-      Customer type: {CUSTOMER_TYPE_LABEL[type]}
+      Customer type: {label ?? CUSTOMER_TYPE_LABEL[type]}
     </span>
   );
 }

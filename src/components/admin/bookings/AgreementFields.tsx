@@ -27,7 +27,23 @@ export interface AgreementForm {
   late_fee_grace_days: string;
 }
 
-export function emptyAgreement(date: string): AgreementForm {
+/** A project's default late fee (BUYER-PORTAL-PLAN.md §10 F7), what a new agreement starts from. */
+export interface LateFeeDefaults {
+  default_late_fee_pct?: number | null;
+  default_late_fee_grace_days?: number | null;
+}
+
+/** Fills the late fee from the project's default when the form has none yet. */
+export function withLateFeeDefaults(f: AgreementForm, d: LateFeeDefaults | null | undefined): AgreementForm {
+  if (f.late_fee_pct.trim() || !d?.default_late_fee_pct) return f;
+  return { ...f, late_fee_pct: String(d.default_late_fee_pct), late_fee_grace_days: String(d.default_late_fee_grace_days ?? 0) };
+}
+
+export function emptyAgreement(date: string, defaults?: LateFeeDefaults | null): AgreementForm {
+  return withLateFeeDefaults(blankAgreement(date), defaults);
+}
+
+function blankAgreement(date: string): AgreementForm {
   return {
     agreement_date: date,
     agreement_no: '',
@@ -43,8 +59,8 @@ export function emptyAgreement(date: string): AgreementForm {
   };
 }
 
-export function agreementFromBooking(b: Booking, fallbackDate: string): AgreementForm {
-  if (!b.agreement_date && !b.payment_mode) return emptyAgreement(fallbackDate);
+export function agreementFromBooking(b: Booking, fallbackDate: string, defaults?: LateFeeDefaults | null): AgreementForm {
+  if (!b.agreement_date && !b.payment_mode) return emptyAgreement(fallbackDate, defaults);
   return {
     agreement_date: b.agreement_date ?? '',
     agreement_no: b.agreement_no ?? '',

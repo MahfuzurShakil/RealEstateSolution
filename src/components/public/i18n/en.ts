@@ -544,6 +544,7 @@ export const en = {
     accent: 'of a project',
     lead: 'Buy a part of a project as small, equal shares, pay a down payment and the rest in installments, and follow it all on your Customer Portal.',
     signIn: 'Already a customer? Sign in',
+    signedIn: 'Signed in as {name} · My portal',
     offersTitle: 'Open share offerings',
     offersLead: 'Choose how many shares and how you want to pay. Nothing is charged now — our team calls you to prepare the agreement.',
     none: 'No share offering is open right now. Please check back soon, or call us to hear about the next one.',
