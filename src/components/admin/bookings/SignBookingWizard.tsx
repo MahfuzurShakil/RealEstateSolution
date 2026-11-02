@@ -4,11 +4,18 @@ import { useEffect, useRef, useState } from 'react';
 import { FileSignature } from 'lucide-react';
 import { ShareDocumentChecklist } from '@/components/admin/share-sale/ShareDocuments';
 import {
+  Facts,
   FormGroup,
+  KycFacts,
   KycFields,
   NextButton,
+  PaperFacts,
   ReadyCard,
+  ReviewCard,
+  SchedulePreview,
+  SignConfirmDialog,
   SignatureFields,
+  SigningFacts,
   StepSection,
   WizardFooter,
   draftStatus,
@@ -34,7 +41,7 @@ import {
   type LateFeeDefaults,
 } from './AgreementFields';
 
-const STEP_LABEL = ['Terms', 'Buyer', 'Witnesses & stamp', 'Papers', 'Review & sign'];
+const STEP_LABEL = ['Terms', 'Buyer', 'Witnesses & stamp', 'Papers', 'Review'];
 const STEP_HINT = [
   'Fill in the signing day, how the buyer pays and the place it was signed.',
   'NID, father’s / spouse’s name and present address are needed.',
@@ -95,6 +102,7 @@ export function SignBookingWizard({
   const [notary, setNotary] = useState(draft?.notary_name ?? booking.signing?.notary_name ?? '');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   /* ---------------------------------------------------------------- draft */
   const current: BookingSignDraft = {
@@ -179,26 +187,12 @@ export function SignBookingWizard({
   const rows = bookingScheduleRows({ ...booking, ...input });
   const installments = rows.filter((r) => r.kind !== 'booking_money');
 
-  const review: [string, string][] = [
-    ['Signed on', `${formatDate(terms.agreement_date)} at ${place}`],
-    ['Price', `${formatBdt(booking.final_price)} · booking money ${formatBdt(booking.booking_amount)}`],
-    [
-      'Plan',
-      installments.length > 1
-        ? `${installments.length} × ${formatBdt(installments[0].amount)} from ${formatDate(installments[0].due_date)}`
-        : installments.length === 1
-          ? `${formatBdt(installments[0].amount)} by ${formatDate(installments[0].due_date)}`
-          : '—',
-    ],
-    ['Late fee', input.late_fee_pct ? `${input.late_fee_pct}% after ${input.late_fee_grace_days ?? 0} days` : 'None'],
-    ['Buyer', `${customer.name}, son/daughter/wife of ${k('father_or_spouse_name')}`],
-    ['NID', k('nid')],
-    ['Nominee', k('nominee_name') ? `${k('nominee_name')}${k('nominee_relation') ? ` (${k('nominee_relation')})` : ''}` : '—'],
-    ['For the company', [signatory, signatoryTitle].filter(Boolean).join(', ')],
-    ['Witnesses', witnesses.map((w) => w.name).join(' and ')],
-    ['Stamp paper', stampValue ? `${formatBdt(Number(stampValue))}${stampSerial ? ` · no. ${stampSerial}` : ''}` : '—'],
-    ['Papers on file', `${checklist.filter((c) => c.done).length} of ${checklist.length}`],
-  ];
+  const plan =
+    installments.length > 1
+      ? `${installments.length} × ${formatBdt(installments[0].amount)} from ${formatDate(installments[0].due_date)}`
+      : installments.length === 1
+        ? `${formatBdt(installments[0].amount)} by ${formatDate(installments[0].due_date)}`
+        : '—';
 
   async function sign() {
     setBusy(true);
@@ -219,9 +213,11 @@ export function SignBookingWizard({
           notary_name: notary,
         },
       });
+      setConfirming(false);
       onDone();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'The agreement could not be signed.');
+      setConfirming(false);
     } finally {
       setBusy(false);
     }
@@ -278,16 +274,30 @@ export function SignBookingWizard({
           )}
 
           {at === 4 && (
-            <StepSection n={5} title="Review and sign" subtitle="Check what goes on the agreement, then mark it signed.">
-              <dl className="mb-5 grid gap-x-8 md:grid-cols-2">
-                {review.map(([label, value]) => (
-                  <div key={label} className="flex items-baseline justify-between gap-4 border-b border-hairline py-2 text-sm">
-                    <dt className="shrink-0 text-ink-muted">{label}</dt>
-                    <dd className="min-w-0 text-right font-medium [overflow-wrap:anywhere]">{value}</dd>
-                  </div>
-                ))}
-              </dl>
-              {error && <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+            <StepSection n={5} title="Review" subtitle="Everything that goes on the agreement, step by step. Change anything with Edit, then sign.">
+              <ReviewCard n={1} title="Agreement terms" onEdit={() => go(0)}>
+                <Facts
+                  rows={[
+                    ['Signed on', formatDate(terms.agreement_date)],
+                    ['Signed at', place],
+                    ['Price', formatBdt(booking.final_price)],
+                    ['Booking money', formatBdt(booking.booking_amount)],
+                    ['Plan', plan],
+                    ['Late fee', input.late_fee_pct ? `${input.late_fee_pct}% after ${input.late_fee_grace_days ?? 0} days` : 'None'],
+                  ]}
+                />
+                <SchedulePreview rows={rows.map((r) => ({ label: r.label, due_date: r.due_date, amount: r.amount }))} />
+              </ReviewCard>
+              <ReviewCard n={2} title="Buyer as named on the agreement" onEdit={() => go(1)}>
+                <KycFacts name={customer.name} values={kyc} />
+              </ReviewCard>
+              <ReviewCard n={3} title="Signatures, witnesses and stamp" onEdit={() => go(2)}>
+                <SigningFacts signing={signature} partyName={customer.name} party="buyer" />
+              </ReviewCard>
+              <ReviewCard n={4} title="Papers on file" onEdit={() => go(3)}>
+                <PaperFacts items={checklist.filter((c) => c.required || c.files.length).map((c) => ({ label: c.meta.label, required: c.required, done: c.done, files: c.files.length }))} />
+              </ReviewCard>
+              {error && <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
             </StepSection>
           )}
 
@@ -308,11 +318,20 @@ export function SignBookingWizard({
             {at < 4 ? (
               <NextButton label={STEP_LABEL[at + 1]} disabled={!steps[at].done} onClick={() => go(at + 1)} />
             ) : (
-              <Button disabled={!allReady || busy} onClick={sign}>
-                <FileSignature className="size-4" /> {busy ? 'Signing…' : 'Agreement signed'}
+              <Button disabled={!allReady || busy} onClick={() => setConfirming(true)}>
+                <FileSignature className="size-4" /> Sign agreement
               </Button>
             )}
           </WizardFooter>
+          <SignConfirmDialog
+            open={confirming}
+            code={booking.code}
+            lines={[`${customer.name} · ${formatBdt(booking.final_price)}`, `Plan: ${plan}`, `Signed ${formatDate(terms.agreement_date)} at ${place}`]}
+            after="After signing, the terms are fixed, the payment schedule is written, and the buyer sees the agreement on their Customer Portal."
+            busy={busy}
+            onConfirm={() => void sign()}
+            onCancel={() => setConfirming(false)}
+          />
         </div>
 
         <ReadyCard steps={steps.slice(0, 4)} onSelect={go} missing={missingDocs.map((m) => m.meta.label)} />

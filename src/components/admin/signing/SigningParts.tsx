@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
-import { ArrowLeft, ArrowRight, CheckCircle2, Circle, LogOut } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, Circle, FileSignature, LogOut, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Checkbox, Field, MoneyInput, TextInput } from '@/components/ui/Field';
 import type { WizardStep } from '@/components/ui/WizardStepper';
 import type { KycField } from '@/lib/domain/signing';
@@ -276,6 +277,265 @@ export function SignatureFields({
 /** The signatures step is done once the company signatory and every witness are named. */
 export function signaturesDone(v: Pick<SignatureValues, 'company_signatory' | 'witnesses'>): boolean {
   return !!v.company_signatory.trim() && v.witnesses.every((w) => w.name.trim());
+}
+
+/* ------------------------------------------------- review and the record */
+
+/** Label / value pairs in two columns, as every read-only block shows them. */
+export function Facts({ rows }: { rows: [string, ReactNode][] }) {
+  return (
+    <dl className="grid gap-x-8 md:grid-cols-2">
+      {rows.map(([label, value]) => (
+        <div key={label} className="flex items-baseline justify-between gap-4 border-b border-hairline py-2 text-sm">
+          <dt className="shrink-0 text-ink-muted">{label}</dt>
+          <dd className="min-w-0 text-right font-medium [overflow-wrap:anywhere]">{value === '' || value == null ? '—' : value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** One step's answers on the Review step, with a way back to change them (feedback B4). */
+export function ReviewCard({ n, title, onEdit, children }: { n: number; title: string; onEdit?: () => void; children: ReactNode }) {
+  return (
+    <section className="rounded-xl border border-hairline bg-white p-4">
+      <div className="mb-3 flex items-center gap-3">
+        <span className="grid size-6 shrink-0 place-items-center rounded-full bg-admin-50 text-xs font-semibold text-admin-700">{n}</span>
+        <h3 className="flex-1 text-sm font-semibold text-ink">{title}</h3>
+        {onEdit && (
+          <Button variant="ghost" size="sm" onClick={onEdit}>
+            <Pencil className="size-3.5" /> Edit
+          </Button>
+        )}
+      </div>
+      <div className="space-y-4">{children}</div>
+    </section>
+  );
+}
+
+/** A small bold heading inside a review card. */
+export function SubHead({ children }: { children: ReactNode }) {
+  return <p className="text-xs font-semibold tracking-wide text-ink uppercase">{children}</p>;
+}
+
+/** The party's details as named on the agreement, grouped the way the step asks for them. */
+export function KycFacts({ name, values, payoutBank }: { name: string; values: Partial<Record<KycField, string | null | undefined>>; payoutBank?: boolean }) {
+  const k = (key: KycField) => values[key] ?? '';
+  return (
+    <>
+      <div>
+        <SubHead>Identity</SubHead>
+        <Facts
+          rows={[
+            ['Name', name],
+            ['Father’s / spouse’s name', k('father_or_spouse_name')],
+            ['NID / passport no.', k('nid')],
+            ['Date of birth', k('date_of_birth') ? formatDate(k('date_of_birth')) : ''],
+            ['e-TIN', k('tin')],
+            ['Profession', k('profession')],
+          ]}
+        />
+      </div>
+      <div>
+        <SubHead>Contact & address</SubHead>
+        <Facts
+          rows={[
+            ['Email', k('email')],
+            ['Present address', k('address')],
+            ['Permanent address', k('permanent_address')],
+          ]}
+        />
+      </div>
+      <div>
+        <SubHead>Nominee</SubHead>
+        <Facts
+          rows={[
+            ['Name', k('nominee_name')],
+            ['Relation', k('nominee_relation')],
+            ['Mobile', k('nominee_phone')],
+            ['NID', k('nominee_nid')],
+          ]}
+        />
+      </div>
+      {payoutBank && (
+        <div>
+          <SubHead>Bank account for payouts</SubHead>
+          <Facts
+            rows={[
+              ['Bank', k('bank_name')],
+              ['Branch', k('bank_branch')],
+              ['Account no.', k('bank_account')],
+            ]}
+          />
+        </div>
+      )}
+      <Facts rows={[['KYC checked on', k('kyc_verified_on') ? formatDate(k('kyc_verified_on')) : 'Not yet']]} />
+    </>
+  );
+}
+
+/** What the signing record holds, typed or saved. */
+export interface SigningRecordView {
+  place?: string | null;
+  company_signatory?: string | null;
+  company_signatory_title?: string | null;
+  attorney_name?: string | null;
+  witnesses: { name: string; id_or_phone?: string | null; address?: string | null }[];
+  stamp_value?: number | string | null;
+  stamp_serial?: string | null;
+  notarized_on?: string | null;
+  notary_name?: string | null;
+}
+
+/**
+ * The signing event itself — who signed, who witnessed, the stamp and the
+ * notary. The Review step shows it before signing, the Agreement tab after;
+ * nothing else (plan, customer, papers) is repeated here (feedback D2).
+ */
+export function SigningFacts({ signing: s, partyName, party }: { signing: SigningRecordView; partyName: string; party: string }) {
+  const stamp = s.stamp_value === '' || s.stamp_value == null ? null : Number(s.stamp_value);
+  return (
+    <>
+      <div>
+        <SubHead>Signatures</SubHead>
+        <Facts
+          rows={[
+            ['For the company', [s.company_signatory, s.company_signatory_title].filter(Boolean).join(', ')],
+            [`For the ${party}`, s.attorney_name ? `${s.attorney_name}, under a power of attorney` : partyName],
+          ]}
+        />
+      </div>
+      <div>
+        <SubHead>Witnesses</SubHead>
+        <div className="mt-2 grid gap-3 md:grid-cols-2">
+          {s.witnesses.map((w, i) => (
+            <div key={i} className="rounded-xl border border-hairline bg-slate-50/50 px-4 py-3 text-sm">
+              <p className="text-xs text-ink-muted">Witness {i + 1}</p>
+              <p className="font-medium text-ink">{w.name || '—'}</p>
+              {w.id_or_phone && <p className="text-xs text-ink-muted">{w.id_or_phone}</p>}
+              {w.address && <p className="text-xs text-ink-muted">{w.address}</p>}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div>
+        <SubHead>Stamp & notary</SubHead>
+        <Facts
+          rows={[
+            ['Stamp paper', stamp != null ? `BDT ${stamp.toLocaleString('en-IN')}${s.stamp_serial ? ` · no. ${s.stamp_serial}` : ''}` : ''],
+            ['Notarized', s.notarized_on ? `${formatDate(s.notarized_on)}${s.notary_name ? ` · ${s.notary_name}` : ''}` : 'Not yet'],
+          ]}
+        />
+      </div>
+    </>
+  );
+}
+
+/** The payment schedule the agreement writes, in a short scrolling table. */
+export function SchedulePreview({ rows, note }: { rows: { label: string; due_date: string; amount: number }[]; note?: string }) {
+  return (
+    <div>
+      <SubHead>Payment schedule · {rows.length} payment{rows.length === 1 ? '' : 's'}</SubHead>
+      <div className="mt-2 max-h-64 overflow-y-auto rounded-xl border border-hairline">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-canvas text-left text-xs text-ink-muted">
+            <tr>
+              <th className="px-3 py-2 font-medium">Payment</th>
+              <th className="px-3 py-2 font-medium">Due</th>
+              <th className="px-3 py-2 text-right font-medium">Amount</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-hairline">
+            {rows.map((r) => (
+              <tr key={`${r.label}-${r.due_date}`}>
+                <td className="px-3 py-1.5">{r.label}</td>
+                <td className="px-3 py-1.5 tabular-nums">{formatDate(r.due_date)}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums">BDT {Math.round(r.amount).toLocaleString('en-IN')}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {note && <p className="mt-2 text-xs text-ink-muted">{note}</p>}
+    </div>
+  );
+}
+
+/** The papers on the Review step: each one, required or not, and whether it is on file. */
+export function PaperFacts({ items }: { items: { label: string; required: boolean; done: boolean; files: number }[] }) {
+  return (
+    <ul className="grid gap-x-8 md:grid-cols-2">
+      {items.map((i) => (
+        <li key={i.label} className="flex items-center justify-between gap-3 border-b border-hairline py-2 text-sm">
+          <span className="text-ink">
+            {i.label}
+            {i.required && <span className="ml-0.5 text-red-500">*</span>}
+          </span>
+          {i.done ? (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
+              <CheckCircle2 className="size-3.5" /> On file
+            </span>
+          ) : (
+            <span className={cn('text-xs font-medium', i.required ? 'text-red-600' : 'text-ink-muted')}>{i.required ? 'Missing' : 'Not added'}</span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * The last check before signing (feedback B5): what is being signed, what
+ * happens next, and a tick that the signed paper copy was checked.
+ */
+export function SignConfirmDialog({
+  open,
+  code,
+  lines,
+  after,
+  busy,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  code: string;
+  /** what is being signed, a line each */
+  lines: string[];
+  /** what signing sets off */
+  after: string;
+  busy: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const [checked, setChecked] = useState(false);
+  return (
+    <ConfirmDialog
+      open={open}
+      title={`Sign agreement ${code}?`}
+      tone="default"
+      icon={FileSignature}
+      confirmLabel={busy ? 'Signing…' : 'Sign agreement'}
+      busy={busy}
+      disabled={!checked}
+      onConfirm={onConfirm}
+      onCancel={() => {
+        setChecked(false);
+        onCancel();
+      }}
+    >
+      <div className="space-y-3 text-sm">
+        <ul className="space-y-1 rounded-xl bg-slate-50 px-4 py-3">
+          {lines.map((l) => (
+            <li key={l} className="text-ink">
+              {l}
+            </li>
+          ))}
+        </ul>
+        <p className="text-ink-muted">{after}</p>
+        <Checkbox label="The signed paper copy has been checked" checked={checked} onChange={(e) => setChecked(e.target.checked)} />
+      </div>
+    </ConfirmDialog>
+  );
 }
 
 /* ----------------------------------------------------------- the footer */

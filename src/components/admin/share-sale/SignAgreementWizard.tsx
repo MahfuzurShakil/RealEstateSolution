@@ -1,17 +1,33 @@
 'use client';
 
-import { AccountPicker } from '@/components/admin/finance/AccountPicker';
 import { useEffect, useRef, useState } from 'react';
 import { FileSignature } from 'lucide-react';
-import { FormGroup, KycFields, NextButton, ReadyCard, SignatureFields, StepSection, WizardFooter, draftStatus, type SignatureValues } from '@/components/admin/signing/SigningParts';
+import {
+  Facts,
+  FormGroup,
+  KycFacts,
+  KycFields,
+  NextButton,
+  PaperFacts,
+  ReadyCard,
+  ReviewCard,
+  SchedulePreview,
+  SignConfirmDialog,
+  SignatureFields,
+  SigningFacts,
+  StepSection,
+  WizardFooter,
+  draftStatus,
+  type SignatureValues,
+} from '@/components/admin/signing/SigningParts';
 import { Button } from '@/components/ui/Button';
 import { Field, SelectInput, TextInput } from '@/components/ui/Field';
 import { WizardStepper, type WizardStep } from '@/components/ui/WizardStepper';
 import { useMockSession } from '@/lib/auth/mock-session';
-import { SHARE_PAYMENT_METHODS, type Customer, type CustomerUpload, type ShareSignDraft, type SharePaymentMethod } from '@/lib/db/types';
+import type { Customer, CustomerUpload, ShareSignDraft } from '@/lib/db/types';
 import { addMonths } from '@/lib/domain/booking';
 import { missingToSign, shareDocChecklist } from '@/lib/domain/share-documents';
-import { FREQUENCY_LABEL, SHARE_PAYMENT_METHOD_LABEL, buildSchedule, formatSharePct } from '@/lib/domain/share-sale';
+import { FREQUENCY_LABEL, buildSchedule, formatSharePct, installmentLabel } from '@/lib/domain/share-sale';
 import { shareSaleRepository, type KycField, type SaleRow } from '@/lib/repositories';
 import { formatBdt, formatDate, todayLocal } from '@/lib/utils/format';
 import { ShareDocumentChecklist } from './ShareDocuments';
@@ -20,7 +36,7 @@ const KYC: KycField[] = [
   'email', 'nid', 'tin', 'date_of_birth', 'profession', 'address', 'permanent_address', 'father_or_spouse_name',
   'nominee_name', 'nominee_relation', 'nominee_phone', 'nominee_nid', 'bank_name', 'bank_branch', 'bank_account', 'kyc_verified_on',
 ];
-const STEP_LABEL = ['Agreement & plan', 'Customer', 'Witnesses & stamp', 'Papers', 'Review & sign'];
+const STEP_LABEL = ['Agreement & plan', 'Customer', 'Witnesses & stamp', 'Papers', 'Review'];
 const STEP_HINT = [
   'Fill in the signing day and place, and check the plan.',
   'NID, father’s / spouse’s name and present address are needed.',
@@ -67,7 +83,7 @@ function freshDraft(row: SaleRow, customer: Customer): ShareSignDraft {
  * (shares, down payment, installments) can still change from the
  * reservation; it is checked against the offering when signing.
  */
-export function SignAgreementWizard({ row, uploads, onExit }: { row: SaleRow; uploads: CustomerUpload[]; onExit: () => void }) {
+export function SignAgreementWizard({ row, uploads, onExit }: { row: SaleRow; uploads: CustomerUpload[]; onExit: (signed?: boolean) => void }) {
   const { userId } = useMockSession();
   const s = row.sale;
   const o = row.offering;
@@ -77,6 +93,7 @@ export function SignAgreementWizard({ row, uploads, onExit }: { row: SaleRow; up
   const [savedAt, setSavedAt] = useState(s.sign_draft?.saved_at ?? '');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const latest = useRef(d);
   const unsaved = useRef(false);
   useEffect(() => {
@@ -168,30 +185,20 @@ export function SignAgreementWizard({ row, uploads, onExit }: { row: SaleRow; up
             notary_name: d.notary_name,
             attorney_name: d.attorney_name,
           },
-          down_payment: d.take_down_payment && down > 0 ? { method: d.down_payment_method, reference: d.down_payment_reference, account_id: d.down_payment_account_id || null } : null,
+          // the down payment is a payment of its own, recorded once received (feedback B6)
+          down_payment: null,
         },
         userId,
       );
       unsaved.current = false; // signed: nothing left to save on the way out
-      onExit();
+      setConfirming(false);
+      onExit(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not sign.');
+      setConfirming(false);
       setBusy(false);
     }
   };
-
-  const review: [string, string][] = [
-    ['Signed on', `${formatDate(d.agreement_date)} at ${d.place}`],
-    ['Shares', `${shares} (${formatSharePct(shares * (o?.share_pct ?? 0))}) · ${formatBdt(total)}`],
-    ['Plan', rows.length > 1 ? `${formatBdt(down)} down, ${n} × ${formatBdt(rows[1].amount)} from ${formatDate(rows[1].due_date)}` : `${formatBdt(total)} in full at signing`],
-    ['Customer', `${customer.name}, son/daughter/wife of ${k('father_or_spouse_name')}`],
-    ['NID', k('nid')],
-    ['Nominee', k('nominee_name') ? `${k('nominee_name')}${k('nominee_relation') ? ` (${k('nominee_relation')})` : ''}` : '—'],
-    ['For the company', [d.company_signatory, d.company_signatory_title].filter(Boolean).join(', ')],
-    ['Witnesses', d.witnesses.map((w) => w.name).join(' and ')],
-    ['Stamp paper', d.stamp_value ? `${formatBdt(Number(d.stamp_value))}${d.stamp_serial ? ` · no. ${d.stamp_serial}` : ''}` : '—'],
-    ['Papers on file', `${checklist.filter((c) => c.done).length} of ${checklist.length}`],
-  ];
 
   return (
     <div className="space-y-5">
@@ -271,42 +278,33 @@ export function SignAgreementWizard({ row, uploads, onExit }: { row: SaleRow; up
           )}
 
           {at === 4 && (
-            <StepSection n={5} title="Review and sign" subtitle="Check what goes on the agreement, then mark it signed.">
-              <dl className="mb-5 grid gap-x-8 md:grid-cols-2">
-                {review.map(([label, value]) => (
-                  <div key={label} className="flex items-baseline justify-between gap-4 border-b border-hairline py-2 text-sm">
-                    <dt className="shrink-0 text-ink-muted">{label}</dt>
-                    <dd className="min-w-0 text-right font-medium [overflow-wrap:anywhere]">{value}</dd>
-                  </div>
-                ))}
-              </dl>
-              {down > 0 && (
-                <>
-                  <p className="mb-2 text-sm font-semibold text-ink">Down payment</p>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={d.take_down_payment} onChange={(e) => set('take_down_payment', e.target.checked)} className="size-4 accent-admin-600" />
-                    {formatBdt(down)} received on {formatDate(d.agreement_date)}
-                  </label>
-                  {d.take_down_payment && (
-                    <div className="mt-4 grid gap-4 md:grid-cols-2">
-                      <Field label="Paid by">
-                        <SelectInput value={d.down_payment_method} onChange={(e) => set('down_payment_method', e.target.value as SharePaymentMethod)}>
-                          {SHARE_PAYMENT_METHODS.filter((m) => m !== 'online').map((m) => (
-                            <option key={m} value={m}>
-                              {SHARE_PAYMENT_METHOD_LABEL[m]}
-                            </option>
-                          ))}
-                        </SelectInput>
-                      </Field>
-                      <Field label="Reference" hint="cheque, pay order or deposit slip no.">
-                        <TextInput value={d.down_payment_reference} onChange={(e) => set('down_payment_reference', e.target.value)} />
-                      </Field>
-                      <AccountPicker label="Received into" value={d.down_payment_account_id ?? ''} onChange={(id) => set('down_payment_account_id', id)} />
-                    </div>
-                  )}
-                </>
-              )}
-              {error && <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+            <StepSection n={5} title="Review" subtitle="Everything that goes on the agreement, step by step. Change anything with Edit, then sign.">
+              <ReviewCard n={1} title="Agreement and plan" onEdit={() => go(0)}>
+                <Facts
+                  rows={[
+                    ['Signed on', formatDate(d.agreement_date)],
+                    ['Signed at', d.place],
+                    ['Shares', `${shares} · ${formatSharePct(shares * (o?.share_pct ?? 0))} of the project`],
+                    ['Price', `${formatBdt(s.price_per_share)} a share · ${formatBdt(total)}`],
+                    ['Down payment', `${formatBdt(down)} due on the signing day`],
+                    ['Installments', n > 0 && rows.length > 1 ? `${n} × ${formatBdt(rows[1].amount)} ${FREQUENCY_LABEL[s.installment_frequency].toLowerCase()}` : 'None — paid in full'],
+                  ]}
+                />
+                <SchedulePreview
+                  rows={rows.length ? rows.map((r) => ({ label: installmentLabel(r.seq), due_date: r.due_date, amount: r.amount })) : [{ label: 'Full price', due_date: d.agreement_date, amount: total }]}
+                  note="The down payment is not taken here — record it on the purchase once it is received, or the customer pays it from the portal."
+                />
+              </ReviewCard>
+              <ReviewCard n={2} title="Customer as named on the agreement" onEdit={() => go(1)}>
+                <KycFacts name={customer.name} values={d.customer} payoutBank />
+              </ReviewCard>
+              <ReviewCard n={3} title="Signatures, witnesses and stamp" onEdit={() => go(2)}>
+                <SigningFacts signing={d} partyName={customer.name} party="customer" />
+              </ReviewCard>
+              <ReviewCard n={4} title="Papers on file" onEdit={() => go(3)}>
+                <PaperFacts items={checklist.filter((c) => c.required || c.files.length).map((c) => ({ label: c.meta.label, required: c.required, done: c.done, files: c.files.length }))} />
+              </ReviewCard>
+              {error && <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
             </StepSection>
           )}
 
@@ -323,8 +321,8 @@ export function SignAgreementWizard({ row, uploads, onExit }: { row: SaleRow; up
             {at < 4 ? (
               <NextButton label={STEP_LABEL[at + 1]} disabled={!steps[at].done} onClick={() => go(at + 1)} />
             ) : (
-              <Button disabled={!allReady || busy} onClick={sign}>
-                <FileSignature className="size-4" /> {busy ? 'Signing…' : 'Agreement signed'}
+              <Button disabled={!allReady || busy} onClick={() => setConfirming(true)}>
+                <FileSignature className="size-4" /> Sign agreement
               </Button>
             )}
           </WizardFooter>
@@ -332,6 +330,20 @@ export function SignAgreementWizard({ row, uploads, onExit }: { row: SaleRow; up
 
         <ReadyCard steps={steps.slice(0, 4)} onSelect={go} missing={missingDocs.map((m) => m.meta.label)} />
       </div>
+
+      <SignConfirmDialog
+        open={confirming}
+        code={s.code}
+        lines={[
+          `${customer.name} · ${shares} share${shares === 1 ? '' : 's'} (${formatSharePct(shares * (o?.share_pct ?? 0))})`,
+          `${formatBdt(total)} · ${formatBdt(down)} down${n > 0 && rows.length > 1 ? ` + ${n} ${FREQUENCY_LABEL[s.installment_frequency].toLowerCase()} installments of ${formatBdt(rows[1].amount)}` : ''}`,
+          `Signed ${formatDate(d.agreement_date)} at ${d.place}`,
+        ]}
+        after="After signing, the plan is fixed, the payment schedule starts with the down payment due today, and the customer sees the agreement on their Customer Portal."
+        busy={busy}
+        onConfirm={sign}
+        onCancel={() => setConfirming(false)}
+      />
     </div>
   );
 }

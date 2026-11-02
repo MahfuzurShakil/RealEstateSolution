@@ -5,6 +5,7 @@ import { useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Check, FileSignature, Pencil } from 'lucide-react';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
+import { SigningFacts } from '@/components/admin/signing/SigningParts';
 import { ShareDocumentChecklist } from '@/components/admin/share-sale/ShareDocuments';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -183,24 +184,11 @@ export function AgreementPanel({ booking, project }: { booking: Booking; project
       )}
 
       {signing && (
+        // the signing event only, as on a share purchase — the buyer's details live on the customer (feedback D2)
         <Card>
-          <CardHeader title="Signing" action={<Badge tone="green">Signed</Badge>} />
-          <div className="grid gap-x-8 md:grid-cols-2">
-            <div>
-              <Row label="Signed at" value={signing.place} />
-              <Row label="For the company" value={[signing.company_signatory, signing.company_signatory_title].filter(Boolean).join(', ')} />
-              {signing.attorney_name && <Row label="For the buyer, by attorney" value={signing.attorney_name} />}
-              <Row label="Witnesses" value={signing.witnesses.map((w) => w.name).join(' and ')} />
-            </div>
-            <div>
-              <Row
-                label="Stamp paper"
-                value={signing.stamp_value != null ? `${formatBdt(signing.stamp_value)}${signing.stamp_serial ? ` · no. ${signing.stamp_serial}` : ''}` : null}
-              />
-              <Row label="Notarized" value={signing.notarized_on ? `${formatDate(signing.notarized_on)}${signing.notary_name ? ` · ${signing.notary_name}` : ''}` : null} />
-              <Row label="Buyer's NID" value={customer?.nid} />
-              <Row label="Nominee" value={customer?.nominee_name ? `${customer.nominee_name}${customer.nominee_relation ? ` (${customer.nominee_relation})` : ''}` : null} />
-            </div>
+          <CardHeader title="Signing" subtitle={`Signed ${formatDate(booking.agreement_date)} at ${signing.place}`} action={<Badge tone="green">Signed</Badge>} />
+          <div className="space-y-5">
+            <SigningFacts signing={signing} partyName={customer?.name ?? 'the buyer'} party="buyer" />
           </div>
         </Card>
       )}

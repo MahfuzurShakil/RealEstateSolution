@@ -9,6 +9,7 @@ import { DetailTabs, SaleBadge } from '@/components/admin/share-sale/bits';
 import { InvestorDetailsModal } from '@/components/admin/share-sale/InboxModals';
 import { ShareDocumentChecklist } from '@/components/admin/share-sale/ShareDocuments';
 import { SignAgreementWizard } from '@/components/admin/share-sale/SignAgreementWizard';
+import { Facts, SigningFacts } from '@/components/admin/signing/SigningParts';
 import { ReasonModal, RecordPaymentModal } from '@/components/admin/share-sale/ShareSaleModals';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -31,8 +32,9 @@ function Line({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-type Tab = 'overview' | 'sign' | 'payments' | 'documents';
-type Dialog = 'pay' | 'release' | 'certificate' | 'investor' | null;
+type Tab = 'overview' | 'sign' | 'agreement' | 'payments' | 'documents';
+type Dialog = 'pay' | 'release' | 'certificate' | 'investor' | 'signed' | null;
+const TABS: Tab[] = ['overview', 'sign', 'agreement', 'payments', 'documents'];
 
 /** One customer's share purchase: the terms, the schedule, every payment and what to do next. */
 function ShareSaleDetail() {
@@ -45,7 +47,7 @@ function ShareSaleDetail() {
   const uploads = useLiveQuery(() => (customerId ? customerUploadRepository.forCustomer(customerId) : Promise.resolve([])), [customerId]);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<Tab>(params.get('tab') === 'sign' ? 'sign' : 'overview');
+  const [tab, setTab] = useState<Tab>(() => (TABS.find((t) => t === params.get('tab')) ?? 'overview'));
 
   if (!data) return <p className="text-sm text-ink-muted">Loading…</p>;
   const v = data.sales.find((r) => r.sale.id === id);
@@ -55,6 +57,7 @@ function ShareSaleDetail() {
   const each = v.schedule.find((i) => i.seq === 1)?.amount;
   const missing = uploads && v.customer ? missingToSign(shareDocChecklist(uploads, s.id, { has_nominee: !!v.customer.nominee_name, by_attorney: !!s.signing?.attorney_name })).length : 0;
   const docsLabel = s.status === 'reserved' && missing ? `Documents (${missing} needed)` : 'Documents';
+  const signedCopy = (uploads ?? []).some((u) => u.kind === 'signed_copy' && u.sale_id === s.id && u.status !== 'rejected');
   const act = async (fn: () => Promise<unknown>) => {
     setError('');
     try {
@@ -154,6 +157,7 @@ function ShareSaleDetail() {
               ...(s.status === 'reserved' && mayEdit
                 ? [{ key: 'sign' as Tab, label: s.sign_draft ? `Sign agreement · step ${Math.min(s.sign_draft.step, 4) + 1} of 5` : 'Sign agreement' }]
                 : []),
+              ...(s.signing ? [{ key: 'agreement' as Tab, label: 'Agreement' }] : []),
               { key: 'payments', label: v.schedule.length ? `Payments (${v.paid_count}/${v.schedule.length})` : 'Payments' },
               { key: 'documents', label: docsLabel },
             ]}
@@ -161,12 +165,35 @@ function ShareSaleDetail() {
             onChange={setTab}
           />
 
-          {tab === 'sign' && s.status === 'reserved' && mayEdit && uploads && v.customer && <SignAgreementWizard row={v} uploads={uploads} onExit={() => setTab('overview')} />}
+          {tab === 'sign' && s.status === 'reserved' && mayEdit && uploads && v.customer && (
+            <SignAgreementWizard
+              row={v}
+              uploads={uploads}
+              onExit={(signed) => {
+                setTab(signed ? 'agreement' : 'overview');
+                if (signed) setDialog('signed');
+              }}
+            />
+          )}
 
           {tab === 'overview' && (
             <div className="space-y-5">
               <Card>
-                <CardHeader title="Purchase" subtitle={s.agreement_no ? `Agreement ${s.agreement_no} · signed ${formatDate(s.agreement_date)}` : `Reserved ${formatDate(s.reserved_on)}, held until ${formatDate(s.hold_until)}`} />
+                <CardHeader
+                  title="Purchase"
+                  subtitle={
+                    s.agreement_no ? (
+                      <>
+                        <button type="button" onClick={() => setTab('agreement')} className="text-admin-700 hover:underline">
+                          Agreement {s.agreement_no}
+                        </button>{' '}
+                        · signed {formatDate(s.agreement_date)}
+                      </>
+                    ) : (
+                      `Reserved ${formatDate(s.reserved_on)}, held until ${formatDate(s.hold_until)}`
+                    )
+                  }
+                />
                 <dl className="divide-y divide-hairline">
                   <Line label="Shares">
                     {s.shares} · {formatSharePct(s.share_pct)} of the project
@@ -210,24 +237,36 @@ function ShareSaleDetail() {
                   </div>
                 )}
               </Card>
-            {s.signing && (
-              <Card>
-                <CardHeader title="Signing record" subtitle={`Agreement ${s.agreement_no} · signed ${formatDate(s.agreement_date)} at ${s.signing.place}`} />
-                <dl className="grid gap-x-8 divide-y divide-hairline md:grid-cols-2 md:divide-y-0">
-                  <Line label="For the company">{[s.signing.company_signatory, s.signing.company_signatory_title].filter(Boolean).join(', ')}</Line>
-                  <Line label="For the customer">{s.signing.attorney_name ? `${s.signing.attorney_name} (power of attorney)` : v.customer?.name}</Line>
-                  {s.signing.witnesses.map((w, i) => (
-                    <Line key={i} label={`Witness ${i + 1}`}>
-                      {[w.name, w.id_or_phone, w.address].filter(Boolean).join(' · ')}
-                    </Line>
-                  ))}
-                  <Line label="Stamp paper">{s.signing.stamp_value != null ? `${formatBdt(s.signing.stamp_value)}${s.signing.stamp_serial ? ` · no. ${s.signing.stamp_serial}` : ''}` : '—'}</Line>
-                  <Line label="Notarized">{s.signing.notarized_on ? `${formatDate(s.signing.notarized_on)}${s.signing.notary_name ? ` · ${s.signing.notary_name}` : ''}` : '—'}</Line>
-                </dl>
-              </Card>
-            )}
-
             </div>
+          )}
+
+          {/* the signing event only — plan and customer stay on Overview, papers on Documents (feedback D2) */}
+          {tab === 'agreement' && s.signing && (
+            <Card>
+              <CardHeader title={`Agreement ${s.agreement_no ?? ''}`} subtitle={`Signed ${formatDate(s.agreement_date)} at ${s.signing.place}`} />
+              <div className="space-y-5">
+                <Facts
+                  rows={[
+                    ['Agreement no.', s.agreement_no],
+                    ['Signed on', formatDate(s.agreement_date)],
+                    ['Signed at', s.signing.place],
+                    [
+                      'Signed copy',
+                      signedCopy ? (
+                        <button type="button" onClick={() => setTab('documents')} className="text-admin-700 hover:underline">
+                          On file · View in Documents
+                        </button>
+                      ) : (
+                        <button type="button" onClick={() => setTab('documents')} className="text-amber-700 hover:underline">
+                          Not on file · Upload in Documents
+                        </button>
+                      ),
+                    ],
+                  ]}
+                />
+                <SigningFacts signing={s.signing} partyName={v.customer?.name ?? 'the customer'} party="customer" />
+              </div>
+            </Card>
           )}
 
           {tab === 'payments' &&
@@ -360,6 +399,22 @@ function ShareSaleDetail() {
 
       {dialog === 'investor' && v.customer && <InvestorDetailsModal customer={v.customer} onClose={() => setDialog(null)} />}
       {dialog === 'pay' && <RecordPaymentModal view={v} onClose={() => setDialog(null)} />}
+      {/* feedback B6: the down payment is its own payment — offered right after signing, never taken by it */}
+      <ConfirmDialog
+        open={dialog === 'signed'}
+        title="Agreement signed"
+        tone="default"
+        icon={FileSignature}
+        message={
+          s.down_payment > 0
+            ? `${s.agreement_no ?? s.code} is signed. The down payment of ${formatBdt(s.down_payment)} is due today. If it was handed over at the table, record it now; otherwise record it when it comes in — the customer can also pay it from the Customer Portal.`
+            : `${s.agreement_no ?? s.code} is signed and the payment schedule has started.`
+        }
+        confirmLabel={s.down_payment > 0 ? 'Record down payment now' : 'Done'}
+        cancelLabel={s.down_payment > 0 ? 'Later' : 'Close'}
+        onConfirm={() => setDialog(s.down_payment > 0 ? 'pay' : null)}
+        onCancel={() => setDialog(null)}
+      />
       {dialog === 'release' && <ReasonModal sale={s} kind="release" onClose={() => setDialog(null)} />}
       <ConfirmDialog
         open={dialog === 'certificate'}

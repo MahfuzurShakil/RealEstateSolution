@@ -378,6 +378,11 @@ export default function CustomerDetailPage() {
                           </div>
                           <Badge tone={SALE_HEALTH_META[view.health].tone}>{SALE_HEALTH_META[view.health].label}</Badge>
                         </Link>
+                        {s.signing && (
+                          <Link href={`/admin/share-sale/sales/${s.id}?from=customer&tab=agreement`} className="mt-1 ml-[3.75rem] inline-block text-xs font-medium text-admin-700 hover:underline">
+                            View agreement {s.agreement_no}
+                          </Link>
+                        )}
                       </li>
                     );
                   })}
