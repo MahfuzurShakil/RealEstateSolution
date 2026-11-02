@@ -121,7 +121,7 @@ function RequestsPage() {
         <span className="block">
           <Badge tone={REQUEST_META[r.request.status].tone}>{REQUEST_META[r.request.status].label}</Badge>
           {r.sale && (
-            <Link href={`/admin/share-sale/sales/${r.sale.id}`} className="mt-1 block text-xs font-medium text-admin-600 hover:underline">
+            <Link href={`/admin/share-sale/sales/${r.sale.id}?from=requests`} className="mt-1 block text-xs font-medium text-admin-600 hover:underline">
               {r.sale.code}
             </Link>
           )}
@@ -164,7 +164,7 @@ function RequestsPage() {
         <span className="block">
           <span className="block font-medium text-ink">{u.customer?.name ?? '—'}</span>
           {u.sale && (
-            <Link href={`/admin/share-sale/sales/${u.sale.id}`} className="block text-xs text-admin-600 hover:underline">
+            <Link href={`/admin/share-sale/sales/${u.sale.id}?from=requests`} className="block text-xs text-admin-600 hover:underline">
               {u.sale.code} · {u.project?.name}
             </Link>
           )}

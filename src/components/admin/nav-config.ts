@@ -41,6 +41,11 @@ export interface NavItem {
   hiddenInDirect?: boolean;
   /** shown only when the company buys directly (the Payments queue of site costs) */
   directOnly?: boolean;
+  /**
+   * Other paths that belong to this item: a detail page that lives outside the
+   * list's own path (a share purchase opened from Investors & Dues).
+   */
+  activeFor?: string[];
 }
 
 /**
@@ -110,7 +115,8 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: PieChart,
     items: [
       { label: 'Share Offerings', href: '/admin/share-sale', module: 'share_sale' },
-      { label: 'Investors & Dues', href: '/admin/share-sale/investors', module: 'share_sale' },
+      // a purchase page is reached from this list, not from Share Offerings (feedback D1)
+      { label: 'Investors & Dues', href: '/admin/share-sale/investors', module: 'share_sale', activeFor: ['/admin/share-sale/sales'] },
       { label: 'Customer Requests', href: '/admin/share-sale/requests', module: 'share_sale' },
     ],
   },

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Suspense, useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, Award, FileSignature, HandCoins, IdCard, Undo2, XCircle } from 'lucide-react';
+import { ArrowLeft, Award, FileSignature, HandCoins, IdCard, XCircle } from 'lucide-react';
 import { DetailTabs, SaleBadge } from '@/components/admin/share-sale/bits';
 import { InvestorDetailsModal } from '@/components/admin/share-sale/InboxModals';
 import { ShareDocumentChecklist } from '@/components/admin/share-sale/ShareDocuments';
@@ -32,7 +32,7 @@ function Line({ label, children }: { label: string; children: ReactNode }) {
 }
 
 type Tab = 'overview' | 'sign' | 'payments' | 'documents';
-type Dialog = 'pay' | 'release' | 'cancel' | 'undo' | 'certificate' | 'investor' | null;
+type Dialog = 'pay' | 'release' | 'certificate' | 'investor' | null;
 
 /** One customer's share purchase: the terms, the schedule, every payment and what to do next. */
 function ShareSaleDetail() {
@@ -65,10 +65,21 @@ function ShareSaleDetail() {
     setDialog(null);
   };
 
+  // the back link goes where the page was opened from (feedback D1)
+  const from = params.get('from');
+  const back =
+    from === 'customer' && v.customer
+      ? { href: `/admin/customers/${v.customer.id}`, label: v.customer.name }
+      : from === 'offering' && o
+        ? { href: `/admin/share-sale/offerings/${o.id}`, label: `${o.code} · Round ${o.round_no}` }
+        : from === 'requests'
+          ? { href: '/admin/share-sale/requests', label: 'Customer Requests' }
+          : { href: '/admin/share-sale/investors', label: 'Investors & Dues' };
+
   return (
     <>
-      <Link href="/admin/share-sale/investors" className="mb-3 inline-flex items-center gap-1.5 text-sm text-ink-muted hover:text-admin-700">
-        <ArrowLeft className="size-4" /> Investors & Dues
+      <Link href={back.href} className="mb-3 inline-flex items-center gap-1.5 text-sm text-ink-muted hover:text-admin-700">
+        <ArrowLeft className="size-4" /> {back.label}
       </Link>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -104,30 +115,20 @@ function ShareSaleDetail() {
                 )}
               </>
             )}
+            {/*
+             * Cancel purchase and Undo last payment are hidden (feedback D5) until a
+             * cancellation & refund procedure and a Reverse payment by Accounts
+             * replace them — see OPEN-ITEMS 0u. The repository calls stay.
+             */}
             {s.status === 'agreement_signed' && (
-              <>
-                <Button variant="dangerGhost" onClick={() => setDialog('cancel')}>
-                  Cancel purchase
-                </Button>
-                {v.payments.length > 0 && (
-                  <Button variant="outline" onClick={() => setDialog('undo')}>
-                    <Undo2 className="size-4" /> Undo last payment
-                  </Button>
-                )}
-                <Button onClick={() => setDialog('pay')}>
-                  <HandCoins className="size-4" /> Record payment
-                </Button>
-              </>
+              <Button onClick={() => setDialog('pay')}>
+                <HandCoins className="size-4" /> Record payment
+              </Button>
             )}
             {s.status === 'fully_paid' && !s.certificate_no && (
-              <>
-                <Button variant="outline" onClick={() => setDialog('undo')}>
-                  <Undo2 className="size-4" /> Undo last payment
-                </Button>
-                <Button onClick={() => setDialog('certificate')}>
-                  <Award className="size-4" /> Issue share certificate
-                </Button>
-              </>
+              <Button onClick={() => setDialog('certificate')}>
+                <Award className="size-4" /> Issue share certificate
+              </Button>
             )}
           </div>
         )}
@@ -359,15 +360,7 @@ function ShareSaleDetail() {
 
       {dialog === 'investor' && v.customer && <InvestorDetailsModal customer={v.customer} onClose={() => setDialog(null)} />}
       {dialog === 'pay' && <RecordPaymentModal view={v} onClose={() => setDialog(null)} />}
-      {(dialog === 'release' || dialog === 'cancel') && <ReasonModal sale={s} kind={dialog} onClose={() => setDialog(null)} />}
-      <ConfirmDialog
-        open={dialog === 'undo'}
-        title="Undo the last payment?"
-        message={v.payments[0] ? `${v.payments[0].code} — ${formatBdt(v.payments[0].amount)} on ${formatDate(v.payments[0].paid_on)} — is removed and the schedule goes back to how it was.` : ''}
-        confirmLabel="Undo payment"
-        onConfirm={() => act(() => shareSaleRepository.undoLatestPayment(s.id))}
-        onCancel={() => setDialog(null)}
-      />
+      {dialog === 'release' && <ReasonModal sale={s} kind="release" onClose={() => setDialog(null)} />}
       <ConfirmDialog
         open={dialog === 'certificate'}
         title="Issue the share certificate?"

@@ -356,7 +356,7 @@ export default function CustomerDetailPage() {
                     return (
                       <li key={s.id}>
                         <Link
-                          href={`/admin/share-sale/sales/${s.id}`}
+                          href={`/admin/share-sale/sales/${s.id}?from=customer`}
                           className="flex flex-wrap items-center gap-3 rounded-xl border border-hairline p-3 transition-colors hover:bg-admin-50/60"
                         >
                           <span className="grid size-10 shrink-0 place-items-center rounded-full bg-admin-50 text-admin-600">

@@ -169,7 +169,7 @@ export const customerPortfolioRepository = {
         amount: p.amount,
         late_fee: p.late_fee,
         against: saleCode.get(p.sale_id) ?? 'Share purchase',
-        href: `/admin/share-sale/sales/${p.sale_id}`,
+        href: `/admin/share-sale/sales/${p.sale_id}?from=customer`,
         reference: p.reference ?? null,
         online: p.channel === 'online',
       })),

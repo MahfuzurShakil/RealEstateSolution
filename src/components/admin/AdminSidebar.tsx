@@ -8,7 +8,7 @@ import { usePurchaseMode } from '@/lib/settings/use-purchase-mode';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { canView } from '@/lib/domain/access';
 import { cn } from '@/lib/utils/cn';
-import { NAV_GROUPS } from './nav-config';
+import { NAV_GROUPS, type NavItem } from './nav-config';
 
 const OPEN_GROUPS_KEY = 'admin.sidebar-open-groups';
 /** same-tab notification; the native `storage` event only fires in OTHER tabs */
@@ -77,6 +77,16 @@ function subscribeToOpenGroups(onChange: () => void): () => void {
 /** '/admin/lands/new' should still light up the '/admin/lands' item. */
 function isActiveHref(pathname: string, href: string): boolean {
   return href === '/admin' ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/**
+ * How closely `item` claims `pathname`: the length of the longest of its paths
+ * (its href, then any `activeFor`) the page sits under, or 0. The closest claim
+ * wins, so /admin/share-sale/sales/… goes to Investors & Dues, not to the
+ * shorter /admin/share-sale of Share Offerings.
+ */
+function claim(pathname: string, item: NavItem): number {
+  return [item.href, ...(item.activeFor ?? [])].reduce((best, p) => (isActiveHref(pathname, p) ? Math.max(best, p.length) : best), 0);
 }
 
 /**
@@ -179,7 +189,7 @@ export function AdminSidebar({
         <nav className="flex-1 overflow-y-auto px-3 pb-4">
           {groups.map((group) => {
             const Icon = group.icon;
-            const groupActive = group.items.some((i) => isActiveHref(pathname, i.href));
+            const groupActive = group.items.some((i) => claim(pathname, i) > 0);
             const isOpen = toggled[group.label] ?? groupActive;
 
             /*
@@ -237,11 +247,8 @@ export function AdminSidebar({
                   <ul className="mt-1 space-y-0.5 pl-11">
                     {group.items.map((item) => {
                       // the most specific link wins: /admin/payments/history is not also /admin/payments
-                      const active =
-                        isActiveHref(pathname, item.href) &&
-                        !group.items.some(
-                          (o) => o.href.length > item.href.length && isActiveHref(pathname, o.href),
-                        );
+                      const mine = claim(pathname, item);
+                      const active = mine > 0 && !group.items.some((o) => claim(pathname, o) > mine);
                       if (item.disabled) {
                         return (
                           <li key={item.href}>

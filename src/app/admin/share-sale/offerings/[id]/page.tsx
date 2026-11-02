@@ -229,7 +229,7 @@ export default function OfferingDetailPage() {
                 rows={sales}
                 columns={saleColumns}
                 label="purchases"
-                onRowClick={(r) => router.push(`/admin/share-sale/sales/${r.sale.id}`)}
+                onRowClick={(r) => router.push(`/admin/share-sale/sales/${r.sale.id}?from=offering`)}
                 emptyState={
                   <EmptyState
                     icon={Ticket}
