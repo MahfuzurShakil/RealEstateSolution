@@ -3245,6 +3245,9 @@ export type ShareOfferingStatus = (typeof SHARE_OFFERING_STATUSES)[number];
 
 export const SHARE_FREQUENCIES = ['monthly', 'quarterly'] as const;
 export type ShareFrequency = (typeof SHARE_FREQUENCIES)[number];
+/** How an offering charges a late installment (SHARE-SALE-FEEDBACK-PLAN.md A3); a third type may follow. */
+export const LATE_FEE_TYPES = ['pct_once', 'fixed_once'] as const;
+export type LateFeeType = (typeof LATE_FEE_TYPES)[number];
 
 export interface ShareOffering extends BaseEntity {
   code: string;                       // SHO-2026-001
@@ -3269,7 +3272,7 @@ export interface ShareOffering extends BaseEntity {
   /** how many days the offer stays open once opened */
   validity_days: number;
   opens_on?: ISODate | null;
-  /** opens_on + validity_days; set when the offering is opened */
+  /** a draft may carry the planned close date; set for good when the offering is opened */
   closes_on?: ISODate | null;
   /** per customer */
   min_shares: number;
@@ -3279,8 +3282,12 @@ export interface ShareOffering extends BaseEntity {
   /** the longest installment plan offered after the down payment */
   max_installments: number;
   installment_frequency: ShareFrequency;
-  /** % of an installment charged once it is more than `grace_days` late */
+  /** with `pct_once`: % of an installment charged once it is more than `grace_days` late */
   late_fee_pct: number;
+  /** missing on older offerings, which read as `pct_once` */
+  late_fee_type?: LateFeeType | null;
+  /** with `fixed_once`: the taka charged once on each late installment */
+  late_fee_amount?: number | null;
   grace_days: number;
   /** how long reserved shares are held for a customer before the agreement */
   hold_days: number;

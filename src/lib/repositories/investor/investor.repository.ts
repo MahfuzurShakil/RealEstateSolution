@@ -250,6 +250,8 @@ function toRound(o: ShareOffering, projectCode: string, sales: ShareSale[], toda
     max_installments: o.max_installments,
     frequency: o.installment_frequency,
     late_fee_pct: o.late_fee_pct,
+    late_fee_type: o.late_fee_type ?? null,
+    late_fee_amount: o.late_fee_amount ?? null,
     grace_days: o.grace_days,
   };
 }

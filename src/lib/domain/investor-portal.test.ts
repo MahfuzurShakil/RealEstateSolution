@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildDemoData } from './investor-portal.fixture';
-import { allocatePayment, amountChoices, lateFeeFor, maxPayable, paymentDueRows, takaInWords, viewPortfolio, type InvestorSnapshot } from './investor-portal';
+import { allocatePayment, amountChoices, lateFeeFor, lateFeeTerms, maxPayable, paymentDueRows, takaInWords, viewPortfolio, type InvestorSnapshot } from './investor-portal';
 
 const TODAY = '2026-11-01';
 
@@ -13,6 +13,13 @@ describe('Customer Portal rules', () => {
   it('charges 2% only after the 7-day grace', () => {
     expect(lateFeeFor(200_000, 7)).toBe(0);
     expect(lateFeeFor(200_000, 8)).toBe(4_000);
+  });
+
+  it('charges a fixed late fee the same way the office does', () => {
+    const fixed = { late_fee_type: 'fixed_once' as const, late_fee_amount: 2_500, late_fee_pct: 0, grace_days: 7 };
+    expect(lateFeeFor(200_000, 7, fixed)).toBe(0);
+    expect(lateFeeFor(200_000, 30, fixed)).toBe(2_500);
+    expect(lateFeeTerms(fixed)).toBe('An installment paid more than 7 days after its due date carries a late fee of ৳ 2,500.');
   });
 
   it('matches the proposal’s worked example (§7)', () => {

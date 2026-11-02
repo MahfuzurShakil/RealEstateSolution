@@ -1,5 +1,5 @@
 import type { BadgeTone } from '@/components/ui/Badge';
-import type { InstallmentAllocation } from '../db/types';
+import type { InstallmentAllocation, LateFeeType } from '../db/types';
 
 /*
  * One money engine for every "price paid in installments" record
@@ -8,8 +8,8 @@ import type { InstallmentAllocation } from '../db/types';
  *
  *   - a row is paid from the allocations that name it, never from a running total
  *   - a payment goes to late fees first, then to the oldest unpaid row
- *   - an overdue row past the grace days carries one late fee of `late_fee_pct`
- *     of its amount
+ *   - an overdue row past the grace days carries one late fee: `late_fee_pct`
+ *     of its amount, or a fixed `late_fee_amount`
  *
  * Free of Dexie, so the repositories, the database upgrade, the demo seed and
  * the tests all work it out the same way.
@@ -39,12 +39,20 @@ export interface LedgerPayment {
 
 export interface FeeRule {
   late_fee_pct: number;
+  /** `fixed_once` charges `late_fee_amount` taka instead of a %; missing reads as `pct_once` */
+  late_fee_type?: LateFeeType | null;
+  late_fee_amount?: number | null;
   grace_days: number;
-  /** rows that never carry a late fee (a booking's booking money) */
+  /** rows that never carry a late fee (a booking's booking money, a share purchase's down payment) */
   exempt?: (row: LedgerRow) => boolean;
 }
 
 export const NO_LATE_FEE: FeeRule = { late_fee_pct: 0, grace_days: 0 };
+
+/** The one late fee a late row of `amount` carries under `rule`. */
+export function lateFeeOn(amount: number, rule: Pick<FeeRule, 'late_fee_pct' | 'late_fee_type' | 'late_fee_amount'>): number {
+  return rule.late_fee_type === 'fixed_once' ? Math.max(0, Math.round(Number(rule.late_fee_amount) || 0)) : Math.round((amount * rule.late_fee_pct) / 100);
+}
 
 export type InstallmentStatus = 'paid' | 'overdue' | 'due' | 'upcoming';
 export const INSTALLMENT_STATUS_META: Record<InstallmentStatus, { label: string; tone: BadgeTone }> = {
@@ -86,7 +94,7 @@ export function viewInstallments<R extends LedgerRow>(
       const status: InstallmentStatus = remaining <= 0 ? 'paid' : days > 0 ? 'overdue' : -days <= DUE_WINDOW_DAYS ? 'due' : 'upcoming';
       const daysLate = status === 'overdue' ? days : 0;
       const charged = status === 'overdue' && daysLate > rule.grace_days && !rule.exempt?.(row);
-      const fee = charged ? Math.round((row.amount * rule.late_fee_pct) / 100) : feePaid;
+      const fee = charged ? lateFeeOn(row.amount, rule) : feePaid;
       const lastPaid = touching.map((p) => p.paid_on).sort().pop() ?? null;
       return {
         ...row,

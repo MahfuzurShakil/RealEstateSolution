@@ -8,8 +8,8 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Field, MoneyInput, SelectInput, TextArea, TextInput } from '@/components/ui/Field';
 import { useMockSession } from '@/lib/auth/mock-session';
-import type { ShareFrequency, ShareOffering } from '@/lib/db/types';
-import { FREQUENCY_LABEL, closesOn, formatCrore, formatSharePct, offeringMath } from '@/lib/domain/share-sale';
+import { LATE_FEE_TYPES, type LateFeeType, type ShareFrequency, type ShareOffering } from '@/lib/db/types';
+import { FREQUENCY_LABEL, LATE_FEE_TYPE_LABEL, addDays, closesOn, daysBetween, formatCrore, formatSharePct, offeringMath } from '@/lib/domain/share-sale';
 import { projectRepository, projectStatement, shareOfferingRepository } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate, todayLocal } from '@/lib/utils/format';
@@ -24,35 +24,45 @@ interface Draft {
   valuation_date: string;
   offered_pct: string;
   total_shares: string;
-  validity_days: string;
+  closes_on: string;
   min_shares: string;
   max_shares: string;
   min_down_payment_pct: string;
   max_installments: string;
   installment_frequency: ShareFrequency;
+  late_fee_type: LateFeeType;
   late_fee_pct: string;
+  late_fee_amount: string;
   grace_days: string;
   hold_days: string;
   notes: string;
 }
 
+/** Quick picks beside the close date: open this many days, counted from today. */
+const CLOSE_CHIPS = [30, 60, 90];
+
 function fromOffering(o: ShareOffering | undefined, projectId: string | null): Draft {
+  const today = todayLocal();
   return {
     project_id: o?.project_id ?? projectId ?? '',
     net_asset_value: o ? String(o.net_asset_value) : '',
     premium_mode: 'amount',
     premium_value: o ? String(o.premium_value) : '',
     premium_pct: '',
-    valuation_date: o?.valuation_date ?? todayLocal(),
+    valuation_date: o?.valuation_date ?? today,
     offered_pct: o ? String(o.offered_pct) : '',
     total_shares: o ? String(o.total_shares) : '',
-    validity_days: o ? String(o.validity_days) : '90',
+    // a draft saved before close dates keeps its day count, counted from today
+    closes_on: o?.closes_on && o.closes_on > today ? o.closes_on : closesOn(today, o?.validity_days ?? 90),
     min_shares: o ? String(o.min_shares) : '1',
     max_shares: o ? String(o.max_shares) : '',
     min_down_payment_pct: o ? String(o.min_down_payment_pct) : '20',
     max_installments: o ? String(o.max_installments) : '20',
     installment_frequency: o?.installment_frequency ?? 'monthly',
-    late_fee_pct: o ? String(o.late_fee_pct) : '2',
+    late_fee_type: o?.late_fee_type ?? 'pct_once',
+    // switching a fixed-fee draft back to % starts from the usual 2%
+    late_fee_pct: o && o.late_fee_type !== 'fixed_once' ? String(o.late_fee_pct) : '2',
+    late_fee_amount: o?.late_fee_amount ? String(o.late_fee_amount) : '',
     grace_days: o ? String(o.grace_days) : '7',
     hold_days: o ? String(o.hold_days) : '7',
     notes: o?.notes ?? '',
@@ -71,9 +81,10 @@ function Row({ label, children, strong }: { label: ReactNode; children: ReactNod
 /**
  * New or draft share offering (client meeting, 2026-11-01):
  *   valuation = net asset value + premium
- *   then the % going to the market, how many shares, how many days it is
- *   valid, and the longest installment plan.
- * The summary on the right works the price out as the numbers are typed.
+ *   then the % going to the market, how many shares, the day it closes,
+ *   and the longest installment plan.
+ * The summary on the right works the price out as the numbers are typed;
+ * the buttons sit under the form, as on the other forms (feedback A4).
  */
 export function OfferingForm({ offering, projectId }: { offering?: ShareOffering; projectId?: string | null }) {
   const router = useRouter();
@@ -101,7 +112,16 @@ export function OfferingForm({ offering, projectId }: { offering?: ShareOffering
   const downPct = Number(d.min_down_payment_pct) || 0;
   const example = Math.max(1, Number(d.min_shares) || 1) * m.price_per_share;
   const exampleDown = Math.round((example * downPct) / 100);
-  const opensToday = closesOn(todayLocal(), Number(d.validity_days) || 0);
+  const today = todayLocal();
+  const openDays = d.closes_on > today ? daysBetween(today, d.closes_on) + 1 : 0;
+  const premiumPctOfNav = nav > 0 && premium > 0 ? Number(((premium / nav) * 100).toFixed(1)) : null;
+
+  /** Switching how the premium is typed carries the number across, so the same premium shows the other way. */
+  function premiumMode(mode: Draft['premium_mode']) {
+    if (mode === 'pct') set('premium_pct', premiumPctOfNav !== null ? String(premiumPctOfNav) : '');
+    else if (premium > 0) set('premium_value', String(premium));
+    set('premium_mode', mode);
+  }
 
   async function save() {
     setBusy(true);
@@ -116,13 +136,15 @@ export function OfferingForm({ offering, projectId }: { offering?: ShareOffering
           valuation_date: d.valuation_date,
           offered_pct: terms.offered_pct,
           total_shares: Number(d.total_shares),
-          validity_days: Number(d.validity_days),
+          closes_on: d.closes_on,
           min_shares: Number(d.min_shares),
           max_shares: Number(d.max_shares),
           min_down_payment_pct: downPct,
           max_installments: Number(d.max_installments),
           installment_frequency: d.installment_frequency,
+          late_fee_type: d.late_fee_type,
           late_fee_pct: Number(d.late_fee_pct),
+          late_fee_amount: Number(d.late_fee_amount) || 0,
           grace_days: Number(d.grace_days),
           hold_days: Number(d.hold_days),
           notes: d.notes,
@@ -169,21 +191,41 @@ export function OfferingForm({ offering, projectId }: { offering?: ShareOffering
                 </span>
               )}
             </Field>
-            <Field label="Premium" hint="Brand, location, expected income — what the owner adds on top of NAV.">
-              <div className="flex gap-2">
-                <SelectInput value={d.premium_mode} onChange={(e) => set('premium_mode', e.target.value as Draft['premium_mode'])} className="w-28 shrink-0">
-                  <option value="amount">Amount</option>
-                  <option value="pct">% of NAV</option>
-                </SelectInput>
-                {d.premium_mode === 'amount' ? (
-                  <div className="min-w-0 flex-1">
+            <Field label="Premium over NAV" hint="Brand, location, expected income — what the owner adds on top of NAV.">
+              <div className="flex items-start gap-2">
+                <div className="flex h-[42px] shrink-0 rounded-xl border border-slate-300 bg-white p-1" role="radiogroup" aria-label="Enter the premium as">
+                  {(
+                    [
+                      ['amount', 'BDT'],
+                      ['pct', '% of NAV'],
+                    ] as const
+                  ).map(([mode, label]) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      role="radio"
+                      aria-checked={d.premium_mode === mode}
+                      onClick={() => premiumMode(mode)}
+                      className={cn(
+                        'rounded-lg px-2.5 text-xs font-semibold whitespace-nowrap transition-colors',
+                        d.premium_mode === mode ? 'bg-admin-500 text-white' : 'text-ink-muted hover:bg-admin-50 hover:text-admin-700',
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div className="min-w-0 flex-1">
+                  {d.premium_mode === 'amount' ? (
                     <MoneyInput value={d.premium_value} onChange={(e) => set('premium_value', e.target.value)} placeholder="e.g. 300000000" />
-                  </div>
-                ) : (
-                  <TextInput type="number" min="0" step="0.1" value={d.premium_pct} onChange={(e) => set('premium_pct', e.target.value)} placeholder="e.g. 25" />
-                )}
+                  ) : (
+                    <TextInput type="number" min="0" step="0.1" value={d.premium_pct} onChange={(e) => set('premium_pct', e.target.value)} placeholder="e.g. 25" />
+                  )}
+                </div>
               </div>
-              {d.premium_mode === 'pct' && premium > 0 && <span className="mt-1 block text-xs font-medium text-admin-700">{formatBdt(premium)}</span>}
+              {premiumPctOfNav !== null && (
+                <span className="mt-1 block text-xs font-medium text-admin-700">{d.premium_mode === 'pct' ? `= ${formatBdt(premium)}` : `= ${premiumPctOfNav}% of NAV`}</span>
+              )}
             </Field>
             <Field label="Valuation date" required>
               <TextInput type="date" value={d.valuation_date} onChange={(e) => set('valuation_date', e.target.value)} />
@@ -207,8 +249,26 @@ export function OfferingForm({ offering, projectId }: { offering?: ShareOffering
             <Field label="Number of shares" required hint={m.share_pct > 0 ? `${formatSharePct(m.share_pct)} ownership each` : undefined}>
               <TextInput type="number" min="1" step="1" value={d.total_shares} onChange={(e) => set('total_shares', e.target.value)} placeholder="e.g. 500" />
             </Field>
-            <Field label="Valid for (days)" required hint={Number(d.validity_days) > 0 ? `Opened today, closes ${formatDate(opensToday)}` : undefined}>
-              <TextInput type="number" min="1" max="365" step="1" value={d.validity_days} onChange={(e) => set('validity_days', e.target.value)} />
+            <Field label="Offer closes on" required hint={openDays ? `Open ${openDays} days if opened today` : 'Pick a day after today'}>
+              <TextInput type="date" value={d.closes_on} min={addDays(today, 1)} max={addDays(today, 364)} onChange={(e) => set('closes_on', e.target.value)} />
+              <span className="mt-1.5 flex gap-1.5">
+                {CLOSE_CHIPS.map((days) => {
+                  const day = closesOn(today, days);
+                  return (
+                    <button
+                      key={days}
+                      type="button"
+                      onClick={() => set('closes_on', day)}
+                      className={cn(
+                        'rounded-lg border px-2 py-0.5 text-xs font-medium transition-colors',
+                        d.closes_on === day ? 'border-admin-500 bg-admin-500 text-white' : 'border-hairline text-ink-muted hover:border-admin-300 hover:text-admin-700',
+                      )}
+                    >
+                      {days} days
+                    </button>
+                  );
+                })}
+              </span>
             </Field>
             <Field label="Minimum shares per customer" required>
               <TextInput type="number" min="1" step="1" value={d.min_shares} onChange={(e) => set('min_shares', e.target.value)} />
@@ -240,9 +300,24 @@ export function OfferingForm({ offering, projectId }: { offering?: ShareOffering
                 ))}
               </SelectInput>
             </Field>
-            <Field label="Late fee (% of the installment)" required>
-              <TextInput type="number" min="0" max="25" step="0.5" value={d.late_fee_pct} onChange={(e) => set('late_fee_pct', e.target.value)} />
+            <Field label="Late fee type" required hint="Charged once on each late installment, never on the down payment">
+              <SelectInput value={d.late_fee_type} onChange={(e) => set('late_fee_type', e.target.value as LateFeeType)}>
+                {LATE_FEE_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {LATE_FEE_TYPE_LABEL[t]}
+                  </option>
+                ))}
+              </SelectInput>
             </Field>
+            {d.late_fee_type === 'fixed_once' ? (
+              <Field label="Late fee (BDT)" required hint="0 = no late fee">
+                <MoneyInput value={d.late_fee_amount} onChange={(e) => set('late_fee_amount', e.target.value)} placeholder="e.g. 2000" />
+              </Field>
+            ) : (
+              <Field label="Late fee (% of the installment)" required hint="0 = no late fee">
+                <TextInput type="number" min="0" max="25" step="0.5" value={d.late_fee_pct} onChange={(e) => set('late_fee_pct', e.target.value)} />
+              </Field>
+            )}
             <Field label="Grace days before the late fee" required>
               <TextInput type="number" min="0" step="1" value={d.grace_days} onChange={(e) => set('grace_days', e.target.value)} />
             </Field>
@@ -251,6 +326,17 @@ export function OfferingForm({ offering, projectId }: { offering?: ShareOffering
             </Field>
           </div>
         </Card>
+
+        {error && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <p className="mr-auto text-xs text-ink-muted">Saved as a draft. Open it from the next page when the numbers are agreed.</p>
+          <Button variant="outline" onClick={() => router.back()}>
+            Cancel
+          </Button>
+          <Button onClick={save} disabled={busy}>
+            {busy ? 'Saving…' : offering ? 'Save draft' : 'Save as draft'}
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-4 xl:sticky xl:top-20">
@@ -287,6 +373,7 @@ export function OfferingForm({ offering, projectId }: { offering?: ShareOffering
                 {m.raise ? formatBdt(m.raise) : '—'}
               </Row>
               <Row label="Owner keeps after this offering">{d.project_id && free !== undefined && terms.offered_pct ? formatSharePct(Math.max(0, free - terms.offered_pct)) : '—'}</Row>
+              <Row label="Offer closes">{openDays ? `${formatDate(d.closes_on)} · ${openDays} days` : '—'}</Row>
             </div>
           </div>
           {m.price_per_share > 0 && (
@@ -299,17 +386,6 @@ export function OfferingForm({ offering, projectId }: { offering?: ShareOffering
             </div>
           )}
         </Card>
-
-        {error && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => router.back()} className="flex-1">
-            Cancel
-          </Button>
-          <Button onClick={save} disabled={busy} className="flex-1">
-            {busy ? 'Saving…' : offering ? 'Save draft' : 'Save as draft'}
-          </Button>
-        </div>
-        <p className="text-center text-xs text-ink-muted">Saved as a draft. Open it from the next page when the numbers are agreed.</p>
       </div>
     </div>
   );

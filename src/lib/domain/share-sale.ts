@@ -1,5 +1,7 @@
 import type { BadgeTone } from '@/components/ui/Badge';
+import { formatBdt } from '../utils/format';
 import type {
+  LateFeeType,
   ShareFrequency,
   ShareInstallment,
   ShareOffering,
@@ -45,6 +47,36 @@ export const OFFERING_STATUS_META: Record<ShareOfferingStatus | 'expired', { lab
   closed: { label: 'Closed', tone: 'blue' },
   cancelled: { label: 'Cancelled', tone: 'red' },
 };
+
+export const LATE_FEE_TYPE_LABEL: Record<LateFeeType, string> = {
+  pct_once: 'Percentage (%)',
+  fixed_once: 'Fixed amount (BDT)',
+};
+
+type OfferingFeeTerms = Pick<ShareOffering, 'late_fee_pct' | 'late_fee_type' | 'late_fee_amount' | 'grace_days'>;
+
+/**
+ * The late fee rule a purchase is held to: its offering's type and grace
+ * days. The down payment never carries one (client decision, 2026-11-02),
+ * the same as a booking's booking money.
+ */
+export function offeringFeeRule(o: OfferingFeeTerms | null | undefined): FeeRule {
+  if (!o) return { late_fee_pct: 0, grace_days: 0 };
+  return {
+    late_fee_type: o.late_fee_type ?? 'pct_once',
+    late_fee_pct: Number(o.late_fee_pct) || 0,
+    late_fee_amount: Number(o.late_fee_amount) || 0,
+    grace_days: Number(o.grace_days) || 0,
+    exempt: (row) => row.seq === 0,
+  };
+}
+
+/** "2% of the installment after 7 days" / "BDT 2,000 per late installment after 7 days" / "None". */
+export function lateFeeText(o: OfferingFeeTerms | null | undefined): string {
+  if (!o) return 'None';
+  if (o.late_fee_type === 'fixed_once') return Number(o.late_fee_amount) > 0 ? `${formatBdt(Number(o.late_fee_amount))} per late installment after ${o.grace_days} days` : 'None';
+  return o.late_fee_pct > 0 ? `${o.late_fee_pct}% of the installment after ${o.grace_days} days` : 'None';
+}
 
 export const FREQUENCY_LABEL: Record<ShareFrequency, string> = { monthly: 'Monthly', quarterly: 'Quarterly' };
 const FREQUENCY_MONTHS: Record<ShareFrequency, number> = { monthly: 1, quarterly: 3 };

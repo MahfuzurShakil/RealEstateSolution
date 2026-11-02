@@ -14,6 +14,8 @@ import {
   FREQUENCY_LABEL,
   SHARE_PAYMENT_METHOD_LABEL,
   allocateSharePayment,
+  closesOn,
+  daysBetween,
   formatSharePct,
   maxSharePayable,
   type SaleView,
@@ -315,11 +317,13 @@ export function ReasonModal({ sale, kind, onClose }: { sale: ShareSale; kind: 'r
   );
 }
 
-/** Opens a draft from a chosen day, for its validity days. */
+/** Opens a draft from a chosen day until its close date — the one planned on the draft, which can still change here. */
 export function OpenOfferingModal({ offering, onClose }: { offering: ShareOffering; onClose: () => void }) {
-  const [date, setDate] = useState(todayLocal());
+  const today = todayLocal();
+  const [date, setDate] = useState(today);
+  const [closes, setCloses] = useState(offering.closes_on && offering.closes_on >= today ? offering.closes_on : closesOn(today, offering.validity_days));
   const { error, busy, run } = useAction();
-  const closes = new Date(Date.parse(`${date}T00:00:00Z`) + (offering.validity_days - 1) * 86_400_000).toISOString().slice(0, 10);
+  const days = closes >= date ? daysBetween(date, closes) + 1 : 0;
   return (
     <Modal
       open
@@ -333,15 +337,20 @@ export function OpenOfferingModal({ offering, onClose }: { offering: ShareOfferi
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button disabled={busy} onClick={() => run(() => shareOfferingRepository.open(offering.id, date), onClose)}>
+          <Button disabled={busy || !days} onClick={() => run(() => shareOfferingRepository.open(offering.id, date, closes), onClose)}>
             Open for sale
           </Button>
         </>
       }
     >
-      <Field label="Opens on" required hint={`Valid ${offering.validity_days} days — closes ${formatDate(closes)}`}>
-        <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-      </Field>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Opens on" required>
+          <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </Field>
+        <Field label="Closes on" required hint={days ? `Open for ${days} day${days === 1 ? '' : 's'}` : undefined} error={days ? undefined : 'Pick a day on or after the opening day'}>
+          <TextInput type="date" value={closes} min={date} onChange={(e) => setCloses(e.target.value)} />
+        </Field>
+      </div>
       <p className="mt-3 text-xs text-ink-muted">Once open, the price and terms are fixed. Customers who buy keep them, whatever later offerings charge.</p>
       <ErrorNote error={error} />
     </Modal>

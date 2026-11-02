@@ -15,7 +15,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { canEdit } from '@/lib/domain/access';
-import { FREQUENCY_LABEL, formatCrore, formatSharePct } from '@/lib/domain/share-sale';
+import { FREQUENCY_LABEL, formatCrore, formatSharePct, lateFeeText } from '@/lib/domain/share-sale';
 import { projectOwnership, shareOfferingRepository, shareSaleOverview, type SaleRow } from '@/lib/repositories';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
@@ -199,8 +199,10 @@ export default function OfferingDetailPage() {
                 <Row label="Raises if all sell">{formatBdt(o.price_per_share * o.total_shares)}</Row>
               </Card>
               <Card>
-                <CardHeader title="Terms for customers" subtitle={o.status === 'draft' ? `Valid ${o.validity_days} days once opened` : `Valid ${o.validity_days} days`} />
-                <Row label="Validity">{o.opens_on ? `${formatDate(o.opens_on)} – ${formatDate(o.closes_on)}` : `${o.validity_days} days from opening`}</Row>
+                <CardHeader title="Terms for customers" subtitle={o.status === 'draft' ? (o.closes_on ? `Planned to close ${formatDate(o.closes_on)}` : `Valid ${o.validity_days} days once opened`) : `Valid ${o.validity_days} days`} />
+                <Row label="Validity">
+                  {o.opens_on ? `${formatDate(o.opens_on)} – ${formatDate(o.closes_on)}` : o.closes_on ? `Closes ${formatDate(o.closes_on)}` : `${o.validity_days} days from opening`}
+                </Row>
                 <Row label="Shares per customer">
                   {o.min_shares}–{o.max_shares}
                 </Row>
@@ -208,9 +210,7 @@ export default function OfferingDetailPage() {
                 <Row label="Installments">
                   up to {o.max_installments}, {FREQUENCY_LABEL[o.installment_frequency].toLowerCase()}
                 </Row>
-                <Row label="Late fee">
-                  {o.late_fee_pct}% of the installment after {o.grace_days} days
-                </Row>
+                <Row label="Late fee">{lateFeeText(o)}</Row>
                 <Row label="Reservation hold">{o.hold_days} days</Row>
               </Card>
               {o.notes && (

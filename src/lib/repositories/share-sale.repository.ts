@@ -4,6 +4,7 @@ import { db } from '../db/database';
 import type {
   Customer,
   CustomerUpload,
+  LateFeeType,
   Project,
   ShareFrequency,
   ShareInstallment,
@@ -24,8 +25,10 @@ import {
   allocateSharePayment,
   buildSchedule,
   closesOn,
+  daysBetween,
   maxSharePayable,
   offeringAvailability,
+  offeringFeeRule,
   offeringMath,
   offeringState,
   viewSale,
@@ -57,13 +60,18 @@ export interface OfferingInput {
   valuation_date: string;
   offered_pct: number;
   total_shares: number;
-  validity_days: number;
+  /** how long it stays open; worked out from `closes_on` when the form gives a close date */
+  validity_days?: number;
+  /** the planned close date (SHARE-SALE-FEEDBACK-PLAN.md A2) */
+  closes_on?: string | null;
   min_shares: number;
   max_shares: number;
   min_down_payment_pct: number;
   max_installments: number;
   installment_frequency: ShareFrequency;
   late_fee_pct: number;
+  late_fee_type?: LateFeeType;
+  late_fee_amount?: number | null;
   grace_days: number;
   hold_days: number;
   notes?: string | null;
@@ -84,20 +92,35 @@ async function pctTaken(projectId: string, exceptId?: string): Promise<number> {
   }, 0);
 }
 
-function checkOffering(i: OfferingInput) {
+/**
+ * A close date becomes the day count it stands for, counted from today — a
+ * draft opened later keeps the date (the Open dialog shows it) and its days
+ * are counted again then.
+ */
+function withValidity(i: OfferingInput, today: string): OfferingInput & { validity_days: number } {
+  if (i.closes_on) {
+    if (i.closes_on <= today) throw new Error('The offer has to close after today.');
+    return { ...i, validity_days: daysBetween(today, i.closes_on) + 1 };
+  }
+  return { ...i, closes_on: null, validity_days: Number(i.validity_days) };
+}
+
+function checkOffering(i: OfferingInput & { validity_days: number }) {
   const whole = (n: number) => Number.isInteger(Number(n));
   if (!i.project_id) throw new Error('Pick the project whose shares are offered.');
   if (!(i.net_asset_value > 0)) throw new Error('Enter the net asset value — what the project’s assets are worth less what it owes.');
   if (!(i.premium_value >= 0)) throw new Error('The premium cannot be negative.');
   if (!(i.offered_pct > 0 && i.offered_pct <= 100)) throw new Error('The share offered to the market must be above 0% and at most 100%.');
   if (!(whole(i.total_shares) && i.total_shares >= 1)) throw new Error('Enter how many shares the offered % is split into (a whole number).');
-  if (!(whole(i.validity_days) && i.validity_days >= 1 && i.validity_days <= 365)) throw new Error('The offer has to stay open between 1 and 365 days.');
+  if (!(whole(i.validity_days) && i.validity_days >= 1 && i.validity_days <= 365)) throw new Error('The offer has to close within a year — between 1 and 365 days.');
   if (!(whole(i.min_shares) && i.min_shares >= 1)) throw new Error('The minimum per customer is at least 1 share.');
   if (!(whole(i.max_shares) && i.max_shares >= i.min_shares)) throw new Error('The maximum per customer cannot be below the minimum.');
   if (i.max_shares > i.total_shares) throw new Error('The maximum per customer cannot be more than the shares on offer.');
   if (!(i.min_down_payment_pct >= 0 && i.min_down_payment_pct <= 100)) throw new Error('The down payment must be between 0 and 100%.');
   if (!(whole(i.max_installments) && i.max_installments >= 0 && i.max_installments <= 120)) throw new Error('Installments must be a whole number from 0 to 120.');
-  if (!(i.late_fee_pct >= 0 && i.late_fee_pct <= 25)) throw new Error('The late fee must be between 0 and 25%.');
+  if (i.late_fee_type === 'fixed_once') {
+    if (!(whole(i.late_fee_amount ?? 0) && Number(i.late_fee_amount) >= 0)) throw new Error('The late fee amount must be whole taka, 0 or more.');
+  } else if (!(i.late_fee_pct >= 0 && i.late_fee_pct <= 25)) throw new Error('The late fee must be between 0 and 25%.');
   if (!(whole(i.grace_days) && i.grace_days >= 0)) throw new Error('Grace days cannot be negative.');
   if (!(whole(i.hold_days) && i.hold_days >= 1 && i.hold_days <= 60)) throw new Error('Reserved shares are held between 1 and 60 days.');
   if (offeringMath(i).price_per_share < 1) throw new Error('The price per share works out below ৳1 — offer fewer shares or check the valuation.');
@@ -119,7 +142,18 @@ class ShareOfferingRepository extends BaseRepository<ShareOffering> {
 
   /** Creates a draft, or changes one. Only drafts change: an open offering's price is what buyers were shown. */
   async save(input: OfferingInput & { id?: string }, userId: string | null): Promise<ShareOffering> {
-    const i = { ...input, notes: input.notes?.trim() || null };
+    const typed = input.late_fee_type ?? 'pct_once';
+    const i = withValidity(
+      {
+        ...input,
+        late_fee_type: typed,
+        // only the chosen type's number is kept, so the other never reads as a second fee
+        late_fee_pct: typed === 'pct_once' ? input.late_fee_pct : 0,
+        late_fee_amount: typed === 'fixed_once' ? Number(input.late_fee_amount) || 0 : null,
+        notes: input.notes?.trim() || null,
+      },
+      todayLocal(),
+    );
     checkOffering(i);
     if (!(await db.projects.get(i.project_id))) throw new Error('That project no longer exists.');
     const free = await this.freePct(i.project_id, input.id);
@@ -145,21 +179,27 @@ class ShareOfferingRepository extends BaseRepository<ShareOffering> {
         code: nextCode('SHO', all.map((o) => o.code)),
         round_no: round,
         opens_on: null,
-        closes_on: null,
         status: 'draft',
       },
       userId,
     );
   }
 
-  /** Puts a draft on the market from `opensOn` for its validity days. */
-  async open(id: string, opensOn: string = todayLocal()): Promise<ShareOffering> {
+  /**
+   * Puts a draft on the market from `opensOn` until `closes` — by default the
+   * draft's planned close date, or its validity days from the opening day.
+   */
+  async open(id: string, opensOn: string = todayLocal(), closes?: string): Promise<ShareOffering> {
     const o = await db.share_offerings.get(id);
     if (!o) throw new Error('This offering no longer exists.');
     if (o.status !== 'draft') throw new Error('Only a draft can be opened.');
     const free = await this.freePct(o.project_id, id);
     if (o.offered_pct > free + 1e-9) throw new Error(`Only ${Number(free.toFixed(4))}% of this project is still free to offer.`);
-    return (await this.update(id, { status: 'open', opens_on: opensOn, closes_on: closesOn(opensOn, o.validity_days) }))!;
+    const closesOnDay = closes ?? (o.closes_on && o.closes_on >= opensOn ? o.closes_on : closesOn(opensOn, o.validity_days));
+    if (closesOnDay < opensOn) throw new Error('The offer cannot close before it opens.');
+    const days = daysBetween(opensOn, closesOnDay) + 1;
+    if (days > 365) throw new Error('The offer has to close within a year of opening.');
+    return (await this.update(id, { status: 'open', opens_on: opensOn, closes_on: closesOnDay, validity_days: days }))!;
   }
 
   /** Lets an open offering run longer (the owner's call when the validity ends with shares left). */
@@ -266,8 +306,7 @@ export interface PaymentInput {
 }
 
 async function ruleFor(sale: ShareSale) {
-  const o = await db.share_offerings.get(sale.offering_id);
-  return { late_fee_pct: o?.late_fee_pct ?? 0, grace_days: o?.grace_days ?? 0 };
+  return offeringFeeRule(await db.share_offerings.get(sale.offering_id));
 }
 
 class ShareSaleRepository extends BaseRepository<ShareSale> {
@@ -575,7 +614,7 @@ export async function shareSaleOverview(today = todayLocal()): Promise<ShareSale
     .map((s) => {
       const o = offeringById.get(s.offering_id);
       return {
-        ...viewSale(s, inst, pays, today, { late_fee_pct: o?.late_fee_pct ?? 0, grace_days: o?.grace_days ?? 0 }),
+        ...viewSale(s, inst, pays, today, offeringFeeRule(o)),
         offering: o,
         project: projectById.get(s.project_id),
         customer: customerById.get(s.customer_id),

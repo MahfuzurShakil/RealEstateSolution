@@ -18,7 +18,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { useMockSession } from '@/lib/auth/mock-session';
 import { canEdit } from '@/lib/domain/access';
 import { missingToSign, shareDocChecklist } from '@/lib/domain/share-documents';
-import { FREQUENCY_LABEL, SHARE_INSTALLMENT_STATUS_META, SHARE_PAYMENT_METHOD_LABEL, formatSharePct, installmentLabel } from '@/lib/domain/share-sale';
+import { FREQUENCY_LABEL, SHARE_INSTALLMENT_STATUS_META, SHARE_PAYMENT_METHOD_LABEL, formatSharePct, installmentLabel, lateFeeText } from '@/lib/domain/share-sale';
 import { customerUploadRepository, shareSaleOverview, shareSaleRepository } from '@/lib/repositories';
 import { formatBdt, formatDate, formatPhone } from '@/lib/utils/format';
 
@@ -234,7 +234,7 @@ function ShareSaleDetail() {
               <div className="space-y-5">
                 <Card className="p-0">
                   <div className="px-5 pt-5">
-                    <CardHeader title="Payment schedule" subtitle={o ? `Late fee ${o.late_fee_pct}% of an installment after ${o.grace_days} days` : undefined} />
+                    <CardHeader title="Payment schedule" subtitle={o ? `Late fee: ${lateFeeText(o)}. None on the down payment.` : undefined} />
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[600px] text-sm">

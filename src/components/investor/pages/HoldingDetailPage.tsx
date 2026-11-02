@@ -10,6 +10,7 @@ import {
   formatDay,
   formatPct,
   isHome,
+  lateFeeShort,
   type HoldingView,
 } from '@/lib/domain/investor-portal';
 import { cn } from '@/lib/utils/cn';
@@ -118,7 +119,7 @@ function HomeOverviewTab({ v }: { v: HoldingView }) {
                 : rows.length === 1
                   ? ([['Balance', <span key="bal"><Money amount={rows[0].amount} /> by {formatDay(rows[0].due_date)}</span>]] as [string, React.ReactNode][])
                   : []),
-              ['Late fee', v.round.late_fee_pct ? `${v.round.late_fee_pct}% of the installment after ${v.round.grace_days} days’ grace` : 'None'],
+              ['Late fee', lateFeeShort(v.round)],
               ['Handover by', home.handover_date ? formatDay(home.handover_date) : 'As agreed with our office'],
             ]}
           />
@@ -186,7 +187,7 @@ function OverviewTab({ v }: { v: HoldingView }) {
               ['Down payment', <Money key="d" amount={holding.down_payment} />],
               ['Installments', `${holding.installment_count} × ${FREQUENCY_LABEL[holding.frequency].toLowerCase()}`],
               ['Each installment', <Money key="e" amount={each} />],
-              ['Late fee', round.late_fee_pct ? `${round.late_fee_pct}% of the installment after ${round.grace_days} days’ grace` : 'None'],
+              ['Late fee', lateFeeShort(round)],
               ['Share certificate', holding.certificate_no ?? 'Issued once every installment is paid'],
             ]}
           />

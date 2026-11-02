@@ -95,6 +95,9 @@ export interface ShareRound {
   frequency: PaymentFrequency;
   /** late fee: this % of an installment once it is more than `grace_days` late */
   late_fee_pct: number;
+  /** `fixed_once`: a flat `late_fee_amount` instead of the %; missing reads as a % */
+  late_fee_type?: 'pct_once' | 'fixed_once' | null;
+  late_fee_amount?: number | null;
   grace_days: number;
 }
 
@@ -259,6 +262,8 @@ export interface InvestorSnapshot {
  */
 export interface LateFeeRule {
   late_fee_pct: number;
+  late_fee_type?: 'pct_once' | 'fixed_once' | null;
+  late_fee_amount?: number | null;
   grace_days: number;
 }
 export const DEFAULT_FEE_RULE: LateFeeRule = { late_fee_pct: 2, grace_days: 7 };
@@ -285,8 +290,24 @@ export function daysBetween(from: string, to: string): number {
 }
 
 export function lateFeeFor(amount: number, daysLate: number, rule: LateFeeRule = DEFAULT_FEE_RULE): number {
-  return daysLate > rule.grace_days ? Math.round((amount * rule.late_fee_pct) / 100) : 0;
+  if (daysLate <= rule.grace_days) return 0;
+  return rule.late_fee_type === 'fixed_once' ? Math.max(0, Math.round(Number(rule.late_fee_amount) || 0)) : Math.round((amount * rule.late_fee_pct) / 100);
 }
+
+/** The late fee in words, for the customer's terms and reminders; empty when there is none. */
+export function lateFeeTerms(rule: LateFeeRule): string {
+  const after = `more than ${rule.grace_days} days after its due date`;
+  if (rule.late_fee_type === 'fixed_once') return Number(rule.late_fee_amount) > 0 ? `An installment paid ${after} carries a late fee of ${formatTaka(Number(rule.late_fee_amount))}.` : '';
+  return rule.late_fee_pct > 0 ? `An installment paid ${after} carries a late fee of ${rule.late_fee_pct}% of that installment.` : '';
+}
+
+/** "2% of the installment after 7 days’ grace" / "৳2,000 after 7 days’ grace" / "None". */
+export function lateFeeShort(rule: LateFeeRule): string {
+  if (rule.late_fee_type === 'fixed_once') return Number(rule.late_fee_amount) > 0 ? `${formatTaka(Number(rule.late_fee_amount))} per late installment after ${rule.grace_days} days’ grace` : 'None';
+  return rule.late_fee_pct > 0 ? `${rule.late_fee_pct}% of the installment after ${rule.grace_days} days’ grace` : 'None';
+}
+
+const hasLateFee = (rule: LateFeeRule) => (rule.late_fee_type === 'fixed_once' ? Number(rule.late_fee_amount) > 0 : rule.late_fee_pct > 0);
 
 export interface InstallmentView extends Installment {
   label: string;
@@ -320,7 +341,8 @@ export function viewInstallments(installments: Installment[], payments: PaymentR
       else if (-days <= DUE_WINDOW_DAYS) status = 'due';
       else status = 'upcoming';
       const daysLate = status === 'overdue' ? days : 0;
-      const feeCharged = status === 'overdue' ? lateFeeFor(inst.amount, daysLate, rule) : feePaid;
+      // the down payment (a home's booking money) never carries a late fee, as in the office's ledger
+      const feeCharged = status === 'overdue' && inst.seq !== 0 ? lateFeeFor(inst.amount, daysLate, rule) : feePaid;
       return {
         ...inst,
         label: inst.label ?? installmentLabel(inst.seq),
@@ -385,6 +407,8 @@ function homeRound(h: ShareHolding): ShareRound {
     max_installments: h.installment_count,
     frequency: 'monthly',
     late_fee_pct: h.fee_rule?.late_fee_pct ?? 0,
+    late_fee_type: h.fee_rule?.late_fee_type ?? null,
+    late_fee_amount: h.fee_rule?.late_fee_amount ?? null,
     grace_days: h.fee_rule?.grace_days ?? 0,
   };
 }
@@ -642,7 +666,7 @@ export function buildNotifications(s: InvestorSnapshot, portfolio: PortfolioView
           kind: 'overdue',
           title: `${i.label} is overdue`,
           body: `${formatTaka(i.remaining)}${i.partial ? ' still owing' : ''} for ${v.project.name} was due on ${formatDay(i.due_date)}.${
-            i.late_fee_due ? ` A late fee of ${formatTaka(i.late_fee_due)} has been added.` : v.round.late_fee_pct ? ` Please pay within ${v.round.grace_days} days of the due date to avoid a late fee.` : ''
+            i.late_fee_due ? ` A late fee of ${formatTaka(i.late_fee_due)} has been added.` : hasLateFee(v.round) && i.seq !== 0 ? ` Please pay within ${v.round.grace_days} days of the due date to avoid a late fee.` : ''
           }`,
           date: s.today,
           href: pay,

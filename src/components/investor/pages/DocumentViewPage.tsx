@@ -13,6 +13,7 @@ import {
   formatPct,
   formatTaka,
   isHome,
+  lateFeeTerms,
   takaInWords,
   type HoldingView,
   type InvestorCustomer,
@@ -72,9 +73,7 @@ function HomeAgreement({ v, c, owner }: { v: HoldingView; c: InvestorCustomer; o
               : <>The payment terms are as agreed with our office.</>}
         </Clause>
         <Clause n={4} title="Late payment">
-          {v.round.late_fee_pct
-            ? `An installment paid more than ${v.round.grace_days} days after its due date carries a late fee of ${v.round.late_fee_pct}% of that installment.`
-            : 'No late fee is set in this agreement.'}
+          {lateFeeTerms(v.round) || 'No late fee is set in this agreement.'}
         </Clause>
         <Clause n={5} title="Handover">
           {home.handover_date ? <>The unit is to be handed over by <b>{formatDay(home.handover_date)}</b>.</> : <>The handover date is as agreed with our office.</>} The sale deed is registered in the Buyer’s name once the full price is paid.
@@ -114,9 +113,7 @@ function Agreement({ v, c, owner }: { v: HoldingView; c: InvestorCustomer; owner
           dates in the attached payment schedule.
         </Clause>
         <Clause n={4} title="Late payment">
-          {v.round.late_fee_pct
-            ? `An installment paid more than ${v.round.grace_days} days after its due date carries a late fee of ${v.round.late_fee_pct}% of that installment.`
-            : 'No late fee is charged on installments under this agreement.'}
+          {lateFeeTerms(v.round) ? `${lateFeeTerms(v.round)} The down payment carries no late fee.` : 'No late fee is charged on installments under this agreement.'}
         </Clause>
         <Clause n={5} title="Ownership">
           A share certificate is issued once the full price is paid. Until then the shares are held for the Customer under this agreement.

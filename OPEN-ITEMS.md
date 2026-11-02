@@ -19,6 +19,24 @@ full defect list is in `ANALYSIS-REPORT_2026-09-02.md`.
 
 ---
 
+## 0u. Share Sale feedback round (2026-11-02) — `SHARE-SALE-FEEDBACK-PLAN.md`
+
+Batches S1–S8. S1 done: premium entered as BDT or % of NAV, the offer's close
+date picked on the draft (Open dialog can still change it), two late fee types
+(percentage or fixed amount), buttons under the form, and no late fee on the
+down payment (admin ledger and Customer Portal).
+
+Still open, decided to wait:
+- **Third late fee type** — likely a monthly rate on the overdue amount with a
+  cap; add to `LATE_FEE_TYPES` once the client confirms.
+- **Late fee types for bookings** — bookings still use `late_fee_pct` only.
+- **Company accounts shown on the portal for offline deposits** — S7 uses a
+  dummy list; the real list (and bKash/Nagad) is to be confirmed.
+- **Cancellation & refund procedure**, and **Reverse payment** in place of
+  Undo last payment (plan D5) — both hidden from the purchase page in S2.
+
+---
+
 ## 0t. Share Sale — admin module and Customer Portal feedback (2026-11-01)
 
 Built: Customer Portal feedback (multi-project due card, payment landing grid,

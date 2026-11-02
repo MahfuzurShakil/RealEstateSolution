@@ -3,7 +3,7 @@
 import { db } from '../db/database';
 import type { Booking, Customer, Payment, Project, ShareOffering, SharePayment, ShareSale, Unit } from '../db/types';
 import { viewBookingLedger, type BookingLedgerView } from '../domain/booking';
-import { viewSale, type SaleView } from '../domain/share-sale';
+import { offeringFeeRule, viewSale, type SaleView } from '../domain/share-sale';
 import { todayLocal } from '../utils/format';
 
 /*
@@ -77,7 +77,7 @@ async function readAll(today: string) {
   const saleViews = new Map<string, SaleView>();
   for (const s of sales) {
     const o = offeringById.get(s.offering_id);
-    saleViews.set(s.id, viewSale(s, installments, sharePayments, today, { late_fee_pct: o?.late_fee_pct ?? 0, grace_days: o?.grace_days ?? 0 }));
+    saleViews.set(s.id, viewSale(s, installments, sharePayments, today, offeringFeeRule(o)));
   }
   return { customers, bookings, sales, requests, ledgers, saleViews, offeringById };
 }

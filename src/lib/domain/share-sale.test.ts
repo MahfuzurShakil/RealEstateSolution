@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CustomerUpload } from '../db/types';
 import { missingToSign, shareDocChecklist } from './share-documents';
 import type { ShareInstallment, SharePayment, ShareSale } from '../db/types';
-import { allocateSharePayment, buildSchedule, closesOn, offeringMath, viewSale } from './share-sale';
+import { allocateSharePayment, buildSchedule, closesOn, lateFeeText, offeringFeeRule, offeringMath, viewSale } from './share-sale';
 
 const base = { created_at: '', updated_at: '', created_by: null };
 
@@ -74,6 +74,23 @@ describe('Share purchase schedule and payments', () => {
     expect(v.late_fees).toBe(4_000);
     expect(v.due_now).toBe(204_000);
     expect(allocateSharePayment(v, 104_000)).toEqual([{ installment_id: 'i4', principal: 100_000, late_fee: 4_000 }]);
+  });
+
+  it('charges a fixed late fee once per late installment (feedback A3)', () => {
+    const rule = offeringFeeRule({ late_fee_type: 'fixed_once', late_fee_amount: 2_500, late_fee_pct: 0, grace_days: 7 });
+    // installments 4 and 5 are both past the grace days by 2026-11-20
+    const v = viewSale(sale, inst, paid([0, 1, 2, 3]), '2026-11-20', rule);
+    expect(v.late_fees).toBe(5_000);
+    expect(lateFeeText({ late_fee_type: 'fixed_once', late_fee_amount: 2_500, late_fee_pct: 0, grace_days: 7 })).toMatch(/^BDT\s2,500 per late installment after 7 days$/);
+  });
+
+  it('never charges a late fee on the down payment (client decision, 2026-11-02)', () => {
+    const rule = offeringFeeRule({ late_fee_pct: 2, grace_days: 7 });
+    const v = viewSale(sale, inst, [], '2026-06-30', rule);
+    expect(v.schedule[0].status).toBe('overdue');
+    expect(v.late_fees).toBe(0);
+    // an older offering with no type reads as a %
+    expect(lateFeeText({ late_fee_pct: 2, grace_days: 7 })).toBe('2% of the installment after 7 days');
   });
 
   it('is on track inside the grace days', () => {
