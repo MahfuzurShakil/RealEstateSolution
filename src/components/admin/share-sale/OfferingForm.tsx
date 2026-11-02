@@ -38,8 +38,11 @@ interface Draft {
   notes: string;
 }
 
-/** Quick picks beside the close date: open this many days, counted from today. */
-const CLOSE_CHIPS = [30, 60, 90];
+/** How the premium is typed (feedback A1, round 2): a clear name for each choice. */
+const PREMIUM_MODE_LABEL: Record<Draft['premium_mode'], string> = {
+  amount: 'Fixed amount (BDT)',
+  pct: 'Percentage of NAV (%)',
+};
 
 function fromOffering(o: ShareOffering | undefined, projectId: string | null): Draft {
   const today = todayLocal();
@@ -193,28 +196,13 @@ export function OfferingForm({ offering, projectId }: { offering?: ShareOffering
             </Field>
             <Field label="Premium over NAV" hint="Brand, location, expected income — what the owner adds on top of NAV.">
               <div className="flex items-start gap-2">
-                <div className="flex h-[42px] shrink-0 rounded-xl border border-slate-300 bg-white p-1" role="radiogroup" aria-label="Enter the premium as">
-                  {(
-                    [
-                      ['amount', 'BDT'],
-                      ['pct', '% of NAV'],
-                    ] as const
-                  ).map(([mode, label]) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      role="radio"
-                      aria-checked={d.premium_mode === mode}
-                      onClick={() => premiumMode(mode)}
-                      className={cn(
-                        'rounded-lg px-2.5 text-xs font-semibold whitespace-nowrap transition-colors',
-                        d.premium_mode === mode ? 'bg-admin-500 text-white' : 'text-ink-muted hover:bg-admin-50 hover:text-admin-700',
-                      )}
-                    >
-                      {label}
-                    </button>
+                <SelectInput value={d.premium_mode} onChange={(e) => premiumMode(e.target.value as Draft['premium_mode'])} className="w-48 shrink-0" aria-label="Enter the premium as">
+                  {(Object.keys(PREMIUM_MODE_LABEL) as Draft['premium_mode'][]).map((mode) => (
+                    <option key={mode} value={mode}>
+                      {PREMIUM_MODE_LABEL[mode]}
+                    </option>
                   ))}
-                </div>
+                </SelectInput>
                 <div className="min-w-0 flex-1">
                   {d.premium_mode === 'amount' ? (
                     <MoneyInput value={d.premium_value} onChange={(e) => set('premium_value', e.target.value)} placeholder="e.g. 300000000" />
@@ -251,24 +239,6 @@ export function OfferingForm({ offering, projectId }: { offering?: ShareOffering
             </Field>
             <Field label="Offer closes on" required hint={openDays ? `Open ${openDays} days if opened today` : 'Pick a day after today'}>
               <TextInput type="date" value={d.closes_on} min={addDays(today, 1)} max={addDays(today, 364)} onChange={(e) => set('closes_on', e.target.value)} />
-              <span className="mt-1.5 flex gap-1.5">
-                {CLOSE_CHIPS.map((days) => {
-                  const day = closesOn(today, days);
-                  return (
-                    <button
-                      key={days}
-                      type="button"
-                      onClick={() => set('closes_on', day)}
-                      className={cn(
-                        'rounded-lg border px-2 py-0.5 text-xs font-medium transition-colors',
-                        d.closes_on === day ? 'border-admin-500 bg-admin-500 text-white' : 'border-hairline text-ink-muted hover:border-admin-300 hover:text-admin-700',
-                      )}
-                    >
-                      {days} days
-                    </button>
-                  );
-                })}
-              </span>
             </Field>
             <Field label="Minimum shares per customer" required>
               <TextInput type="number" min="1" step="1" value={d.min_shares} onChange={(e) => set('min_shares', e.target.value)} />

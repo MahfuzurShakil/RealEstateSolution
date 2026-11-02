@@ -435,23 +435,23 @@ export default function CustomerDetailPage() {
             </Card>
           )}
 
-          {tab === 'documents' && shareFile && (
-            <Card className="mb-5">
-              <CardHeader title="Customer file" subtitle="KYC papers and each booking's and share purchase's papers — the customer sees these on their Customer Portal." />
-              <CustomerShareFile
-                customerId={customer.id}
-                uploads={shareFile.uploads}
-                sales={shareFile.sales}
-                bookings={homes.map((h) => ({ id: h.booking.id, code: `${h.booking.code}${h.unit ? ` · ${h.unit.code}` : ''}` }))}
-                mayEdit={canEdit(role, 'share_sale') || canEdit(role, 'booking')}
-              />
-            </Card>
-          )}
-
+          {/* one Documents tab in one design (feedback D3): the customer file, then anything else on the customer */}
           {tab === 'documents' && (
             <Card>
-              <CardHeader title="Other documents" />
-              <DocumentsPanel entityType="customer" entityId={customer.id} />
+              <CardHeader title="Documents" subtitle="KYC papers and each booking's and share purchase's papers — the customer sees these on their Customer Portal." />
+              {shareFile && (
+                <CustomerShareFile
+                  customerId={customer.id}
+                  uploads={shareFile.uploads}
+                  sales={shareFile.sales}
+                  bookings={homes.map((h) => ({ id: h.booking.id, code: `${h.booking.code}${h.unit ? ` · ${h.unit.code}` : ''}` }))}
+                  mayEdit={canEdit(role, 'share_sale') || canEdit(role, 'booking')}
+                />
+              )}
+              <section className="mt-6 border-t border-hairline pt-5">
+                <h4 className="mb-3 text-sm font-semibold text-ink">Other documents</h4>
+                <DocumentsPanel entityType="customer" entityId={customer.id} />
+              </section>
             </Card>
           )}
         </div>
