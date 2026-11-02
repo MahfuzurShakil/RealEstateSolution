@@ -21,7 +21,10 @@ full defect list is in `ANALYSIS-REPORT_2026-09-02.md`.
 
 ## 0u. Share Sale feedback round (2026-11-02) — `SHARE-SALE-FEEDBACK-PLAN.md`
 
-Batches S1–S8. S2 done: Investors & Dues stays highlighted on a purchase page, the back
+Batches S1–S8. S3 done: both signing wizards share one set of parts (SigningParts) —
+bold field groups on one grid, witness cards, power of attorney behind a tick,
+"Same as present address", one footer (Back · Save draft & exit · Next); Start
+over and the separate Save removed. S2 done: Investors & Dues stays highlighted on a purchase page, the back
 link returns to where the page was opened from, Cancel purchase / Undo last
 payment hidden. S1 done: premium entered as BDT or % of NAV, the offer's close
 date picked on the draft (Open dialog can still change it), two late fee types

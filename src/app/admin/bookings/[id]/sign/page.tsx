@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { SignBookingWizard } from '@/components/admin/bookings/SignBookingWizard';
@@ -11,8 +10,6 @@ import { bookingRepository, customerUploadRepository } from '@/lib/repositories'
 export default function SignBookingPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  // bumped by "Start over", so the wizard starts again from the booking
-  const [run, setRun] = useState(0);
   const booking = useLiveQuery(() => bookingRepository.getWithRelations(id), [id]);
   const uploads = useLiveQuery(
     async () => (booking?.customer_id ? customerUploadRepository.forCustomer(booking.customer_id) : []),
@@ -29,14 +26,11 @@ export default function SignBookingPage() {
         subtitle={`${booking.code} · ${booking.unit?.code ?? 'unit removed'}${booking.project ? ` · ${booking.project.name}` : ''}`}
       />
       <SignBookingWizard
-        key={run}
         booking={booking}
         customer={booking.customer}
         uploads={uploads}
         project={booking.project}
         onDone={() => router.push(`/admin/bookings/${id}?tab=agreement`)}
-        onRestart={() => setRun((r) => r + 1)}
-        freshStart={run > 0}
       />
     </>
   );
