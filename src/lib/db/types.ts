@@ -3516,3 +3516,43 @@ export interface CustomerUploadFile {
   id: UUID;
   blob: Blob;
 }
+
+/*
+ * v47 — SHARE-SALE-FEEDBACK-PLAN.md part C: a customer who paid at the bank
+ * (or by transfer, cheque or pay order) tells the office from the Customer
+ * Portal, with the slip. Nothing is paid until Accounts confirms it against
+ * the bank; then the real payment is recorded on the deposit date.
+ */
+export const OFFLINE_PAYMENT_METHODS = ['bank_deposit', 'bank_transfer', 'cheque_deposit', 'pay_order'] as const;
+export type OfflinePaymentMethod = (typeof OFFLINE_PAYMENT_METHODS)[number];
+
+export const PAYMENT_SUBMISSION_STATUSES = ['submitted', 'confirmed', 'rejected', 'withdrawn'] as const;
+export type PaymentSubmissionStatus = (typeof PAYMENT_SUBMISSION_STATUSES)[number];
+
+export interface PaymentSubmission extends BaseEntity {
+  code: string;                       // PSB-2026-001
+  customer_id: UUID;
+  /** the share purchase or booking code the money is for */
+  holding_code: string;
+  sale_id?: UUID | null;
+  booking_id?: UUID | null;
+  amount: number;
+  method: OfflinePaymentMethod;
+  /** the date on the slip — the payment is recorded on this day once confirmed */
+  paid_on: ISODate;
+  /** the company account the customer says the money went into */
+  paid_into_account_id?: UUID | null;
+  /** transaction, slip or cheque number */
+  reference: string;
+  note?: string | null;
+  /** the slip, kept as a CustomerUpload (kind `payment_proof`) */
+  slip_upload_id?: UUID | null;
+  status: PaymentSubmissionStatus;
+  reviewed_by?: UUID | null;
+  reviewed_at?: string | null;
+  /** why it was sent back, shown to the customer */
+  review_note?: string | null;
+  /** the payment recorded on confirmation, and its receipt number */
+  payment_id?: UUID | null;
+  receipt_no?: string | null;
+}

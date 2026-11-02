@@ -12,7 +12,10 @@ import {
   type DueState,
   type PaymentDueRow,
   holdingTag,
+  OFFLINE_METHOD_LABEL,
+  type OfflinePayment,
 } from '@/lib/domain/investor-portal';
+import { investorRepository } from '@/lib/repositories/investor/investor.repository';
 import { cn } from '@/lib/utils/cn';
 import { useCustomerPortal } from '../CustomerPortalProvider';
 import { Money, PageHeading, ProgressBar } from '../ui';
@@ -147,6 +150,8 @@ export function PaymentsPage() {
           </div>
         ))}
       </div>
+
+      <ReportedPayments />
 
       <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Show">
         {filters.map((f) => {
@@ -344,5 +349,72 @@ export function PaymentsPage() {
         </span>
       </p>
     </div>
+  );
+}
+
+const OFFLINE_STATUS: Record<OfflinePayment['status'], { label: string; className: string }> = {
+  submitted: { label: 'Under verification', className: 'bg-site-booked-soft text-site-booked' },
+  confirmed: { label: 'Confirmed', className: 'bg-site-primary-soft text-site-primary-dark' },
+  rejected: { label: 'Sent back', className: 'bg-red-50 text-site-danger' },
+  withdrawn: { label: 'Withdrawn', className: 'bg-site-soft text-site-muted' },
+};
+
+/**
+ * Payments the customer made at the bank and reported with the slip
+ * (SHARE-SALE-FEEDBACK-PLAN.md C1): what is still being checked, what was
+ * confirmed, and what was sent back and why.
+ */
+function ReportedPayments() {
+  const { snapshot } = useCustomerPortal();
+  const [withdrawing, setWithdrawing] = useState<string | null>(null);
+  const rows = (snapshot.offline_payments ?? []).slice(0, 6);
+  if (!rows.length) return null;
+  return (
+    <section className="rounded-3xl border border-site-line bg-white shadow-site-1">
+      <div className="border-b border-site-line px-5 py-4 sm:px-6">
+        <h2 className="font-semibold">Payments you reported from the bank</h2>
+        <p className="text-[13px] text-site-muted">Counted as paid once our accounts team confirms them against the bank.</p>
+      </div>
+      <ul className="divide-y divide-site-line">
+        {rows.map((p) => (
+          <li key={p.code} className="flex flex-wrap items-center gap-3 px-5 py-3.5 sm:px-6">
+            <div className="min-w-0 flex-1">
+              <p className="flex flex-wrap items-center gap-2 font-semibold">
+                <Money amount={p.amount} />
+                <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-bold tracking-wide uppercase', OFFLINE_STATUS[p.status].className)}>{OFFLINE_STATUS[p.status].label}</span>
+              </p>
+              <p className="text-[13px] text-site-muted">
+                {OFFLINE_METHOD_LABEL[p.method]} · {formatDay(p.paid_on)} · {p.paid_into} · slip {p.reference} · {p.holding_code}
+              </p>
+              {p.status === 'rejected' && p.review_note && <p className="mt-0.5 text-[13px] font-medium text-site-danger">Why: {p.review_note}</p>}
+            </div>
+            {p.status === 'confirmed' && p.receipt_no && (
+              <Link href={`/customer/receipts/${p.receipt_no}`} className="text-sm font-semibold text-site-primary hover:underline">
+                Receipt {p.receipt_no}
+              </Link>
+            )}
+            {p.status === 'rejected' && (
+              <Link href={`/customer/payments/checkout?holding=${p.holding_code}`} className="text-sm font-semibold text-site-primary hover:underline">
+                Send again
+              </Link>
+            )}
+            {p.status === 'submitted' && (
+              <button
+                type="button"
+                disabled={withdrawing === p.code}
+                onClick={async () => {
+                  setWithdrawing(p.code);
+                  await investorRepository.withdrawOfflinePayment(p.code);
+                  setWithdrawing(null);
+                }}
+                className="text-sm font-semibold text-site-muted hover:text-site-danger disabled:opacity-50"
+              >
+                Withdraw
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

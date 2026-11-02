@@ -252,6 +252,46 @@ export interface InvestorSnapshot {
   read_notification_ids: string[];
   share_requests: ShareRequest[];
   uploads: CustomerUpload[];
+  /** payments made at the bank and reported with the slip (SHARE-SALE-FEEDBACK-PLAN.md C1) */
+  offline_payments?: OfflinePayment[];
+}
+
+export type OfflinePaymentMethod = 'bank_deposit' | 'bank_transfer' | 'cheque_deposit' | 'pay_order';
+export const OFFLINE_METHOD_LABEL: Record<OfflinePaymentMethod, string> = {
+  bank_deposit: 'Bank deposit (cash at the counter)',
+  bank_transfer: 'Bank transfer (NPSB / BEFTN / RTGS)',
+  cheque_deposit: 'Cheque deposited',
+  pay_order: 'Pay order / demand draft',
+};
+
+/** A payment the customer reported with a slip, as they see it. */
+export interface OfflinePayment {
+  code: string;
+  holding_code: string;
+  amount: number;
+  method: OfflinePaymentMethod;
+  paid_on: string;
+  paid_into: string;
+  reference: string;
+  status: 'submitted' | 'confirmed' | 'rejected' | 'withdrawn';
+  submitted_at: string;
+  reviewed_at: string | null;
+  review_note: string | null;
+  receipt_no: string | null;
+}
+
+/** A company account a customer may deposit into — only what a deposit slip needs. */
+export interface DepositAccount {
+  id: string;
+  name: string;
+  bank_name: string;
+  branch: string;
+  account_number: string;
+}
+
+/** What the customer has reported for a holding and the office has not checked yet. */
+export function pendingOffline(s: Pick<InvestorSnapshot, 'offline_payments'>, holdingCode: string): number {
+  return (s.offline_payments ?? []).filter((p) => p.holding_code === holdingCode && p.status === 'submitted').reduce((t, p) => t + p.amount, 0);
 }
 
 /* ------------------------------------------------------------------ rules */
@@ -693,6 +733,29 @@ export function buildNotifications(s: InvestorSnapshot, portfolio: PortfolioView
       date: localDay(p.paid_at),
       href: `/customer/receipts/${p.receipt_no}`,
     });
+  }
+  // a reported bank payment the office has checked: confirmed with a receipt, or sent back with the reason
+  for (const p of (s.offline_payments ?? []).filter((x) => (x.status === 'confirmed' || x.status === 'rejected') && x.reviewed_at)) {
+    const project = portfolio.holdings.find((v) => v.holding.code === p.holding_code)?.project;
+    out.push(
+      p.status === 'confirmed'
+        ? {
+            id: `offline-ok-${p.code}`,
+            kind: 'payment',
+            title: 'Bank payment confirmed',
+            body: `${formatTaka(p.amount)} paid on ${formatDay(p.paid_on)} for ${project?.name ?? p.holding_code} is confirmed.${p.receipt_no ? ` Receipt ${p.receipt_no}.` : ''}`,
+            date: localDay(p.reviewed_at!),
+            href: p.receipt_no ? `/customer/receipts/${p.receipt_no}` : '/customer/payments',
+          }
+        : {
+            id: `offline-back-${p.code}`,
+            kind: 'overdue',
+            title: 'Payment slip sent back',
+            body: `${formatTaka(p.amount)} reported for ${project?.name ?? p.holding_code}: ${p.review_note ?? 'please check the slip and send it again'}.`,
+            date: localDay(p.reviewed_at!),
+            href: `/customer/payments/checkout?holding=${p.holding_code}`,
+          },
+    );
   }
   for (const { round, project } of portfolio.open_rounds) {
     out.push({

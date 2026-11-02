@@ -14,6 +14,7 @@ import type {
   ShareRequest,
   CustomerUpload,
   CustomerUploadFile,
+  PaymentSubmission,
   ShareSale,
   LandOffer,
   FaqItem,
@@ -201,6 +202,7 @@ export class AppDatabase extends Dexie {
   share_requests!: EntityTable<ShareRequest, 'id'>;
   customer_uploads!: EntityTable<CustomerUpload, 'id'>;
   customer_upload_files!: EntityTable<CustomerUploadFile, 'id'>;
+  payment_submissions!: EntityTable<PaymentSubmission, 'id'>;
   booking_installments!: EntityTable<BookingInstallment, 'id'>;
 
   constructor() {
@@ -1035,6 +1037,15 @@ export class AppDatabase extends Dexie {
      */
     this.version(46).stores({
       customer_uploads: 'id, customer_id, sale_id, booking_id, status',
+    });
+
+    /*
+     * v47 — SHARE-SALE-FEEDBACK-PLAN.md part C: payments a customer made at
+     * the bank and reported from the Customer Portal with the slip, waiting
+     * for Accounts to confirm them. A new table only; no upgrade.
+     */
+    this.version(47).stores({
+      payment_submissions: 'id, &code, customer_id, holding_code, status',
     });
   }
 }

@@ -700,14 +700,17 @@ export interface UploadRow {
 
 /** What customers sent from the Customer Portal: purchase requests and documents, newest first. */
 export async function customerPortalInbox(): Promise<{ requests: RequestRow[]; uploads: UploadRow[] }> {
-  const [requests, uploads, offerings, sales, projects, customers] = await Promise.all([
+  const [requests, uploads, offerings, sales, projects, customers, submissions] = await Promise.all([
     db.share_requests.toArray(),
     db.customer_uploads.toArray(),
     db.share_offerings.toArray(),
     db.share_sales.toArray(),
     db.projects.toArray(),
     db.customers.toArray(),
+    db.payment_submissions.toArray(),
   ]);
+  // a payment slip is checked with its payment, on the Payments to verify tab, not twice
+  const slipIds = new Set(submissions.map((x) => x.slip_upload_id).filter(Boolean));
   const by = <T extends { id: string }>(rows: T[]) => new Map(rows.map((r) => [r.id, r]));
   const o = by(offerings);
   const s = by(sales);
@@ -719,7 +722,7 @@ export async function customerPortalInbox(): Promise<{ requests: RequestRow[]; u
       .sort((a, b) => b.request.requested_at.localeCompare(a.request.requested_at)),
     // the office's own filings are not something it has to review
     uploads: uploads
-      .filter((u) => u.source !== 'office')
+      .filter((u) => u.source !== 'office' && !slipIds.has(u.id))
       .map((u) => {
         const sale = u.sale_id ? s.get(u.sale_id) : undefined;
         return { upload: u, sale, project: sale ? p.get(sale.project_id) : undefined, customer: c.get(u.customer_id) };

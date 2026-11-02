@@ -304,3 +304,4 @@ export {
   type SaleRow,
   type ShareSaleOverview,
 } from './share-sale.repository';
+export { OFFLINE_METHOD_LABEL, paymentSubmissionInbox, paymentSubmissionRepository, type SubmissionRow } from './payment-submission.repository';

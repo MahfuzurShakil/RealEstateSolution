@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState, type ReactNode } from 'react';
-import { AlertTriangle, ArrowLeft, ArrowRight, Check, CircleCheckBig, Info, Loader2, LockKeyhole } from 'lucide-react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, CircleCheckBig, Info, Loader2, LockKeyhole, Upload } from 'lucide-react';
 import { Button } from '@/components/public/ui/Button';
 import {
   MIN_PART_PAYMENT,
@@ -12,6 +12,9 @@ import {
   formatDay,
   formatTaka,
   maxPayable,
+  pendingOffline,
+  type DepositAccount,
+  type OfflinePayment,
   type AmountOption,
   type HoldingView,
 } from '@/lib/domain/investor-portal';
@@ -21,6 +24,7 @@ import { formatPhone, formatTakaWords } from '@/lib/utils/format';
 import { CheckoutSteps } from '../CheckoutSteps';
 import { useCustomerPortal } from '../CustomerPortalProvider';
 import { InvestmentSelect } from '../InvestmentSelect';
+import { OfflinePaymentForm, PayHowChoice, emptySlip, slipReady, type SlipForm } from '../OfflinePaymentForm';
 import { PaymentTicket } from '../PaymentTicket';
 import { EmptyNote, Money, PageHeading, Panel, StatusPill } from '../ui';
 
@@ -66,6 +70,59 @@ export function CheckoutPage({ holdingFilter }: { holdingFilter: string | null }
   const [step, setStep] = useState<0 | 1>(0);
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
+  // SHARE-SALE-FEEDBACK-PLAN.md C1 — online through the gateway, or already paid at the bank
+  const [how, setHow] = useState<'online' | 'offline'>('online');
+  const [accounts, setAccounts] = useState<DepositAccount[]>([]);
+  const [slip, setSlip] = useState<SlipForm>(() => emptySlip(snapshot.today, []));
+  const [slipFile, setSlipFile] = useState<File | null>(null);
+  const [sent, setSent] = useState<OfflinePayment | null>(null);
+  const [offError, setOffError] = useState('');
+  useEffect(() => {
+    void investorRepository.depositAccounts().then((rows) => {
+      setAccounts(rows);
+      setSlip((s) => (s.paid_into_account_id ? s : { ...s, paid_into_account_id: rows[0]?.id ?? '' }));
+    });
+  }, []);
+
+  if (sent) {
+    return (
+      <div className="space-y-6">
+        <PageHeading eyebrow="Payments" title="Payment reported" />
+        <Panel>
+          <div className="space-y-4">
+            <p className="flex items-start gap-3 text-[15px]">
+              <CircleCheckBig className="mt-0.5 size-6 shrink-0 text-site-primary" aria-hidden />
+              <span>
+                Thank you. We have your slip for <Money amount={sent.amount} className="font-semibold" /> paid on {formatDay(sent.paid_on)}. Our accounts team checks it against the bank, usually within one working
+                day — you will get a notification and your receipt as soon as it is confirmed.
+              </span>
+            </p>
+            <dl className="grid gap-x-6 gap-y-2 rounded-2xl bg-site-ivory px-5 py-4 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="text-site-muted">Reference</dt>
+                <dd className="tabular font-semibold">{sent.code}</dd>
+              </div>
+              <div>
+                <dt className="text-site-muted">Paid into</dt>
+                <dd className="font-semibold">{sent.paid_into}</dd>
+              </div>
+              <div>
+                <dt className="text-site-muted">Slip number</dt>
+                <dd className="tabular font-semibold">{sent.reference}</dd>
+              </div>
+              <div>
+                <dt className="text-site-muted">Status</dt>
+                <dd className="font-semibold text-site-booked">Under verification</dd>
+              </div>
+            </dl>
+            <Link href="/customer/payments" className="inline-flex items-center gap-1.5 text-sm font-semibold text-site-primary hover:underline">
+              <ArrowLeft className="size-4" aria-hidden /> Back to payments
+            </Link>
+          </div>
+        </Panel>
+      </div>
+    );
+  }
 
   if (!view || !option) {
     return (
@@ -79,7 +136,9 @@ export function CheckoutPage({ holdingFilter }: { holdingFilter: string | null }
   }
 
   const choices = amountChoices(view);
-  const max = maxPayable(view);
+  // money reported from the bank and still being checked is on its way — it is not asked for twice
+  const pending = pendingOffline(snapshot, view.holding.code);
+  const max = Math.max(0, maxPayable(view) - pending);
   const min = Math.min(MIN_PART_PAYMENT, max);
   const customValue = Number(custom) || 0;
   const amount = option === 'custom' ? customValue : (choices.find((c) => c.id === option)?.amount ?? 0);
@@ -119,6 +178,19 @@ export function CheckoutPage({ holdingFilter }: { holdingFilter: string | null }
     const intent = await investorRepository.createIntent(view.holding.code, amount, option);
     router.push(`/customer/gateway/${intent.id}`);
   };
+  const report = async () => {
+    setBusy(true);
+    setOffError('');
+    try {
+      setSent(await investorRepository.submitOfflinePayment({ holding_code: view.holding.code, amount, ...slip, file: slipFile! }));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (e) {
+      setOffError(e instanceof Error ? e.message : 'The payment could not be reported.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const offline = how === 'offline';
 
   const c = snapshot.customer;
   const quick = [50_000, 100_000, 200_000].filter((q) => q < max);
@@ -130,16 +202,29 @@ export function CheckoutPage({ holdingFilter }: { holdingFilter: string | null }
         {wide ? 'Continue to review' : 'Continue'}
       </Button>
     ) : (
-      <Button
-        size={wide ? 'lg' : 'md'}
-        variant={wide ? 'primary' : 'light'}
-        className={cn(wide && 'w-full')}
-        disabled={!agree || busy}
-        onClick={pay}
-        icon={busy ? <Loader2 className="size-4 animate-spin" /> : <LockKeyhole className="size-4" />}
-      >
-        {busy ? 'Connecting…' : wide ? `Pay ${formatTaka(amount)} securely` : `Pay ${formatTaka(amount)}`}
-      </Button>
+      offline ? (
+        <Button
+          size={wide ? 'lg' : 'md'}
+          variant={wide ? 'primary' : 'light'}
+          className={cn(wide && 'w-full')}
+          disabled={!agree || busy || !slipReady(slip, slipFile)}
+          onClick={report}
+          icon={busy ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+        >
+          {busy ? 'Sending…' : wide ? 'Submit for verification' : 'Submit'}
+        </Button>
+      ) : (
+        <Button
+          size={wide ? 'lg' : 'md'}
+          variant={wide ? 'primary' : 'light'}
+          className={cn(wide && 'w-full')}
+          disabled={!agree || busy}
+          onClick={pay}
+          icon={busy ? <Loader2 className="size-4 animate-spin" /> : <LockKeyhole className="size-4" />}
+        >
+          {busy ? 'Connecting…' : wide ? `Pay ${formatTaka(amount)} securely` : `Pay ${formatTaka(amount)}`}
+        </Button>
+      )
     );
 
   return (
@@ -297,6 +382,30 @@ export function CheckoutPage({ holdingFilter }: { holdingFilter: string | null }
                 </ul>
               </Panel>
 
+              <Panel title="How are you paying?">
+                <div className="space-y-5">
+                  <PayHowChoice
+                    value={how}
+                    onChange={(v) => {
+                      setHow(v);
+                      setAgree(false);
+                    }}
+                  />
+                  {offline && (
+                    <OfflinePaymentForm
+                      value={slip}
+                      onChange={(p) => setSlip((s) => ({ ...s, ...p }))}
+                      accounts={accounts}
+                      file={slipFile}
+                      onFile={setSlipFile}
+                      amount={amount}
+                      today={snapshot.today}
+                    />
+                  )}
+                  {offError && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-site-danger">{offError}</p>}
+                </div>
+              </Panel>
+
               <div className="rounded-3xl border border-site-line bg-white px-5 py-4 text-sm shadow-site-1 sm:px-6">
                 <p className="text-site-muted">Receipt goes to</p>
                 <p className="mt-0.5 font-semibold break-words">
@@ -307,8 +416,17 @@ export function CheckoutPage({ holdingFilter }: { holdingFilter: string | null }
               <label className="flex cursor-pointer gap-3 rounded-3xl border border-site-line bg-white px-5 py-4 text-sm shadow-site-1 sm:px-6">
                 <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 size-5 shrink-0 accent-site-primary" />
                 <span className="text-site-muted">
-                  I confirm this payment of <Money amount={amount} className="font-semibold text-site-ink" /> under agreement{' '}
-                  <span className="tabular font-semibold text-site-ink">{view.holding.agreement_no}</span> and agree to the payment terms and refund policy.
+                  {offline ? (
+                    <>
+                      I confirm I paid <Money amount={amount} className="font-semibold text-site-ink" /> under agreement{' '}
+                      <span className="tabular font-semibold text-site-ink">{view.holding.agreement_no}</span> as shown on the attached slip.
+                    </>
+                  ) : (
+                    <>
+                      I confirm this payment of <Money amount={amount} className="font-semibold text-site-ink" /> under agreement{' '}
+                      <span className="tabular font-semibold text-site-ink">{view.holding.agreement_no}</span> and agree to the payment terms and refund policy.
+                    </>
+                  )}
                 </span>
               </label>
 
@@ -323,7 +441,11 @@ export function CheckoutPage({ holdingFilter }: { holdingFilter: string | null }
           <PaymentTicket view={view} allocations={allocations} />
           {action(true)}
           <p className="text-center text-xs text-site-muted">
-            {step === 0 ? 'You can review everything before paying.' : 'Card, mobile or net banking is chosen on the gateway’s secure page.'}
+            {step === 0
+              ? 'You can review everything before paying.'
+              : offline
+                ? 'Nothing counts as paid until our accounts team confirms the slip.'
+                : 'Card, mobile or net banking is chosen on the gateway’s secure page.'}
           </p>
         </aside>
       </div>

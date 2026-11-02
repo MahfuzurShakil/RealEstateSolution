@@ -473,6 +473,61 @@ async function seedPortalActivity(
   };
   await upload(FARHANA.phone, null, 'tin', 'e-TIN certificate', 'Downloaded from the NBR site.', 3, false);
   await upload('01819001122', rounds.round1, 'payment_proof', 'Bank deposit slip', 'Installment 4 paid at City Bank, Gulshan.', 2, false);
+
+  // SHARE-SALE-FEEDBACK-PLAN.md C — the demo login reported two bank payments: one waiting for Accounts, one sent back
+  const paying =(await db.share_sales.where('customer_id').equals(farhana).toArray()).find((s) => s.status === 'agreement_signed');
+  const bank = (await db.bank_accounts.toArray()).find((a) => a.is_active && a.type === 'bank');
+  if (paying && bank) {
+    const report = async (code: string, amount: number, daysAgo: number, reference: string, rejected: string | null) => {
+      const ts = `${ago(daysAgo)}T10:30:00.000Z`;
+      const slipId = newId();
+      const blob = samplePdf(`Deposit slip ${reference}`);
+      await db.customer_uploads.add({
+        id: slipId,
+        customer_id: farhana,
+        sale_id: paying.id,
+        source: 'customer',
+        kind: 'payment_proof',
+        title: `Payment slip · ${reference}`,
+        note: null,
+        file_name: `deposit-slip-${reference.toLowerCase()}.pdf`,
+        file_type: 'application/pdf',
+        file_size: blob.size,
+        uploaded_at: ts,
+        status: rejected ? 'rejected' : 'under_review',
+        reviewed_on: rejected ? ago(daysAgo - 1) : null,
+        review_note: rejected,
+        created_at: ts,
+        updated_at: ts,
+        created_by: null,
+      });
+      await db.customer_upload_files.add({ id: slipId, blob });
+      await db.payment_submissions.add({
+        id: newId(),
+        code,
+        customer_id: farhana,
+        holding_code: paying.code,
+        sale_id: paying.id,
+        booking_id: null,
+        amount,
+        method: 'bank_deposit',
+        paid_on: ago(daysAgo),
+        paid_into_account_id: bank.id,
+        reference,
+        note: rejected ? null : 'Deposited at the Gulshan branch counter.',
+        slip_upload_id: slipId,
+        status: rejected ? 'rejected' : 'submitted',
+        reviewed_by: rejected ? createdBy : null,
+        reviewed_at: rejected ? `${ago(daysAgo - 1)}T12:00:00.000Z` : null,
+        review_note: rejected,
+        created_at: ts,
+        updated_at: ts,
+        created_by: null,
+      });
+    };
+    await report('PSB-2026-001', 50_000, 6, 'DS-448210', 'No deposit of BDT 50,000 reached our account on that date — please check the slip number.');
+    await report('PSB-2026-002', 50_000, 1, 'DS-448977', null);
+  }
 }
 
 /** A one-page PDF with a line of text, so a demo upload opens like a real one. */

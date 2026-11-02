@@ -2877,6 +2877,7 @@ export async function clearDemoData(): Promise<void> {
     db.share_requests.clear(),
     db.customer_uploads.clear(),
     db.customer_upload_files.clear(),
+    db.payment_submissions.clear(),
   ]);
   forgetDemoWebsiteContent();
   setClearedFlag(true);

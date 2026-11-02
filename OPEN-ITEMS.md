@@ -21,15 +21,23 @@ full defect list is in `ANALYSIS-REPORT_2026-09-02.md`.
 
 ## 0u. Share Sale feedback round (2026-11-02) — `SHARE-SALE-FEEDBACK-PLAN.md`
 
-Batches S1–S8. S3 done: both signing wizards share one set of parts (SigningParts) —
-bold field groups on one grid, witness cards, power of attorney behind a tick,
-"Same as present address", one footer (Back · Save draft & exit · Next); Start
-over and the separate Save removed. S2 done: Investors & Dues stays highlighted on a purchase page, the back
-link returns to where the page was opened from, Cancel purchase / Undo last
-payment hidden. S1 done: premium entered as BDT or % of NAV, the offer's close
-date picked on the draft (Open dialog can still change it), two late fee types
-(percentage or fixed amount), buttons under the form, and no late fee on the
-down payment (admin ledger and Customer Portal).
+All eight batches S1–S8 shipped (2026-11-02/03):
+- S1 offering form — premium as "Fixed amount (BDT)" / "Percentage of NAV (%)",
+  close date picked on the draft, two late fee types, buttons under the form,
+  no late fee on the down payment (admin ledger and Customer Portal).
+- S2 Investors & Dues stays highlighted on a purchase page; the back link
+  returns to where the page was opened from; Cancel purchase / Undo last
+  payment hidden.
+- S3 both signing wizards built from SigningParts: grouped fields, witness
+  cards, one footer (Back · Save draft & exit · Next).
+- S4 one document design (DocumentParts) for Lands, share and booking papers
+  and the customer file.
+- S5 grouped Review step, confirm before signing, down payment out of
+  signing, Agreement tab (signing event only).
+- S6 paged payment schedule with a View popup, admin and portal.
+- S7/S8 offline payments: the customer reports a bank payment with the slip
+  (Dexie v47 `payment_submissions`); Accounts confirms it on Customer
+  Requests → Payments to verify, recorded on the slip date, or sends it back.
 
 Still open, decided to wait:
 - **Third late fee type** — likely a monthly rate on the overdue amount with a

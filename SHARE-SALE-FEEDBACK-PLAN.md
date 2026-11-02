@@ -1,5 +1,12 @@
 # Share Sale feedback plan (2026-11-02)
 
+> **Status: all batches S1–S8 shipped** (2026-11-03). Changes from the plan
+> while building: the offering's close date has no 30/60/90-day buttons and
+> the premium stays a dropdown with clearer names (client, round 2); the
+> schedule has no totals strip of its own, since the Money card / booking
+> tiles already show them; the booking Payments tab keeps its receipt table
+> for print and delete. Waiting items are in OPEN-ITEMS §0u.
+
 Client feedback on **New share offering**, **Sign agreement**, a new
 **offline payment** flow on the Customer Portal, and (second round, part D) the
 **purchase page**: menu highlight, Agreement tab, documents design, long

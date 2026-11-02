@@ -108,4 +108,30 @@ describe('Customer Portal repository', () => {
     expect(snap.uploads.find((u) => u.id === 'u2')).toMatchObject({ holding_code: null, source: 'office' });
     expect(JSON.stringify(snap)).not.toMatch(LEAK);
   });
+
+  it('takes a bank payment with its slip, which counts only once Accounts confirms it — on the deposit date', async () => {
+    await db.bank_accounts.add(
+      rows([{ ...base('b1'), code: 'ACC-001', name: 'Operating account', type: 'bank', bank_name: 'City Bank', branch: 'Gulshan', account_number: '1101', opening_balance: 777555, opening_balance_date: '2025-01-01', is_active: true, notes: 'LEAK-bank-notes' }])[0],
+    );
+    const slip = () => new File(['%PDF-1.4'], 'slip.pdf', { type: 'application/pdf' });
+    // installment 1 fell due on 5 Jan; paid on the 6th, inside the 7 grace days
+    const sent = await investorRepository.submitOfflinePayment({ holding_code: 'SHR-2026-001', amount: 1_554, method: 'bank_deposit', paid_on: '2026-01-06', paid_into_account_id: 'b1', reference: 'DS-1', note: '', file: slip() });
+    expect(sent).toMatchObject({ status: 'submitted', paid_into: 'City Bank · 1101' });
+    // nothing is paid yet, and the same money cannot be reported twice
+    let snap = (await investorRepository.snapshot())!;
+    expect(viewPortfolio(snap).paid).toBe(1_554);
+    expect(snap.offline_payments?.map((p) => p.code)).toEqual([sent.code]);
+    // 6,216 is still owed on the purchase; with 1,554 on its way, 6,000 more is too much
+    await expect(investorRepository.submitOfflinePayment({ holding_code: 'SHR-2026-001', amount: 6_000, method: 'bank_deposit', paid_on: '2026-01-06', paid_into_account_id: 'b1', reference: 'DS-2', note: '', file: slip() })).rejects.toThrow(/more than is still owed/);
+    expect(JSON.stringify(snap)).not.toMatch(LEAK);
+
+    const { paymentSubmissionInbox, paymentSubmissionRepository } = await import('../payment-submission.repository');
+    const row = (await paymentSubmissionInbox()).find((r) => r.submission.code === sent.code)!;
+    await paymentSubmissionRepository.confirm(row.submission.id, { account_id: 'b1' }, null);
+    const recorded = (await db.share_payments.where('sale_id').equals('s1').toArray()).find((p) => p.reference === 'DS-1')!;
+    // recorded on the slip's date, so the late fee that has built up since is not charged
+    expect(recorded).toMatchObject({ paid_on: '2026-01-06', amount: 1_554, late_fee: 0, account_id: 'b1' });
+    snap = (await investorRepository.snapshot())!;
+    expect(snap.offline_payments?.[0]).toMatchObject({ status: 'confirmed', receipt_no: recorded.code });
+  });
 });

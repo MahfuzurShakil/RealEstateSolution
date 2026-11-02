@@ -19,6 +19,8 @@ import type {
   ShareSale,
   ShareRequest as ShareRequestRow,
   CustomerUpload as CustomerUploadRow,
+  OfflinePaymentMethod,
+  PaymentSubmission,
 } from '../../db/types';
 import {
   UPLOAD_MAX_MB,
@@ -40,16 +42,20 @@ import {
   type ShareRequest,
   type ShareRound,
   type UploadKind,
+  type DepositAccount,
+  type OfflinePayment,
+  formatTaka,
 } from '@/lib/domain/investor-portal';
 import { SALE_PAYMENT_MODE_LABEL } from '@/lib/domain/booking';
 import { PROJECT_TYPE_LABEL } from '@/lib/domain/project';
 import { SHARE_DOC_META, shareDocScope } from '@/lib/domain/share-documents';
-import { offeringAvailability, offeringState } from '@/lib/domain/share-sale';
+import { maxSharePayable, offeringAvailability, offeringState } from '@/lib/domain/share-sale';
 import { newId, nextCode, nowIso } from '@/lib/utils/id';
 import { todayLocal } from '@/lib/utils/format';
 import { normalizePhone } from '../lead.repository';
 import { shareSaleRepository } from '../share-sale.repository';
 import { bookingRepository } from '../booking.repository';
+import { bookingLedgerRepository } from '../booking-ledger.repository';
 import { demoReference } from './gateway-reference';
 
 /*
@@ -347,6 +353,25 @@ function toRequest(r: ShareRequestRow, offeringCode: string): ShareRequest {
     requested_at: r.requested_at,
     status: r.status,
     office_note: r.status === 'declined' || r.status === 'contacted' ? (r.office_note ?? null) : null,
+  };
+}
+
+/** A reported bank payment as the customer sees it: never who reviewed it, nor the office's account ids. */
+function toOfflinePayment(p: PaymentSubmission, accounts: Map<string, DepositAccount>): OfflinePayment {
+  const a = p.paid_into_account_id ? accounts.get(p.paid_into_account_id) : undefined;
+  return {
+    code: p.code,
+    holding_code: p.holding_code,
+    amount: p.amount,
+    method: p.method,
+    paid_on: p.paid_on,
+    paid_into: a ? `${a.bank_name || a.name}${a.account_number ? ` · ${a.account_number}` : ''}` : '—',
+    reference: p.reference,
+    status: p.status,
+    submitted_at: p.created_at,
+    reviewed_at: p.reviewed_at ?? null,
+    review_note: p.status === 'rejected' ? (p.review_note ?? null) : null,
+    receipt_no: p.receipt_no ?? null,
   };
 }
 
@@ -658,6 +683,7 @@ export const investorRepository = {
       return { id: `${code}-${i.seq}`, holding_code: code, seq: i.seq, due_date: i.due_date, amount: i.amount };
     });
     const local = loadLocal();
+    const depositById = new Map((await this.depositAccounts()).map((a) => [a.id, a]));
     return {
       today,
       customer: toCustomer(customer, [customer.created_at.slice(0, 10), ...mySales.map((s) => s.reserved_on), ...bookings.map((b) => b.booking_date)].sort()[0], roles[0]),
@@ -687,6 +713,10 @@ export const investorRepository = {
         .filter((u) => (u.sale_id ? saleById.has(u.sale_id) : u.booking_id ? bookingById.has(u.booking_id) : true))
         .sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at))
         .map((u) => toUpload(u, u.sale_id ? saleById.get(u.sale_id)!.code : u.booking_id ? bookingById.get(u.booking_id)!.code : null)),
+      offline_payments: (await db.payment_submissions.where('customer_id').equals(customer.id).toArray())
+        .filter((p) => p.status !== 'withdrawn')
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))
+        .map((p) => toOfflinePayment(p, depositById)),
     };
   },
 
@@ -953,6 +983,129 @@ export const investorRepository = {
     });
     changed();
     return toUpload(row, sale?.code ?? booking?.code ?? null);
+  },
+
+  /**
+   * The company accounts a customer may deposit into — only what a deposit
+   * slip needs, nothing of the balance (SHARE-SALE-FEEDBACK-PLAN.md C1). For
+   * the demo, every active bank account; the real list is still to be agreed.
+   */
+  async depositAccounts(): Promise<DepositAccount[]> {
+    const rows = await db.bank_accounts.toArray();
+    return rows
+      .filter((a) => a.is_active && a.type === 'bank')
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((a) => ({ id: a.id, name: a.name, bank_name: a.bank_name ?? '', branch: a.branch ?? '', account_number: a.account_number ?? '' }));
+  },
+
+  /**
+   * Tells the office about a payment made at the bank, with the slip. Nothing
+   * is paid yet: the installment stays as it is until Accounts confirms the
+   * money against the bank statement (plan C1).
+   */
+  async submitOfflinePayment(input: {
+    holding_code: string;
+    amount: number;
+    method: OfflinePaymentMethod;
+    paid_on: string;
+    paid_into_account_id: string;
+    reference: string;
+    note: string;
+    file: File;
+  }): Promise<OfflinePayment> {
+    const session = this.session();
+    if (!session) throw new Error('Please sign in again.');
+    const amount = Math.round(Number(input.amount) || 0);
+    if (!(amount > 0)) throw new Error('Enter the amount you paid.');
+    if (!input.paid_on || input.paid_on > todayLocal()) throw new Error('Enter the date on the slip — it cannot be in the future.');
+    if (!input.paid_into_account_id) throw new Error('Choose the account you paid into.');
+    if (!input.reference.trim()) throw new Error('Enter the transaction, slip or cheque number.');
+    if (!input.file) throw new Error('Attach a photo or PDF of the slip.');
+    if (input.file.size > UPLOAD_MAX_MB * 1024 * 1024) throw new Error(`The file is larger than ${UPLOAD_MAX_MB} MB.`);
+    if (!/\.(pdf|jpe?g|png|webp)$/i.test(input.file.name)) throw new Error('Attach a PDF, JPG, PNG or WEBP file.');
+    await latency(900);
+
+    let sale: ShareSale | null = null;
+    let booking: Booking | null = null;
+    let owed: number;
+    if (await db.bookings.where('code').equals(input.holding_code).count()) {
+      booking = await this.ownBooking(input.holding_code);
+      const ledger = await bookingLedgerRepository.view(booking.id, todayLocal());
+      owed = Math.max(0, (Number(booking.final_price) || 0) - (ledger?.paid ?? 0)) + (ledger?.late_fees ?? 0);
+    } else {
+      sale = await this.ownSale(input.holding_code);
+      const view = await shareSaleRepository.view(sale.id, todayLocal());
+      owed = view ? maxSharePayable(view) : 0;
+    }
+    // money already reported and still being checked counts as on its way
+    const pending = (await db.payment_submissions.where('holding_code').equals(input.holding_code).toArray())
+      .filter((p) => p.status === 'submitted')
+      .reduce((t, p) => t + p.amount, 0);
+    if (amount > owed - pending) throw new Error(`That is more than is still owed here (${formatTaka(Math.max(0, owed - pending))}${pending ? ', after the payments already being checked' : ''}).`);
+
+    const ts = nowIso();
+    const slip: CustomerUploadRow = {
+      id: newId(),
+      customer_id: session.customer_id,
+      sale_id: sale?.id ?? null,
+      booking_id: booking?.id ?? null,
+      source: 'customer',
+      kind: 'payment_proof',
+      title: `Payment slip · ${input.reference.trim()}`,
+      note: input.note.trim() || null,
+      file_name: input.file.name,
+      file_type: input.file.type,
+      file_size: input.file.size,
+      uploaded_at: ts,
+      status: 'under_review',
+      reviewed_on: null,
+      review_note: null,
+      created_at: ts,
+      updated_at: ts,
+      created_by: null,
+    };
+    const all = await db.payment_submissions.toArray();
+    const row: PaymentSubmission = {
+      id: newId(),
+      code: nextCode('PSB', all.map((p) => p.code)),
+      customer_id: session.customer_id,
+      holding_code: input.holding_code,
+      sale_id: sale?.id ?? null,
+      booking_id: booking?.id ?? null,
+      amount,
+      method: input.method,
+      paid_on: input.paid_on,
+      paid_into_account_id: input.paid_into_account_id,
+      reference: input.reference.trim(),
+      note: input.note.trim() || null,
+      slip_upload_id: slip.id,
+      status: 'submitted',
+      created_at: ts,
+      updated_at: ts,
+      created_by: null,
+    };
+    await db.transaction('rw', db.customer_uploads, db.customer_upload_files, db.payment_submissions, async () => {
+      await db.customer_uploads.add(slip);
+      await db.customer_upload_files.add({ id: slip.id, blob: input.file });
+      await db.payment_submissions.add(row);
+    });
+    changed();
+    return toOfflinePayment(row, new Map((await this.depositAccounts()).map((a) => [a.id, a])));
+  },
+
+  /** The customer takes back a reported payment the office has not checked yet. */
+  async withdrawOfflinePayment(code: string) {
+    const session = this.session();
+    const row = await db.payment_submissions.where('code').equals(code).first();
+    if (!session || !row || row.customer_id !== session.customer_id || row.status !== 'submitted') return;
+    await db.transaction('rw', db.payment_submissions, db.customer_uploads, db.customer_upload_files, async () => {
+      await db.payment_submissions.update(row.id, { status: 'withdrawn', updated_at: nowIso() });
+      if (row.slip_upload_id) {
+        await db.customer_uploads.delete(row.slip_upload_id);
+        await db.customer_upload_files.delete(row.slip_upload_id);
+      }
+    });
+    changed();
   },
 
   /** The customer's own uploaded file, to open or download. */

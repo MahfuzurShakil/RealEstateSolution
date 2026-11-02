@@ -4,8 +4,9 @@ import Link from 'next/link';
 import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Check, Download, FileText, Inbox, MessageSquareText, ShoppingBag, Ticket, X } from 'lucide-react';
+import { Check, Download, FileText, Inbox, Landmark, MessageSquareText, ShoppingBag, Ticket, X } from 'lucide-react';
 import { Kpi } from '@/components/admin/share-sale/bits';
+import { PaymentVerifyPanel } from '@/components/admin/share-sale/PaymentVerifyPanel';
 import { RejectUploadModal, RequestNoteModal, ReserveFromRequestModal, UPLOAD_KIND_LABEL, openUpload } from '@/components/admin/share-sale/InboxModals';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -17,7 +18,7 @@ import { useMockSession } from '@/lib/auth/mock-session';
 import type { CustomerUpload, CustomerUploadStatus, ShareRequestStatus } from '@/lib/db/types';
 import { canEdit } from '@/lib/domain/access';
 import { FREQUENCY_LABEL } from '@/lib/domain/share-sale';
-import { customerPortalInbox, customerUploadRepository, shareSaleOverview, type RequestRow } from '@/lib/repositories';
+import { customerPortalInbox, customerUploadRepository, paymentSubmissionRepository, shareSaleOverview, type RequestRow } from '@/lib/repositories';
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate, formatPhone } from '@/lib/utils/format';
 
@@ -35,7 +36,7 @@ const UPLOAD_META: Record<CustomerUploadStatus, { label: string; tone: BadgeTone
   rejected: { label: 'Sent back', tone: 'red' },
 };
 
-type Tab = 'requests' | 'documents';
+type Tab = 'requests' | 'documents' | 'payments';
 const isOpenRequest = (r: RequestRow) => r.request.status === 'new' || r.request.status === 'contacted';
 
 /**
@@ -49,7 +50,8 @@ function RequestsPage() {
   const mayEdit = canEdit(role, 'share_sale');
   const inbox = useLiveQuery(() => customerPortalInbox(), []);
   const overview = useLiveQuery(() => shareSaleOverview(), []);
-  const [tab, setTab] = useState<Tab>(params.get('tab') === 'documents' ? 'documents' : 'requests');
+  const [tab, setTab] = useState<Tab>(params.get('tab') === 'documents' ? 'documents' : params.get('tab') === 'payments' ? 'payments' : 'requests');
+  const waitingPayments = useLiveQuery(() => paymentSubmissionRepository.waitingCount(), []) ?? 0;
   const [showAll, setShowAll] = useState(false);
   const [reserve, setReserve] = useState<RequestRow | null>(null);
   const [note, setNote] = useState<{ row: RequestRow; kind: 'contacted' | 'decline' } | null>(null);
@@ -228,9 +230,10 @@ function RequestsPage() {
     <>
       <PageHeader title="Customer Requests" subtitle="Requests to buy shares in an open offering — from customers on the Customer Portal and visitors on the website — and documents customers send for their purchases." />
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-3">
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi label="Purchase requests waiting" value={openRequests.length} hint={openRequests.length ? `${formatBdt(askedValue)} asked for` : 'nothing waiting'} icon={ShoppingBag} tone={openRequests.some((r) => r.request.status === 'new') ? 'danger' : 'default'} />
         <Kpi label="Documents to review" value={toReview.length} hint={`${inbox.uploads.length} uploaded in all`} icon={FileText} />
+        <Kpi label="Payments to verify" value={waitingPayments} hint="bank payments reported with a slip" icon={Landmark} tone={waitingPayments ? 'danger' : 'default'} />
         <Kpi label="Reserved from requests" value={inbox.requests.filter((r) => r.request.status === 'reserved').length} hint="turned into reservations" icon={Ticket} />
       </div>
 
@@ -241,6 +244,7 @@ function RequestsPage() {
               [
                 ['requests', 'Purchase requests', openRequests.length],
                 ['documents', 'Documents', toReview.length],
+                ['payments', 'Payments to verify', waitingPayments],
               ] as const
             ).map(([key, label, n]) => (
               <button
@@ -263,7 +267,9 @@ function RequestsPage() {
           </label>
         </div>
         <div className="p-5">
-          {tab === 'requests' ? (
+          {tab === 'payments' ? (
+            <PaymentVerifyPanel showAll={showAll} mayConfirm={canEdit(role, 'finance_collection')} />
+          ) : tab === 'requests' ? (
             <DataTable
               rows={requestRows}
               columns={requestColumns}
