@@ -33,7 +33,6 @@ export default async function AccessPage({ searchParams }: { searchParams: Promi
           />
         </label>
         {error === 'wrong' && <p className="mt-2 text-sm text-red-600">That code is not right. Try again.</p>}
-        {error === 'unset' && <p className="mt-2 text-sm text-red-600">The access code has not been set up on this server yet.</p>}
 
         <button type="submit" className="mt-5 w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800">
           Continue
