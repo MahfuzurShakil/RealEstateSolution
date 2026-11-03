@@ -286,6 +286,7 @@ export {
   sharePaymentRepository,
   shareInstallmentRepository,
   shareSaleOverview,
+  shareTransactions,
   projectOwnership,
   shareRequestRepository,
   customerUploadRepository,
@@ -303,5 +304,6 @@ export {
   type ReserveInput,
   type SaleRow,
   type ShareSaleOverview,
+  type ShareTransactionRow,
 } from './share-sale.repository';
 export { OFFLINE_METHOD_LABEL, paymentSubmissionInbox, paymentSubmissionRepository, type SubmissionRow } from './payment-submission.repository';

@@ -2,6 +2,7 @@
 
 import { db } from '../db/database';
 import type {
+  BankAccount,
   Customer,
   CustomerUpload,
   LateFeeType,
@@ -26,6 +27,7 @@ import {
   buildSchedule,
   closesOn,
   daysBetween,
+  installmentLabel,
   maxSharePayable,
   offeringAvailability,
   offeringFeeRule,
@@ -651,6 +653,63 @@ export async function shareSaleOverview(today = todayLocal()): Promise<ShareSale
       customers: new Set(live.map((r) => r.sale.customer_id)).size,
     },
   };
+}
+
+/** One recorded payment, with who paid it, for what and where the money went. */
+export interface ShareTransactionRow {
+  id: string;
+  payment: SharePayment;
+  sale: ShareSale;
+  offering: ShareOffering | undefined;
+  project: Project | undefined;
+  customer: Customer | undefined;
+  account: BankAccount | undefined;
+  /** each allocation with its schedule row's name ("Down payment", "Installment 3") */
+  lines: { label: string; principal: number; late_fee: number }[];
+}
+
+/**
+ * Share Sale → Transactions: every payment received on every purchase, newest
+ * first. Only recorded payments — a bank slip still waiting for Accounts is in
+ * Customer Requests, and an undone entry is gone.
+ */
+export async function shareTransactions(): Promise<ShareTransactionRow[]> {
+  const [pays, sales, offerings, inst, projects, customers, accounts] = await Promise.all([
+    db.share_payments.toArray(),
+    db.share_sales.toArray(),
+    db.share_offerings.toArray(),
+    db.share_installments.toArray(),
+    db.projects.toArray(),
+    db.customers.toArray(),
+    db.bank_accounts.toArray(),
+  ]);
+  const saleById = new Map(sales.map((s) => [s.id, s]));
+  const offeringById = new Map(offerings.map((o) => [o.id, o]));
+  const seqById = new Map(inst.map((i) => [i.id, i.seq]));
+  const projectById = new Map(projects.map((p) => [p.id, p]));
+  const customerById = new Map(customers.map((c) => [c.id, c]));
+  const accountById = new Map(accounts.map((a) => [a.id, a]));
+  return pays
+    .flatMap((p) => {
+      const sale = saleById.get(p.sale_id);
+      if (!sale) return [];
+      return [
+        {
+          id: p.id,
+          payment: p,
+          sale,
+          offering: offeringById.get(sale.offering_id),
+          project: projectById.get(sale.project_id),
+          customer: customerById.get(sale.customer_id),
+          account: p.account_id ? accountById.get(p.account_id) : undefined,
+          lines: p.allocations.map((a) => {
+            const seq = seqById.get(a.installment_id);
+            return { label: seq === undefined ? 'Advance' : installmentLabel(seq), principal: a.principal, late_fee: a.late_fee };
+          }),
+        },
+      ];
+    })
+    .sort((a, b) => b.payment.paid_on.localeCompare(a.payment.paid_on) || b.payment.code.localeCompare(a.payment.code));
 }
 
 /** Each offering's slice of a project, and what the owner keeps (plan §5). */

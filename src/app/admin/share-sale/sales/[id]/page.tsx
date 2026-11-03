@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Suspense, useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, Award, FileSignature, HandCoins, IdCard, XCircle } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, Award, FileSignature, HandCoins, IdCard, XCircle } from 'lucide-react';
 import { DetailTabs, SaleBadge } from '@/components/admin/share-sale/bits';
 import { InvestorDetailsModal } from '@/components/admin/share-sale/InboxModals';
 import { ShareDocumentChecklist } from '@/components/admin/share-sale/ShareDocuments';
@@ -287,6 +287,11 @@ function ShareSaleDetail() {
                     allocations: p.allocations,
                   }))}
                 />
+                {v.payments.length > 0 && (
+                  <Link href={`/admin/share-sale/transactions?customer=${s.customer_id}`} className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-admin-700 hover:underline">
+                    All of this investor&apos;s transactions <ArrowUpRight className="size-4" />
+                  </Link>
+                )}
               </Card>
             ) : (
               <Card>

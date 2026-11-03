@@ -41,7 +41,7 @@ export function FilterBar({
   return (
     <div className={cn('mb-4 flex flex-wrap items-end gap-3', className)}>
       {search && (
-        <label className="block min-w-0 flex-1 sm:max-w-xs">
+        <label className="block min-w-48 flex-1 sm:max-w-xs">
           <span className="mb-1.5 block text-xs font-medium text-ink-muted">Search</span>
           <span className="relative block">
             <Search className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />

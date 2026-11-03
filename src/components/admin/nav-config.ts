@@ -117,6 +117,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Share Offerings', href: '/admin/share-sale', module: 'share_sale' },
       // a purchase page is reached from this list, not from Share Offerings (feedback D1)
       { label: 'Investors & Dues', href: '/admin/share-sale/investors', module: 'share_sale', activeFor: ['/admin/share-sale/sales'] },
+      // every payment investors made, across all projects and purchases
+      { label: 'Transactions', href: '/admin/share-sale/transactions', module: 'share_sale' },
       { label: 'Customer Requests', href: '/admin/share-sale/requests', module: 'share_sale' },
     ],
   },
