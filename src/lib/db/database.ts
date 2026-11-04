@@ -84,6 +84,11 @@ import type {
   FundAllocation,
   Unit,
   User,
+  OrgMember,
+  OrgMove,
+  CommissionPlan,
+  CommissionLine,
+  CommissionPayout,
 } from './types';
 
 /**
@@ -204,6 +209,13 @@ export class AppDatabase extends Dexie {
   customer_upload_files!: EntityTable<CustomerUploadFile, 'id'>;
   payment_submissions!: EntityTable<PaymentSubmission, 'id'>;
   booking_installments!: EntityTable<BookingInstallment, 'id'>;
+
+  // Sales Team (REVENUE-SHARE-PLAN.md §6–7) — v49
+  org_members!: EntityTable<OrgMember, 'id'>;
+  org_moves!: EntityTable<OrgMove, 'id'>;
+  commission_plans!: EntityTable<CommissionPlan, 'id'>;
+  commission_lines!: EntityTable<CommissionLine, 'id'>;
+  commission_payouts!: EntityTable<CommissionPayout, 'id'>;
 
   constructor() {
     super('realestate_platform');
@@ -1046,6 +1058,24 @@ export class AppDatabase extends Dexie {
      */
     this.version(47).stores({
       payment_submissions: 'id, &code, customer_id, holding_code, status',
+    });
+
+    /*
+     * v49 — REVENUE-SHARE-PLAN.md §6–7 (batches R6–R7): the sales
+     * organisation as a free tree with its move history, commission plans,
+     * one commission line per person per stage of a sale, and the payouts
+     * that pay them. Every sale gains an indexed `sold_by_member_id`. New
+     * tables and indexes only; no upgrade. (v48 is the revenue-share tables.)
+     */
+    this.version(49).stores({
+      org_members: 'id, &code, parent_id, designation_id, user_id, partner_id, status',
+      org_moves: 'id, member_id, effective_date',
+      commission_plans: 'id, &code, applies_to, project_id, status',
+      commission_lines: 'id, plan_id, share_sale_id, booking_id, project_id, member_id, status, payout_id',
+      commission_payouts: 'id, &code, member_id, paid_on, account_id',
+      share_sales: 'id, &code, offering_id, project_id, customer_id, status, sold_by_member_id',
+      bookings:
+        'id, &code, customer_id, unit_id, lead_id, status, discount_approval_status, booking_date, booked_by, booking_group, created_at, sold_by_member_id',
     });
   }
 }

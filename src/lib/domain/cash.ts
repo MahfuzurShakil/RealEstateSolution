@@ -34,7 +34,7 @@ export interface CashFlowRow {
   date: string;
   /** positive in, negative out */
   amount: number;
-  kind: 'receipt' | 'share_receipt' | 'fund_in' | 'expense' | 'supplier_payment' | 'site_payment' | 'refund';
+  kind: 'receipt' | 'share_receipt' | 'fund_in' | 'expense' | 'supplier_payment' | 'site_payment' | 'refund' | 'commission_payout';
   label: string;
   reference?: string | null;
 }
@@ -57,6 +57,7 @@ export const CASH_FLOW_LABEL: Record<CashFlowRow['kind'], string> = {
   supplier_payment: 'Supplier payment',
   site_payment: 'Site cost payment',
   refund: 'Refund',
+  commission_payout: 'Commission payout',
 };
 
 /**

@@ -1825,6 +1825,11 @@ export interface Booking extends BaseEntity {
   signing?: ShareSigningRecord | null;
   /** BUYER-PORTAL-PLAN.md §10 F8 — a signing left part way, picked up where it stopped */
   sign_draft?: BookingSignDraft | null;
+  /**
+   * v49 — REVENUE-SHARE-PLAN.md §6: the sales organisation member who earns
+   * the commission. Defaults from `booked_by`'s member. Indexed.
+   */
+  sold_by_member_id?: UUID | null;
 }
 
 /** Everything typed in the booking signing wizard so far, kept as typed (strings). */
@@ -3338,6 +3343,8 @@ export interface ShareSale extends BaseEntity {
    * the agreement is signed. Unindexed.
    */
   sign_draft?: ShareSignDraft | null;
+  /** v49 — REVENUE-SHARE-PLAN.md §6: the sales organisation member who sold it. Indexed. */
+  sold_by_member_id?: UUID | null;
 }
 
 /** Everything the Sign agreement steps hold, as typed — strings, so a half-filled step saves as it is. */
@@ -3555,4 +3562,157 @@ export interface PaymentSubmission extends BaseEntity {
   /** the payment recorded on confirmation, and its receipt number */
   payment_id?: UUID | null;
   receipt_no?: string | null;
+}
+
+/* ------------------------------------------------------------------ *
+ * Sales Team — organisation and commission (REVENUE-SHARE-PLAN.md §6–7), v49
+ * ------------------------------------------------------------------ */
+
+/** Seeded `org_designation` options, top rank first; the client renames and reorders them. */
+export const ORG_DESIGNATION_OPTIONS = ['Founder', 'Director', 'General Manager', 'Team Lead', 'Senior Sales', 'Sales Executive', 'Freelance Agent'] as const;
+
+export const ORG_MEMBER_STATUSES = ['active', 'left'] as const;
+export type OrgMemberStatus = (typeof ORG_MEMBER_STATUSES)[number];
+
+/**
+ * One person in the sales organisation — a free tree, any depth (plan §6).
+ * A member may be a staff user, a company partner, both, or an outside agent
+ * who never logs in.
+ */
+export interface OrgMember extends BaseEntity {
+  code: string;                       // ORG-001
+  name: string;
+  phone?: string | null;
+  /**
+   * The `org_designation` lookup row, by id rather than by label: a plan's
+   * overrides are keyed by designation, and renaming one in Master Data must
+   * not detach every member and override from it. Its rank is the row's order.
+   */
+  designation_id: UUID;
+  /** who this member reports to now; null = top level */
+  parent_id: UUID | null;
+  user_id?: UUID | null;
+  partner_id?: UUID | null;
+  joined_on: ISODate;
+  left_on?: ISODate | null;
+  status: OrgMemberStatus;
+  notes?: string | null;
+}
+
+/** A change of who a member reports to, from a date — commission reads the tree as it was. */
+export interface OrgMove extends BaseEntity {
+  member_id: UUID;
+  from_parent_id: UUID | null;
+  to_parent_id: UUID | null;
+  effective_date: ISODate;
+  note?: string | null;
+}
+
+export const COMMISSION_APPLIES_TO = ['share_sale', 'booking'] as const;
+export type CommissionAppliesTo = (typeof COMMISSION_APPLIES_TO)[number];
+
+/** How a person's total commission on one sale is worked out. */
+export const COMMISSION_BASES = ['pct', 'per_share', 'per_sale'] as const;
+export type CommissionBasis = (typeof COMMISSION_BASES)[number];
+
+/** What releases a stage — read from the payment ledgers, never marked by hand. */
+export const COMMISSION_TRIGGERS = ['agreement', 'down_payment', 'agreement_down_payment', 'paid_pct', 'fully_paid', 'handover'] as const;
+export type CommissionTrigger = (typeof COMMISSION_TRIGGERS)[number];
+
+export interface CommissionStage {
+  /** stable within the plan; lines point at it */
+  key: string;
+  label: string;
+  trigger: CommissionTrigger;
+  /** with `paid_pct`: the share of the price paid, in % */
+  threshold_pct?: number | null;
+  /** `pct` of the person's total, or `fixed` taka (per share when the seller earns per share) */
+  release_type: 'pct' | 'fixed';
+  release_value: number;
+}
+
+export interface CommissionOverride {
+  designation_id: UUID;
+  basis: CommissionBasis;
+  value: number;
+}
+
+export const COMMISSION_CANCEL_RULES = ['recover', 'write_off'] as const;
+export type CommissionCancelRule = (typeof COMMISSION_CANCEL_RULES)[number];
+
+export const COMMISSION_PLAN_STATUSES = ['draft', 'active', 'retired'] as const;
+export type CommissionPlanStatus = (typeof COMMISSION_PLAN_STATUSES)[number];
+
+export interface CommissionPlan extends BaseEntity {
+  code: string;                       // CMP-001
+  name: string;
+  applies_to: CommissionAppliesTo;
+  /** null = every project (the default plan) */
+  project_id?: UUID | null;
+  /** share sales only: one offering */
+  offering_id?: UUID | null;
+  seller_basis: CommissionBasis;
+  seller_value: number;
+  /** in order; the last one releases whatever is left */
+  stages: CommissionStage[];
+  overrides: CommissionOverride[];
+  /** what happens to commission already paid when the sale is cancelled */
+  cancel_rule: CommissionCancelRule;
+  effective_from: ISODate;
+  effective_to?: ISODate | null;
+  status: CommissionPlanStatus;
+  notes?: string | null;
+}
+
+export const COMMISSION_LINE_STATUSES = ['pending', 'earned', 'approved', 'paid', 'void', 'recovered'] as const;
+export type CommissionLineStatus = (typeof COMMISSION_LINE_STATUSES)[number];
+
+export type CommissionSaleKind = 'share' | 'booking';
+
+/** One person's part of one stage of one sale, with the chain snapshotted on the sale date. */
+export interface CommissionLine extends BaseEntity {
+  plan_id: UUID;
+  sale_kind: CommissionSaleKind;
+  share_sale_id?: UUID | null;
+  booking_id?: UUID | null;
+  project_id: UUID | null;
+  member_id: UUID;
+  role: 'seller' | 'override';
+  /** the designation's label when the line was made */
+  designation_at_sale: string;
+  /** 0 = the seller, 1 = their lead, 2 = the lead's lead … */
+  level: number;
+  stage_key: string;
+  stage_label: string;
+  stage_seq: number;
+  sale_date: ISODate;
+  sale_amount: number;
+  amount: number;
+  status: CommissionLineStatus;
+  earned_on?: ISODate | null;
+  approved_by?: UUID | null;
+  approved_on?: ISODate | null;
+  payout_id?: UUID | null;
+  /** a paid line on a cancelled sale, waiting to come off the member's next payout */
+  to_recover?: boolean | null;
+  /** the payout it came off */
+  recovered_payout_id?: UUID | null;
+  void_reason?: string | null;
+}
+
+export interface CommissionPayout extends BaseEntity {
+  code: string;                       // CPO-2026-001
+  member_id: UUID;
+  /** approved lines paid */
+  lines_total: number;
+  /** paid commission on cancelled sales, taken back */
+  recovered: number;
+  tax_pct: number;
+  tax_withheld: number;
+  /** lines_total − recovered − tax_withheld: what left the account */
+  net: number;
+  account_id: UUID;
+  paid_on: ISODate;
+  reference_no?: string | null;
+  notes?: string | null;
 }

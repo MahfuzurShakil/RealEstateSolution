@@ -125,6 +125,7 @@ export const MODULE_KEYS = [
   'user_management',
   'website',
   'share_sale',
+  'sales_team',
 ] as const;
 export type ModuleKey = (typeof MODULE_KEYS)[number];
 
@@ -145,6 +146,7 @@ export const MODULE_LABEL: Record<ModuleKey, string> = {
   user_management: 'User Management',
   website: 'Website (content & blog)',
   share_sale: 'Share Sale (offerings & investors)',
+  sales_team: 'Sales Team (organisation & commission)',
 };
 
 const F: Permission = { level: 'full' };
@@ -267,6 +269,16 @@ export const PERMISSION_MATRIX: Record<ModuleKey, Record<UserRole, Permission>> 
     sales_executive: V, sales_manager: F, head_of_sales: F,
     site_manager: N, procurement: N, accounts: F,
   },
+  /*
+   * REVENUE-SHARE-PLAN.md §6–7: sales heads run the organisation and its
+   * plans; accounts approve and pay commission. Sales people do not log in
+   * to see their own commission yet (decision 9) — a lead sees the team.
+   */
+  sales_team: {
+    super_admin: F, management: F, land_team: N, project_manager: N,
+    sales_executive: N, sales_manager: V, head_of_sales: F,
+    site_manager: N, procurement: N, accounts: F,
+  },
 };
 
 export function permissionFor(role: UserRole, module: ModuleKey): Permission {
@@ -365,6 +377,7 @@ const ROUTE_MODULES: Array<[string, ModuleKey]> = [
   ['/admin/bookings', 'booking'],
   ['/admin/customers', 'booking'],
   ['/admin/share-sale', 'share_sale'],
+  ['/admin/sales-team', 'sales_team'],
   ['/admin/site-progress', 'site_progress'],
   ['/admin/material-requests', 'material_request'],
   ['/admin/purchase-orders', 'procurement'],

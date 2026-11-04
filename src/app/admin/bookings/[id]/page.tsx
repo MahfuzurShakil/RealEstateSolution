@@ -10,6 +10,7 @@ import { DeliveryCard } from '@/components/admin/bookings/DeliveryCard';
 import { AgreementPanel } from '@/components/admin/bookings/AgreementPanel';
 import { RefundModal } from '@/components/admin/finance/RefundModal';
 import { PaymentPanel } from '@/components/admin/bookings/PaymentPanel';
+import { SaleCommissionCard } from '@/components/admin/sales-team/parts';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -321,6 +322,8 @@ function BookingDetailPage() {
                   </p>
                 )}
               </Card>
+
+              <SaleCommissionCard kind="booking" saleId={booking.id} soldBy={booking.sold_by_member_id} editable={booking.status !== 'cancelled'} />
             </div>
           )}
 
