@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   PieChart,
   Map,
+  Network,
   Package,
   UserRound,
   Wallet,
@@ -123,6 +124,21 @@ export const NAV_GROUPS: NavGroup[] = [
       // REVENUE-SHARE-PLAN.md — each project's profit, shared; and the payouts holders ask for
       { label: 'Profit Distributions', href: '/admin/share-sale/profit', module: 'share_sale' },
       { label: 'Profit Withdrawals', href: '/admin/share-sale/withdrawals', module: 'share_sale' },
+    ],
+  },
+  /*
+   * REVENUE-SHARE-PLAN.md §6–7: the sales organisation (any depth) and the
+   * commission it earns, released in stages as buyers pay.
+   */
+  {
+    label: 'Sales Team',
+    icon: Network,
+    items: [
+      { label: 'Org Chart', href: '/admin/sales-team', module: 'sales_team' },
+      { label: 'Members', href: '/admin/sales-team/members', module: 'sales_team' },
+      { label: 'Commission Plans', href: '/admin/sales-team/plans', module: 'sales_team' },
+      { label: 'Commissions', href: '/admin/sales-team/commissions', module: 'sales_team' },
+      { label: 'Payouts', href: '/admin/sales-team/payouts', module: 'sales_team' },
     ],
   },
   /*

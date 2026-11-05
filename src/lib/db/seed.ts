@@ -8,6 +8,7 @@ import {
 } from '../repositories';
 import { demoDataWasCleared, seedDemoData } from './demo-seed';
 import { ensureDemoRevenue } from './demo-revenue';
+import { ensureDemoSalesTeam } from './demo-sales-team';
 import { ensureDemoBlog, ensureDemoSitePhotos, ensureDemoWebsiteContent, ensureDemoWebsitePictures, ensureDemoWebsiteText } from './demo-website';
 import {
   AMENITY_OPTIONS,
@@ -41,6 +42,7 @@ import {
   DEVELOPMENT_DOCUMENT_TYPES,
   LAND_DEVELOPMENT_ACTIVITIES,
   UNIT_TYPE_OPTIONS,
+  ORG_DESIGNATION_OPTIONS,
 } from './types';
 
 /**
@@ -96,6 +98,8 @@ async function runSeed(): Promise<void> {
   await ensureOptions('revenue_expense_head', null, [...REVENUE_EXPENSE_HEAD_OPTIONS]);
   await ensureOptions('amenity', null, [...AMENITY_OPTIONS]);
   await ensureOptions('material_unit', null, [...MATERIAL_UNIT_OPTIONS]);
+  // REVENUE-SHARE-PLAN.md §6 — the order is the rank: Founder at the top
+  await ensureOptions('org_designation', null, [...ORG_DESIGNATION_OPTIONS]);
   // Tier 3.3: §1.2 always named `cost_category` a lookup list; it was an ENUM
   // until now. Seeded with codes, because an expense stores the code.
   await ensureSystemCostCategories();
@@ -134,6 +138,8 @@ async function runSeed(): Promise<void> {
     await ensureDemoBlog();
     // REVENUE-SHARE-PLAN.md §12 — a no-op once any project shares its profit
     await ensureDemoRevenue();
+    // the Sales Team demo arrived after the rest; a no-op once it is there
+    await ensureDemoSalesTeam();
   }
 }
 

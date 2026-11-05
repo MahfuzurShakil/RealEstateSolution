@@ -12,6 +12,7 @@ import { SignAgreementWizard } from '@/components/admin/share-sale/SignAgreement
 import { InstallmentSchedule } from '@/components/admin/payments/InstallmentSchedule';
 import { Facts, SigningFacts } from '@/components/admin/signing/SigningParts';
 import { ReasonModal, RecordPaymentModal } from '@/components/admin/share-sale/ShareSaleModals';
+import { SaleCommissionCard } from '@/components/admin/sales-team/parts';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -238,6 +239,7 @@ function ShareSaleDetail() {
                   </div>
                 )}
               </Card>
+              <SaleCommissionCard kind="share" saleId={s.id} soldBy={s.sold_by_member_id} editable={mayEdit} />
             </div>
           )}
 

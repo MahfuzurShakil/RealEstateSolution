@@ -20,7 +20,7 @@ import {
   maxSharePayable,
   type SaleView,
 } from '@/lib/domain/share-sale';
-import { customerRepository, shareOfferingRepository, shareSaleRepository } from '@/lib/repositories';
+import { customerRepository, orgMemberRepository, shareOfferingRepository, shareSaleRepository } from '@/lib/repositories';
 import { formatBdt, formatDate, todayLocal } from '@/lib/utils/format';
 
 export function ErrorNote({ error }: { error: string }) {
@@ -49,6 +49,8 @@ export function useAction() {
 export function ReserveModal({ offering, available, onClose }: { offering: ShareOffering; available: number; onClose: () => void }) {
   const { userId } = useMockSession();
   const customers = useLiveQuery(() => customerRepository.getAll(), []);
+  const sellers = useLiveQuery(() => orgMemberRepository.options(), []);
+  const [soldBy, setSoldBy] = useState<string | null>(null);
   const [mode, setMode] = useState<'existing' | 'new'>('existing');
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [nc, setNc] = useState({ name: '', phone: '', email: '', nid: '', address: '' });
@@ -80,22 +82,22 @@ export function ReserveModal({ offering, available, onClose }: { offering: Share
           <Button
             disabled={busy}
             onClick={() =>
-              run(
-                () =>
-                  shareSaleRepository.reserve(
-                    {
-                      offering_id: offering.id,
-                      customer_id: mode === 'existing' ? customerId : null,
-                      new_customer: mode === 'new' ? nc : null,
-                      shares: n,
-                      down_payment_pct: Number(downPct),
-                      installment_count: inst,
-                      notes,
-                    },
-                    userId,
-                  ),
-                onClose,
-              )
+              run(async () => {
+                const sale = await shareSaleRepository.reserve(
+                  {
+                    offering_id: offering.id,
+                    customer_id: mode === 'existing' ? customerId : null,
+                    new_customer: mode === 'new' ? nc : null,
+                    shares: n,
+                    down_payment_pct: Number(downPct),
+                    installment_count: inst,
+                    notes,
+                  },
+                  userId,
+                );
+                // REVENUE-SHARE-PLAN.md §6 — who sold it, for commission
+                if (soldBy) await orgMemberRepository.setSoldBy('share', sale.id, soldBy);
+              }, onClose)
             }
           >
             {busy ? 'Reserving…' : `Reserve ${n || ''} share${n === 1 ? '' : 's'}`}
@@ -167,6 +169,14 @@ export function ReserveModal({ offering, available, onClose }: { offering: Share
           </Field>
           <Field label="Installments" required hint={`Up to ${offering.max_installments}, ${FREQUENCY_LABEL[offering.installment_frequency].toLowerCase()}`}>
             <TextInput type="number" min="0" max={offering.max_installments} step="1" value={plan} onChange={(e) => setPlan(e.target.value)} />
+          </Field>
+          <Field label="Sold by" hint="The sales team member who earns the commission." className="md:col-span-3">
+            <Combobox
+              value={soldBy}
+              onChange={setSoldBy}
+              placeholder="Pick a sales team member…"
+              options={(sellers ?? []).map((m) => ({ id: m.id, label: m.name, hint: `${m.code} · ${m.designation}`, keywords: `${m.code} ${m.phone ?? ''}` }))}
+            />
           </Field>
           <Field label="Notes" className="md:col-span-3">
             <TextArea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />

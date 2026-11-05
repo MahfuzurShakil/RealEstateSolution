@@ -33,6 +33,7 @@ import {
 } from '@/lib/domain/project';
 import {
   bookingRepository,
+  orgMemberRepository,
   projectRepository,
   unitRepository,
   userRepository,
@@ -215,6 +216,9 @@ export function MultiBookingForm() {
         })),
         userId,
       );
+      // REVENUE-SHARE-PLAN.md §6 — each booking is credited to Booked By's sales team member
+      const seller = await orgMemberRepository.forUser(bookedBy);
+      if (seller) for (const b of result.bookings) await orgMemberRepository.setSoldBy('booking', b.id, seller.id);
       router.push(`/admin/customers/${result.bookings[0]?.customer_id ?? ''}`);
     } catch (err) {
       setErrors({ lines: err instanceof Error ? err.message : String(err) });

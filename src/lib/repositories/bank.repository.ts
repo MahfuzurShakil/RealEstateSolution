@@ -122,6 +122,9 @@ class BankAccountRepository extends BaseRepository<BankAccount> {
       ...customers.map((c) => [c.id, c.name] as const),
       ...partners.map((p) => [p.id, p.name] as const),
     ]);
+    // REVENUE-SHARE-PLAN.md §7 — commission paid to the sales team, net of tax withheld
+    const [commissionPayouts, orgMembers] = await Promise.all([db.commission_payouts.toArray(), db.org_members.toArray()]);
+    const memberName = new Map(orgMembers.map((m) => [m.id, m.name]));
     const customerOfSale = new Map(shareSales.map((s) => [s.id, customers.find((c) => c.id === s.customer_id)?.name ?? null]));
     const partnerName = new Map(partners.map((p) => [p.id, p.name]));
     const purchaseById = new Map(purchases.map((p) => [p.id, p]));
@@ -239,6 +242,15 @@ class BankAccountRepository extends BaseRepository<BankAccount> {
           label: holderName.get(w.customer_id ?? w.partner_id ?? '') ?? w.code,
           reference: w.reference_no ?? w.code,
         })),
+      ...commissionPayouts.map((c) => ({
+        id: c.id,
+        account_id: c.account_id,
+        date: c.paid_on,
+        amount: -money(Number(c.net) || 0),
+        kind: 'commission_payout' as const,
+        label: `Commission · ${memberName.get(c.member_id) ?? c.code}`,
+        reference: c.reference_no ?? c.code,
+      })),
     ];
 
     return rows.sort((a, b) => b.date.localeCompare(a.date));
@@ -305,7 +317,7 @@ class BankAccountRepository extends BaseRepository<BankAccount> {
     const account = await this.getById(id);
     if (!account) return;
 
-    const [p, e, v, r, s, f, sh] = await Promise.all([
+    const [p, e, v, r, s, f, sh, cp] = await Promise.all([
       db.payments.where('account_id').equals(id).count(),
       db.expenses.where('account_id').equals(id).count(),
       db.supplier_vouchers.where('account_id').equals(id).count(),
@@ -313,8 +325,9 @@ class BankAccountRepository extends BaseRepository<BankAccount> {
       db.direct_purchase_payments.where('account_id').equals(id).count(),
       db.fund_receipts.where('account_id').equals(id).count(),
       db.share_payments.where('account_id').equals(id).count(),
+      db.commission_payouts.where('account_id').equals(id).count(),
     ]);
-    if (p + e + v + r + s + f + sh > 0) throw new BankAccountInUseError(account.name);
+    if (p + e + v + r + s + f + sh + cp > 0) throw new BankAccountInUseError(account.name);
     await this.remove(id);
   }
 }

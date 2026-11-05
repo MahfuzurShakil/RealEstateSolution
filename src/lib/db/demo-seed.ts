@@ -82,6 +82,7 @@ import { DEMO_LEADS, DEMO_USER_JOINED_DAYS_AGO, DEMO_USERS } from './demo-leads'
 import { DEMO_PROJECTS } from './demo-projects';
 import { samplePdf, seedDemoShareSale } from './demo-share-sale';
 import { ensureDemoRevenue } from './demo-revenue';
+import { seedDemoSalesTeam } from './demo-sales-team';
 import { templateForItem, towerBasements, workTypeDef } from '../domain/construction-cost';
 import { DEMO_MATERIAL_REQUESTS, DEMO_TOWER_PROGRESS } from './demo-site-progress';
 import { DEMO_EXPENSES, DEMO_REFUNDS } from './demo-finance';
@@ -1045,6 +1046,8 @@ export async function seedDemoData(createdBy: string | null = null): Promise<voi
   await seedDemoShareSale(projectIds, createdBy);
   // REVENUE-SHARE-PLAN.md §12 — the office tower's rent, profit and payouts
   await ensureDemoRevenue();
+  // REVENUE-SHARE-PLAN.md §6–7: the sales organisation and its staged commission
+  await seedDemoSalesTeam(createdBy);
 
   setClearedFlag(false);
 }
@@ -2890,6 +2893,11 @@ export async function clearDemoData(): Promise<void> {
     db.loan_repayments.clear(),
     db.profit_allocations.clear(),
     db.profit_withdrawals.clear(),
+    db.org_members.clear(),
+    db.org_moves.clear(),
+    db.commission_plans.clear(),
+    db.commission_lines.clear(),
+    db.commission_payouts.clear(),
   ]);
   forgetDemoWebsiteContent();
   setClearedFlag(true);

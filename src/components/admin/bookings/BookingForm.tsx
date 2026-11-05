@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Checkbox, Field, MoneyInput, SelectInput, TextInput } from '@/components/ui/Field';
+import { Combobox } from '@/components/ui/Combobox';
 import { AccountPicker } from '@/components/admin/finance/AccountPicker';
 import {
   AgreementFields,
@@ -42,6 +43,7 @@ import {
   bookingRepository,
   customerRepository,
   leadRepository,
+  orgMemberRepository,
   projectRepository,
   unitRepository,
   userRepository,
@@ -152,6 +154,18 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
   const [agreement, setAgreement] = useState<AgreementForm>(() => emptyAgreement(todayLocal()));
   const [agreementErrors, setAgreementErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  // REVENUE-SHARE-PLAN.md §6 — who earns the commission; follows "Booked by" until picked by hand
+  const sellers = useLiveQuery(() => orgMemberRepository.options(), []);
+  const [soldBy, setSoldBy] = useState<string | null>(null);
+  const [soldByPicked, setSoldByPicked] = useState(false);
+  useEffect(() => {
+    if (isEdit || soldByPicked) return;
+    let live = true;
+    orgMemberRepository.forUser(form.booked_by).then((m) => live && setSoldBy(m?.id ?? null));
+    return () => {
+      live = false;
+    };
+  }, [form.booked_by, isEdit, soldByPicked]);
 
   useEffect(() => {
     projectRepository.list().then(setProjects);
@@ -335,6 +349,7 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
         },
         userId,
       );
+      if (soldBy) await orgMemberRepository.setSoldBy('booking', saved.id, soldBy);
       router.push(`/admin/bookings/${saved.id}`);
     } finally {
       setSaving(false);
@@ -375,6 +390,19 @@ export function BookingForm({ booking }: { booking?: BookingWithRelations }) {
               ))}
             </SelectInput>
           </Field>
+          {!isEdit && (
+            <Field label="Sold by (commission)" hint="Defaults to the sales team member linked to Booked By.">
+              <Combobox
+                value={soldBy}
+                onChange={(id) => {
+                  setSoldBy(id);
+                  setSoldByPicked(true);
+                }}
+                placeholder="No commission"
+                options={(sellers ?? []).map((m) => ({ id: m.id, label: m.name, hint: `${m.code} · ${m.designation}`, keywords: `${m.code} ${m.phone ?? ''}` }))}
+              />
+            </Field>
+          )}
 
           <Field
             label="Project"

@@ -46,7 +46,9 @@ export interface CashFlowRow {
     | 'revenue_in'
     | 'revenue_cost'
     | 'loan_repayment'
-    | 'profit_payout';
+    | 'profit_payout'
+    // REVENUE-SHARE-PLAN.md §7 — commission paid to the sales team
+    | 'commission_payout';
   label: string;
   reference?: string | null;
 }
@@ -73,6 +75,7 @@ export const CASH_FLOW_LABEL: Record<CashFlowRow['kind'], string> = {
   revenue_cost: 'Running cost',
   loan_repayment: 'Loan repaid',
   profit_payout: 'Profit paid out',
+  commission_payout: 'Commission payout',
 };
 
 /**
