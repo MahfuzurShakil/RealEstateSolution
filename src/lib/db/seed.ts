@@ -7,6 +7,7 @@ import {
   lookupRepository,
 } from '../repositories';
 import { demoDataWasCleared, seedDemoData } from './demo-seed';
+import { ensureDemoRevenue } from './demo-revenue';
 import { ensureDemoBlog, ensureDemoSitePhotos, ensureDemoWebsiteContent, ensureDemoWebsitePictures, ensureDemoWebsiteText } from './demo-website';
 import {
   AMENITY_OPTIONS,
@@ -14,6 +15,8 @@ import {
   CUSTOMER_DOCUMENT_TYPES,
   PAYMENT_DOCUMENT_TYPES,
   FACING_OPTIONS,
+  REVENUE_EXPENSE_HEAD_OPTIONS,
+  REVENUE_INCOME_HEAD_OPTIONS,
   LAND_DOCUMENT_TYPES,
   LAND_CLASSIFICATION_OPTIONS,
   LAND_SIZE_UNITS,
@@ -88,6 +91,9 @@ async function runSeed(): Promise<void> {
   await ensureOptions('work_item_type', null, [...WORK_ITEM_TYPE_OPTIONS]);
   await retireWorkTypes();
   await ensureOptions('facing', null, [...FACING_OPTIONS]);
+  // REVENUE-SHARE-PLAN.md §2.1 — each business keeps its own heads
+  await ensureOptions('revenue_income_head', null, [...REVENUE_INCOME_HEAD_OPTIONS]);
+  await ensureOptions('revenue_expense_head', null, [...REVENUE_EXPENSE_HEAD_OPTIONS]);
   await ensureOptions('amenity', null, [...AMENITY_OPTIONS]);
   await ensureOptions('material_unit', null, [...MATERIAL_UNIT_OPTIONS]);
   // Tier 3.3: §1.2 always named `cost_category` a lookup list; it was an ENUM
@@ -126,6 +132,8 @@ async function runSeed(): Promise<void> {
     await ensureDemoWebsiteText();
     await ensureDemoWebsiteContent();
     await ensureDemoBlog();
+    // REVENUE-SHARE-PLAN.md §12 — a no-op once any project shares its profit
+    await ensureDemoRevenue();
   }
 }
 

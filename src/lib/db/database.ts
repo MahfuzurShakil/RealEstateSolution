@@ -5,6 +5,14 @@ import { backfillMaterialItems } from './backfill-material-items';
 import { allocateBookingPayments, bookingFeeRule, bookingScheduleRows, paidOffOn } from '../domain/booking';
 import { newId } from '../utils/id';
 import type {
+  Loan,
+  LoanRepayment,
+  LossCovering,
+  ProfitAllocation,
+  ProfitWithdrawal,
+  RevenueEntry,
+  RevenuePeriod,
+  RevenuePolicy,
   BookingInstallment,
   Award,
   BlogPost,
@@ -198,6 +206,16 @@ export class AppDatabase extends Dexie {
   share_offerings!: EntityTable<ShareOffering, 'id'>;
   share_sales!: EntityTable<ShareSale, 'id'>;
   share_installments!: EntityTable<ShareInstallment, 'id'>;
+
+  // Revenue Share (REVENUE-SHARE-PLAN.md) — v48
+  revenue_policies!: EntityTable<RevenuePolicy, 'id'>;
+  revenue_entries!: EntityTable<RevenueEntry, 'id'>;
+  revenue_periods!: EntityTable<RevenuePeriod, 'id'>;
+  loss_coverings!: EntityTable<LossCovering, 'id'>;
+  loans!: EntityTable<Loan, 'id'>;
+  loan_repayments!: EntityTable<LoanRepayment, 'id'>;
+  profit_allocations!: EntityTable<ProfitAllocation, 'id'>;
+  profit_withdrawals!: EntityTable<ProfitWithdrawal, 'id'>;
   share_payments!: EntityTable<SharePayment, 'id'>;
   share_requests!: EntityTable<ShareRequest, 'id'>;
   customer_uploads!: EntityTable<CustomerUpload, 'id'>;
@@ -1046,6 +1064,23 @@ export class AppDatabase extends Dexie {
      */
     this.version(47).stores({
       payment_submissions: 'id, &code, customer_id, holding_code, status',
+    });
+
+    /*
+     * v48 — Revenue Share (REVENUE-SHARE-PLAN.md R1–R5): a running project's
+     * income and cost, the periods its profit is worked out for, how a loss
+     * was covered and the loans behind it, each holder's frozen share of a
+     * declared period, and the payouts they ask for. New tables only.
+     */
+    this.version(48).stores({
+      revenue_policies: 'id, &project_id',
+      revenue_entries: 'id, &code, project_id, entry_date, direction, account_id',
+      revenue_periods: 'id, &code, project_id, period_start, status',
+      loss_coverings: 'id, period_id, project_id, loan_id',
+      loans: 'id, &code, project_id, status, partner_id',
+      loan_repayments: 'id, &code, loan_id, project_id, paid_on',
+      profit_allocations: 'id, period_id, project_id, customer_id, partner_id, share_sale_id',
+      profit_withdrawals: 'id, &code, project_id, customer_id, partner_id, status',
     });
   }
 }

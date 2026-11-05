@@ -299,6 +299,8 @@ const TO_PORTAL_METHOD: Record<SharePaymentMethod, PaymentMethod> = {
   nagad: 'nagad',
   card: 'card',
   online: 'internet_banking',
+  // a profit share paid onto the schedule; shown to the customer by its own words below
+  profit_adjustment: 'bank_transfer',
 };
 
 const TO_ADMIN_METHOD: Record<PaymentMethod, SharePaymentMethod> = {
@@ -325,7 +327,7 @@ function toPayment(p: SharePayment, sale: ShareSale, instSeq: Map<string, number
     late_fee: p.late_fee,
     total: p.amount,
     method,
-    method_detail: p.method_detail || (online ? 'Online payment' : p.method === 'cash' ? 'Cash at our office' : `${PAYMENT_LABEL[p.method]}, received by our office`),
+    method_detail: p.method === 'profit_adjustment' ? 'Paid from your profit share' : p.method_detail || (online ? 'Online payment' : p.method === 'cash' ? 'Cash at our office' : `${PAYMENT_LABEL[p.method]}, received by our office`),
     channel: online ? 'online' : 'office',
     reference: p.reference || p.code,
     // the gateway's own time when it was paid that day; otherwise the day the office recorded
@@ -341,6 +343,7 @@ const PAYMENT_LABEL: Record<SharePaymentMethod, string> = {
   nagad: 'Nagad',
   card: 'Card',
   online: 'Online',
+  profit_adjustment: 'Profit share',
 };
 
 function toRequest(r: ShareRequestRow, offeringCode: string): ShareRequest {

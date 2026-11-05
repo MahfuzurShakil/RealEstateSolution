@@ -237,7 +237,7 @@ export function RecordPaymentModal({ view, onClose }: { view: SaleView; onClose:
         </Field>
         <Field label="Method" required>
           <SelectInput value={method} onChange={(e) => setMethod(e.target.value as SharePaymentMethod)}>
-            {SHARE_PAYMENT_METHODS.filter((m) => m !== 'online').map((m) => (
+            {SHARE_PAYMENT_METHODS.filter((m) => m !== 'online' && m !== 'profit_adjustment').map((m) => (
               <option key={m} value={m}>
                 {SHARE_PAYMENT_METHOD_LABEL[m]}
               </option>

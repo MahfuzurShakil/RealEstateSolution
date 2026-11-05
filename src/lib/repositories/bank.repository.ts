@@ -109,6 +109,19 @@ class BankAccountRepository extends BaseRepository<BankAccount> {
       db.share_payments.toArray(),
       db.share_sales.toArray(),
     ]);
+    const [revenueEntries, loanRepayments, loans, withdrawals, projects] = await Promise.all([
+      db.revenue_entries.toArray(),
+      db.loan_repayments.toArray(),
+      db.loans.toArray(),
+      db.profit_withdrawals.toArray(),
+      db.projects.toArray(),
+    ]);
+    const projectName = new Map(projects.map((p) => [p.id, p.name]));
+    const loanById = new Map(loans.map((l) => [l.id, l]));
+    const holderName = new Map<string, string>([
+      ...customers.map((c) => [c.id, c.name] as const),
+      ...partners.map((p) => [p.id, p.name] as const),
+    ]);
     const customerOfSale = new Map(shareSales.map((s) => [s.id, customers.find((c) => c.id === s.customer_id)?.name ?? null]));
     const partnerName = new Map(partners.map((p) => [p.id, p.name]));
     const purchaseById = new Map(purchases.map((p) => [p.id, p]));
@@ -129,7 +142,8 @@ class BankAccountRepository extends BaseRepository<BankAccount> {
         reference: p.reference_no ?? null,
       })),
       // BUYER-PORTAL-PLAN.md §2.6 — investor money is money in, the same as a buyer's
-      ...sharePayments.map((p) => ({
+      // a profit share paid onto installments moved no money (REVENUE-SHARE-PLAN.md §5.2)
+      ...sharePayments.filter((p) => p.method !== 'profit_adjustment').map((p) => ({
         id: p.id,
         account_id: p.account_id ?? null,
         date: p.paid_on,
@@ -192,6 +206,39 @@ class BankAccountRepository extends BaseRepository<BankAccount> {
         label: customerOfBooking.get(r.booking_id) ?? r.code,
         reference: r.reference_no ?? null,
       })),
+      // REVENUE-SHARE-PLAN.md R1 — a running project's income and costs
+      ...revenueEntries.map((e) => ({
+        id: e.id,
+        account_id: e.account_id,
+        date: e.entry_date,
+        amount: e.direction === 'income' ? money(e.amount) : -money(e.amount),
+        kind: e.direction === 'income' ? ('revenue_in' as const) : ('revenue_cost' as const),
+        label: `${projectName.get(e.project_id) ?? ''} · ${e.head}`,
+        reference: e.reference_no ?? e.code,
+      })),
+      // principal only: the interest is already a running cost entry
+      ...loanRepayments
+        .filter((r) => r.principal > 0)
+        .map((r) => ({
+          id: r.id,
+          account_id: r.account_id,
+          date: r.paid_on,
+          amount: -money(r.principal),
+          kind: 'loan_repayment' as const,
+          label: loanById.get(r.loan_id)?.lender_name ?? r.code,
+          reference: r.reference_no ?? r.code,
+        })),
+      ...withdrawals
+        .filter((w) => w.status === 'paid')
+        .map((w) => ({
+          id: w.id,
+          account_id: w.account_id ?? null,
+          date: w.paid_on ?? w.requested_on,
+          amount: -money(w.amount),
+          kind: 'profit_payout' as const,
+          label: holderName.get(w.customer_id ?? w.partner_id ?? '') ?? w.code,
+          reference: w.reference_no ?? w.code,
+        })),
     ];
 
     return rows.sort((a, b) => b.date.localeCompare(a.date));

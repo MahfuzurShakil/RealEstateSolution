@@ -89,6 +89,7 @@ export const SHARE_PAYMENT_METHOD_LABEL: Record<SharePaymentMethod, string> = {
   nagad: 'Nagad',
   card: 'Card',
   online: 'Online (Customer Portal)',
+  profit_adjustment: 'From profit share',
 };
 
 /** What a purchase shows as: the stored stage, or what the schedule says about it. */

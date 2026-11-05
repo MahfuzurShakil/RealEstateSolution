@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { DocumentsPanel } from '@/components/admin/documents/DocumentsPanel';
 import { CustomerShareFile } from '@/components/admin/share-sale/ShareDocuments';
+import { CustomerEarnings } from '@/components/admin/revenue/CustomerEarnings';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -41,7 +42,7 @@ import {
 import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate, formatPhone } from '@/lib/utils/format';
 
-type Tab = 'overview' | 'homes' | 'shares' | 'payments' | 'documents';
+type Tab = 'overview' | 'homes' | 'shares' | 'earnings' | 'payments' | 'documents';
 
 const ROLE_BADGE: Record<CustomerRole, { label: string; tone: 'teal' | 'blue' }> = {
   buyer: { label: 'Buyer', tone: 'teal' },
@@ -116,6 +117,8 @@ export default function CustomerDetailPage() {
     // a customer with nothing yet still sees where to book a unit
     { key: 'homes', label: `Flats & Plots (${homes.length})`, show: isBuyer || !isInvestor },
     { key: 'shares', label: `Shares (${shares.length})`, show: isInvestor },
+    // REVENUE-SHARE-PLAN.md §5.4 — profit shared from their holdings
+    { key: 'earnings', label: 'Earnings', show: isInvestor },
     { key: 'payments', label: `Payments (${payments.length})`, show: payments.length > 0 },
     { key: 'documents', label: 'Documents', show: true },
   ];
@@ -439,6 +442,8 @@ export default function CustomerDetailPage() {
               </div>
             </Card>
           )}
+
+          {tab === 'earnings' && <CustomerEarnings customerId={id} />}
 
           {/* one Documents tab in one design (feedback D3): the customer file, then anything else on the customer */}
           {tab === 'documents' && (

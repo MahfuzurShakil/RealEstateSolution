@@ -3399,7 +3399,8 @@ export interface ShareInstallment extends BaseEntity {
   amount: number;
 }
 
-export const SHARE_PAYMENT_METHODS = ['bank_transfer', 'cheque', 'cash', 'bkash', 'nagad', 'card', 'online'] as const;
+/** `profit_adjustment` — a declared profit share paid onto overdue installments (REVENUE-SHARE-PLAN.md §5.2); no money moves */
+export const SHARE_PAYMENT_METHODS = ['bank_transfer', 'cheque', 'cash', 'bkash', 'nagad', 'card', 'online', 'profit_adjustment'] as const;
 export type SharePaymentMethod = (typeof SHARE_PAYMENT_METHODS)[number];
 
 /** v45 — how much of one payment went to one schedule row; shared by share sales and bookings */
@@ -3555,4 +3556,242 @@ export interface PaymentSubmission extends BaseEntity {
   /** the payment recorded on confirmation, and its receipt number */
   payment_id?: UUID | null;
   receipt_no?: string | null;
+}
+
+/* ------------------------------------------------------------------ *
+ * Revenue Share (REVENUE-SHARE-PLAN.md R1–R5, v48)
+ * ------------------------------------------------------------------ */
+
+export const REVENUE_ENTRY_FREQUENCIES = ['daily', 'monthly', 'quarterly'] as const;
+export type RevenueEntryFrequency = (typeof REVENUE_ENTRY_FREQUENCIES)[number];
+
+export const DISTRIBUTION_FREQUENCIES = ['monthly', 'quarterly', 'half_yearly', 'yearly'] as const;
+export type DistributionFrequency = (typeof DISTRIBUTION_FREQUENCIES)[number];
+
+export const MGMT_FEE_TYPES = ['none', 'pct_income', 'pct_profit', 'fixed'] as const;
+export type MgmtFeeType = (typeof MGMT_FEE_TYPES)[number];
+
+/** Past losses: filled by later profit before anything is shared, or not carried. */
+export const LOSS_RULES = ['recover_first', 'ignore'] as const;
+export type LossRule = (typeof LOSS_RULES)[number];
+
+/** Which customer holdings share in a period (plan §2.1, decision 2). */
+export const ELIGIBILITY_RULES = ['fully_paid', 'pro_rata_paid', 'all_signed'] as const;
+export type EligibilityRule = (typeof ELIGIBILITY_RULES)[number];
+
+export const WITHDRAWAL_WINDOWS = ['anytime', 'after_declare', 'day_of_month'] as const;
+export type WithdrawalWindow = (typeof WITHDRAWAL_WINDOWS)[number];
+
+/** One per project: switching revenue sharing on is saving this row. */
+export interface RevenuePolicy extends BaseEntity {
+  project_id: UUID;
+  entry_frequency: RevenueEntryFrequency;
+  distribution_frequency: DistributionFrequency;
+  /** the first period starts here; later ones follow by the frequency */
+  first_period_start: ISODate;
+  /** % of profit (after past loss) kept back for repairs */
+  reserve_pct: number;
+  mgmt_fee_type: MgmtFeeType;
+  /** % for the pct types, taka per period for `fixed` */
+  mgmt_fee_value: number;
+  /** source tax kept from each holder's share */
+  tax_withholding_pct: number;
+  loss_rule: LossRule;
+  eligibility_rule: EligibilityRule;
+  /** a holding signed mid-period shares by days held */
+  prorate_days: boolean;
+  /** loan principal due in a period comes off what can be shared */
+  repay_loans_first: boolean;
+  min_withdrawal: number;
+  withdrawal_window: WithdrawalWindow;
+  /** days after a declaration (`after_declare`) or the day of the month (`day_of_month`) */
+  withdrawal_window_days: number;
+  /** a customer's share pays their overdue installments first */
+  adjust_overdue_first: boolean;
+  notes?: string | null;
+}
+
+export const REVENUE_DIRECTIONS = ['income', 'cost'] as const;
+export type RevenueDirection = (typeof REVENUE_DIRECTIONS)[number];
+
+/** Seeds of lookup_values `revenue_income_head` / `revenue_expense_head`. */
+export const REVENUE_INCOME_HEAD_OPTIONS = [
+  'Room rent',
+  'Food & beverage',
+  'Hall & event booking',
+  'Shop / floor rent',
+  'Service charge',
+  'Parking',
+  'Other income',
+] as const;
+export const REVENUE_EXPENSE_HEAD_OPTIONS = [
+  'Salary & wages',
+  'Utilities',
+  'Maintenance & repair',
+  'Supplies',
+  'Marketing',
+  'Government fees & tax',
+  'Loan interest',
+  'Other cost',
+] as const;
+
+/** Running a project, day by day — not building it (that is Costs / Fund). */
+export interface RevenueEntry extends BaseEntity {
+  code: string;                       // REV-2026-001
+  project_id: UUID;
+  entry_date: ISODate;
+  direction: RevenueDirection;
+  head: string;
+  amount: number;
+  /** where the money went in or came out; what puts it in Cash Position */
+  account_id: UUID | null;
+  reference_no?: string | null;
+  notes?: string | null;
+}
+
+/** A period is stored once it is closed; until then it is only dates. */
+export const REVENUE_PERIOD_STATUSES = ['closed', 'approved', 'declared'] as const;
+export type RevenuePeriodStatus = (typeof REVENUE_PERIOD_STATUSES)[number];
+
+export interface RevenuePeriod extends BaseEntity {
+  code: string;                       // RVP-2026-001
+  project_id: UUID;
+  period_start: ISODate;
+  period_end: ISODate;
+  label: string;
+  status: RevenuePeriodStatus;
+  /* the statement, frozen at closing (plan §2.3) */
+  income: number;
+  cost: number;
+  operating_profit: number;
+  loss_brought_in: number;
+  reserve: number;
+  mgmt_fee: number;
+  loan_principal_due: number;
+  available: number;
+  loss_carried_out: number;
+  /** set on approval: ≤ available */
+  declared: number;
+  record_date?: ISODate | null;
+  closed_by?: UUID | null;
+  approved_by?: UUID | null;
+  approved_on?: ISODate | null;
+  declared_by?: UUID | null;
+  declared_on?: ISODate | null;
+  notes?: string | null;
+}
+
+export const LOSS_COVER_SOURCES = [
+  'person_loan',
+  'bank_loan',
+  'partner_loan',
+  'partner_capital',
+  'reserve',
+  'company_fund',
+] as const;
+export type LossCoverSource = (typeof LOSS_COVER_SOURCES)[number];
+
+/** How a period's loss was paid for (plan §3). */
+export interface LossCovering extends BaseEntity {
+  period_id: UUID;
+  project_id: UUID;
+  source: LossCoverSource;
+  amount: number;
+  loan_id?: UUID | null;
+  fund_receipt_id?: UUID | null;
+  partner_id?: UUID | null;
+  notes?: string | null;
+}
+
+export const LENDER_TYPES = ['person', 'bank', 'partner'] as const;
+export type LenderType = (typeof LENDER_TYPES)[number];
+
+export const LOAN_STATUSES = ['active', 'repaid', 'written_off'] as const;
+export type LoanStatus = (typeof LOAN_STATUSES)[number];
+
+/** Terms of borrowed money; taking it writes a `loan` fund receipt. */
+export interface Loan extends BaseEntity {
+  code: string;                       // LON-2026-001
+  project_id: UUID;
+  lender_type: LenderType;
+  /** person's name or the bank's */
+  lender_name: string;
+  partner_id?: UUID | null;
+  phone?: string | null;
+  bank_branch?: string | null;
+  loan_account_no?: string | null;
+  principal: number;
+  interest_pct: number;
+  taken_on: ISODate;
+  repay_by?: ISODate | null;
+  /** principal expected back each month; drives "due this period" */
+  monthly_instalment: number;
+  account_id: UUID;
+  fund_receipt_id?: UUID | null;
+  /** the loss period this loan covered, if any */
+  period_id?: UUID | null;
+  status: LoanStatus;
+  notes?: string | null;
+}
+
+export interface LoanRepayment extends BaseEntity {
+  code: string;                       // LRP-2026-001
+  loan_id: UUID;
+  project_id: UUID;
+  paid_on: ISODate;
+  principal: number;
+  /** interest is a running cost; it is also written as a cost entry */
+  interest: number;
+  account_id: UUID;
+  reference_no?: string | null;
+}
+
+export const PROFIT_HOLDER_TYPES = ['customer', 'partner'] as const;
+export type ProfitHolderType = (typeof PROFIT_HOLDER_TYPES)[number];
+
+/** One holder's frozen share of one declared period (plan §5.1). */
+export interface ProfitAllocation extends BaseEntity {
+  period_id: UUID;
+  project_id: UUID;
+  holder_type: ProfitHolderType;
+  customer_id?: UUID | null;
+  partner_id?: UUID | null;
+  share_sale_id?: UUID | null;
+  /** ownership on the record date, in % of the project */
+  ownership_pct: number;
+  /** 1 = full share; less for unpaid or part-period holdings */
+  eligibility_factor: number;
+  gross: number;
+  tax_withheld: number;
+  /** paid onto overdue installments instead of the balance */
+  adjusted_to_dues: number;
+  net_credited: number;
+}
+
+export const WITHDRAWAL_STATUSES = ['requested', 'approved', 'paid', 'rejected'] as const;
+export type WithdrawalStatus = (typeof WITHDRAWAL_STATUSES)[number];
+
+export const WITHDRAWAL_METHODS = ['bank_transfer', 'bkash', 'nagad', 'cheque', 'cash'] as const;
+export type WithdrawalMethod = (typeof WITHDRAWAL_METHODS)[number];
+
+export interface ProfitWithdrawal extends BaseEntity {
+  code: string;                       // WDR-2026-001
+  holder_type: ProfitHolderType;
+  customer_id?: UUID | null;
+  partner_id?: UUID | null;
+  project_id: UUID;
+  amount: number;
+  method: WithdrawalMethod;
+  /** bank account or wallet number as it was when asked */
+  pay_to: string;
+  status: WithdrawalStatus;
+  requested_on: ISODate;
+  /** the Customer Portal or the office */
+  channel: 'portal' | 'office';
+  decided_by?: UUID | null;
+  decided_on?: ISODate | null;
+  reject_reason?: string | null;
+  account_id?: UUID | null;
+  paid_on?: ISODate | null;
+  reference_no?: string | null;
 }

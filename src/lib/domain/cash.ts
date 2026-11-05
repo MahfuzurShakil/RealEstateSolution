@@ -34,7 +34,19 @@ export interface CashFlowRow {
   date: string;
   /** positive in, negative out */
   amount: number;
-  kind: 'receipt' | 'share_receipt' | 'fund_in' | 'expense' | 'supplier_payment' | 'site_payment' | 'refund';
+  kind:
+    | 'receipt'
+    | 'share_receipt'
+    | 'fund_in'
+    | 'expense'
+    | 'supplier_payment'
+    | 'site_payment'
+    | 'refund'
+    // REVENUE-SHARE-PLAN.md — a running project's takings and costs, loans paid back, profit paid out
+    | 'revenue_in'
+    | 'revenue_cost'
+    | 'loan_repayment'
+    | 'profit_payout';
   label: string;
   reference?: string | null;
 }
@@ -57,6 +69,10 @@ export const CASH_FLOW_LABEL: Record<CashFlowRow['kind'], string> = {
   supplier_payment: 'Supplier payment',
   site_payment: 'Site cost payment',
   refund: 'Refund',
+  revenue_in: 'Project income',
+  revenue_cost: 'Running cost',
+  loan_repayment: 'Loan repaid',
+  profit_payout: 'Profit paid out',
 };
 
 /**

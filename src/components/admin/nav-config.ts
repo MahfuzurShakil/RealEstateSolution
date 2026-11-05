@@ -120,6 +120,9 @@ export const NAV_GROUPS: NavGroup[] = [
       // every payment investors made, across all projects and purchases
       { label: 'Transactions', href: '/admin/share-sale/transactions', module: 'share_sale' },
       { label: 'Customer Requests', href: '/admin/share-sale/requests', module: 'share_sale' },
+      // REVENUE-SHARE-PLAN.md — each project's profit, shared; and the payouts holders ask for
+      { label: 'Profit Distributions', href: '/admin/share-sale/profit', module: 'share_sale' },
+      { label: 'Profit Withdrawals', href: '/admin/share-sale/withdrawals', module: 'share_sale' },
     ],
   },
   /*
@@ -162,6 +165,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Bills to Pay', href: '/admin/payments', module: 'finance_expense', directOnly: true },
       { label: 'Payment History', href: '/admin/payments/history', module: 'finance_expense', directOnly: true },
       { label: 'Fund & Partners', href: '/admin/fund', module: 'finance_expense' },
+      { label: 'Loans', href: '/admin/fund/loans', module: 'finance_expense' },
       { label: 'Cash Position', href: '/admin/cash', module: 'finance_expense' },
     ],
   },

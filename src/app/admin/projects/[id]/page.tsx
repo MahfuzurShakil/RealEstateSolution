@@ -1,6 +1,7 @@
 'use client';
 
 import { ProjectStageCosts } from '@/components/admin/projects/ProjectStageCosts';
+import { RevenueTab } from '@/components/admin/revenue/RevenueTab';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
@@ -45,6 +46,7 @@ type Tab =
   | 'allocation'
   | 'costs'
   | 'timeline'
+  | 'revenue'
   | 'documents';
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
@@ -117,6 +119,8 @@ export default function ProjectDetailPage() {
     // client, 2026-10-21: planning, design and approval cost money too
     { key: 'costs', label: 'Costs' },
     { key: 'timeline', label: 'Timeline' },
+    // REVENUE-SHARE-PLAN.md — a project that earns money shares its profit
+    { key: 'revenue', label: 'Income & Profit' },
     { key: 'documents', label: 'Documents' },
   ];
 
@@ -297,6 +301,8 @@ export default function ProjectDetailPage() {
               <ProjectTimeline projectId={project.id} />
             </Card>
           )}
+
+          {tab === 'revenue' && <RevenueTab projectId={project.id} mayEdit={mayEdit} />}
 
           {tab === 'documents' && (
             <div className="space-y-5">

@@ -17,6 +17,7 @@ import {
   X,
   type LucideIcon,
   Home,
+  TrendingUp,
 } from 'lucide-react';
 import { BrandMark } from '@/components/public/BrandMark';
 import { useCompanyInfo } from '@/components/public/useCompanyInfo';
@@ -29,6 +30,8 @@ const NAV: { href: string; label: string; icon: LucideIcon; exact?: boolean; rol
   { href: '/customer', label: 'Overview', icon: LayoutDashboard, exact: true },
   { href: '/customer/homes', label: 'My homes', icon: Home, role: 'buyer' },
   { href: '/customer/investments', label: 'My investments', icon: Briefcase, role: 'investor' },
+  // REVENUE-SHARE-PLAN.md §5.3 — profit shared from the projects they hold
+  { href: '/customer/earnings', label: 'My earnings', icon: TrendingUp, role: 'investor' },
   { href: '/customer/payments', label: 'Make a payment', icon: CreditCard },
   { href: '/customer/history', label: 'Payment history', icon: History },
   { href: '/customer/documents', label: 'Documents', icon: FileText },
