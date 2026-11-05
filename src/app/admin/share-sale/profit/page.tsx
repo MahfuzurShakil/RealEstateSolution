@@ -14,6 +14,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import type { RevenuePeriodStatus } from '@/lib/db/types';
 import { PERIOD_STATUS_META } from '@/lib/domain/revenue-share';
 import { profitDistributions, type DistributionRow } from '@/lib/repositories';
+import { cn } from '@/lib/utils/cn';
 import { formatBdt, formatDate } from '@/lib/utils/format';
 
 /**
@@ -54,7 +55,7 @@ export default function ProfitDistributionsPage() {
       align: 'right',
       sortValue: (r) => r.period.operating_profit,
       cell: (r) => (
-        <span className={r.period.operating_profit < 0 ? 'text-red-600' : 'text-emerald-700'}>{formatBdt(r.period.operating_profit)}</span>
+        <span className={cn('whitespace-nowrap', r.period.operating_profit < 0 ? 'text-red-600' : 'text-emerald-700')}>{formatBdt(r.period.operating_profit)}</span>
       ),
     },
     { key: 'declared', header: 'Declared', align: 'right', cell: (r) => (r.period.status === 'closed' ? '—' : formatBdt(r.period.declared)) },

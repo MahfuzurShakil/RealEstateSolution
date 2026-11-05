@@ -163,7 +163,8 @@ export async function ensureDemoRevenue(): Promise<void> {
     return w;
   };
   if (farhana) {
-    const w = await ask('customer', farhana.id, 15_000, 'bank_transfer', 'Eastern Bank PLC, Gulshan, 1041070012345', addDays(q1.end, 14));
+    // leaves her above the Tk 5,000 minimum, so the portal's Request payout is live
+    const w = await ask('customer', farhana.id, 12_000, 'bank_transfer', 'Eastern Bank PLC, Gulshan, 1041070012345', addDays(q1.end, 14));
     await pay(w.id, paidAfter, 'EBL-TRF-55810');
   }
   if (mahmudul) {

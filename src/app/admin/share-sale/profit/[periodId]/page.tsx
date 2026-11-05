@@ -46,7 +46,8 @@ export default function PeriodPage() {
   const { period: p } = detail;
   const loss = Math.max(0, -p.operating_profit);
   const covered = detail.coverings.reduce((s, c) => s + c.amount, 0);
-  const lines = p.status === 'declared' ? detail.lines : detail.preview;
+  // a loss period shares nothing, so there is no one to preview
+  const lines = p.status === 'declared' ? detail.lines : loss > 0 ? [] : detail.preview;
 
   async function run(action: () => Promise<unknown>) {
     setError('');
@@ -113,9 +114,12 @@ export default function PeriodPage() {
             <div className="flex flex-wrap gap-2">
               {p.status === 'closed' && (
                 <>
-                  <Button variant="outline" onClick={() => setDialog('reopen')}>
-                    <RotateCcw className="size-4" /> Reopen
-                  </Button>
+                  {/* its cover is recorded against these figures, so they stay */}
+                  {detail.coverings.length === 0 && (
+                    <Button variant="outline" onClick={() => setDialog('reopen')}>
+                      <RotateCcw className="size-4" /> Reopen
+                    </Button>
+                  )}
                   {loss === 0 && (
                     <Button
                       onClick={() => {

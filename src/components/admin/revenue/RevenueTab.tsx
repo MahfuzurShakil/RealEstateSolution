@@ -217,7 +217,7 @@ function PeriodsTable({ rows, mayEdit, onClose }: { rows: PeriodRow[]; mayEdit: 
       key: 'profit',
       header: 'Profit / loss',
       align: 'right',
-      cell: (r) => <span className={r.profit < 0 ? 'text-red-600' : 'text-emerald-700'}>{formatBdt(r.profit)}</span>,
+      cell: (r) => <span className={cn('whitespace-nowrap', r.profit < 0 ? 'text-red-600' : 'text-emerald-700')}>{formatBdt(r.profit)}</span>,
     },
     { key: 'shared', header: 'Shared', align: 'right', cell: (r) => (r.shared === null ? '—' : formatBdt(r.shared)) },
     { key: 'status', header: 'Status', cell: (r) => <PeriodBadge status={r.status} /> },
