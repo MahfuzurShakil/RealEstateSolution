@@ -143,7 +143,7 @@ function PayoutsPage() {
   const columns: Column<PayoutRow>[] = [
     {
       key: 'date',
-      header: 'Paid',
+      header: 'Date',
       cell: (r) => (
         <span className="block">
           <span className="block whitespace-nowrap">{formatDate(r.paid_on)}</span>
